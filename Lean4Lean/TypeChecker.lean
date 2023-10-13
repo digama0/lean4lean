@@ -78,7 +78,7 @@ def ensureForallCore (e s : Expr) : RecM Expr := do
   if e.isForall then return e
   let e ← whnf e
   if e.isForall then return e
-  throw <| .typeExpected (← getEnv) (← getLCtx) s
+  throw <| .funExpected (← getEnv) (← getLCtx) s
 
 def checkLevel (tc : Context) (l : Level) : Except KernelException Unit := do
   if let some lps := tc.lparams then
@@ -141,8 +141,8 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
       loop fvars us body
   | e => do
     let r ← inferTypeCore (e.instantiateRev fvars) inferOnly
-    let r := r.cheapBetaReduce
-    return (← getLCtx).mkForall fvars r
+    let s ← ensureSortCore r e
+    return .sort <| us.foldr .imax s.sortLevel!
 
 def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore s t
 
