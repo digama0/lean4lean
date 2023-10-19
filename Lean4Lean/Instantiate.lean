@@ -7,7 +7,7 @@ def Expr.cheapBetaReduce (e : Expr) : Expr := Id.run do
   let fn := e.getAppFn
   if !fn.isLambda then return e
   let args := e.getAppArgs
-  let cont i e :=
+  let cont i fn :=
     if !fn.hasLooseBVars then
       mkAppRange fn i args.size args
     else if let .bvar n := fn then

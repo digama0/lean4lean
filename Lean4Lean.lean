@@ -1,5 +1,6 @@
 import Lean4Lean.Environment
 
+/-
 open Lean Elab Command
 
 namespace CollectPartial
@@ -44,3 +45,4 @@ elab "#print" "partial" name:ident : command => do
     logInfo m!"'{constName}' depends on opaques: {s.opaques.toList}"
 
 #print partial Environment.addDecl'
+-/

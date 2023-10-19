@@ -50,55 +50,63 @@ def getType (fvar : Expr) : M Expr :=
   return ((← getLCtx).get! fvar.fvarId!).type
 
 def checkInductiveTypes
-    (lparams : List Name) (nparams : Nat) (indTypes : Array InductiveType) : M InductiveStats := do
-  let stats := { (default : InductiveStats) with levels := lparams.map .param }
-  let stats ← indTypes.foldlM (init := stats) fun stats indType => do
-    let env := (← read).env
-    let type := indType.type
-    env.checkName indType.name
-    env.checkName (mkRecName indType.name)
-    env.checkNoMVarNoFVar indType.name type
-    _ ← check type lparams
-    let rec loop stats type i nindices
-    | 0 => throw .deepRecursion
-    | fuel+1 => do
-      if let .forallE name dom body bi := type then
-        if i < nparams then
-          if stats.indConsts.isEmpty then
-            withLocalDecl name dom.consumeTypeAnnotations bi fun param => do
-              let stats := { stats with params := stats.params.push param }
+    (lparams : List Name) (nparams : Nat) (indTypes : Array InductiveType)
+    (k : InductiveStats → M α) : M α := do
+  let rec loopInd dIdx stats : M α := do
+    if _h : dIdx < indTypes.size then
+      let indType := indTypes[dIdx]
+      let env := (← read).env
+      let type := indType.type
+      env.checkName indType.name
+      env.checkName (mkRecName indType.name)
+      env.checkNoMVarNoFVar indType.name type
+      _ ← check type lparams
+      let rec loop stats type i nindices fuel k : M α := match fuel with
+      | 0 => throw .deepRecursion
+      | fuel+1 => do
+        if let .forallE name dom body bi := type then
+          if i < nparams then
+            if stats.indConsts.isEmpty then
+              withLocalDecl name dom.consumeTypeAnnotations bi fun param => do
+                let stats := { stats with params := stats.params.push param }
+                let type := body.instantiate1 param
+                loop stats (← whnf type) (i + 1) nindices fuel k
+            else
+              let param := stats.params[i]!
+              unless ← isDefEq dom (← getType param) do
+                throw <| .other "parameters of all inductive datatypes must match"
               let type := body.instantiate1 param
-              loop stats (← whnf type) (i + 1) nindices fuel
+              loop stats (← whnf type) (i + 1) nindices fuel k
           else
-            let param := stats.params[i]!
-            unless ← isDefEq dom (← getType param) do
-              throw <| .other "parameters of all inductive datatypes must match"
-            let type := body.instantiate1 param
-            loop stats (← whnf type) (i + 1) nindices fuel
+            withLocalDecl name dom.consumeTypeAnnotations bi fun arg => do
+              let type := body.instantiate1 arg
+              loop stats (← whnf type) i (nindices + 1) fuel k
         else
-          withLocalDecl name dom.consumeTypeAnnotations bi fun arg => do
-            let type := body.instantiate1 arg
-            loop stats (← whnf type) i (nindices + 1) fuel
-      else
-        if i != nparams then
-          throw <| .other "number of parameters mismatch in inductive datatype declaration"
-        let type ← ensureSort type
-        let mut stats := stats
-        let resultLevel := type.sortLevel!
-        if stats.indConsts.isEmpty then
-          let lctx := (← read).lctx
-          stats := { stats with lctx, resultLevel, isNotZero := resultLevel.isNeverZero }
-        else if !resultLevel.isEquiv stats.resultLevel then
-          throw <| .other "mutually inductive types must live in the same universe"
-        return { stats with
-          nindices := stats.nindices.push nindices
-          indConsts := stats.indConsts.push (.const indType.name stats.levels) }
-    loop stats (← whnf type) 0 0 1000
-  assert! stats.levels.length == lparams.length
-  assert! stats.nindices.size == indTypes.size
-  assert! stats.indConsts.size == indTypes.size
-  assert! stats.params.size == nparams
-  return stats
+          if i != nparams then
+            throw <| .other "number of parameters mismatch in inductive datatype declaration"
+          k type stats nindices
+      loop stats (← whnf type) 0 0 1000 fun type stats nindices => do
+      let type ← ensureSort type
+      let mut stats := stats
+      let resultLevel := type.sortLevel!
+      if stats.indConsts.isEmpty then
+        let lctx := (← read).lctx
+        stats := { stats with lctx, resultLevel, isNotZero := resultLevel.isNeverZero }
+      else if !resultLevel.isEquiv stats.resultLevel then
+        throw <| .other "mutually inductive types must live in the same universe"
+      stats := { stats with
+        nindices := stats.nindices.push nindices
+        indConsts := stats.indConsts.push (.const indType.name stats.levels) }
+      loopInd (dIdx + 1) stats
+    else
+      k <|
+        assert! stats.levels.length == lparams.length
+        assert! stats.nindices.size == indTypes.size
+        assert! stats.indConsts.size == indTypes.size
+        assert! stats.params.size == nparams
+        stats
+  loopInd 0 { (default : InductiveStats) with levels := lparams.map .param }
+termination_by loopInd => indTypes.size - dIdx
 
 def hasIndOcc (indConsts : Array Expr) (t : Expr) : Bool :=
   (t.find? fun
@@ -157,7 +165,8 @@ def isRecArg (stats : InductiveStats) (t : Expr) : M (Option Nat) := loop t 1000
   loop t
   | 0 => throw .deepRecursion
   | fuel+1 => do
-    let .forallE name dom body bi ← whnf t | return isValidIndApp? stats t
+    let t ← whnf t
+    let .forallE name dom body bi := t | return isValidIndApp? stats t
     withLocalDecl name dom.consumeTypeAnnotations bi fun arg => do
     loop (body.instantiate1 arg) fuel
 
@@ -204,7 +213,7 @@ def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
             loop (body.instantiate1 param) (i + 1) fuel
           else
             let s ← ensureType dom
-            unless stats.resultLevel.isZero || s.sortLevel!.isGE stats.resultLevel do
+            unless stats.resultLevel.isZero || stats.resultLevel.geq' s.sortLevel! do
               throw <| .other s!"universe level of type_of(arg #{i + 1
                 }) of '{n}' is too big for the corresponding inductive datatype"
             if !isUnsafe then
@@ -407,7 +416,7 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
           let val ← mkRecInfos.loopUArgs ui fun uiTy xs => do
             let (itIdx, itIndices) := getIIndices stats uiTy
             let val := .const (mkRecName indTypes[itIdx]!.name) lvls
-            let val := mkAppN (mkAppN (mkAppN val motives) minors) itIndices
+            let val := mkAppN (mkAppN (mkAppN (mkAppN val stats.params) motives) minors) itIndices
             return (← getLCtx).mkLambda xs <| val.app (mkAppN ui xs)
           loopU (i + 1) (v.push val) k
         else
@@ -431,7 +440,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
   let isUnsafe := (← read).safety != .safe
   let indTypes := types.toArray
   Environment.checkDuplicatedUnivParams lparams
-  let stats ← checkInductiveTypes lparams nparams indTypes
+  checkInductiveTypes lparams nparams indTypes fun stats => do
   withEnv (declareInductiveTypes stats lparams nparams indTypes isUnsafe isNested) do
   checkConstructors indTypes lparams stats isUnsafe
   withEnv (declareConstructors stats lparams indTypes isUnsafe) do
@@ -534,7 +543,7 @@ structure State where
   ngen : NameGenerator := { namePrefix := `_nested_fresh }
   nestedAux : Array (Expr × Name) := {}
   lvls : List Level
-  newTypes : Array InductiveType := {}
+  newTypes : Array InductiveType
   nextIdx : Nat := 1
   deriving Inhabited
 
@@ -659,16 +668,22 @@ def run (nparams : Nat) (types : List InductiveType) : M Result := do
     | throw <| .other s!"invalid empty (mutual) inductive datatype declaration, {""
         }it must contain at least one inductive type."
   withParams I.type nparams fun _ _ params => do
-  let types ← types.mapM fun indType => do
-    let ctors ← indType.ctors.mapM fun ctor => do
-      withParams ctor.type nparams fun lctx ctorType As => do
-      assert! As.size == nparams
-      return { ctor with type := lctx.mkForall As (← replaceAllNested lctx params As ctorType) }
-    return { indType with ctors }
-  let s ← get
-  let aux2nested := s.nestedAux.foldl (fun m (e, n) => m.insert n (e.abstract params)) {}
-  return { s with nparams := params.size, aux2nested, types }
-
+  let rec loop i
+  | 0 => throw <| .other "deep recursion: ElimNestedInductive.run.loop"
+  | fuel+1 => do
+    let s ← get
+    if _h : i < s.newTypes.size then
+      let indType := s.newTypes[i]
+      let ctors ← indType.ctors.mapM fun ctor => do
+        withParams ctor.type nparams fun lctx ctorType As => do
+        assert! As.size == nparams
+        return { ctor with type := lctx.mkForall As (← replaceAllNested lctx params As ctorType) }
+      modify fun s => { s with newTypes := s.newTypes.set! i { indType with ctors } }
+      loop (i+1) fuel
+    else
+      let aux2nested := s.nestedAux.foldl (fun m (e, n) => m.insert n (e.abstract params)) {}
+      return { s with nparams := params.size, aux2nested, types := s.newTypes.toList }
+  loop 0 1000
 end ElimNestedInductive
 
 def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
@@ -692,7 +707,8 @@ def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
 
 def Environment.addInductive (env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe : Bool) : Except KernelException Environment := do
-  let res ← ElimNestedInductive.run nparams types env |>.run' { lvls := lparams.map .param }
+  let res ← ElimNestedInductive.run nparams types env
+    |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let isNested := !res.aux2nested.isEmpty
   let env' ← AddInductive.run lparams nparams res.types isNested
     { env, safety := if isUnsafe then .unsafe else .safe }

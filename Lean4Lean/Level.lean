@@ -22,19 +22,23 @@ def getUndefParam (l : Level) (ps : List Name) : Option Name := Id.run do
 
 def isEquivList : List Level → List Level → Bool := List.all2 isEquiv
 
-mutual -- FIXME: partial
-
-partial def isGECore (l1 l2 : Level) : Bool := Id.run do
-  if l1 == l2 || l2.isZero then return true
-  if let .max a2 b2 := l2 then return l1.isGE a2 && l2.isGE b2
-  if let .max a1 b1 := l1 then if a1.isGE l2 || b1.isGE l2 then return true
-  if let .imax a2 b2 := l2 then return l1.isGE a2 && l2.isGE b2
-  if let .imax _ b1 := l1 then return b1.isGE l2
-  let n1 := l1.getOffset; let l1' := l1.getLevelOffset
-  let n2 := l2.getOffset; let l2' := l2.getLevelOffset
-  if l1' == l2' || l2'.isZero then return n1 ≥ n2
-  n1 == n2 && n1 > 0 && isGE l1' l2'
-
-partial def isGE (l1 l2 : Level) : Bool := isGECore l1.normalize l2.normalize
-
-end
+def geq' (u v : Level) : Bool := -- pending lean4#2689
+  go u.normalize v.normalize
+where
+  go (u v : Level) : Bool :=
+    u == v ||
+    let k := fun () =>
+      match v with
+      | imax v₁ v₂ => go u v₁ && go u v₂
+      | _          =>
+        let v' := v.getLevelOffset
+        (u.getLevelOffset == v' || v'.isZero)
+        && u.getOffset ≥ v.getOffset
+    match u, v with
+    | _,          zero      => true
+    | u,          max v₁ v₂ => go u v₁ && go u v₂
+    | max u₁ u₂,  v         => go u₁ v || go u₂ v || k ()
+    | imax _  u₂, v         => go u₂ v
+    | succ u,     succ v    => go u v
+    | _,          _         => k ()
+termination_by _ u v => (u, v)

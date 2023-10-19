@@ -63,7 +63,7 @@ def Environment.addQuot (env : Environment) : Except KernelException Environment
       name := ``Quot.lift, kind := .lift, levelParams := [`u, `v]
       type := (← read).mkForall #[α, r, β, f] <| .arrow sanity <| .arrow quot_r β
     }
-  let quotMk_a := mkApp3 (.const ``Quot [u]) α r a
+  let quotMk_a := mkApp3 (.const ``Quot.mk [u]) α r a
   withLocalDecl `β (.arrow quot_r .prop) .implicit fun β => do
   let all_quot := (← read).mkForall #[a] <| .app β quotMk_a
   withLocalDecl `q quot_r .implicit fun q => do

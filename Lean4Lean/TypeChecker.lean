@@ -52,7 +52,7 @@ structure Methods where
   isDefEqCore : Expr → Expr → M Bool
   whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : M Expr
   whnf (e : Expr) : M Expr
-  inferTypeCore (e : Expr) (inferOnly : Bool) : M Expr
+  inferType (e : Expr) (inferOnly : Bool) : M Expr
 
 abbrev RecM := ReaderT Methods M
 
@@ -110,9 +110,7 @@ def inferConstant (tc : Context) (name : Name) (ls : List Level) (inferOnly : Bo
       checkLevel tc l
   return info.instantiateTypeLevelParams ls
 
-def inferTypeCore (e : Expr) (inferOnly : Bool) : RecM Expr := fun m => m.inferTypeCore e inferOnly
-
-def inferType (e : Expr) : RecM Expr := inferTypeCore e true
+def inferType (e : Expr) (inferOnly := true) : RecM Expr := fun m => m.inferType e inferOnly
 
 def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
   loop fvars : Expr → RecM Expr
@@ -122,10 +120,10 @@ def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
       let fvars := fvars.push (.fvar id)
       if !inferOnly then
-        _ ← ensureSortCore (← inferTypeCore d inferOnly) d
+        _ ← ensureSortCore (← inferType d inferOnly) d
       loop fvars body
   | e => do
-    let r ← inferTypeCore (e.instantiateRev fvars) inferOnly
+    let r ← inferType (e.instantiateRev fvars) inferOnly
     let r := r.cheapBetaReduce
     return (← getLCtx).mkForall fvars r
 
@@ -133,18 +131,18 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
   loop fvars us : Expr → RecM Expr
   | .forallE name dom body bi => do
     let d := dom.instantiateRev fvars
-    let t1 ← ensureSortCore (← inferTypeCore d inferOnly) d
+    let t1 ← ensureSortCore (← inferType d inferOnly) d
     let us := us.push t1.sortLevel!
     let id := ⟨← mkFreshId⟩
     withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
       let fvars := fvars.push (.fvar id)
       loop fvars us body
   | e => do
-    let r ← inferTypeCore (e.instantiateRev fvars) inferOnly
+    let r ← inferType (e.instantiateRev fvars) inferOnly
     let s ← ensureSortCore r e
-    return .sort <| us.foldr .imax s.sortLevel!
+    return .sort <| us.foldr mkLevelIMax' s.sortLevel!
 
-def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore s t
+def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore t s
 
 def isDefEq (t s : Expr) : RecM Bool := do
   let r ← isDefEqCore t s
@@ -152,27 +150,19 @@ def isDefEq (t s : Expr) : RecM Bool := do
     modify fun st => { st with eqvManager := st.eqvManager.addEquiv t s }
   pure r
 
-def inferApp (e : Expr) (inferOnly : Bool) : RecM Expr := do
-  if !inferOnly then
-    let fType ← ensureForallCore (← inferTypeCore e.appFn! inferOnly) e
-    let aType ← inferTypeCore e.appArg! inferOnly
-    let dType := fType.bindingDomain!
-    if !(← isDefEq aType dType) then
-      throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType aType
-    return fType.bindingBody!.instantiate1 e.appArg!
-  else
-    e.withApp fun f args => do
-    let mut fType ← inferTypeCore f true
-    let mut j := 0
-    for i in [:args.size] do
-      match fType with
-      | .forallE _ _ body _ =>
-        fType := body
-      | _ =>
-        fType := fType.instantiateRevRange j i args
-        fType := (← ensureForallCore fType e).bindingBody!
-        j := i
-    return fType.instantiateRevRange j args.size args
+def inferApp (e : Expr) : RecM Expr := do
+  e.withApp fun f args => do
+  let mut fType ← inferType f
+  let mut j := 0
+  for i in [:args.size] do
+    match fType with
+    | .forallE _ _ body _ =>
+      fType := body
+    | _ =>
+      fType := fType.instantiateRevRange j i args
+      fType := (← ensureForallCore fType e).bindingBody!
+      j := i
+  return fType.instantiateRevRange j args.size args
 
 def markUsed (n : Nat) (fvars : Array Expr) (b : Expr) (used : Array Bool) : Array Bool := Id.run do
   if !b.hasFVar then return used
@@ -196,13 +186,13 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
       let fvars := fvars.push (.fvar id)
       let vals := vals.push val
       if !inferOnly then
-        _ ← ensureSortCore (← inferTypeCore type inferOnly) type
-        let valType ← inferTypeCore val inferOnly
+        _ ← ensureSortCore (← inferType type inferOnly) type
+        let valType ← inferType val inferOnly
         if !(← isDefEq valType type) then
           throw <| .letTypeMismatch (← getEnv) (← getLCtx) name valType type
       loop fvars vals body
   | e => do
-    let r ← inferTypeCore (e.instantiateRev fvars) inferOnly
+    let r ← inferType (e.instantiateRev fvars) inferOnly
     let r := r.cheapBetaReduce
     let rec loopUsed i (used : Array Bool) :=
       match i with
@@ -222,9 +212,9 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
 def isProp (e : Expr) : RecM Bool :=
   return (← whnf (← inferType e)) == .prop
 
-def inferProj (typeName : Name) (idx : Nat) (struct : Expr) (inferOnly : Bool) : RecM Expr := do
+def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Expr := do
   let e := Expr.proj typeName idx struct
-  let type ← whnf (← inferTypeCore struct inferOnly)
+  let type ← whnf structType
   type.withApp fun I args => do
   let env ← getEnv
   let fail {_} := do throw <| .invalidProj env (← getLCtx) e
@@ -250,7 +240,7 @@ def inferProj (typeName : Name) (idx : Nat) (struct : Expr) (inferOnly : Bool) :
   if isPropType then if !(← isProp dom) then fail
   return dom
 
-def inferTypeCore' (e : Expr) (inferOnly : Bool) : RecM Expr := do
+def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
   if e.isBVar then
     throw <| .other
       s!"type checker does not support loose bound variables, {""
@@ -261,8 +251,8 @@ def inferTypeCore' (e : Expr) (inferOnly : Bool) : RecM Expr := do
     return r
   let r ← match e with
     | .lit l => pure l.type
-    | .mdata _ e => inferTypeCore' e inferOnly
-    | .proj s idx e => inferProj s idx e inferOnly
+    | .mdata _ e => inferType' e inferOnly
+    | .proj s idx e => inferProj s idx e (← inferType' e inferOnly)
     | .fvar n => inferFVar (← readThe Context) n
     | .mvar _ => throw <| .other "kernel type checker does not support meta variables"
     | .bvar _ => unreachable!
@@ -273,7 +263,16 @@ def inferTypeCore' (e : Expr) (inferOnly : Bool) : RecM Expr := do
     | .const c ls => inferConstant (← readThe Context) c ls inferOnly
     | .lam .. => inferLambda e inferOnly
     | .forallE .. => inferForall e inferOnly
-    | .app .. => inferApp e inferOnly
+    | .app f a =>
+      if inferOnly then
+        inferApp e
+      else
+        let fType ← ensureForallCore (← inferType' f inferOnly) e
+        let aType ← inferType' a inferOnly
+        let dType := fType.bindingDomain!
+        if !(← isDefEq dType aType) then
+          throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType aType
+        return fType.bindingBody!.instantiate1 a
     | .letE .. => inferLet e inferOnly
   modify fun s => cond inferOnly
     { s with inferTypeI := s.inferTypeI.insert e r }
@@ -438,11 +437,11 @@ def whnf' (e : Expr) : RecM Expr := do
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
     let env ← getEnv
-    let t1 ← whnfCore t
-    if let some v ← reduceNative env t1 then return v
-    if let some v ← reduceNat t1 then return v
-    let some v := unfoldDefinition env t1 | return t
-    loop v fuel
+    let t ← whnfCore' t
+    if let some t ← reduceNative env t then return t
+    if let some t ← reduceNat t then return t
+    let some t := unfoldDefinition env t | return t
+    loop t fuel
   let r ← loop e 1000
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
@@ -684,8 +683,8 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
     if ti == si then if ← isDefEq te se then return true
   | _, _ => pure ()
 
-  let tnn ← whnfCore t
-  let snn ← whnfCore s
+  let tnn ← whnfCore tn
+  let snn ← whnfCore sn
   if !(unsafe ptrEq tnn tn && ptrEq snn sn) then
     return ← isDefEqCore tnn snn
 
@@ -706,20 +705,20 @@ def Methods.withFuel : Nat → Methods
     { isDefEqCore := fun _ _ => throw .deepRecursion
       whnfCore := fun _ _ _ => throw .deepRecursion
       whnf := fun _ => throw .deepRecursion
-      inferTypeCore := fun _ _ => throw .deepRecursion }
+      inferType := fun _ _ => throw .deepRecursion }
   | n + 1 =>
     { isDefEqCore := fun t s => isDefEqCore' t s (withFuel n)
       whnfCore := fun e r p => whnfCore' e r p (withFuel n)
       whnf := fun e => whnf' e (withFuel n)
-      inferTypeCore := fun e i => inferTypeCore' e i (withFuel n) }
+      inferType := fun e i => inferType' e i (withFuel n) }
 
 def RecM.run (x : RecM α) : M α := x (Methods.withFuel 1000)
 
 def check (e : Expr) (lps : List Name) : M Expr :=
-  withReader ({ · with lparams := lps }) (inferTypeCore e false).run
+  withReader ({ · with lparams := lps }) (inferType e (inferOnly := false)).run
 
 def checkIgnoreUndefinedUniverses (e : Expr) : M Expr :=
-  withReader ({ · with lparams := none }) (inferTypeCore e false).run
+  withReader ({ · with lparams := none }) (inferType e (inferOnly := false)).run
 
 def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 
