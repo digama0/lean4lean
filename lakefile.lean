@@ -10,3 +10,4 @@ lean_lib Lean4Lean
 @[default_target]
 lean_exe lean4lean where
   root := `Main
+  supportInterpreter := true
