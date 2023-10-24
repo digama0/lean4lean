@@ -10,7 +10,7 @@ namespace Lean
 abbrev InferCache := ExprMap Expr
 
 structure TypeChecker.State where
-  ngen : NameGenerator := { namePrefix := `_kernel_fresh }
+  ngen : NameGenerator := { namePrefix := `_kernel_fresh, idx := 0 }
   inferTypeI : InferCache := {}
   inferTypeC : InferCache := {}
   whnfCoreCache : ExprMap Expr := {}
@@ -272,7 +272,7 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
         let dType := fType.bindingDomain!
         if !(← isDefEq dType aType) then
           throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType aType
-        return fType.bindingBody!.instantiate1 a
+        pure <| fType.bindingBody!.instantiate1 a
     | .letE .. => inferLet e inferOnly
   modify fun s => cond inferOnly
     { s with inferTypeI := s.inferTypeI.insert e r }
@@ -664,7 +664,7 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   let sn ← whnfCore s (cheapProj := true)
 
   if !(unsafe ptrEq tn t && ptrEq sn s) then
-    let r ← quickIsDefEq tn sn (useHash := true)
+    let r ← quickIsDefEq tn sn
     if r != .undef then return r == .true
 
   let r ← isDefEqProofIrrel tn sn
