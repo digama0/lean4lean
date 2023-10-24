@@ -6,6 +6,8 @@ namespace Lean
 namespace Environment
 open TypeChecker
 
+open private add from Lean.Environment
+
 def checkConstantVal (env : Environment) (v : ConstantVal) : M Unit := do
   checkName env v.name
   checkDuplicatedUnivParams v.levelParams
@@ -18,7 +20,7 @@ def addAxiom (env : Environment) (v : AxiomVal) (check := true) :
   if check then
     _ ← (checkConstantVal env v.toConstantVal).run env
       (safety := if v.isUnsafe then .unsafe else .safe)
-  return env.add (.axiomInfo v)
+  return add env (.axiomInfo v)
 
 def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
     Except KernelException Environment := do
@@ -27,7 +29,7 @@ def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
     -- So, we check the header, add, and then type check the body.
     if check then
       _ ← (checkConstantVal env v.toConstantVal).run env (safety := .unsafe)
-    let env' := env.add (.defnInfo v)
+    let env' := add env (.defnInfo v)
     if check then
       checkNoMVarNoFVar env' v.name v.value
       M.run env' (safety := .unsafe) (lctx := {}) do
@@ -43,7 +45,7 @@ def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
         let valType ← TypeChecker.check v.value v.levelParams
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env (.defnDecl v) valType
-    return env.add (.defnInfo v)
+    return add env (.defnInfo v)
 
 def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
     Except KernelException Environment := do
@@ -55,7 +57,7 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
       let valType ← TypeChecker.check v.value v.levelParams
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.thmDecl v) valType
-  return env.add (.thmInfo v)
+  return add env (.thmInfo v)
 
 def addOpaque (env : Environment) (v : OpaqueVal) (check := true) :
     Except KernelException Environment := do
@@ -65,7 +67,7 @@ def addOpaque (env : Environment) (v : OpaqueVal) (check := true) :
       let valType ← TypeChecker.check v.value v.levelParams
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.opaqueDecl v) valType
-  return env.add (.opaqueInfo v)
+  return add env (.opaqueInfo v)
 
 def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
     Except KernelException Environment := do
@@ -81,7 +83,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
         checkConstantVal env v.toConstantVal
   let mut env' := env
   for v in vs do
-    env' := env'.add (.defnInfo v)
+    env' := add env' (.defnInfo v)
   if check then
     M.run env (safety := v₀.safety) (lctx := {}) do
       for v in vs do

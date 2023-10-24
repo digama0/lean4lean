@@ -3,6 +3,8 @@ import Lean4Lean.Stream
 
 namespace Lean
 
+open private add from Lean.Environment
+
 namespace AddInductive
 open TypeChecker
 
@@ -143,7 +145,7 @@ def declareInductiveTypes
       ctors := indType.ctors.map (·.name)
       isRec := isRec indTypes stats.indConsts
       isReflexive := isReflexive indTypes stats.indConsts }
-  infos.foldl (·.add) env
+  infos.foldl add env
 
 def isValidIndAppIdx (stats : InductiveStats) (t : Expr) (i : Nat) : Bool :=
   t.withApp fun I args => Id.run do
@@ -234,7 +236,7 @@ def declareConstructors (stats : InductiveStats) (levelParams : List Name)
         | .forallE _ _ body _ => arity (i+1) body
         | _ => i
       let arity := arity 0 type
-      env.add <| .ctorInfo {
+      add env <| .ctorInfo {
         levelParams, type, cidx, isUnsafe
         name := ctor.name
         induct := indType.name
@@ -467,7 +469,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
       lctx.mkForall #[info.major] <|
       .app (mkAppN info.motive info.indices) info.major
     let rules ← mkRecRules indTypes elimLevel stats dIdx motives minors
-    env := env.add <| .recInfo {
+    env := add env <| .recInfo {
       name := mkRecName indType.name
       levelParams := getRecLevelParams elimLevel lparams
       type := ty.inferImplicit 1000 false -- note: flag has reversed polarity from C++
@@ -726,14 +728,14 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
         res.restoreCtorName env' rule.ctor
       return { rule with ctor := newCtorName, rhs := newRhs }
     (← MonadState.get).checkName newRecName
-    modify (·.add <| .recInfo { recInfo with
+    modify (add · <| .recInfo { recInfo with
       name := newRecName, type := newRecType, all := allIndNames, rules := newRules })
   for indType in types do
     let some (.inductInfo ind) := env'.find? indType.name | unreachable!
-    modify (·.add <| .inductInfo { ind with all := allIndNames })
+    modify (add · <| .inductInfo { ind with all := allIndNames })
     for ctorName in ind.ctors do
       let some (.ctorInfo ctor) := env'.find? ctorName | unreachable!
       let newType := res.restoreNested env' ctor.type
-      modify (·.add <| .ctorInfo { ctor with type := newType })
+      modify (add · <| .ctorInfo { ctor with type := newType })
     processRec (mkRecName indType.name)
   recNames'.forM processRec

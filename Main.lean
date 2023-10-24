@@ -26,13 +26,6 @@ end Environment
 
 namespace NameSet
 
-/-- The union of two `NameSet`s. -/
-def append (s t : NameSet) : NameSet :=
-  s.mergeBy (fun _ _ _ => .unit) t
-
-instance : Append NameSet where
-  append := NameSet.append
-
 def ofList (names : List Name) : NameSet :=
   names.foldl (fun s n => s.insert n) {}
 
@@ -54,10 +47,6 @@ def getUsedConstants (c : ConstantInfo) : NameSet :=
     | .ctorInfo val => ({} : NameSet).insert val.name
     | .recInfo val => .ofList val.all
     | _ => {}
-
-def inductiveVal! : ConstantInfo → InductiveVal
-  | .inductInfo val => val
-  | _ => panic! "Expected a `ConstantInfo.inductInfo`."
 
 end ConstantInfo
 

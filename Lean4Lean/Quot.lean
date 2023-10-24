@@ -1,8 +1,11 @@
+import Std.Tactic.OpenPrivate
 import Lean4Lean.Environment.Basic
 import Lean4Lean.Expr
 import Lean4Lean.LocalContext
 
 namespace Lean
+
+open private add markQuotInit from Lean.Environment
 
 abbrev ExprBuildT (m) := ReaderT LocalContext <| ReaderT NameGenerator m
 
@@ -37,13 +40,13 @@ def Environment.addQuot (env : Environment) : Except KernelException Environment
   withLocalDecl `α (.sort u) .implicit fun α => do
   let env ← withLocalDecl `r (.arrow α (.arrow α .prop)) .default fun r => do
     -- constant Quot.{u} {α : Sort u} (r : α → α → Prop) : Sort u
-    let env := env.add <| .quotInfo {
+    let env := add env <| .quotInfo {
       name := ``Quot, kind := .type, levelParams := [`u]
       type := (← read).mkForall #[α, r] <| .sort u
     }
     withLocalDecl `a α .default fun a => do
       -- constant Quot.mk.{u} {α : Sort u} (r : α → α → Prop) (a : α) : @Quot.{u} α r
-      return env.add <| .quotInfo {
+      return add env <| .quotInfo {
         name := ``Quot.mk, kind := .ctor, levelParams := [`u]
         type := (← read).mkForall #[α, r, a] <| mkApp2 (.const ``Quot [u]) α r
       }
@@ -59,7 +62,7 @@ def Environment.addQuot (env : Environment) : Except KernelException Environment
     let sanity := (← read).mkForall #[a, b] <| .arrow rab fa_eq_fb
     -- constant Quot.lift.{u, v} {α : Sort u} {r : α → α → Prop} {β : Sort v} (f : α → β) :
     --   (∀ a b : α, r a b → f a = f b) → @Quot.{u} α r → β
-    return env.add <| .quotInfo {
+    return add env <| .quotInfo {
       name := ``Quot.lift, kind := .lift, levelParams := [`u, `v]
       type := (← read).mkForall #[α, r, β, f] <| .arrow sanity <| .arrow quot_r β
     }
@@ -69,12 +72,12 @@ def Environment.addQuot (env : Environment) : Except KernelException Environment
   withLocalDecl `q quot_r .implicit fun q => do
   -- constant Quot.ind.{u} {α : Sort u} {r : α → α → Prop} {β : @Quot.{u} α r → Prop} :
   --   (∀ a : α, β (@Quot.mk.{u} α r a)) → ∀ q : @Quot.{u} α r, β q */
-  let env := env.add <| .quotInfo {
+  let env := add env <| .quotInfo {
     name := ``Quot.ind, kind := .ind, levelParams := [`u]
     type := (← read).mkForall #[α, r, β] <|
       .forallE `mk all_quot ((← read).mkForall #[q] <| .app β q) .default
   }
-  return { env with header.quotInit := true }
+  return markQuotInit env
 
 def quotReduceRec [Monad m] (e : Expr) (whnf : Expr → m Expr) : m (Option Expr) := do
   let .const fn _ := e.getAppFn | return none
