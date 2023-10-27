@@ -11,10 +11,6 @@ structure EquivManager where
 
 namespace EquivManager
 
-def next (m : EquivManager) : NodeRef := m.uf.size
-
-def push (m : EquivManager) : EquivManager := { m with uf := m.uf.push }
-
 def find (n : NodeRef) : StateM EquivManager NodeRef := fun m =>
   if h : n < m.uf.size then
     let ⟨uf, root, _⟩ := m.uf.find ⟨n, h⟩
@@ -31,9 +27,9 @@ def merge (m : EquivManager) (n1 n2 : NodeRef) : EquivManager :=
 def toNode (e : Expr) : StateM EquivManager NodeRef := fun m => do
   if let some r := m.toNodeMap.find? e then
     return (r, m)
-  let r := m.next
-  let m := m.push
-  (r, { m with toNodeMap := m.toNodeMap.insert e r })
+  let { uf, toNodeMap } := m
+  let r := uf.size
+  (r, { uf := uf.push, toNodeMap := toNodeMap.insert e r })
 
 variable (useHash : Bool) in
 def isEquiv (e1 e2 : Expr) : StateM EquivManager Bool := do
@@ -48,10 +44,10 @@ def isEquiv (e1 e2 : Expr) : StateM EquivManager Bool := do
     match e1, e2 with
     | .const c1 l1, .const c2 l2 => pure <| c1 == c2 && l1 == l2
     | .mvar a1, .mvar a2 | .fvar a1, .fvar a2
-    | .sort a1, .sort a2 | .lit a1, .lit a2
-    | .mdata _ a1, .mdata _ a2 => pure <| a1 == a2
+    | .sort a1, .sort a2 | .lit a1, .lit a2 => pure <| a1 == a2
     | .app f1 a1, .app f2 a2 => isEquiv f1 f2 <&&> isEquiv a1 a2
     | .lam _ d1 b1 _, .lam _ d2 b2 _ => isEquiv d1 d2 <&&> isEquiv b1 b2
+    | .mdata _ a1, .mdata _ a2 => isEquiv a1 a2
     | .forallE _ d1 b1 _, .forallE _ d2 b2 _ => isEquiv d1 d2 <&&> isEquiv b1 b2
     | .proj _ i1 e1, .proj _ i2 e2 => pure (i1 == i2) <&&> isEquiv e1 e2
     | .letE _ t1 v1 b1 _, .letE _ t2 v2 b2 _ => isEquiv t1 t2 <&&> isEquiv v1 v2 <&&> isEquiv b1 b2

@@ -240,7 +240,7 @@ unsafe def main (args : List String) : IO UInt32 := do
       let sp ← searchPathRef.get
       let mut tasks := #[]
       for path in (← SearchPath.findAllWithExt sp "olean") do
-        if let some m := (← searchModuleNameOfFileName path sp) then
+        if let some m ← searchModuleNameOfFileName path sp then
           tasks := tasks.push (m, ← IO.asTask (replayFromImports m))
       for (m, t) in tasks do
         if let .error e := t.get then

@@ -1,3 +1,4 @@
+import Lean4Lean.Declaration
 import Lean4Lean.Level
 import Lean4Lean.Quot
 import Lean4Lean.Inductive.Reduce
@@ -483,9 +484,9 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
 def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
-  if ← modifyGet fun st =>
-    let (b, m) := st.eqvManager.isEquiv useHash t s
-    (b, { st with eqvManager := m })
+  if ← modifyGet fun (.mk a1 a2 a3 a4 a5 a6 (eqvManager := m)) =>
+    let (b, m) := m.isEquiv useHash t s
+    (b, .mk a1 a2 a3 a4 a5 a6 (eqvManager := m))
   then return .true
   match t, s with
   | .lam .., .lam .. => toLBoolM <| isDefEqLambda t s
@@ -584,10 +585,10 @@ def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
   | some dt, some ds =>
     let ht := dt.hints
     let hs := ds.hints
-    if ht.lt hs then
-      cont (← delta tn) sn
-    else if hs.lt ht then
+    if ht.lt' hs then
       cont tn (← delta sn)
+    else if hs.lt' ht then
+      cont (← delta tn) sn
     else
       if tn.isApp && sn.isApp && (unsafe ptrEq dt ds) && dt.hints.isRegular
         && !failedBefore (← get).failure tn sn
