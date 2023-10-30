@@ -319,7 +319,7 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
   | .app .. | .letE .. | .proj .. => pure ()
   if let some r := (← get).whnfCoreCache.find? e then
     return r
-  let save r := do
+  let rec save r := do
     if !cheapRec && !cheapProj then
       modify fun s => { s with whnfCoreCache := s.whnfCoreCache.insert e r }
     return r
