@@ -5,8 +5,7 @@ Authors: Scott Morrison
 -/
 import Lean.CoreM
 import Lean.Util.FoldConsts
-import Lean4Lean
-import Init.Prelude
+import Lean4Lean.Environment
 
 namespace Lean
 
@@ -56,6 +55,8 @@ open Lean
 
 structure Context where
   newConstants : HashMap Name ConstantInfo
+  verbose := false
+  compare := false
 
 structure State where
   env : Environment
@@ -76,15 +77,41 @@ def isTodo (name : Name) : M Bool := do
     return false
 
 /-- Use the current `Environment` to throw a `KernelException`. -/
-def throwKernelException  (ex : KernelException) : M Unit := do
+def throwKernelException (ex : KernelException) : M α := do
     let ctx := { fileName := "", options := pp.match.set (pp.rawOnError.set {} true) false, fileMap := default }
     let state := { env := (← get).env }
     Prod.fst <$> (Lean.Core.CoreM.toIO · ctx state) do Lean.throwKernelException ex
 
+def Lean.Declaration.name : Declaration → String
+  | .axiomDecl d => s!"axiomDecl {d.name}"
+  | .defnDecl d => s!"defnDecl {d.name}"
+  | .thmDecl d => s!"thmDecl {d.name}"
+  | .opaqueDecl d => s!"opaqueDecl {d.name}"
+  | .quotDecl => s!"quotDecl"
+  | .mutualDefnDecl d => s!"mutualDefnDecl {d.map (·.name)}"
+  | .inductDecl _ _ d _ => s!"inductDecl {d.map (·.name)}"
+
 /-- Add a declaration, possibly throwing a `KernelException`. -/
 def addDecl (d : Declaration) : M Unit := do
+  if (← read).verbose then
+    println! "adding {d.name}"
+  let t1 ← IO.monoMsNow
   match (← get).env.addDecl' d true with
-  | .ok env => modify fun s => { s with env := env }
+  | .ok env =>
+    let t2 ← IO.monoMsNow
+    if t2 - t1 > 1000 then
+      if (← read).compare then
+        let t3 ← match (← get).env.addDecl d with
+        | .ok _ => IO.monoMsNow
+        | .error ex => _root_.throwKernelException ex
+        if (t2 - t1) > 2 * (t3 - t2) then
+          println!
+            "{(← get).env.mainModule}:{d.name}: lean took {t3 - t2}, lean4lean took {t2 - t1}"
+        else
+          println! "{(← get).env.mainModule}:{d.name}: lean4lean took {t2 - t1}"
+      else
+        println! "{(← get).env.mainModule}:{d.name}: lean4lean took {t2 - t1}"
+    modify fun s => { s with env := env }
   | .error ex =>
     throwKernelException ex
 
@@ -178,15 +205,15 @@ def checkPostponedRecursors : M Unit := do
     | _, _ => throw <| IO.userError s!"No such recursor {ctor}"
 
 /-- "Replay" some constants into an `Environment`, sending them to the kernel for checking. -/
-def replay (newConstants : HashMap Name ConstantInfo) (env : Environment) (decl : Option Name := none) : IO Environment := do
+def replay (ctx : Context) (env : Environment) (decl : Option Name := none) : IO Environment := do
   let mut remaining : NameSet := ∅
-  for (n, ci) in newConstants.toList do
+  for (n, ci) in ctx.newConstants.toList do
     -- We skip unsafe constants, and also partial constants.
     -- Later we may want to handle partial constants.
     if !ci.isUnsafe && !ci.isPartial then
       remaining := remaining.insert n
   let (_, s) ← StateRefT'.run (s := { env, remaining }) do
-    ReaderT.run (r := { newConstants }) do
+    ReaderT.run (r := ctx) do
       match decl with
       | some d => replayConstant d
       | none =>
@@ -196,7 +223,7 @@ def replay (newConstants : HashMap Name ConstantInfo) (env : Environment) (decl 
       checkPostponedRecursors
   return s.env
 
-unsafe def replayFromImports (module : Name) : IO Unit := do
+unsafe def replayFromImports (module : Name) (verbose := false) (compare := false) : IO Unit := do
   let mFile ← findOLean module
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
@@ -204,16 +231,19 @@ unsafe def replayFromImports (module : Name) : IO Unit := do
   let (_, s) ← importModulesCore mod.imports
     |>.run (s := { moduleNameSet := ({} : NameHashSet).insert module })
   let env ← finalizeImport s #[{module}] {} 0
+  let env := env.setMainModule module
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let env' ← replay newConstants env
+  let env' ← replay { newConstants, verbose, compare } env
   env'.freeRegions
   region.free
 
-unsafe def replayFromFresh (module : Name) (decl : Option Name := none) : IO Unit := do
+unsafe def replayFromFresh (module : Name)
+    (verbose := false) (compare := false) (decl : Option Name := none) : IO Unit := do
   Lean.withImportModules #[{module}] {} 0 fun env => do
-    discard <| replay env.constants.map₁ (← mkEmptyEnvironment) decl
+    let ctx := { newConstants := env.constants.map₁, verbose, compare }
+    discard <| replay ctx ((← mkEmptyEnvironment).setMainModule module) decl
 
 /--
 Run as e.g. `lake exe lean4lean` to check everything on the Lean search path,
@@ -228,23 +258,27 @@ You can also use `lake exe lean4lean --fresh Mathlib.Data.Nat.Basic` to replay a
 unsafe def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
   let (flags, args) := args.partition fun s => s.startsWith "--"
-  match flags, args with
-    | flags, [mod] => match mod.toName with
+  let fresh : Bool := "--fresh" ∈ flags
+  let verbose : Bool := "--verbose" ∈ flags
+  let compare : Bool := "--compare" ∈ flags
+  match args with
+    | [mod] => match mod.toName with
       | .anonymous => throw <| IO.userError s!"Could not resolve module: {mod}"
       | m =>
-        if "--fresh" ∈ flags then
-          replayFromFresh m
+        if fresh then
+          replayFromFresh m verbose compare
         else
-          replayFromImports m
-    | [], _ => do
+          replayFromImports m verbose compare
+    | _ => do
+      if fresh then
+        throw <| IO.userError "--fresh flag is only valid when specifying a single module"
       let sp ← searchPathRef.get
       let mut tasks := #[]
       for path in (← SearchPath.findAllWithExt sp "olean") do
         if let some m ← searchModuleNameOfFileName path sp then
-          tasks := tasks.push (m, ← IO.asTask (replayFromImports m))
+          tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare))
       for (m, t) in tasks do
         if let .error e := t.get then
           IO.eprintln s!"lean4lean found a problem in {m}"
           throw e
-    | _, _ => throw <| IO.userError "--fresh flag is only valid when specifying a single module"
   return 0
