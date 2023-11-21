@@ -12,4 +12,5 @@ def VEnv.addQuot (env : VEnv) : Option VEnv := do
   let env ← env.addConst ``Quot vconst(type_of% @Quot)
   let env ← env.addConst ``Quot.mk vconst(type_of% @Quot.mk)
   let env ← env.addConst ``Quot.ind vconst(type_of% @Quot.ind)
-  env.addConst ``Quot.lift vconst(type_of% @Quot.lift)
+  let env ← env.addConst ``Quot.lift vconst(type_of% @Quot.lift)
+  env.addDefEq vdefeq(α r β f c a => @Quot.lift α r β f c (Quot.mk r a) ≡ f a)

@@ -54,17 +54,27 @@ partial def ofExpr : Expr → (k :_:= 0) → MetaM VExpr
 deriving instance ToExpr for VLevel
 deriving instance ToExpr for VExpr
 deriving instance ToExpr for VConstant
+deriving instance ToExpr for VDefEq
+
+def toVExprWrapper (bis : Option (TSyntaxArray ``Parser.Term.funBinder))
+    (x : FVarIdMap Nat → TermElabM α) : TermElabM α := do
+  withLevelNames [] <|
+  elabFunBinders (bis.getD #[]) none fun xs _ =>
+  withAutoBoundImplicit <|
+  x <|
+  xs.foldr (fun fvar (n, m) => (n+1, m.insert fvar.fvarId! n)) (0, ({}:FVarIdMap Nat)) |>.2
+
+def elabForVExpr (e : Expr) : TermElabM Expr := do
+  let e ← levelMVarToParam e
+  if ← logUnassignedUsingErrorInfos (← getMVars e) then throwAbortCommand
+  expandExpr e
 
 def toVExprCore (bis : Option (TSyntaxArray ``Parser.Term.funBinder))
     (e : Term) : TermElabM (Nat × VExpr) := do
-  elabFunBinders (bis.getD #[]) none fun xs _ => do
-    let fvarToIdx :=
-      xs.foldr (fun fvar (n, m) => (n+1, m.insert fvar.fvarId! n)) (0, ({}:FVarIdMap Nat)) |>.2
-    withLevelNames [] do
-    let e ← levelMVarToParam (← withAutoBoundImplicit (elabTerm e none))
-    if ← logUnassignedUsingErrorInfos (← getMVars e) then throwAbortCommand
+  toVExprWrapper bis fun map => do
+    let e ← elabForVExpr (← elabTerm e none)
     let ls ← getLevelNames
-    return (ls.length, ← ofExpr ls fvarToIdx (← expandExpr e))
+    return (ls.length, ← ofExpr ls map e)
 
 syntax "vexpr(" atomic(Parser.Term.funBinder* " ⊢ ")? term ")" : term
 
@@ -77,3 +87,18 @@ elab_rules : term
   | `(vconst($[$bis* ⊢]? $e:term)) => do
     let (n, ve) ← toVExprCore bis e
     return toExpr (⟨n, ve⟩ : VConstant)
+
+syntax "vdefeq(" atomic(Parser.Term.funBinder* " ⊢ ")? atomic(Parser.Term.funBinder* " => ")? term " ≡ " term ")" : term
+
+elab_rules : term
+  | `(vdefeq($[$bis* ⊢]? $[$args* =>]? $e₁:term ≡ $e₂:term)) => do
+    toVExprWrapper bis fun map => do
+      let (e₁, e₂) ← match args with
+        | some args => pure (← `(fun $args* => $e₁), ← `(fun $args* => $e₂))
+        | none => pure (e₁, e₂)
+      let e₁ ← elabTerm e₁ none
+      let e₂ ← elabTerm e₂ (← inferType e₁)
+      let e₁ ← elabForVExpr e₁
+      let e₂ ← elabForVExpr e₂
+      let ls ← getLevelNames
+      return toExpr (⟨ls.length, ← ofExpr ls map e₁, ← ofExpr ls map e₂⟩ : VDefEq)
