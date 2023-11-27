@@ -6,7 +6,7 @@ open Lean (Name FVarId)
 open VExpr
 
 inductive Ctx.LiftN (n : Nat) : Nat → List VExpr → List VExpr → Prop where
-  | zero : As.length = n → Ctx.LiftN n 0 Γ (As ++ Γ)
+  | zero (As) (h : As.length = n := by rfl) : Ctx.LiftN n 0 Γ (As ++ Γ)
   | succ : Ctx.LiftN n k Γ Γ' → Ctx.LiftN n (k+1) (A::Γ) (A.liftN n k :: Γ')
 
 variable (Γ₀ : List VExpr) (e₀ A₀ : VExpr) in
@@ -30,7 +30,7 @@ def Typing.IsWeakN (T : Typing) : Prop :=
   ∀ {n k Γ Γ' e A}, Ctx.LiftN n k Γ Γ' → T Γ e A → T Γ' (e.liftN n k) (A.liftN n k)
 
 def Typing.IsWeakN.weak (hT : IsWeakN T) : T Γ e B → T (A::Γ) e.lift B.lift :=
-  hT (.zero (As := [A]) rfl)
+  hT (.zero [A])
 
 def Typing.IsInstN (T₁ : Typing) (T₀ := T₁) (T := T₁) : Prop :=
   ∀ {Γ₀ e₀ A₀ Γ₁ e₁ A₁ Γ k},
@@ -47,7 +47,7 @@ theorem Typing.IsType.weakN (hT : T.IsWeakN) (W : Ctx.LiftN n k Γ Γ') :
   | ⟨_, h⟩ => ⟨_, hT W h⟩
 
 theorem Typing.IsType.weak (hT : T.IsWeakN) : IsType T Γ B → IsType T (A::Γ) B.lift
-  | ⟨_, h⟩ => ⟨_, hT (.zero (As := [A]) rfl) h⟩
+  | ⟨_, h⟩ => ⟨_, hT (.zero [A]) h⟩
 
 inductive Lookup : List VExpr → Nat → VExpr → Prop where
   | zero : Lookup (ty::Γ) 0 ty.lift
@@ -61,7 +61,7 @@ theorem Lookup.lt (H : Lookup Γ i A) : i < Γ.length := by
 theorem Lookup.weakN (W : Ctx.LiftN n k Γ Γ') (H : Lookup Γ i A) :
     Lookup Γ' (liftVar n i k) (A.liftN n k) := by
   induction W generalizing i A with
-  | @zero Γ As =>
+  | zero As =>
     rw [liftVar_base]
     subst n
     induction As with simp [*, Nat.succ_add]
@@ -99,11 +99,11 @@ inductive IsDefEq1 : List VExpr → VExpr → VExpr → Prop where
     HasType Γ a A → HasType Γ a' A → IsDefEq1 Γ a a' →
     IsDefEq1 Γ (.app f a) (.app f' a')
   | lam :
-    IsDefEq1 Γ A A' →
+    HasType Γ A (.sort u) → HasType Γ A' (.sort u') → IsDefEq1 Γ A A' →
     IsDefEq1 (A::Γ) body body' →
     IsDefEq1 Γ (.lam A body) (.lam A' body')
   | forallE :
-    IsDefEq1 Γ A A' →
+    HasType Γ A (.sort u) → HasType Γ A' (.sort u') → IsDefEq1 Γ A A' →
     IsDefEq1 (A::Γ) body body' →
     IsDefEq1 Γ (.forallE A body) (.forallE A' body')
   | beta :
@@ -135,8 +135,8 @@ theorem IsDefEq1.mono
   | sort h1 h2 h3 => exact .sort h1 h2 h3
   | app h11 h12 _ h21 h22 _ ih1 ih2 =>
     exact .app (hTY _ _ _ h11) (hTY _ _ _ h12) ih1 (hTY _ _ _ h21) (hTY _ _ _ h22) ih2
-  | lam _ _ ih1 ih2 => exact .lam ih1 ih2
-  | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
+  | lam h1 h2 _ _ ih1 ih2 => exact .lam (hTY _ _ _ h1) (hTY _ _ _ h2) ih1 ih2
+  | forallE h1 h2 _ _ ih1 ih2 => exact .forallE (hTY _ _ _ h1) (hTY _ _ _ h2) ih1 ih2
   | beta h1 h2 => exact .beta (hTY _ _ _ h1) (hTY _ _ _ h2)
   | eta h1 => exact .eta (hTY _ _ _ h1)
   | proofIrrel h1 h2 h3 => exact .proofIrrel (hTY _ _ _ h1) (hTY _ _ _ h2) (hTY _ _ _ h3)
@@ -164,8 +164,6 @@ inductive HasType1 : Typing where
     HasType1 (A::Γ) B (.sort v) →
     HasType1 Γ (.forallE A B) (.sort (.imax u v))
   | defeq : IsDefEq1 env.defeqs TY uvars Γ A B → HasType1 Γ e A → HasType1 Γ e B
-
-variable (uvars : Nat) {U : Nat}
 
 theorem HasType1.mono
     {env env' : VEnv} {TY TY' : Typing}
@@ -202,11 +200,11 @@ theorem HasType1.closedN
 --   | trans _ _ ih1 ih2 => exact ⟨ih1.1, ih2.2⟩
 --   | sort h1 h2 h3 => exact ⟨⟨_, .sort h1⟩, ⟨_, .sort h2⟩⟩
 --   | app h11 h12 _ h21 h22 _ ih1 ih2 => exact ⟨⟨_, .app h11 h21⟩, ⟨_, .app h12 h22⟩⟩
---   | lam h1 h2 ih1 ih2 =>
+--   | lam h1 h2 _ _ ih1 ih2 =>
 --     have ⟨⟨A11, h11⟩, ⟨A12, h12⟩⟩ := ih1
 --     have ⟨⟨A21, h21⟩, ⟨A22, h22⟩⟩ := ih2
---     exact ⟨⟨_, .lam _ hA⟩, ⟨_, .lam h12 h22⟩⟩
---   | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
+--     refine' ⟨⟨_, .lam h1 h21⟩, ⟨_, .lam h2 _⟩⟩
+--   | forallE h1 h2 _ _ ih1 ih2 => exact .forallE ih1 ih2
 --   | beta h1 h2 => exact .beta (htype h1) (htype h2)
 --   | eta h1 => exact .eta (htype h1)
 --   | proofIrrel h1 h2 h3 => exact .proofIrrel (htype h1) (htype h2) (htype h3)
@@ -218,7 +216,6 @@ def VDefEq.WF (T : Nat → Typing) (df : VDefEq) : Prop :=
   ∃ A, T df.uvars [] df.lhs A ∧ T df.uvars [] df.rhs A
 
 namespace VEnv
-variable (env : VEnv)
 
 structure PreWF (T : Nat → Typing) (env : VEnv) : Prop where
   const : env.constants n = some (some ci) → ci.WF T
@@ -235,14 +232,14 @@ theorem HasTypeN.mono {env env' : VEnv} {n n' : Nat} (henv : env ≤ env') (hn :
   | 0, _, _ => fun.
   | _+1, _+1, hn => HasType1.mono henv (HasTypeN.mono henv (Nat.le_of_succ_le_succ hn))
 
-def IsDefEqN (n U : Nat) : List VExpr → VExpr → VExpr → Prop :=
+def IsDefEqN (env : VEnv) (n U : Nat) : List VExpr → VExpr → VExpr → Prop :=
   IsDefEq1 env.defeqs (env.HasTypeN n U) U
 
 theorem IsDefEqN.mono {env env' : VEnv} {n n' : Nat} (henv : env ≤ env') (hn : n ≤ n') :
     env.IsDefEqN n U Γ e1 e2 → env'.IsDefEqN n' U Γ e1 e2 :=
   IsDefEq1.mono @henv.2 (HasTypeN.mono henv hn)
 
-def HasType (U : Nat) : Typing := fun Γ e A => ∃ n, env.HasTypeN n U Γ e A
+def HasType (env : VEnv) (U : Nat) : Typing := fun Γ e A => ∃ n, env.HasTypeN n U Γ e A
 
 theorem HasType.mono {env env' : VEnv} (henv : env ≤ env') : env.HasType U ≤ env'.HasType U
   | _, _, _, ⟨n, h⟩ => ⟨n, h.mono henv (Nat.le_refl _)⟩
@@ -254,7 +251,7 @@ theorem IsDefEq.mono {env env' : VEnv} (henv : env ≤ env') :
     env.IsDefEq U Γ e A → env'.IsDefEq U Γ e A
   | ⟨n, h⟩ => ⟨n, h.mono henv (Nat.le_refl _)⟩
 
-def IsType (U : Nat) := (env.HasType U).IsType
+def IsType (env : VEnv) (U : Nat) := (env.HasType U).IsType
 
 theorem IsType.mono {env env' : VEnv} (henv : env ≤ env') : env.IsType U Γ A → env'.IsType U Γ A
   | ⟨u, h⟩ => ⟨u, h.mono henv⟩
@@ -276,8 +273,8 @@ theorem IsDefEq1.weakN (W : Ctx.LiftN n k Γ Γ') (H : IsDefEq1 DF TY U Γ e1 e2
   | sort h1 h2 h3 => exact .sort h1 h2 h3
   | app h11 h12 _ h21 h22 _ ih1 ih2 =>
     exact .app (hTY W h11) (hTY W h12) (ih1 W) (hTY W h21) (hTY W h22) (ih2 W)
-  | lam _ _ ih1 ih2 => exact .lam (ih1 W) (ih2 W.succ)
-  | forallE _ _ ih1 ih2 => exact .forallE (ih1 W) (ih2 W.succ)
+  | lam h1 h2 _ _ ih1 ih2 => exact .lam (hTY W h1) (hTY W h2) (ih1 W) (ih2 W.succ)
+  | forallE h1 h2 _ _ ih1 ih2 => exact .forallE (hTY W h1) (hTY W h2) (ih1 W) (ih2 W.succ)
   | beta h1 h2 =>
     exact (by simpa using liftN_inst_hi ..) ▸ .beta (hTY W.succ h1) (hTY W h2)
   | eta h1 =>
@@ -322,8 +319,8 @@ theorem IsDefEq1.instN
   | sort h1 h2 h3 => exact .sort h1 h2 h3
   | app h11 h12 _ h21 h22 _ ih1 ih2 =>
     exact .app (hTY W h11) (hTY W h12) (ih1 W) (hTY W h21) (hTY W h22) (ih2 W)
-  | lam _ _ ih1 ih2 => exact .lam (ih1 W) (ih2 W.succ)
-  | forallE _ _ ih1 ih2 => exact .forallE (ih1 W) (ih2 W.succ)
+  | lam h1 h2 _ _ ih1 ih2 => exact .lam (hTY W h1) (hTY W h2) (ih1 W) (ih2 W.succ)
+  | forallE h1 h2 _ _ ih1 ih2 => exact .forallE (hTY W h1) (hTY W h2) (ih1 W) (ih2 W.succ)
   | beta h1 h2 =>
     exact (by simpa using inst_inst_hi ..) ▸ .beta (hTY W.succ h1) (hTY W h2)
   | @eta _ e A B h1 =>
@@ -369,6 +366,19 @@ theorem HasType1.instN : (HasType1 env TY U).IsInstN TY₀ (HasType1 env TY' U) 
   | defeq h1 _ ih2 =>
     refine .defeq (IsDefEq1.instN henv.closedN henv.2 (hTY · h₀) W h1) (ih2 W)
 
+-- variable {env : VEnv} {TY TY₀ : Typing} (henv : env.PreWF T)
+--   (weakN : TY.IsWeakN)
+--   (instN : TY.IsInstN TY₀) in
+-- theorem HasType1.defeq_l
+--     (h1 : HasType1 env TY U (A::Γ) e B)
+--     (h2 : IsDefEq1 env.defeqs TY U Γ A A') :
+--     HasType1 env TY U (A'::Γ) e B := by
+--   have h1 := HasType1.weakN henv weakN (.succ (.zero [A'])) h1
+--   have h2 := IsDefEq1.weakN (DF := env.defeqs) henv.closedN henv.defeq @weakN (.zero [A']) h2
+--   simp at h1 h2
+--   have h3 := HasType1.defeq h2.symm (.bvar .zero)
+--   have' h4 := HasType1.instN henv _ (Typing.le_refl _) _ (_) h1 h3
+
 namespace VEnv
 
 theorem HasTypeN.closedN {env : VEnv} : ∀ {n U}, (env.HasTypeN n U).IsClosedN
@@ -389,19 +399,25 @@ theorem IsType.weakN {env : VEnv} (henv : env.PreWF T) (W : Ctx.LiftN n k Γ Γ'
     env.IsType U Γ B → env.IsType U Γ' (B.liftN n k)
   | ⟨_, h⟩ => ⟨_, h.weakN henv W⟩
 
-variable
-  {env : VEnv} {TY TY₀ : Typing} (henv : env.PreWF T) in
-theorem HasTypeN.instN {n₁ n₀ n} (hn : n₀ + n₁ ≤ n) :
-    (HasTypeN env n₁ U).IsInstN (HasTypeN env n₀ U) (HasTypeN env n U) :=
+variable {env : VEnv} (henv : env.PreWF T) in
+theorem HasTypeN.instN' {n₁ n₀ n} (hn : n₀ + n₁ ≤ n) :
+    (HasTypeN env n₁ U).IsInstN (HasTypeN env (n₀+1) U) (HasTypeN env n U) :=
   match n₁, n with
   | 0, _ => fun.
   | _+1, n'+1 => HasType1.instN henv
-    (HasTypeN.instN (Nat.le_of_succ_le_succ hn))
-    (HasTypeN.mono (n' := n'+1) (VEnv.le_refl _) (Nat.le_trans (Nat.le_add_right ..) hn))
+    (HasTypeN.instN' (Nat.le_of_succ_le_succ hn))
+    (HasTypeN.mono (n' := n'+1) (VEnv.le_refl _) <|
+      Nat.le_trans (Nat.add_le_add_left (Nat.le_add_left ..) _) hn)
     (HasTypeN.weakN henv (n := n'+1))
 
-theorem HasType.instN (henv : env.PreWF T) :
-    (HasType env U).IsInstN := fun W ⟨_, h⟩ ⟨_, h'⟩ => ⟨_, h.instN henv (Nat.le_refl _) W h'⟩
+theorem HasTypeN.instN (henv : env.PreWF T) {n₁ n₀ n} (hn : n₀ + n₁ ≤ n + 1) :
+    (HasTypeN env n₁ U).IsInstN (HasTypeN env n₀ U) (HasTypeN env n U) :=
+  match n₀ with
+  | 0 => fun.
+  | _+1 => HasTypeN.instN' henv (by rwa [Nat.add_right_comm, Nat.add_le_add_iff_right] at hn)
+
+theorem HasType.instN (henv : env.PreWF T) : (HasType env U).IsInstN :=
+  fun W ⟨_, h⟩ ⟨_, h'⟩ => ⟨_, h.instN henv (Nat.le_succ ..) W h'⟩
 
 theorem IsType.instN {env : VEnv} (henv : env.PreWF T) (W : Ctx.LiftN n k Γ Γ') :
     env.IsType U Γ B → env.IsType U Γ' (B.liftN n k)
