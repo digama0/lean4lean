@@ -41,7 +41,7 @@ abbrev lift := liftN 1
 @[simp] theorem liftN_zero (e : VExpr) (k : Nat) : liftN 0 e k = e := by
   induction e generalizing k <;> simp [liftN, liftVar, *]
 
-theorem liftN'_liftN' (e : VExpr) (n1 n2 k1 k2 : Nat) (h1 : k1 ≤ k2) (h2 : k2 ≤ n1 + k1) :
+theorem liftN'_liftN' {e : VExpr} {n1 n2 k1 k2 : Nat} (h1 : k1 ≤ k2) (h2 : k2 ≤ n1 + k1) :
     liftN n2 (liftN n1 e k1) k2 = liftN (n1+n2) e k1 := by
   induction e generalizing k1 k2 with simp [liftN, liftVar, Nat.add_assoc, *]
   | bvar i =>
@@ -50,15 +50,15 @@ theorem liftN'_liftN' (e : VExpr) (n1 n2 k1 k2 : Nat) (h1 : k1 ≤ k2) (h2 : k2 
     · rw [if_neg (mt (fun h => ?_) h), Nat.add_left_comm]
       exact (Nat.add_lt_add_iff_left ..).1 (Nat.lt_of_lt_of_le h h2)
   | lam _ _ _ IH2 | forallE _ _ _ IH2 =>
-    rw [IH2 _ _ (Nat.succ_le_succ h1) (Nat.succ_le_succ h2)]
+    rw [IH2 (Nat.succ_le_succ h1) (Nat.succ_le_succ h2)]
 
 theorem liftN'_liftN (e : VExpr) (n k : Nat) : liftN n (liftN k e) k = liftN (n+k) e := by
-  simpa [Nat.add_comm] using liftN'_liftN' e k n 0 _ (Nat.zero_le _) (Nat.le_refl _)
+  simpa [Nat.add_comm] using liftN'_liftN' (n1 := k) (n2 := n) (Nat.zero_le _) (Nat.le_refl _)
 
 theorem liftN_liftN (e : VExpr) (n1 n2 : Nat) : liftN n2 (liftN n1 e) = liftN (n1+n2) e := by
-  simpa using liftN'_liftN' e n1 n2 0 _ (Nat.zero_le _) (Nat.zero_le _)
+  simpa using liftN'_liftN' (Nat.zero_le _) (Nat.zero_le _)
 
-@[simp] theorem liftN_succ (e : VExpr) (n : Nat) : liftN (n+1) e = lift (liftN n e) :=
+theorem liftN_succ (e : VExpr) (n : Nat) : liftN (n+1) e = lift (liftN n e) :=
   (liftN_liftN ..).symm
 
 theorem liftN'_comm (e : VExpr) (n1 n2 k1 k2 : Nat) (h : k2 ≤ k1) :
@@ -101,6 +101,8 @@ theorem ClosedN.liftN_eq (self : ClosedN e k) (h : k ≤ j) : liftN n e j = e :=
   | lam _ _ ih1 ih2 | forallE _ _ ih1 ih2 =>
     exact ⟨ih1 self.1 h, ih2 self.2 (Nat.succ_le_succ h)⟩
 
+theorem ClosedN.lift_eq (self : ClosedN e) : lift e = e := self.liftN_eq (Nat.zero_le _)
+
 variable (ls : List VLevel) in
 def instL : VExpr → VExpr
   | .bvar i => .bvar i
@@ -117,9 +119,58 @@ theorem ClosedN.instL : ∀ {e}, ClosedN e k → ClosedN (e.instL ls) k
 theorem liftN_instL : liftN n (e.instL ls) k = (liftN n e k).instL ls := by
   cases e <;> simp [liftN, instL, liftN_instL]
 
+def instVar (i : Nat) (e : VExpr) (k := 0) : VExpr :=
+  if i < k then .bvar i else if i = k then liftN k e else .bvar (i - 1)
+
+@[simp] theorem instVar_zero : instVar 0 e = e := liftN_zero ..
+@[simp] theorem instVar_upper : instVar (i+1) e = .bvar i := rfl
+@[simp] theorem instVar_lower : instVar 0 e (k+1) = .bvar 0 := by simp [instVar]
+@[simp] theorem instVar_succ : instVar (i+1) e (k+1) = (instVar i e k).lift := by
+  simp [instVar, Nat.succ_lt_succ_iff]; split <;> simp [lift, liftN]
+  split <;> simp [liftN_liftN, liftN]
+  have := Nat.lt_of_le_of_ne (Nat.not_lt.1 ‹_›) (Ne.symm ‹_›)
+  let i+1 := i; rfl
+
+theorem liftN_instVar_lo (n : Nat) (e : VExpr) (j k : Nat) (hj : k ≤ j) :
+    liftN n (instVar i e j) k = instVar (liftVar n i k) e (n+j) := by
+  simp [instVar]; split <;> rename_i h
+  · rw [if_pos]; · rfl
+    simp only [liftN, liftVar]; split <;> rename_i hk
+    · exact Nat.lt_add_left _ _ _ h
+    · exact Nat.add_lt_add_left h _
+  split <;> rename_i h'
+  · subst i
+    rw [liftN'_liftN' (h1 := Nat.zero_le _) (h2 := hj), liftVar_le hj,
+      if_neg (by simp), if_pos rfl, Nat.add_comm]
+  · rw [Nat.not_lt] at h; rw [liftVar_le (Nat.le_trans hj h)]
+    have hk := Nat.lt_of_le_of_ne h (Ne.symm h')
+    let i+1 := i
+    have := Nat.add_lt_add_left hk n
+    rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
+    simp only [liftN]
+    rw [liftVar_le (Nat.le_trans hj <| by exact Nat.le_of_lt_succ hk)]; rfl
+
+theorem liftN_instVar_hi (i : Nat) (e2 : VExpr) (n k j : Nat) :
+    liftN n (instVar i e2 j) (k+j) = instVar (liftVar n i (k+j+1)) (liftN n e2 k) j := by
+  simp [instVar]; split <;> rename_i h
+  · have := Nat.lt_add_left _ k _ h
+    rw [liftVar_lt <| Nat.lt_succ_of_lt this, if_pos h]
+    simp [liftN, liftVar_lt this]
+  split <;> rename_i h'
+  · subst i
+    have := Nat.le_add_left j k
+    simp [liftVar_lt (by exact Nat.lt_succ_of_le this)]
+    rw [liftN'_comm (h := Nat.zero_le _), Nat.add_comm]
+  · have hk := Nat.lt_of_le_of_ne (Nat.not_lt.1 h) (Ne.symm h')
+    let i+1 := i
+    simp [liftVar, h, Nat.succ_lt_succ_iff]; split <;> rename_i hi
+    · simp [liftN, liftVar_lt hi]
+    · have := Nat.lt_add_left _ n _ hk
+      rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
+      simp [liftN]; rw [liftVar_le (Nat.not_lt.1 hi)]; rfl
+
 def inst : VExpr → VExpr → (k :_:= 0) → VExpr
-  | .bvar i, e, k =>
-    if i < k then .bvar i else if i = k then liftN k e else .bvar (i - 1)
+  | .bvar i, e, k => instVar i e k
   | .sort u, _, _ => .sort u
   | .const c us, _, _ => .const c us
   | .app fn arg, e, k => .app (fn.inst e k) (arg.inst e k)
@@ -129,47 +180,14 @@ def inst : VExpr → VExpr → (k :_:= 0) → VExpr
 theorem liftN_inst_lo (n : Nat) (e1 e2 : VExpr) (j k : Nat) (hj : k ≤ j) :
     liftN n (e1.inst e2 j) k = (liftN n e1 k).inst e2 (n+j) := by
   induction e1 generalizing k j with
-    simp [liftN, inst, Nat.add_le_add_iff_right, *]
-  | bvar i =>
-    split <;> rename_i h
-    · rw [if_pos]; · rfl
-      simp only [liftN, liftVar]; split <;> rename_i hk
-      · exact Nat.lt_add_left _ _ _ h
-      · exact Nat.add_lt_add_left h _
-    split <;> rename_i h'
-    · subst i
-      rw [liftN'_liftN' (h1 := Nat.zero_le _) (h2 := hj), liftVar_le hj,
-        if_neg (by simp), if_pos rfl, Nat.add_comm]
-    · rw [Nat.not_lt] at h; rw [liftVar_le (Nat.le_trans hj h)]
-      have hk := Nat.lt_of_le_of_ne h (Ne.symm h')
-      let i+1 := i
-      have := Nat.add_lt_add_left hk n
-      rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
-      simp only [liftN]
-      rw [liftVar_le (Nat.le_trans hj <| by exact Nat.le_of_lt_succ hk)]; rfl
+    simp [liftN, inst, instVar, Nat.add_le_add_iff_right, *]
+  | bvar i => apply liftN_instVar_lo (hj := hj)
   | _ => rfl
 
 theorem liftN_inst_hi (e1 e2 : VExpr) (n k j : Nat) :
-    liftN n (e1.inst e2 j) (k+j) =
-    (liftN n e1 (k+j+1)).inst (liftN n e2 k) j := by
-  induction e1 generalizing j with simp [liftN, inst, *]
-  | bvar i =>
-    split <;> rename_i h
-    · have := Nat.lt_add_left _ k _ h
-      rw [liftVar_lt <| Nat.lt_succ_of_lt this, if_pos h]
-      simp [liftN, liftVar_lt this]
-    split <;> rename_i h'
-    · subst i
-      have := Nat.le_add_left j k
-      simp [liftVar_lt (by exact Nat.lt_succ_of_le this)]
-      rw [liftN'_comm (h := Nat.zero_le _), Nat.add_comm]
-    · have hk := Nat.lt_of_le_of_ne (Nat.not_lt.1 h) (Ne.symm h')
-      let i+1 := i
-      simp [liftVar, h, Nat.succ_lt_succ_iff]; split <;> rename_i hi
-      · simp [liftN, liftVar_lt hi]
-      · have := Nat.lt_add_left _ n _ hk
-        rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
-        simp [liftN]; rw [liftVar_le (Nat.not_lt.1 hi)]; rfl
+    liftN n (e1.inst e2 j) (k+j) = (liftN n e1 (k+j+1)).inst (liftN n e2 k) j := by
+  induction e1 generalizing j with simp [liftN, inst, instVar, *]
+  | bvar i => apply liftN_instVar_hi
   | _ => rename_i IH; apply IH
 
 theorem lift_inst_lo (e1 e2 : VExpr) : lift (e1.inst e2) = (lift e1).inst e2 1 :=
@@ -177,3 +195,83 @@ theorem lift_inst_lo (e1 e2 : VExpr) : lift (e1.inst e2) = (lift e1).inst e2 1 :
 
 theorem lift_inst_hi (e1 e2 : VExpr) : lift (e1.inst e2) = (liftN 1 e1 1).inst (lift e2) :=
   liftN_inst_hi ..
+
+theorem inst_liftN (e1 e2 : VExpr) : (liftN 1 e1 k).inst e2 k = e1 := by
+  induction e1 generalizing k with simp [liftN, inst, *]
+  | bvar i =>
+    simp only [liftVar, instVar, Nat.add_comm 1]; split <;> [rfl; rename_i h]
+    rw [if_neg (mt (Nat.lt_of_le_of_lt (Nat.le_succ _)) h),
+      if_neg (mt (by rintro rfl; apply Nat.lt_succ_self) h)]; rfl
+
+theorem inst_lift (e1 e2 : VExpr) : (lift e1).inst e2 = e1 := inst_liftN ..
+
+theorem ClosedN.instN_eq (self : ClosedN e1 k) (h : k ≤ j) : e1.inst e2 j = e1 := by
+  conv => lhs; rw [← self.liftN_eq (n := 1) h]
+  rw [inst_liftN]
+
+theorem inst_instVar_hi (i : Nat) (e2 e3 : VExpr) (k j : Nat) :
+    inst (instVar i e2 k) e3 (j+k) = (instVar i e3 (j+k+1)).inst (e2.inst e3 j) k := by
+  simp [instVar]; split <;> rename_i h
+  · simp [Nat.lt_succ_of_lt, inst, instVar, h, Nat.lt_of_lt_of_le h (Nat.le_add_left k j)]
+  split <;> rename_i h'
+  · subst i
+    simp [Nat.lt_succ_of_le, Nat.le_add_left, inst, instVar]
+    rw [liftN_inst_lo k e2 e3 j _ (Nat.zero_le _), Nat.add_comm]
+  · have hk := Nat.lt_of_le_of_ne (Nat.not_lt.1 h) (Ne.symm h')
+    let i+1 := i
+    simp [inst, instVar]; split <;> rename_i hi
+    · simp [Nat.succ_lt_succ hi, inst, instVar, h, h']
+    split <;> rename_i hi'
+    · subst i
+      simp
+      suffices liftN (j+k+1) .. = _ by rw [this]; exact (inst_liftN ..).symm
+      exact (liftN'_liftN' (Nat.zero_le _) (Nat.le_add_left k j)).symm
+    · have hk := Nat.lt_of_le_of_ne (Nat.not_lt.1 hi) (Ne.symm hi')
+      let i+1 := i
+      simp [Nat.add_lt_add_iff_right, hi, inst, instVar]
+      have := Nat.lt_of_le_of_lt (Nat.le_add_left ..) hk
+      rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
+
+theorem inst_inst_hi (e1 e2 e3 : VExpr) (k j : Nat) :
+    inst (e1.inst e2 k) e3 (j+k) = (e1.inst e3 (j+k+1)).inst (e2.inst e3 j) k := by
+  induction e1 generalizing k with simp [liftN, inst, instVar, *]
+  | bvar i => apply inst_instVar_hi
+  | _ => rename_i IH; apply IH
+
+theorem inst_instVar_lo (i : Nat) (e2 e3 : VExpr) (k j : Nat) :
+    inst (instVar i e2 (k+j+1)) e3 j =
+    (instVar i (e3.liftN 1 k) j).inst e2 (k+j) := by
+  simp [instVar]; split <;> rename_i h
+  · split <;> rename_i h1
+    · simp [inst, instVar, h1]; rw [if_pos (Nat.lt_of_lt_of_le h1 (Nat.le_add_left ..))]
+    split <;> rename_i h1'
+    · subst i
+      simp [inst, instVar]; rw [liftN'_comm (h := Nat.zero_le _), Nat.add_comm]
+      exact (inst_liftN ..).symm
+    · have hj := Nat.lt_of_le_of_ne (Nat.not_lt.1 h1) (Ne.symm h1')
+      let i+1 := i
+      simp [inst, instVar, h1, h1', Nat.lt_of_succ_lt_succ h]
+  split <;> rename_i h'
+  · subst i
+    have := Nat.lt_succ_of_le (Nat.le_add_left j k)
+    rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
+    simp [inst, instVar]
+    suffices liftN (k+j+1) .. = _ by rw [this]; exact inst_liftN ..
+    exact (liftN'_liftN' (Nat.zero_le _) (Nat.le_add_left j k)).symm
+  · have hk := Nat.lt_of_le_of_ne (Nat.not_lt.1 h) (Ne.symm h')
+    let i+1 := i
+    have hk := Nat.lt_of_add_lt_add_right hk
+    simp [inst, instVar, hk]
+    have := Nat.lt_of_le_of_lt (Nat.le_add_left ..) hk
+    rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
+    have := Nat.lt_succ_of_lt this
+    rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
+    simp [inst, instVar]
+    rw [if_neg (Nat.lt_asymm hk), if_neg (Nat.ne_of_gt hk)]
+
+theorem inst_inst_lo (e1 e2 e3 : VExpr) (k j : Nat) :
+    inst (e1.inst e2 (k+j+1)) e3 j =
+    (e1.inst (e3.liftN 1 k) j).inst e2 (k+j) := by
+  induction e1 generalizing j with simp [liftN, inst, instVar, *]
+  | bvar i => apply inst_instVar_lo
+  | _ => rename_i IH; exact IH (j+1)
