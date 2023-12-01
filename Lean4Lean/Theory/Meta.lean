@@ -88,7 +88,8 @@ elab_rules : term
     let (n, ve) ← toVExprCore bis e
     return toExpr (⟨n, ve⟩ : VConstant)
 
-syntax "vdefeq(" atomic(Parser.Term.funBinder* " ⊢ ")? atomic(Parser.Term.funBinder* " => ")? term " ≡ " term ")" : term
+syntax "vdefeq(" atomic(Parser.Term.funBinder* " ⊢ ")?
+  atomic(Parser.Term.funBinder* " => ")? term " ≡ " term ")" : term
 
 elab_rules : term
   | `(vdefeq($[$bis* ⊢]? $[$args* =>]? $e₁:term ≡ $e₂:term)) => do
@@ -97,8 +98,15 @@ elab_rules : term
         | some args => pure (← `(fun $args* => $e₁), ← `(fun $args* => $e₂))
         | none => pure (e₁, e₂)
       let e₁ ← elabTerm e₁ none
-      let e₂ ← elabTerm e₂ (← inferType e₁)
+      let ty ← inferType e₁
+      let e₂ ← elabTerm e₂ ty
       let e₁ ← elabForVExpr e₁
       let e₂ ← elabForVExpr e₂
+      let ty ← elabForVExpr ty
       let ls ← getLevelNames
-      return toExpr (⟨ls.length, ← ofExpr ls map e₁, ← ofExpr ls map e₂⟩ : VDefEq)
+      return toExpr {
+        uvars := ls.length
+        lhs := ← ofExpr ls map e₁
+        rhs := ← ofExpr ls map e₂
+        type := ← ofExpr ls map ty
+      : VDefEq }

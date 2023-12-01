@@ -12,6 +12,7 @@ structure VDefEq where
   uvars : Nat
   lhs : VExpr
   rhs : VExpr
+  type : VExpr
 
 structure VEnv where
   constants : Name → Option (Option VConstant)
@@ -29,7 +30,7 @@ def VEnv.addConst (env : VEnv) (name : Name) (ci : Option VConstant) : Option VE
   | none => some { env with constants := fun n => if name = n then some ci else env.constants n }
 
 def VEnv.addDefEq (env : VEnv) (df : VDefEq) : VEnv :=
-  { env with defeqs := fun x => x = df ∨ env.defeqs df }
+  { env with defeqs := fun x => x = df ∨ env.defeqs x }
 
 structure VEnv.LE (env1 env2 : VEnv) : Prop where
   constants (n a) : env1.constants n = some a → env2.constants n = some a
@@ -37,7 +38,7 @@ structure VEnv.LE (env1 env2 : VEnv) : Prop where
 
 instance : LE VEnv := ⟨VEnv.LE⟩
 
-theorem VEnv.le_refl (env : VEnv) : env ≤ env := ⟨fun _ _ => id, fun _ => id⟩
+theorem VEnv.LE.rfl {env : VEnv} : env ≤ env := ⟨fun _ _ => id, fun _ => id⟩
 
-theorem VEnv.le_trans {a b c : VEnv} (h1 : a ≤ b) (h2 : b ≤ c) : a ≤ c :=
+theorem VEnv.LE.trans {a b c : VEnv} (h1 : a ≤ b) (h2 : b ≤ c) : a ≤ c :=
   ⟨fun _ _ => h2.1 _ _ ∘ h1.1 _ _, fun _ => h2.2 _ ∘ h1.2 _⟩

@@ -1,4 +1,4 @@
-import Lean4Lean.Theory.Typing
+import Lean4Lean.Theory.Typing.Basic
 import Lean4Lean.Theory.VDecl
 import Lean4Lean.Theory.Quot
 import Lean4Lean.Theory.Inductive
@@ -14,7 +14,7 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
     env.addConst n none = some env' →
     VDecl.WF env (.block n) env'
   | axiom :
-    ci.WF env.HasType →
+    ci.WF env →
     env.addConst ci.name (some ci.toVConstant) = some env' →
     VDecl.WF env (.axiom ci) env'
   | def :
@@ -26,7 +26,7 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
     env.addConst ci.name (some ci.toVConstant) = some env' →
     VDecl.WF env (.opaque ci) env'
   | example :
-    ci.WF env.HasType →
+    ci.WF env →
     VDecl.WF env (.example ci) env
   | quot :
     env.QuotReady →
