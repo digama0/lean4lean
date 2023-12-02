@@ -1,3 +1,4 @@
+import Std.Lean.Expr
 import Lean4Lean.Std.Control
 import Lean4Lean.Std.ToExpr
 import Lean4Lean.Theory.VEnv

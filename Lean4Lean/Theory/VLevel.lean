@@ -1,4 +1,3 @@
-import Std
 import Lean4Lean.Std.Logic
 
 namespace Lean4Lean
@@ -29,16 +28,6 @@ def eval : VLevel → Nat
   | .imax l₁ l₂ => l₁.eval.imax l₂.eval
   | .param i => ls.getD i 0
 
-variable (ls : List Name) in
-def toLevel : VLevel → Level
-  | .zero => .zero
-  | .succ l => .succ l.toLevel
-  | .max l₁ l₂ => .max l₁.toLevel l₂.toLevel
-  | .imax l₁ l₂ => .imax l₁.toLevel l₂.toLevel
-  | .param n => match ls.get? n with
-    | some l => .param l
-    | none => .zero
-
 protected def LE (a b : VLevel) : Prop := ∀ ls, a.eval ls ≤ b.eval ls
 
 instance : LE VLevel := ⟨VLevel.LE⟩
@@ -59,9 +48,6 @@ theorem le_antisymm_iff {a b : VLevel} : a ≈ b ↔ a ≤ b ∧ b ≤ a :=
 
 theorem succ_congr {a b : VLevel} (h : a ≈ b) : VLevel.succ a ≈ .succ b := by
   simpa [equiv_def, eval] using h
-
-theorem toLevel_inj {ls : List Name} (d : ls.Nodup)
-    {l₁ l₂ : VLevel} (eq : l₁.toLevel ls = l₂.toLevel ls) : l₁ = l₂ := sorry
 
 variable (ls : List VLevel) in
 def inst : VLevel → VLevel
@@ -111,3 +97,16 @@ def ofLevel : Level → Option VLevel
     let i := ls.indexOf n
     if i < ls.length then some (.param i) else none
   | .mvar _ => none
+
+-- variable (ls : List Name) in
+-- def toLevel : VLevel → Level
+--   | .zero => .zero
+--   | .succ l => .succ l.toLevel
+--   | .max l₁ l₂ => .max l₁.toLevel l₂.toLevel
+--   | .imax l₁ l₂ => .imax l₁.toLevel l₂.toLevel
+--   | .param n => match ls.get? n with
+--     | some l => .param l
+--     | none => .zero
+
+-- theorem toLevel_inj {ls : List Name} (d : ls.Nodup)
+--     {l₁ l₂ : VLevel} (eq : l₁.toLevel ls = l₂.toLevel ls) : l₁ = l₂ := sorry

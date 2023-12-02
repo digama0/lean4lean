@@ -7,6 +7,12 @@ theorem funext_iff {β : α → Sort u} {f₁ f₂ : ∀ x : α, β x} : f₁ = 
 protected theorem Nat.lt_add_left (a b c : Nat) (h : a < c) : a < b + c :=
   Nat.add_comm .. ▸ Nat.lt_add_right _ _ _ h
 
+protected theorem Nat.le_iff_exists_add {a b : Nat} : a ≤ b ↔ ∃ c, b = a + c :=
+  ⟨fun h => ⟨_, (Nat.add_sub_cancel' h).symm⟩, fun ⟨_, h⟩ => h ▸ Nat.le_add_right ..⟩
+
+protected theorem Nat.le_iff_exists_add' {a b : Nat} : a ≤ b ↔ ∃ c, b = c + a := by
+  simp [Nat.add_comm, Nat.le_iff_exists_add]
+
 protected theorem List.Forall₂.rfl
     {R : α → α → Prop} {l : List α} (h : ∀ a ∈ l, R a a) : l.Forall₂ R l := by
   induction l with

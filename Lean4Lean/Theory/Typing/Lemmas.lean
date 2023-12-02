@@ -25,14 +25,39 @@ theorem Lookup.weakN (W : Ctx.LiftN n k Γ Γ') (H : Lookup Γ i A) :
     Lookup Γ' (liftVar n i k) (A.liftN n k) := by
   induction W generalizing i A with
   | zero As =>
-    rw [liftVar_base]
+    rw [liftVar_base, Nat.add_comm]
     subst n
-    induction As with simp [*, Nat.succ_add]
+    induction As with simp [*]
     | cons _ _ ih => rw [liftN_succ]; exact .succ ih
   | @succ k _ _ _ _ ih =>
     match H with
     | .zero => rw [liftVar_zero, ← lift_liftN']; exact .zero
     | .succ H => rw [liftVar_succ, ← lift_liftN']; exact (ih H).succ
+
+theorem Lookup.weakN_inv (W : Ctx.LiftN n k Γ Γ') (H : Lookup Γ' (liftVar n i k) (A.liftN n k)) :
+    Lookup Γ i A := by
+  induction W generalizing i A with
+  | zero As =>
+    rw [liftVar_base, Nat.add_comm] at H
+    subst n
+    induction As with simp at H
+    | nil => exact H
+    | cons A As ih =>
+      rw [liftN_succ] at H
+      generalize eq : lift (liftN ..) = A' at H
+      obtain _|H := H; cases liftN_inj.1 eq
+      exact ih H
+  | @succ k _ _ _ _ ih =>
+    generalize eA : liftN n A (k+1) = A' at H
+    cases i with
+    | zero =>
+      simp at H; let .zero := H
+      rw [lift, liftN'_comm (h := Nat.zero_le _), Nat.add_comm 1, liftN_inj] at eA
+      subst A; exact .zero
+    | succ i =>
+      simp at H; let .succ H := H
+      obtain ⟨_, rfl, rfl⟩ := of_liftN_eq_liftN (k2 := 0) eA
+      exact .succ (ih H)
 
 theorem Lookup.instL : Lookup Γ i A → Lookup (Γ.map (VExpr.instL ls)) i (A.instL ls)
   | .zero => instL_liftN ▸ .zero
@@ -504,3 +529,47 @@ theorem Ordered.isType (H : Ordered env) :
 variable {env : VEnv} (henv : Ordered env) in
 theorem IsDefEq.isType (hΓ : env.CtxWF U Γ) (H : env.IsDefEq U Γ e1 e2 A) : env.IsType U Γ A :=
   H.isType' henv henv.isType hΓ
+
+variable {env : VEnv} (henv : env.Ordered) in
+theorem IsDefEq.weakN_inv (W : Ctx.LiftN n k Γ Γ')
+    (H : env.IsDefEq U Γ' (e1.liftN n k) (e2.liftN n k) (A.liftN n k)) :
+    env.IsDefEq U Γ e1 e2 A := by
+  generalize eq1 : e1.liftN n k = e1', eq2 : e2.liftN n k = e2', eqA : A.liftN n k = A' at H
+  induction H generalizing k e1 e2 A with
+  | bvar h =>
+    cases eqA; cases e1 <;> cases eq1; cases e2 <;> injection eq2
+    cases liftVar_inj.1 ‹_›; exact .bvar (h.weakN_inv W)
+  | @const c ci ls Γ h1 h2 h3 =>
+    cases e1 <;> cases eq1; cases e2 <;> cases eq2
+    rw [VExpr.ClosedN.liftN_eq_rev (eqA ▸ (henv.closedC h1).instL) (Nat.zero_le _)] at eqA
+    exact eqA ▸ .const h1 h2 h3
+  -- | symm _ ih => exact .symm (ih W)
+  -- | trans _ _ ih1 ih2 => exact .trans (ih1 W) (ih2 W)
+  -- | sortDF h1 h2 h3 => exact .sortDF h1 h2 h3
+  -- | appDF _ _ ih1 ih2 => exact liftN_inst_hi .. ▸ .appDF (ih1 W) (ih2 W)
+  -- | lamDF _ _ ih1 ih2 => exact .lamDF (ih1 W) (ih2 W.succ)
+  -- | forallEDF _ _ ih1 ih2 => exact .forallEDF (ih1 W) (ih2 W.succ)
+  -- | defeqDF _ _ ih1 ih2 => exact .defeqDF (ih1 W) (ih2 W)
+  -- | beta _ _ ih1 ih2 =>
+  --   exact VExpr.liftN_inst_hi .. ▸ VExpr.liftN_instN_hi .. ▸ .beta (ih1 W.succ) (ih2 W)
+  -- | eta _ ih =>
+  --   have := IsDefEq.eta (ih W)
+  --   simp [liftN]; rwa [← lift_liftN']
+  -- | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel (ih1 W) (ih2 W) (ih3 W)
+  -- | extra h1 h2 h3 =>
+  --   have ⟨⟨hA1, _⟩, hA2, hA3⟩ := henv.closed.2 h1
+  --   rw [
+  --     hA1.instL.liftN_eq (Nat.zero_le _),
+  --     hA2.instL.liftN_eq (Nat.zero_le _),
+  --     hA3.instL.liftN_eq (Nat.zero_le _)]
+  --   exact .extra h1 h2 h3
+  | _ => sorry
+
+variable {env : VEnv} (henv : env.Ordered) in
+theorem HasType.weakN_inv (W : Ctx.LiftN n k Γ Γ')
+    (H : env.HasType U Γ' (e.liftN n k) (A.liftN n k)) :
+    env.HasType U Γ e A := IsDefEq.weakN_inv henv W H
+
+variable {env : VEnv} (henv : env.Ordered) in
+theorem IsType.weakN_inv (W : Ctx.LiftN n k Γ Γ') (H : env.IsType U Γ' (A.liftN n k)) :
+    env.IsType U Γ A := let ⟨_, h⟩ := H; ⟨_, h.weakN_inv henv W⟩
