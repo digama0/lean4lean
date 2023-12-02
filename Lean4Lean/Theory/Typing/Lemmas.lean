@@ -9,7 +9,7 @@ inductive Ctx.LiftN (n : Nat) : Nat → List VExpr → List VExpr → Prop where
   | zero (As) (h : As.length = n := by rfl) : Ctx.LiftN n 0 Γ (As ++ Γ)
   | succ : Ctx.LiftN n k Γ Γ' → Ctx.LiftN n (k+1) (A::Γ) (A.liftN n k :: Γ')
 
-def Ctx.LiftN.one : Ctx.LiftN 1 0 Γ (A::Γ) := .zero [_] rfl
+def Ctx.LiftN.one : Ctx.LiftN 1 0 Γ (A::Γ) := .zero [_]
 
 variable (Γ₀ : List VExpr) (e₀ A₀ : VExpr) in
 inductive Ctx.InstN : Nat → List VExpr → List VExpr → Prop where
@@ -530,6 +530,7 @@ variable {env : VEnv} (henv : Ordered env) in
 theorem IsDefEq.isType (hΓ : env.CtxWF U Γ) (H : env.IsDefEq U Γ e1 e2 A) : env.IsType U Γ A :=
   H.isType' henv henv.isType hΓ
 
+/- depends on church-rosser
 variable {env : VEnv} (henv : env.Ordered) in
 theorem IsDefEq.weakN_inv (W : Ctx.LiftN n k Γ Γ')
     (H : env.IsDefEq U Γ' (e1.liftN n k) (e2.liftN n k) (A.liftN n k)) :
@@ -543,8 +544,8 @@ theorem IsDefEq.weakN_inv (W : Ctx.LiftN n k Γ Γ')
     cases e1 <;> cases eq1; cases e2 <;> cases eq2
     rw [VExpr.ClosedN.liftN_eq_rev (eqA ▸ (henv.closedC h1).instL) (Nat.zero_le _)] at eqA
     exact eqA ▸ .const h1 h2 h3
-  -- | symm _ ih => exact .symm (ih W)
-  -- | trans _ _ ih1 ih2 => exact .trans (ih1 W) (ih2 W)
+  | symm _ ih => exact .symm (ih W eq2 eq1 eqA)
+  | trans _ _ ih1 ih2 => sorry
   -- | sortDF h1 h2 h3 => exact .sortDF h1 h2 h3
   -- | appDF _ _ ih1 ih2 => exact liftN_inst_hi .. ▸ .appDF (ih1 W) (ih2 W)
   -- | lamDF _ _ ih1 ih2 => exact .lamDF (ih1 W) (ih2 W.succ)
@@ -573,3 +574,4 @@ theorem HasType.weakN_inv (W : Ctx.LiftN n k Γ Γ')
 variable {env : VEnv} (henv : env.Ordered) in
 theorem IsType.weakN_inv (W : Ctx.LiftN n k Γ Γ') (H : env.IsType U Γ' (A.liftN n k)) :
     env.IsType U Γ A := let ⟨_, h⟩ := H; ⟨_, h.weakN_inv henv W⟩
+-/
