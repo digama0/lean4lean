@@ -7,16 +7,15 @@ open VExpr
 
 namespace VEnv
 
-theorem with_addConst {P : Prop} {env env' : VEnv} {cis : List (Name × VConstant)}
+theorem with_addConst {P : Prop} {env env' : VEnv} {cis : List VObject}
     (henv : Ordered env)
-    (hci : (cis.All fun ci => env.constants ci.1 = ci.2) → ci.WF env)
+    (hci : env.HasObjects cis → ci.WF env)
     (IH : ∀ {env1}, Ordered env1 →
-      (((n, ci) :: cis).All fun ci => env1.constants ci.1 = ci.2) → f env1 = some env' → P)
-    (hcis : cis.All fun ci => env.constants ci.1 = ci.2)
+      env1.HasObjects (.const n (some ci) :: cis) → f env1 = some env' → P)
+    (hcis : env.HasObjects cis)
     (H : (env.addConst n (some ci) >>= f) = some env') : P := by
   let ⟨env1, h1, henv1⟩ := Option.bind_eq_some.1 H
-  refine IH (.const henv (by rintro _ ⟨⟩; exact hci hcis) h1) ?_ henv1
-  exact ⟨addConst_self h1, hcis.imp fun _ => (addConst_le h1).1 _ _⟩
+  refine IH (.const henv (by rintro _ ⟨⟩; exact hci hcis) h1) (hcis.const h1) henv1
 
 theorem Lookup.zero' (eq : A.lift = ty') :
     Lookup (A::Γ) 0 ty' := eq ▸ .zero

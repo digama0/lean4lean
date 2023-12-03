@@ -76,6 +76,10 @@ def CtxLevelWF (n : Nat) : List VExpr → Prop
   | [] => True
   | A::Γ => CtxLevelWF n Γ ∧ A.LevelWF n
 
+inductive VObject where
+  | const (n : Name) (oci : Option VConstant)
+  | defeq (df : VDefEq)
+
 namespace VEnv
 
 theorem addConst_le {env env' : VEnv} (h : env.addConst n oci = some env') : env ≤ env' := by
@@ -91,6 +95,29 @@ theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df :=
   ⟨fun _ _ => id, fun df h => by simp [addDefEq, h]⟩
 
 theorem addDefEq_self {env : VEnv} : (env.addDefEq df).defeqs df := .inl rfl
+
+def HasObjects (env : VEnv) : List VObject → Prop
+  | [] => True
+  | .const n oci :: ls => env.constants n = some oci ∧ env.HasObjects ls
+  | .defeq df :: ls => env.defeqs df ∧ env.HasObjects ls
+
+theorem HasObjects.mono {env env' : VEnv} (henv : env ≤ env') :
+    ∀ {ls}, HasObjects env ls → HasObjects env' ls
+  | [] => id
+  | .const .. :: _ => .imp (henv.1 _ _) (mono henv)
+  | .defeq .. :: _ => .imp (henv.2 _) (mono henv)
+
+theorem HasObjects.const {env env' : VEnv} (hls : env.HasObjects ls)
+    (h : env.addConst n oci = some env') : env'.HasObjects (.const n oci :: ls) :=
+  ⟨addConst_self h, hls.mono (addConst_le h)⟩
+
+theorem HasObjects.defeq {env : VEnv} (hls : env.HasObjects ls) :
+    (addDefEq env df).HasObjects (.defeq df :: ls) := ⟨addDefEq_self, hls.mono addDefEq_le⟩
+
+theorem HasObjects.bind_const {env env' : VEnv} (hls : env.HasObjects ls)
+    (h : env.addConst n oci >>= f = some env') :
+    ∃ env1, env1.HasObjects (.const n oci :: ls) ∧ f env1 = some env' :=
+  let ⟨env1, h1, henv1⟩ := Option.bind_eq_some.1 h; ⟨env1, hls.const h1, henv1⟩
 
 theorem IsDefEq.sort (h : l.WF U) : HasType env U Γ (.sort l) (.sort (.succ l)) :=
   .sortDF h h rfl
