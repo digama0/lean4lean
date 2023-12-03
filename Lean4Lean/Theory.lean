@@ -1,2 +1,1 @@
-import Lean4Lean.Theory.Typing.Env
-import Lean4Lean.Theory.Typing.Lemmas
+import Lean4Lean.Theory.Typing.EnvLemmas

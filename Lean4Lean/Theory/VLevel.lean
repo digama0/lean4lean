@@ -20,6 +20,12 @@ def WF : VLevel → Prop
   | .imax l₁ l₂ => l₁.WF ∧ l₂.WF
   | .param i => i < n
 
+instance decidable_WF : ∀ {l}, Decidable (WF n l)
+  | .zero => instDecidableTrue
+  | .succ l => @decidable_WF _ l
+  | .max .. | .imax .. => @instDecidableAnd _ _ decidable_WF decidable_WF
+  | .param _ => Nat.decLt ..
+
 variable (ls : List Nat) in
 def eval : VLevel → Nat
   | .zero => 0
@@ -61,6 +67,9 @@ theorem inst_inst {l : VLevel} : (l.inst ls).inst ls' = l.inst (ls.map (VLevel.i
   induction l <;> simp [inst, *, List.getD_eq_get?]
   case param n => cases ls.get? n <;> simp [inst]
 
+theorem inst_id {l : VLevel} (h : l.WF u) : l.inst ((List.range u).map .param) = l := by
+  induction l <;> simp_all [inst, WF, List.getD_eq_get?, List.get?_range]
+
 theorem eval_inst {l : VLevel} : (l.inst ls).eval ns = l.eval (ls.map (VLevel.eval ns)) := by
   induction l <;> simp [eval, inst, *, List.getD_eq_get?]
   case param n => cases ls.get? n <;> simp [eval]
@@ -75,6 +84,8 @@ theorem WF.inst {l : VLevel} (H : ∀ l ∈ ls, l.WF n) : (l.inst ls).WF n := by
     cases e : ls.get? i with
     | none => trivial
     | some => exact H _ (List.get?_mem e)
+
+theorem id_WF : ∀ l ∈ (List.range u).map param, l.WF u := by simp [WF]
 
 theorem inst_congr {l : VLevel} (h1 : l ≈ l') (h2 : List.Forall₂ (·≈·) ls ls') :
     l.inst ls ≈ l'.inst ls' := by

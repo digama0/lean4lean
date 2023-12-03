@@ -72,6 +72,10 @@ theorem CtxClosed.lookup (h : CtxClosed Γ) (hL : Lookup Γ n A) : A.ClosedN Γ.
   | .zero, ⟨h1, h2⟩ => h2.liftN
   | .succ hL, ⟨h1, h2⟩ => (h1.lookup hL).liftN
 
+def CtxLevelWF (n : Nat) : List VExpr → Prop
+  | [] => True
+  | A::Γ => CtxLevelWF n Γ ∧ A.LevelWF n
+
 namespace VEnv
 
 theorem addConst_le {env env' : VEnv} (h : env.addConst n oci = some env') : env ≤ env' := by
@@ -79,8 +83,14 @@ theorem addConst_le {env env' : VEnv} (h : env.addConst n oci = some env') : env
   refine ⟨fun n ci h => ?_, fun _ => id⟩
   simp; rwa [if_neg]; rintro rfl; cases h.symm.trans ‹_ = none›
 
+theorem addConst_self {env env' : VEnv} (h : env.addConst n oci = some env') :
+    env'.constants n = some oci := by
+  unfold addConst at h; split at h <;> cases h; simp
+
 theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df :=
   ⟨fun _ _ => id, fun df h => by simp [addDefEq, h]⟩
+
+theorem addDefEq_self {env : VEnv} : (env.addDefEq df).defeqs df := .inl rfl
 
 theorem IsDefEq.sort (h : l.WF U) : HasType env U Γ (.sort l) (.sort (.succ l)) :=
   .sortDF h h rfl
@@ -100,7 +110,7 @@ theorem IsDefEq.hasType {env : VEnv} (H : env.IsDefEq U Γ e1 e2 A) :
     env.HasType U Γ e1 A ∧ env.HasType U Γ e2 A := ⟨H.trans H.symm, H.symm.trans H⟩
 
 inductive Ordered : VEnv → Prop where
-  | nil : Ordered ∅
+  | empty : Ordered ∅
   | const :
     Ordered env → (∀ ci, oci = some ci → ci.WF env) →
     env.addConst n oci = some env' → Ordered env'
@@ -120,7 +130,7 @@ theorem Ordered.induction (motive : VEnv → Nat → VExpr → VExpr → Prop)
       Ordered env → OnTypes env (motive env) → HasType env U [] e A → motive env U e A)
     (H : Ordered env) : OnTypes env (motive env) := by
   induction H with
-  | nil => exact ⟨fun., fun.⟩
+  | empty => exact ⟨fun., fun.⟩
   | const h1 h2 h3 ih =>
     apply OnTypes.mono .rfl (mono (addConst_le h3))
     unfold addConst at h3; split at h3 <;> cases h3
@@ -228,7 +238,7 @@ namespace VEnv
 
 theorem Ordered.constWF (H : Ordered env) (h : env.constants n = some (some ci)) : ci.WF env := by
   induction H with
-  | nil => cases h
+  | empty => cases h
   | const _ h2 h3 ih =>
     refine .mono (addConst_le h3) ?_
     unfold addConst at h3; split at h3 <;> cases h3
@@ -239,7 +249,7 @@ theorem Ordered.constWF (H : Ordered env) (h : env.constants n = some (some ci))
 
 theorem Ordered.defEqWF (H : Ordered env) (h : env.defeqs df) : df.WF env := by
   induction H with
-  | nil => cases h
+  | empty => cases h
   | const _ _ h3 ih =>
     refine .mono (addConst_le h3) (ih ?_)
     unfold addConst at h3; split at h3 <;> cases h3; exact h
@@ -254,6 +264,38 @@ theorem CtxWF.closed (h : CtxWF env U Γ) : CtxClosed Γ :=
   match Γ, h with
   | [], _ => trivial
   | _::_, ⟨h1, _, h2⟩ => ⟨h1.closed, h2.closedN henv h1.closed⟩
+
+variable {env : VEnv} in
+theorem IsDefEq.levelWF (H : env.IsDefEq U Γ e1 e2 A) (W : CtxLevelWF U Γ) :
+    e1.LevelWF U ∧ e2.LevelWF U ∧ A.LevelWF U := by
+  induction H with
+  | bvar h =>
+    refine ⟨⟨⟩, ⟨⟩, ?_⟩
+    induction h with
+    | zero => exact W.2.liftN
+    | succ _ ih => exact (ih W.1).liftN
+  | const _ h2 => exact ⟨h2, h2, .instL h2⟩
+  | symm _ ih => let ⟨he, he', hA⟩ := ih W; exact ⟨he', he, hA⟩
+  | trans _ _ ih1 ih2 => let ⟨he1, _, hA⟩ := ih1 W; let ⟨_, he3, _⟩ := ih2 W; exact ⟨he1, he3, hA⟩
+  | sortDF h1 h2 => exact ⟨h1, h2, h1⟩
+  | appDF _ _ ih1 ih2 =>
+    let ⟨hf, hf', _, hB⟩ := ih1 W; let ⟨ha, ha', _⟩ := ih2 W
+    exact ⟨⟨hf, ha⟩, ⟨hf', ha'⟩, hB.inst ha⟩
+  | lamDF _ _ ih1 ih2 =>
+    let ⟨hA, hA', _⟩ := ih1 W; let ⟨hb, hb', hB⟩ := ih2 ⟨W, hA⟩
+    exact ⟨⟨hA, hb⟩, ⟨hA', hb'⟩, hA, hB⟩
+  | forallEDF _ _ ih1 ih2 =>
+    let ⟨hA, hA', hu⟩ := ih1 W; let ⟨hb, hb', hv⟩ := ih2 ⟨W, hA⟩
+    exact ⟨⟨hA, hb⟩, ⟨hA', hb'⟩, hu, hv⟩
+  | defeqDF _ _ ih1 ih2 => let ⟨_, hB, _⟩ := ih1 W; let ⟨he1, he2, _⟩ := ih2 W; exact ⟨he1, he2, hB⟩
+  | beta _ _ ih1 ih2 =>
+    let ⟨he', _, hA⟩ := ih2 W; let ⟨he, _, hB⟩ := ih1 ⟨W, hA⟩
+    exact ⟨⟨⟨hA, he⟩, he'⟩, he.inst he', hB.inst he'⟩
+  | eta _ ih => let ⟨he, _, hA, hB⟩ := ih W; exact ⟨⟨hA, he.liftN, ⟨⟩⟩, he, hA, hB⟩
+  | proofIrrel _ _ _ _ ih2 ih3 =>
+    let ⟨hh, _, hp⟩ := ih2 W; let ⟨hh', _, _⟩ := ih3 W
+    exact ⟨hh, hh', hp⟩
+  | extra _ h2 => exact ⟨.instL h2, .instL h2, .instL h2⟩
 
 variable {env : VEnv} (henv : env.Ordered) in
 theorem IsDefEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :

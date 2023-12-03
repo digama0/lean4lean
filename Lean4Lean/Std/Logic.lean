@@ -18,3 +18,14 @@ protected theorem List.Forall₂.rfl
   induction l with
   | nil => constructor
   | cons _ _ ih => simp at h; exact .cons h.1 (ih h.2)
+
+theorem List.map_id' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
+  induction l <;> simp_all
+
+def List.All (P : α → Prop) : List α → Prop
+  | [] => True
+  | a::as => P a ∧ as.All P
+
+theorem List.All.imp {P Q : α → Prop} (h : ∀ a, P a → Q a) : ∀ {l : List α}, l.All P → l.All Q
+  | [] => id
+  | _::_ => And.imp (h _) (List.All.imp h)

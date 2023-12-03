@@ -167,6 +167,25 @@ theorem ClosedN.instL_rev : ∀ {e}, ClosedN (e.instL ls) k → ClosedN e k
 theorem instL_instL {e : VExpr} : (e.instL ls).instL ls' = e.instL (ls.map (VLevel.inst ls')) := by
   cases e <;> simp [instL, instL_instL, Function.comp_def, VLevel.inst_inst]
 
+def LevelWF (U : Nat) : VExpr → Prop
+  | .bvar _ => True
+  | .sort l => l.WF U
+  | .const _ ls => ∀ l ∈ ls, l.WF U
+  | .app e1 e2 | .lam e1 e2 | .forallE e1 e2 => e1.LevelWF U ∧ e2.LevelWF U
+
+theorem LevelWF.instL_id {e : VExpr} (h : e.LevelWF U) :
+    e.instL ((List.range U).map .param) = e := by
+  induction e <;> simp_all [instL, LevelWF, VLevel.inst_id]
+  case const => exact List.map_id' _ fun _ h1 => VLevel.inst_id (h _ h1)
+
+theorem levelWF_liftN : (liftN n e k).LevelWF U ↔ e.LevelWF U := by
+  induction e generalizing k <;> simp [liftN, LevelWF, *]
+
+theorem LevelWF.instL (h : ∀ l ∈ ls, l.WF U) : (instL ls e).LevelWF U := by
+  induction e <;> simp [instL, VLevel.WF.inst h, LevelWF, *]
+
+alias ⟨LevelWF.liftN_rev, LevelWF.liftN⟩ := levelWF_liftN
+
 def instVar (i : Nat) (e : VExpr) (k := 0) : VExpr :=
   if i < k then .bvar i else if i = k then liftN k e else .bvar (i - 1)
 
@@ -263,6 +282,11 @@ theorem inst_liftN' (e1 e2 : VExpr) : (liftN (n+1) e1 k).inst e2 k = liftN n e1 
   rw [← liftN'_liftN_hi, inst_liftN]
 
 theorem inst_lift (e1 e2 : VExpr) : (lift e1).inst e2 = e1 := inst_liftN ..
+
+protected theorem LevelWF.inst
+    (h1 : e1.LevelWF U) (h2 : e2.LevelWF U) : (inst e1 e2 k).LevelWF U := by
+  induction e1 generalizing k <;> simp_all [inst, instVar, LevelWF]
+  case bvar => split <;> [trivial; split <;> [exact h2.liftN; trivial]]
 
 def unliftN (e : VExpr) (n k : Nat) : VExpr :=
   match n with
