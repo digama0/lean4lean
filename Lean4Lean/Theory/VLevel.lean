@@ -1,7 +1,8 @@
 import Lean4Lean.Std.Logic
 
 namespace Lean4Lean
-open Lean
+
+export Lean (Name)
 
 inductive VLevel where
   | zero  : VLevel
@@ -99,7 +100,7 @@ theorem inst_congr_l {l : VLevel} (h1 : l ≈ l') : l.inst ls ≈ l'.inst ls :=
   inst_congr h1 <| .rfl fun _ _ => rfl
 
 variable (ls : List Name) in
-def ofLevel : Level → Option VLevel
+def ofLevel : Lean.Level → Option VLevel
   | .zero => return .zero
   | .succ l => return .succ (← ofLevel l)
   | .max l₁ l₂ => return .max (← ofLevel l₁) (← ofLevel l₂)

@@ -2,8 +2,6 @@ import Lean4Lean.Theory.VExpr
 
 namespace Lean4Lean
 
-open Lean (Name)
-
 structure VConstant where
   uvars : Nat
   type : VExpr

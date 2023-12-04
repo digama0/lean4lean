@@ -1,10 +1,6 @@
 import Lean4Lean.Theory.Typing.Lemmas
 
 namespace Lean4Lean
-
-open Lean (Name FVarId)
-open VExpr
-
 namespace VEnv
 
 theorem with_addConst {P : Prop} {env env' : VEnv} {cis : List VObject}

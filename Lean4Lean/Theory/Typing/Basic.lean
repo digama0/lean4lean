@@ -64,10 +64,6 @@ def HasType (env : VEnv) (U : Nat) (Γ : List VExpr) (e A : VExpr) : Prop :=
 def IsType (env : VEnv) (U : Nat) (Γ : List VExpr) (A : VExpr) : Prop :=
   ∃ u, env.HasType U Γ A (.sort u)
 
-def CtxWF (env : VEnv) (U : Nat) : List VExpr → Prop
-  | [] => True
-  | A::Γ => CtxWF env U Γ ∧ IsType env U Γ A
-
 end VEnv
 
 def VConstant.WF (env : VEnv) (ci : VConstant) : Prop := env.IsType ci.uvars [] ci.type

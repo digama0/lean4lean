@@ -5,9 +5,6 @@ import Lean4Lean.Theory.Typing.InductiveLemmas
 
 namespace Lean4Lean
 
-open Lean (Name FVarId)
-open VExpr
-
 theorem VEnv.WF.ordered (H : WF env ds) : Ordered env := by
   induction H with
   | empty => exact .empty

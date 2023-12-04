@@ -2,8 +2,6 @@ import Lean4Lean.Theory.VEnv
 
 namespace Lean4Lean
 
-open Lean (Name)
-
 structure VConstVal extends VConstant where
   name : Name
 

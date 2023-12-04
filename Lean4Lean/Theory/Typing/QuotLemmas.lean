@@ -2,10 +2,6 @@ import Lean4Lean.Theory.Typing.Env
 import Lean4Lean.Theory.Typing.Meta
 
 namespace Lean4Lean
-
-open Lean (Name FVarId)
-open VExpr
-
 namespace VEnv
 
 theorem addQuot_WF (henv : Ordered env) (hq : QuotReady env) :

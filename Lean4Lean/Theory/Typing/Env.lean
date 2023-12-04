@@ -5,8 +5,6 @@ import Lean4Lean.Theory.Inductive
 
 namespace Lean4Lean
 
-open Lean (Name FVarId)
-
 def VDefVal.WF (env : VEnv) (ci : VDefVal) : Prop := env.HasType ci.uvars [] ci.value ci.type
 
 inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where

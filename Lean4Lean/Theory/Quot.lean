@@ -3,8 +3,6 @@ import Lean4Lean.Theory.Meta
 
 namespace Lean4Lean
 
-open Lean (Name FVarId)
-
 def eqConst := vconst(type_of% @Eq)
 def quotConst := vconst(type_of% @Quot)
 def quotMkConst := vconst(type_of% @Quot.mk)

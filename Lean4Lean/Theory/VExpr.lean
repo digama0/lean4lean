@@ -3,8 +3,6 @@ import Lean4Lean.Theory.VLevel
 
 namespace Lean4Lean
 
-open Lean (Name FVarId)
-
 inductive VExpr where
   | bvar (deBruijnIndex : Nat)
   | sort (u : VLevel)
