@@ -23,9 +23,7 @@ structure TypeChecker.Context where
   env : Environment
   lctx : LocalContext := {}
   safety : DefinitionSafety := .safe
-  -- When `lparams != none`, the `check` method makes sure all level parameters
-  -- are in `lparams`.
-  lparams : Option (List Name) := none
+  lparams : List Name := []
 
 namespace TypeChecker
 
@@ -82,10 +80,8 @@ def ensureForallCore (e s : Expr) : RecM Expr := do
   throw <| .funExpected (← getEnv) (← getLCtx) s
 
 def checkLevel (tc : Context) (l : Level) : Except KernelException Unit := do
-  if let some lps := tc.lparams then
-    if let some n2 := l.getUndefParam lps then
-      throw <| .other
-        s!"invalid reference to undefined universe level parameter '{n2}'"
+  if let some n2 := l.getUndefParam tc.lparams then
+    throw <| .other s!"invalid reference to undefined universe level parameter '{n2}'"
 
 def inferFVar (tc : Context) (name : FVarId) : Except KernelException Expr := do
   if let some decl := tc.lctx.find? name then
@@ -717,9 +713,6 @@ def RecM.run (x : RecM α) : M α := x (Methods.withFuel 1000)
 
 def check (e : Expr) (lps : List Name) : M Expr :=
   withReader ({ · with lparams := lps }) (inferType e (inferOnly := false)).run
-
-def checkIgnoreUndefinedUniverses (e : Expr) : M Expr :=
-  withReader ({ · with lparams := none }) (inferType e (inferOnly := false)).run
 
 def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 

@@ -1,6 +1,5 @@
 import Lean4Lean.Expr
 import Lean4Lean.Theory.VExpr
-import Lean4Lean.Verify.Level
 
 namespace Lean4Lean
 
@@ -31,10 +30,12 @@ def next : Option FVarId → Nat ⊕ FVarId → Option (Nat ⊕ FVarId)
 
 def find? : VLCtx → Nat ⊕ FVarId → Option (VLocalDecl × Nat)
   | [], _ => none
-  | (ofv, d) :: Λ, v =>
+  | (ofv, d) :: Δ, v =>
     match next ofv v with
     | none => some (d, 0)
-    | some v => do let (d, i) ← find? Λ v; some (d, i + d.depth)
+    | some v => do let (d, i) ← find? Δ v; some (d, i + d.depth)
+
+def fvars (Δ : VLCtx) : List FVarId := Δ.filterMap (·.1)
 
 end VLCtx
 
@@ -58,4 +59,17 @@ inductive TrExpr : VLCtx → Expr → VExpr → Prop
     TrExpr ((none, .vlet ty' val') :: Δ) body body' →
     TrExpr Δ (.letE name ty val body bi) body'
   | lit : TrExpr Δ l.toConstructor e → TrExpr Δ (.lit l) e
+  | mdata : TrExpr Δ e e' → TrExpr Δ (.mdata d e) e'
   | proj : TrExpr Δ e e' → TrProj Δ s i e' e'' → TrExpr Δ (.proj s i e) e''
+
+variable (fvars : List FVarId) in
+def InScope : Expr → (k :_:= 0) → Prop
+  | .bvar i, k => i < k
+  | .fvar fv, _ => fv ∈ fvars
+  | .sort .., _ | .const .., _ | .lit .., _ => True
+  | .app f a, k => InScope f k ∧ InScope a k
+  | .lam _ d b _, k
+  | .forallE _ d b _, k => InScope d k ∧ InScope b (k+1)
+  | .letE _ d v b _, k => InScope d k ∧ InScope v k ∧ InScope b (k+1)
+  | .proj _ _ e, k | .mdata _ e, k => InScope e k
+  | .mvar .., _ => False

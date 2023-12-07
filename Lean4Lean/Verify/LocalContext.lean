@@ -1,9 +1,5 @@
-import Lean
-import Lean4Lean.Std.NodupKeys
-import Lean4Lean.Expr
 import Lean4Lean.Verify.Axioms
 import Lean4Lean.Verify.Expr
-import Lean4Lean.Theory.Typing.Basic
 
 namespace Lean4Lean
 

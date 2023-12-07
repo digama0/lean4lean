@@ -1,4 +1,5 @@
-import Lean4Lean.Verify.LocalContext
+import Lean4Lean.Verify.Expr
+import Lean4Lean.Theory.Typing.Basic
 
 namespace Lean4Lean
 
