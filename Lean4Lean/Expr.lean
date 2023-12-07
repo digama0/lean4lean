@@ -71,3 +71,22 @@ def isConstructorApp?' (env : Environment) (e : Expr) : Option Name := do
   let .const fn _ := e.getAppFn | none
   let .ctorInfo _ ← env.find? fn | none
   return fn
+
+def natLitToConstructor : Nat → Expr
+  | 0 => natZero
+  | n+1 => .app natSucc (.lit (.natVal n))
+
+def strLitToConstructor (s : String) : Expr :=
+  let char := .const ``Char []
+  let listNil := .app (.const ``List.nil [.zero]) char
+  let listCons := .app (.const ``List.cons [.zero]) char
+  let stringMk := .const ``String.mk []
+  let charOfNat := .const ``Char.ofNat []
+  .app stringMk <| s.foldr (init := listNil) fun c e =>
+    .app (.app listCons <| .app charOfNat (.lit (.natVal c.toNat))) e
+
+end Expr
+
+def Literal.toConstructor : Literal → Expr
+  | .natVal n => .natLitToConstructor n
+  | .strVal s => .strLitToConstructor s

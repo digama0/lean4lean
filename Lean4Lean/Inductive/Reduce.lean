@@ -3,19 +3,6 @@ import Lean4Lean.Expr
 
 namespace Lean
 
-def Expr.natLitToConstructor : Nat → Expr
-  | 0 => natZero
-  | n+1 => .app natSucc (.lit (.natVal n))
-
-def Expr.strLitToConstructor (s : String) : Expr :=
-  let char := .const ``Char []
-  let listNil := .app (.const ``List.nil [.zero]) char
-  let listCons := .app (.const ``List.cons [.zero]) char
-  let stringMk := .const ``String.mk []
-  let charOfNat := .const ``Char.ofNat []
-  .app stringMk <| s.foldr (init := listNil) fun c e =>
-    .app (.app listCons <| .app charOfNat (.lit (.natVal c.toNat))) e
-
 section
 variable [Monad m] (env : Environment)
     (whnf : Expr → m Expr) (inferType : Expr → m Expr) (isDefEq : Expr → Expr → m Bool)
@@ -77,8 +64,7 @@ def inductiveReduceRec [Monad m] (env : Environment) (e : Expr)
   if info.k then
     major ← toCtorWhenK env whnf inferType isDefEq info major
   match ← whnf major with
-  | .lit (.natVal n) => major := .natLitToConstructor n
-  | .lit (.strVal s) => major := .strLitToConstructor s
+  | .lit l => major := l.toConstructor
   | e => major ← toCtorWhenStruct env whnf inferType info.getInduct e
   let some rule := getRecRuleFor info major | return none
   let majorArgs := major.getAppArgs
