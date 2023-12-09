@@ -5,9 +5,6 @@ import Std.Data.HashMap.Basic
 theorem funext_iff {β : α → Sort u} {f₁ f₂ : ∀ x : α, β x} : f₁ = f₂ ↔ ∀ a, f₁ a = f₂ a :=
   Iff.intro (fun h _ ↦ h ▸ rfl) funext
 
-protected theorem Nat.lt_add_left (a b c : Nat) (h : a < c) : a < b + c :=
-  Nat.add_comm .. ▸ Nat.lt_add_right _ _ _ h
-
 protected theorem Nat.le_iff_exists_add {a b : Nat} : a ≤ b ↔ ∃ c, b = a + c :=
   ⟨fun h => ⟨_, (Nat.add_sub_cancel' h).symm⟩, fun ⟨_, h⟩ => h ▸ Nat.le_add_right ..⟩
 
