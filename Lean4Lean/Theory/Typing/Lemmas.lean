@@ -462,11 +462,6 @@ theorem IsType.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀
     (H : env.IsType U Γ₁ A) (h₀ : env.HasType U Γ₀ e₀ A₀) :
     env.IsType U Γ (A.inst e₀ k) := let ⟨_, h⟩ := H; ⟨_, h.instN henv W h₀⟩
 
--- variable {env : VEnv} (henv : env.Ordered) (h₀ : env.IsDefEq U Γ₀ e₀ e₀' A₀) in
--- theorem IsDefEq.instDF' (H : env.IsDefEq U (A::Γ) e1 e2 A) :
---     env.IsDefEq U Γ (e1.inst e₀) (e2.inst e₀') (A.inst e₀) := by
---   refine .trans _ (.beta _ _)
-
 theorem IsDefEq.defeqDF_l (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
     (h2 : env.IsDefEq U (A::Γ) e1 e2 B) : env.IsDefEq U (A'::Γ) e1 e2 B := by
   simpa [instN_bvar0] using
@@ -617,3 +612,18 @@ theorem IsDefEq.isType (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
 theorem IsDefEq.sort_r (henv : Ordered env)
     (hΓ : OnCtx Γ (env.IsType U)) (H : env.IsDefEq U Γ e1 e2 (.sort u)) : u.WF U :=
   (H.isType henv hΓ).sort_inv henv
+
+theorem IsDefEq.instDF
+    (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+    (hf : env.IsDefEq U (A::Γ) f f' B) (ha : env.IsDefEq U Γ a a' A) :
+    env.IsDefEq U Γ (f.inst a) (f'.inst a') (B.inst a) :=
+  have ⟨_, hA⟩ := ha.isType henv hΓ
+  have ⟨_, hB⟩ := hf.isType henv (Γ := _::_) ⟨hΓ, _, hA⟩
+  have H2 {f f' B v}
+      (hf : env.IsDefEq U (A::Γ) f f' B)
+      (hi : IsDefEq env U Γ (inst B a) (inst B a') (.sort v)) :
+      env.IsDefEq U Γ (f.inst a) (f'.inst a') (B.inst a) :=
+    (IsDefEq.beta hf.hasType.1 ha.hasType.1).symm.trans <|
+      .trans (.appDF (.lamDF hA hf) ha) <|
+      .defeqDF (.symm hi) (.beta hf.hasType.2 ha.hasType.2)
+  H2 hf <| H2 hB (.sort (hB.sort_r henv (Γ := _::_) ⟨hΓ, _, hA⟩))

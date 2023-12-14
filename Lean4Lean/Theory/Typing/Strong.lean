@@ -390,7 +390,7 @@ theorem IsDefEqStrong.instDF
         (hf : env.IsDefEqStrong U (A::Γ) f f' B)
         (ha : IsDefEqStrong env U Γ a a A) :
         env.IsDefEqStrong U Γ (.app (.lam A f) a) (f.inst a) (B.inst a) :=
-      IsDefEqStrong.beta hu hv hA hB hf.hasType.1 ha.hasType.1
+      IsDefEqStrong.beta hu hv hA hB hf.hasType.1 ha
         (ha.hasType.1.instN henv hΓ .zero hB hΓ)
         (ha.hasType.1.instN henv hΓ .zero hf.hasType.1 hΓ)
     (H1 hf ha.hasType.1).symm.trans <|
