@@ -441,7 +441,7 @@ theorem IsDefEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : env.IsDefE
   | defeqDF _ _ ih1 ih2 => exact .defeqDF (ih1 W) (ih2 W)
   | beta _ _ ih1 ih2 =>
     exact VExpr.inst_inst_hi .. ▸ VExpr.inst_inst_hi .. ▸ .beta (ih1 W.succ) (ih2 W)
-  | @eta _ e A B _ ih =>
+  | eta _ ih =>
     have := IsDefEq.eta (ih W)
     rw [lift, VExpr.liftN_instN_lo (hj := Nat.zero_le _), Nat.add_comm] at this
     simpa [inst]
@@ -565,8 +565,14 @@ theorem IsDefEq.sort_inv'
     exact VLevel.WF.inst h2
   | _ => match eq with.
 
-theorem HasType.sort_inv (henv : Ordered env) (H : env.HasType U Γ (.sort u) V) : u.WF U :=
+theorem IsDefEq.sort_inv_l (henv : Ordered env) (H : env.IsDefEq U Γ (.sort u) e2 V) : u.WF U :=
   H.sort_inv' henv (.inl rfl)
+
+theorem IsDefEq.sort_inv_r (henv : Ordered env) (H : env.IsDefEq U Γ e2 (.sort u) V) : u.WF U :=
+  H.sort_inv' henv (.inr rfl)
+
+theorem HasType.sort_inv (henv : Ordered env) (H : env.HasType U Γ (.sort u) V) : u.WF U :=
+  H.sort_inv_l henv
 
 theorem IsType.sort_inv (henv : Ordered env) (H : env.IsType U Γ (.sort u)) : u.WF U :=
   let ⟨_, h⟩ := H; h.sort_inv henv

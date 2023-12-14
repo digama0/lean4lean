@@ -458,6 +458,9 @@ theorem inst_inst_hi (e1 e2 e3 : VExpr) (k j : Nat) :
   | bvar i => apply inst_instVar_hi
   | _ => rename_i IH; apply IH
 
+theorem inst0_inst_hi (e1 e2 e3 : VExpr) (j : Nat) :
+    inst (e1.inst e2) e3 j = (e1.inst e3 (j+1)).inst (e2.inst e3 j) := inst_inst_hi ..
+
 theorem inst_instVar_lo (i : Nat) (e2 e3 : VExpr) (k j : Nat) :
     inst (instVar i e2 (k+j+1)) e3 j =
     (instVar i (e3.liftN 1 k) j).inst e2 (k+j) := by
