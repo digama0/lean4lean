@@ -263,8 +263,8 @@ theorem liftN_instN_hi (e1 e2 : VExpr) (n k j : Nat) :
 theorem liftN_inst_hi (e1 e2 : VExpr) (n k : Nat) :
     liftN n (e1.inst e2) k = (liftN n e1 (k+1)).inst (liftN n e2 k) := liftN_instN_hi ..
 
-theorem lift_inst_lo (e1 e2 : VExpr) : lift (e1.inst e2) = (lift e1).inst e2 1 :=
-  liftN_instN_lo (hj := Nat.zero_le _) ..
+theorem lift_instN_lo (e1 e2 : VExpr) : lift (e1.inst e2 k) = (lift e1).inst e2 (k + 1) :=
+  Nat.add_comm .. ▸ liftN_instN_lo (hj := Nat.zero_le _) ..
 
 theorem lift_inst_hi (e1 e2 : VExpr) : lift (e1.inst e2) = (liftN 1 e1 1).inst (lift e2) :=
   liftN_instN_hi ..

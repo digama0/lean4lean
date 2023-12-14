@@ -1,4 +1,5 @@
 import Lean4Lean.Theory.Typing.Lemmas
+import Lean4Lean.Theory.Typing.Strong
 
 namespace Lean4Lean
 namespace VEnv
@@ -18,7 +19,6 @@ nonrec theorem DefInv.symm (h : DefInv env U Γ e1 e2) : DefInv env U Γ e2 e1 :
   · exact h.symm
   · let ⟨u, v, h1, h2⟩ := h; exact ⟨u, v, h1.symm, h1.defeqDF_l henv h2.symm⟩
 
-/-
 section
 set_option hygiene false
 local notation:65 Γ " ⊢ " e " : " A:30 => HasType1 Γ e A
@@ -64,6 +64,7 @@ inductive IsDefEq1 : List VExpr → VExpr → VExpr → Prop where
 
 end
 
+variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.induction1
     (defEq : List VExpr → VExpr → VExpr → Prop)
     (hasType : List VExpr → VExpr → VExpr → Prop)
@@ -73,37 +74,39 @@ theorem IsDefEq.induction1
     HasType1 env U defEq Γ e1 A ∧
     HasType1 env U defEq Γ e2 A ∧
     IsDefEq1 env U hasType Γ e1 e2 := by
-  induction H with
+  have H' := H.strong henv hΓ; clear hΓ H
+  induction H' with
   | bvar h => exact ⟨.bvar h, .bvar h, .refl (hty (.bvar h))⟩
-  | @const _ _ ls' _ h1 h2 h3 =>
-    refine ⟨.const h1 h2 h3, .const h1 h2 h3, .refl <| hty <| .const h1 h2 h3⟩
-  | symm _ ih =>
-    let ⟨ty1, ty2, df⟩ := ih
-    exact ⟨ty2, ty1, .symm df⟩
-  | trans _ _ ih1 ih2 =>
-    let ⟨ty1, ty2, df1⟩ := ih1; let ⟨_, ty3, df2⟩ := ih2
-    exact ⟨ty1, ty3, .trans df1 df2⟩
+  | @const _ _ ls' _ _ h1 h2 h3 =>
+    exact ⟨.const h1 h2 h3, .const h1 h2 h3, .refl <| hty <| .const h1 h2 h3⟩
+  | symm _ ih => exact ⟨ih.2.1, ih.1, .symm ih.2.2⟩
+  | trans _ _ ih1 ih2 => exact ⟨ih1.1, ih2.2.1, .trans ih1.2.2 ih2.2.2⟩
   | sortDF h1 h2 h3 =>
     refine ⟨.sort h1, .defeq (hdf ?_) (.sort h2), .sortDF h1 h2 h3⟩
     exact .symm <| .sortDF h1 h2 <| VLevel.succ_congr h3
-  | appDF _ _ ih1 ih2 =>
-    let ⟨hf, hf', ff⟩ := ih1; let ⟨ha, ha', aa⟩ := ih2
-    refine' ⟨.app hf ha, .defeq (hdf (.instDF hB _ _ _ _ _)) (.app hf' ha'),
+  | appDF _ _ _ _ _ _ _ _ _ ihf iha ihBa =>
+    let ⟨hf, hf', ff⟩ := ihf; let ⟨ha, ha', aa⟩ := iha
+    exact ⟨.app hf ha, .defeq (hdf ihBa.2.2.symm) (.app hf' ha'),
       .appDF (hty hf) (hty hf') (hty ha) (hty ha') ff aa⟩
+  | lamDF _ _ _ _ _ _ _ ihA ihB _ ihb ihb' =>
+    refine ⟨.lam ihA.1 ihb.1, ?_, .lamDF ihA.2.2 ihb.2.2⟩
+    exact .defeq (hdf <| .symm <| .forallEDF ihA.2.2 ihB.2.2) <| .lam ihA.2.1 ihb'.2.1
+  | forallEDF _ _ _ _ _ ih1 ih2 ih3 =>
+    exact ⟨.forallE ih1.1 ih2.1, .forallE ih1.2.1 ih3.2.1, .forallEDF ih1.2.2 ih2.2.2⟩
+  | defeqDF _ _ _ ih1 ih2 =>
+    exact ⟨.defeq (hdf ih1.2.2) ih2.1, .defeq (hdf ih1.2.2) ih2.2.1, ih2.2.2⟩
+  | beta _ _ _ _ _ _ _ _ ihA _ ihe ihe' _ ihee =>
+    exact ⟨.app (.lam ihA.1 ihe.1) ihe'.1, ihee.1, .beta (hty ihe.1) (hty ihe'.1)⟩
+  | eta _ _ _ _ _ _ _ ihA _ _ ihe ihe' =>
+    have := HasType1.app ihe'.1 (.bvar .zero)
+    rw [instN_bvar0] at this
+    exact ⟨.lam ihA.1 this, ihe.1, .eta (hty ihe.1)⟩
+  | proofIrrel _ _ _ ih1 ih2 ih3 =>
+    exact ⟨ih2.1, ih3.1, .proofIrrel (hty ih1.1) (hty ih2.1) (hty ih3.1)⟩
+  | extra h1 h2 h3 _ _ _ _ _ _ _ _ _ ihl' ihr' =>
+    exact ⟨ihl'.1, ihr'.1, .extra h1 h2 h3⟩
 
-    exact instL_instN ▸ .appDF ih1 ih2
-  | lamDF _ _ ih1 ih2 => exact .lamDF ih1 ih2
-  | forallEDF _ _ ih1 ih2 => exact .forallEDF ih1 ih2
-  | defeqDF _ _ ih1 ih2 => exact .defeqDF ih1 ih2
-  | beta _ _ ih1 ih2 => simpa using .beta ih1 ih2
-  | eta _ ih => simpa [instL] using .eta ih
-  | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
-  | extra h1 h2 h3 =>
-    simp [instL, instL_instL]
-    exact .extra h1 (by simp [h2, VLevel.WF.inst hls]) (by simp [h3])
-
-
-
+/-
 variable (henv : Ordered env) in
 theorem IsDefEq.unique_typing'
     (H1 : env.IsDefEq U Γ e1 e2 A1) (H2 : env.IsDefEq U Γ e1 e2 A2) :
