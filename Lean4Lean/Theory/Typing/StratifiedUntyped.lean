@@ -34,6 +34,7 @@ inductive IsDefEqU1 : List VExpr → VExpr → VExpr → Prop where
   | refl : Γ ⊢ e ≡ e
   | symm : Γ ⊢ e ≡ e' → Γ ⊢ e' ≡ e
   | trans : Γ ⊢ e₁ ≡ e₂ → Γ ⊢ e₂ ≡ e₃ → Γ ⊢ e₁ ≡ e₃
+  | constDF : List.Forall₂ (· ≈ ·) ls ls' → Γ ⊢ .const c ls ≡ .const c ls'
   | sortDF : l ≈ l' → Γ ⊢ .sort l ≡ .sort l'
   | appDF :
     Γ ⊢ f ≡ f' → Γ ⊢ a ≡ a' → Γ ⊢ .app f a ≡ .app f' a'
@@ -65,10 +66,10 @@ theorem IsDefEq.inductionU1
   have H' := H.strong henv hΓ; clear hΓ H
   induction H' with
   | bvar h => exact ⟨.bvar h, .bvar h, .refl⟩
-  | @const _ _ ls' _ _ h1 h2 h3 =>
-    exact ⟨.const h1 h2 h3, .const h1 h2 h3, .refl⟩
   | symm _ ih => exact ⟨ih.2.1, ih.1, .symm ih.2.2⟩
   | trans _ _ ih1 ih2 => exact ⟨ih1.1, ih2.2.1, .trans ih1.2.2 ih2.2.2⟩
+  | @constDF _ _ ls₁ ls₂ _ _ h1 h2 h3 h4 h5 =>
+    exact ⟨.const h1 h2 h4, .defeq sorry <| .const h1 h3 (h5.length_eq.symm.trans h4), .constDF h5⟩
   | @sortDF l l' _ h1 h2 h3 =>
     refine ⟨.sort h1, ?_, .sortDF h3⟩
     exact .defeq (hdf (.sort (l := l'.succ) h2) (.sort (l := l.succ) h1)

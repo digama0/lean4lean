@@ -47,6 +47,13 @@ inductive IsDefEq1 : List VExpr → VExpr → VExpr → VExpr → Prop where
   | refl : Γ ⊢ e : A → Γ ⊢ e ≡ e : A
   | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
   | trans : Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
+  | constDF :
+    env.constants c = some (some ci) →
+    (∀ l ∈ ls, l.WF uvars) →
+    (∀ l ∈ ls', l.WF uvars) →
+    ls.length = ci.uvars →
+    List.Forall₂ (· ≈ ·) ls ls' →
+    Γ ⊢ .const c ls ≡ .const c ls' : ci.type.instL ls
   | sortDF : l.WF uvars → l'.WF uvars → l ≈ l' → Γ ⊢ .sort l ≡ .sort l' : .sort l.succ
   | appDF :
     Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A → Γ ⊢ .app f a ≡ .app f' a' : B.inst a
@@ -77,10 +84,12 @@ theorem IsDefEq.induction1
   have H' := H.strong henv hΓ; clear hΓ H
   induction H' with
   | bvar h => exact ⟨.bvar h, .bvar h, .refl (hty (.bvar h))⟩
-  | @const _ _ ls' _ _ h1 h2 h3 =>
-    exact ⟨.const h1 h2 h3, .const h1 h2 h3, .refl <| hty <| .const h1 h2 h3⟩
   | symm _ ih => exact ⟨ih.2.1, ih.1, .symm ih.2.2⟩
   | trans _ _ ih1 ih2 => exact ⟨ih1.1, ih2.2.1, .trans ih1.2.2 ih2.2.2⟩
+  | @constDF _ _ ls₁ ls₂ u _ h1 h2 h3 h4 h5 =>
+    exact ⟨.const h1 h2 h4,
+      .defeq (u := u.inst ls₁) sorry <| .const h1 h3 (h5.length_eq.symm.trans h4),
+      .constDF h1 h2 h3 h4 h5⟩
   | @sortDF l l' _ h1 h2 h3 =>
     refine ⟨.sort h1, ?_, .sortDF h1 h2 h3⟩
     exact .defeq (hdf <| .symm <| .sortDF (l' := l'.succ) h1 h2 (VLevel.succ_congr h3)) (.sort h2)
@@ -129,6 +138,7 @@ theorem IsDefEq1.induction
   | refl h => exact hty h
   | symm _ ih => exact ih.symm
   | trans _ _ ih1 ih2 => exact ih1.trans ih2
+  | constDF h1 h2 h3 h4 h5 => exact .constDF h1 h2 h3 h4 h5
   | sortDF h1 h2 h3 => exact .sortDF h1 h2 h3
   | appDF _ _ ih1 ih2 => exact .appDF ih1 ih2
   | lamDF _ _ ih1 ih2 => exact .lamDF ih1 ih2

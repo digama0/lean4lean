@@ -20,16 +20,18 @@ variable (env : VEnv) (uvars : Nat)
 
 inductive IsDefEq : List VExpr → VExpr → VExpr → VExpr → Prop where
   | bvar : Lookup Γ i A → Γ ⊢ .bvar i : A
-  | const :
-    env.constants c = some (some ci) →
-    (∀ l ∈ ls, l.WF uvars) →
-    ls.length = ci.uvars →
-    Γ ⊢ .const c ls : ci.type.instL ls
   | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
   | trans : Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
   | sortDF :
     l.WF uvars → l'.WF uvars → l ≈ l' →
     Γ ⊢ .sort l ≡ .sort l' : .sort (.succ l)
+  | constDF :
+    env.constants c = some (some ci) →
+    (∀ l ∈ ls, l.WF uvars) →
+    (∀ l ∈ ls', l.WF uvars) →
+    ls.length = ci.uvars →
+    List.Forall₂ (· ≈ ·) ls ls' →
+    Γ ⊢ .const c ls ≡ .const c ls' : ci.type.instL ls
   | appDF :
     Γ ⊢ f ≡ f' : .forallE A B →
     Γ ⊢ a ≡ a' : A →
