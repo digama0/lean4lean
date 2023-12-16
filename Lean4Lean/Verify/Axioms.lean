@@ -1,5 +1,3 @@
-import Lean
-import Std.Data.HashMap
 import Lean4Lean.Std.Basic
 import Lean4Lean.Std.NodupKeys
 
