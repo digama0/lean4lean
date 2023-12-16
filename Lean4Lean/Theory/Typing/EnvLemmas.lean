@@ -5,7 +5,7 @@ import Lean4Lean.Theory.Typing.InductiveLemmas
 
 namespace Lean4Lean
 
-theorem VEnv.WF.ordered (H : WF env ds) : Ordered env := by
+theorem VEnv.WF.ordered (H : WF ds env) : Ordered env := by
   induction H with
   | empty => exact .empty
   | decl h _ ih =>
