@@ -1,6 +1,7 @@
 import Lean4Lean.TypeChecker
 import Lean4Lean.Quot
 import Lean4Lean.Inductive.Add
+import Lean4Lean.Primitive
 
 namespace Lean
 namespace Environment
@@ -8,8 +9,8 @@ open TypeChecker
 
 open private add from Lean.Environment
 
-def checkConstantVal (env : Environment) (v : ConstantVal) : M Unit := do
-  checkName env v.name
+def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := false) : M Unit := do
+  checkName env v.name allowPrimitive
   checkDuplicatedUnivParams v.levelParams
   checkNoMVarNoFVar env v.name v.type
   let sort ← check v.type v.levelParams
@@ -40,7 +41,7 @@ def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
   else
     if check then
       M.run env (safety := .safe) (lctx := {}) do
-        checkConstantVal env v.toConstantVal
+        checkConstantVal env v.toConstantVal (← checkPrimitiveDef env v)
         checkNoMVarNoFVar env v.name v.value
         let valType ← TypeChecker.check v.value v.levelParams
         if !(← isDefEq valType v.type) then
@@ -103,4 +104,6 @@ def addDecl' (env : Environment) (decl : @& Declaration) (check := true) :
   | .opaqueDecl v => addOpaque env v check
   | .mutualDefnDecl v => addMutual env v check
   | .quotDecl => addQuot env
-  | .inductDecl lparams nparams types isUnsafe => addInductive env lparams nparams types isUnsafe
+  | .inductDecl lparams nparams types isUnsafe =>
+    let allowPrimitive ← checkPrimitiveInductive env lparams nparams types isUnsafe
+    addInductive env lparams nparams types isUnsafe allowPrimitive

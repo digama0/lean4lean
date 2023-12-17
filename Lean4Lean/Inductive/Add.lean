@@ -30,6 +30,7 @@ structure Context where
   lctx : LocalContext := {}
   ngen : NameGenerator := { namePrefix := `_ind_fresh }
   safety : DefinitionSafety
+  allowPrimitive : Bool
 
 abbrev M := ReaderT Context <| Except KernelException
 
@@ -51,6 +52,8 @@ instance : MonadLCtx M where
 def getType (fvar : Expr) : M Expr :=
   return ((← getLCtx).get! fvar.fvarId!).type
 
+def checkName (name : Name) : M Unit := fun c => c.env.checkName name c.allowPrimitive
+
 def checkInductiveTypes
     (lparams : List Name) (nparams : Nat) (indTypes : Array InductiveType)
     (k : InductiveStats → M α) : M α := do
@@ -59,8 +62,8 @@ def checkInductiveTypes
       let indType := indTypes[dIdx]
       let env := (← read).env
       let type := indType.type
-      env.checkName indType.name
-      env.checkName (mkRecName indType.name)
+      checkName indType.name
+      checkName (mkRecName indType.name)
       env.checkNoMVarNoFVar indType.name type
       _ ← check type lparams
       let rec loop stats type i nindices fuel k : M α := match fuel with
@@ -201,7 +204,7 @@ def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
         throw <| .other s!"duplicate constructor name '{n}'"
       foundCtors := foundCtors.insert n
       let t := ctor.type
-      env.checkName n
+      checkName n
       env.checkNoMVarNoFVar n t
       _ ← check t lparams
       let rec loop t i
@@ -708,12 +711,13 @@ def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
   return (oldRecNames.toList, recMap)
 
 def Environment.addInductive (env : Environment) (lparams : List Name) (nparams : Nat)
-    (types : List InductiveType) (isUnsafe : Bool) : Except KernelException Environment := do
+    (types : List InductiveType) (isUnsafe allowPrimitive : Bool) :
+    Except KernelException Environment := do
   let res ← ElimNestedInductive.run nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let isNested := !res.aux2nested.isEmpty
   let env' ← AddInductive.run lparams nparams res.types isNested
-    { env, safety := if isUnsafe then .unsafe else .safe }
+    { env, allowPrimitive, safety := if isUnsafe then .unsafe else .safe }
   if !isNested then return env'
   let allIndNames := types.map (·.name)
   let (recNames', recNameMap') := mkAuxRecNameMap env' types

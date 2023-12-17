@@ -150,6 +150,12 @@ partial def replayConstant (name : Name) : M Unit := do
         let nparams := info.numParams
         let all ← info.all.mapM fun n => do pure <| ((← read).newConstants.find! n)
         for o in all do
+          -- There is exactly one awkward special case here:
+          -- `String` is a primitive type, which depends on `Char.ofNat` to exist
+          -- because the kernel treats the existence of the `String` type as license
+          -- to use string literals, which use `Char.ofNat` internally. However
+          -- this definition is not transitively reachable from the declaration of `String`.
+          if o.name == ``String then replayConstant ``Char.ofNat
           modify fun s =>
             { s with remaining := s.remaining.erase o.name, pending := s.pending.erase o.name }
         let ctorInfo ← all.mapM fun ci => do

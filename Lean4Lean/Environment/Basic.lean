@@ -27,6 +27,17 @@ def checkNoMVarNoFVar (env : Environment) (n : Name) (e : Expr) : Except KernelE
   checkNoMVar env n e
   checkNoFVar env n e
 
-def checkName (env : Environment) (n : Name) : Except KernelException Unit := do
+def primitives : NameSet := .ofList [
+  ``Bool, ``Bool.false, ``Bool.true,
+  ``Nat, ``Nat.zero, ``Nat.succ,
+  ``Nat.add, ``Nat.pred, ``Nat.sub, ``Nat.mul, ``Nat.pow,
+  ``Nat.gcd, ``Nat.mod, ``Nat.div, ``Nat.beq, ``Nat.ble,
+  ``String, ``String.mk]
+
+def checkName (env : Environment) (n : Name)
+    (allowPrimitive := false) : Except KernelException Unit := do
   if env.contains n then
     throw <| .alreadyDeclared env n
+  unless allowPrimitive do
+    if primitives.contains n then
+      throw <| .other s!"unexpected use of primitive name {n}"
