@@ -1,5 +1,4 @@
-import Std.Data.Nat.Lemmas
-import Std.Data.List.Lemmas
+import Std.Data.Array.Lemmas
 import Std.Data.HashMap.Basic
 
 theorem funext_iff {β : α → Sort u} {f₁ f₂ : ∀ x : α, β x} : f₁ = f₂ ↔ ∀ a, f₁ a = f₂ a :=
@@ -77,3 +76,10 @@ instance : LawfulBEq Lean.FVarId where
 
 theorem beq_comm [BEq α] [PartialEquivBEq α] (a b : α) : (a == b) = (b == a) :=
   Bool.eq_iff_iff.2 ⟨PartialEquivBEq.symm, PartialEquivBEq.symm⟩
+
+theorem Array.get_modify {arr : Array α} {x i} (h : i < arr.size) :
+    (arr.modify x f).get ⟨i, by simp [h]⟩ =
+    if x = i then f (arr.get ⟨i, h⟩) else arr.get ⟨i, h⟩ := by
+  simp [modify, modifyM, Id.run]; split
+  · simp [get_set _ _ _ h]; split <;> simp [*]
+  · rw [if_neg (mt (by rintro rfl; exact h) ‹_›)]

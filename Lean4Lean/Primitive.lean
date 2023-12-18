@@ -100,22 +100,6 @@ def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
   | _ => return false
   return true
 
-def strLitToConstructor (s : String) : Expr :=
-  let char := .const ``Char []
-  let listNil := .app (.const ``List.nil [.zero]) char
-  let listCons := .app (.const ``List.cons [.zero]) char
-  let stringMk := .const ``String.mk []
-  let charOfNat := .const ``Char.ofNat []
-  .app stringMk <| s.foldr (init := listNil) fun c e =>
-    .app (.app listCons <| .app charOfNat (.lit (.natVal c.toNat))) e
-
-def isPrimitiveInductive (lparams : List Name) (nparams : Nat)
-    (types : List InductiveType) (isUnsafe : Bool) : Bool :=
-  !isUnsafe && lparams.isEmpty && nparams == 0 &&
-    match types with
-    | [type] => [``Nat, ``String, ``Bool].contains type.name
-    | _ => false
-
 def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe : Bool) : Except KernelException Bool := do
   unless !isUnsafe && lparams.isEmpty && nparams == 0 do return false
