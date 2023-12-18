@@ -265,20 +265,29 @@ def find (self : UnionFind) (x : Fin self.size) :
 @[simp] theorem find_size (self : UnionFind) (x : Fin self.size) :
     (self.find x).1.size = self.size := by simp [find, size, FindAux.size_eq]
 
-theorem find_root_2 (self : UnionFind) (x : Fin self.size) :
+@[simp] theorem find_root_2 (self : UnionFind) (x : Fin self.size) :
     (self.find x).2.1.1 = self.root x := by simp [find, findAux_root, root]
 
-theorem find_parent_1 (self : UnionFind) (x : Fin self.size) :
+@[simp] theorem find_parent_1 (self : UnionFind) (x : Fin self.size) :
     (self.find x).1.parent x = self.root x := by
   simp [find, parent]; rw [parentD_findAux, if_pos rfl]
 
-theorem find_root_root (self : UnionFind) (x : Fin self.size) :
+@[simp] theorem find_root_root (self : UnionFind) (x : Fin self.size) :
     (self.find x).1.root (self.root x) = self.root x := by
   rw [root_eq_self, parent]; exact parentD_findAux_root
 
-theorem find_root_1 (self : UnionFind) (x : Fin self.size) :
+@[simp] theorem find_root_1 (self : UnionFind) (x : Fin self.size) :
     (self.find x).1.root x = self.root x := by
   rw [← root_parent, find_parent_1, find_root_root]
+
+-- TODO
+-- @[simp] theorem find_root_root (self : UnionFind) (x : Fin self.size) (i : Nat) :
+--     (self.find x).1.root (self.root i) = self.root i := by
+--   rw [root_eq_self, parent]; exact parentD_findAux_root
+
+-- @[simp] theorem find_root_1 (self : UnionFind) (x : Fin self.size) (i : Nat) :
+--     (self.find x).1.root i = self.root i := by
+--   rw [← root_parent, find_parent_1, find_root_root]
 
 def linkAux (self : Array UFNode) (x y : Fin self.size) : Array UFNode :=
   if x.1 = y then
