@@ -65,6 +65,10 @@ theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → le
 theorem List.map_id' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
   induction l <;> simp_all
 
+theorem List.map_fst_lookup {f : α → β} [BEq β] (l : List α) (b : β) :
+    (l.map (fun a => (f a, a))).lookup b = l.find? fun a => b == f a := by
+  induction l <;> simp_all [lookup, find?]
+
 def List.All (P : α → Prop) : List α → Prop
   | [] => True
   | a::as => P a ∧ as.All P

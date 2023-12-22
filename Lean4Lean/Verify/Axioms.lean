@@ -71,6 +71,13 @@ axiom WF.find?_eq {α β} [BEq α] [Hashable α]
     [PartialEquivBEq α] [Std.HashMap.LawfulHashable α]
     {m : PersistentHashMap α β} (_ : WF m) (a : α) : m.find? a = m.toList'.lookup a
 
+/-- We can't prove this because `Lean.PersistentHashMap.{findAux, containsAux}` are opaque -/
+axiom findAux_isSome {α β} [BEq α] {node : Node α β} (i : USize) (a : α) :
+    containsAux node i a = (findAux node i a).isSome
+
+theorem find?_isSome {α β} [BEq α] [Hashable α]
+    (m : PersistentHashMap α β) (a : α) : m.contains a = (m.find? a).isSome := findAux_isSome ..
+
 theorem WF.nodupKeys [BEq α] [Hashable α]
     [LawfulBEq α] [Std.HashMap.LawfulHashable α]
     {m : PersistentHashMap α β} (h : WF m) : m.toList'.NodupKeys := by

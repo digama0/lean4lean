@@ -1,85 +1,92 @@
 import Lean4Lean.Verify.Axioms
-import Lean4Lean.Verify.Expr
+import Lean4Lean.Verify.Typing.Expr
 
 namespace Lean4Lean
 
 open Lean
+open scoped List
 
-variable (Us : List Name) (Δ : VLCtx) in
+noncomputable def _root_.Lean.LocalContext.toList (lctx : LocalContext) : List LocalDecl :=
+  lctx.decls.toList'.reverse.filterMap id
+
+variable (env : VEnv) (Us : List Name) (Δ : VLCtx) in
 inductive TrLocalDecl : LocalDecl → VLocalDecl → Prop
-  | vlam : TrExpr Us Δ ty ty' →
+  | vlam : TrExpr env Us Δ ty ty' → env.IsType Us.length Δ.toCtx ty' →
     TrLocalDecl (.cdecl n fv name ty bi kind) (.vlam ty')
-  | vlet : TrExpr Us Δ ty ty' → TrExpr Us Δ val val' →
+  | vlet :
+    TrExpr env Us Δ ty ty' → TrExpr env Us Δ val val' →
+    env.HasType Us.length Δ.toCtx val' ty' →
     TrLocalDecl (.ldecl n fv name ty val bi kind) (.vlet ty' val')
 
-variable (Us : List Name) in
+theorem TrLocalDecl.wf : TrLocalDecl env Us Δ d d' → d'.WF env Us.length Δ
+  | .vlam _ h | .vlet _ _ h => h
+
+variable (env : VEnv) (Us : List Name) in
 inductive TrLCtx : LocalContext → VLCtx → Prop
   | nil : TrLCtx ⟨.empty, .empty⟩ []
   | cons :
     d.fvarId = fv → map.find? fv = none → d.index = arr.size →
-    TrLCtx ⟨map, arr⟩ Δ → TrLocalDecl Us Δ d d' →
+    TrLCtx ⟨map, arr⟩ Δ → TrLocalDecl env Us Δ d d' →
     TrLCtx ⟨map.insert fv d, arr.push d⟩ ((some fv, d') :: Δ)
 
-theorem TrLCtx.map_WF : TrLCtx Us lctx Δ → lctx.fvarIdToDecl.WF
+theorem TrLCtx.map_wf : TrLCtx env Us lctx Δ → lctx.fvarIdToDecl.WF
   | .nil => .empty
-  | .cons _ h1 _ h2 _ => .insert h1 h2.map_WF
+  | .cons _ h1 _ h2 _ => .insert h1 h2.map_wf
 
-theorem TrLCtx.decls_WF : TrLCtx Us lctx Δ → lctx.decls.WF
+theorem TrLCtx.decls_wf : TrLCtx env Us lctx Δ → lctx.decls.WF
   | .nil => .empty
-  | .cons _ _ _ h2 _ => .push h2.decls_WF
+  | .cons _ _ _ h2 _ => .push h2.decls_wf
+
+theorem TrLCtx.map_toList : TrLCtx env Us lctx Δ →
+    lctx.fvarIdToDecl.toList' ~ lctx.toList.map fun d => (d.fvarId, d)
+  | .nil => by simp [LocalContext.toList]
+  | .cons h1 h2 _ h4 h5 => by
+    subst h1; simp [LocalContext.toList]
+    exact h4.map_wf.toList'_insert _ _ (by rwa [h4.map_wf.find?_eq] at h2)
+      |>.trans (.cons _ h4.map_toList)
+
+theorem TrLCtx.forall₂ :
+    TrLCtx env Us lctx Δ → lctx.toList.Forall₂ Δ (R := fun d d' => d'.1 = some d.fvarId)
+  | .nil => by simp [LocalContext.toList]
+  | .cons h1 _ _ h4 _ => by subst h1; simp [LocalContext.toList]; exact .cons rfl h4.forall₂
+
+theorem TrLCtx.find?_isSome (H : TrLCtx env Us lctx Δ) :
+    (lctx.find? fv).isSome = (Δ.find? (.inr fv)).isSome := by
+  rw [LocalContext.find?, H.map_wf.find?_eq, ← VLCtx.lookup_isSome,
+    H.map_toList.lookup_eq H.map_wf.nodupKeys, List.map_fst_lookup]
+  have := H.forall₂; generalize lctx.toList = l at this ⊢; clear H
+  induction this with
+  | nil => rfl
+  | @cons d d' _ _ eq _ ih =>
+    cases d'; cases eq
+    simp [List.find?, List.lookup, show (some fv == some d.fvarId) = (fv == d.fvarId) from rfl]
+    split <;> simp [*]
+
+theorem TrLCtx.find?_eq_none (H : TrLCtx env Us lctx Δ) :
+    lctx.find? fv = none ↔ Δ.find? (.inr fv) = none := by
+  simp only [← Option.not_isSome_iff_eq_none, H.find?_isSome]
+
+theorem TrLCtx.find?_eq_none' (H : TrLCtx env Us lctx Δ) :
+    lctx.find? fv = none ↔ Δ.lookup (some fv) = none := by
+  simp only [H.find?_eq_none, VLCtx.lookup_eq_none]
+
+theorem TrLCtx.contains_eq (H : TrLCtx env Us lctx Δ) :
+    lctx.contains fv = (Δ.find? (.inr fv)).isSome := by
+  rw [LocalContext.contains, PersistentHashMap.find?_isSome]; exact H.find?_isSome
+
+theorem TrLCtx.wf : TrLCtx env Us lctx Δ → Δ.WF env Us.length
+  | .nil => ⟨⟩
+  | .cons _ h2 _ h4 h5 => ⟨h4.wf, by simpa [bind, ← h4.find?_eq_none'], h5.wf⟩
 
 theorem TrLCtx.mkLocalDecl
-    (h1 : TrLCtx Us lctx Δ) (h2 : lctx.find? fv = none) (h3 : TrExpr Us Δ ty ty') :
-    TrLCtx Us (lctx.mkLocalDecl fv name ty bi kind) ((some fv, .vlam ty') :: Δ) :=
-  .cons rfl h2 rfl h1 (.vlam h3)
+    (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none) (h3 : TrExpr env Us Δ ty ty')
+    (h4 : env.IsType Us.length Δ.toCtx ty') :
+    TrLCtx env Us (lctx.mkLocalDecl fv name ty bi kind) ((some fv, .vlam ty') :: Δ) :=
+  .cons rfl h2 rfl h1 (.vlam h3 h4)
 
 theorem TrLCtx.mkLetDecl
-    (h1 : TrLCtx Us lctx Δ) (h2 : lctx.find? fv = none)
-    (h3 : TrExpr Us Δ ty ty') (h4 : TrExpr Us Δ val val') :
-    TrLCtx Us (lctx.mkLetDecl fv name ty val bi kind) ((some fv, .vlet ty' val') :: Δ) :=
-  .cons rfl h2 rfl h1 (.vlet h3 h4)
-
-end Lean4Lean
-
--- namespace Lean.LocalContext
--- open Lean4Lean
-
--- inductive WF : LocalContext → List LocalDecl → Prop
---   | nil : WF ⟨.empty, .empty⟩ []
---   | cons :
---     map.find? d.fvarId = none → d.index = arr.size →
---     WF ⟨map, arr⟩ ds → WF ⟨map.insert d.fvarId d, arr.push d⟩ (d::ds)
-
--- theorem WF.fvarIdToDecl : WF lctx ds → lctx.fvarIdToDecl.WF
---   | .nil => .empty
---   | .cons h1 _ h2 => .insert h1 h2.fvarIdToDecl
-
--- theorem WF.decls : WF lctx ds → lctx.decls.WF
---   | .nil => .empty
---   | .cons _ _ h2 => .push h2.decls
-
--- theorem WF.decls_toList' : WF lctx ds → lctx.decls.toList'.reverse = ds.map some
---   | .nil => PersistentArray.toList'_empty
---   | .cons _ _ h => by simp [PersistentArray.toList'_push]; rw [decls_toList' h]
-
--- theorem WF.decls_size (h : WF lctx ds) : lctx.decls.size = ds.length := by
---   rw [← h.decls.toList'_length, ← lctx.decls.toList'.reverse_reverse, h.decls_toList']; simp
-
--- theorem WF.mkLocalDecl (h1 : WF lctx ds) (h2 : lctx.find? fv = none) :
---     WF (lctx.mkLocalDecl fv name type bi kind) (.cdecl ds.length fv name type bi kind :: ds) := by
---   simp [mkLocalDecl, ← h1.decls_size]; exact .cons (d := .cdecl ..) h2 rfl h1
-
--- theorem WF.mkLetDecl (h1 : WF lctx ds) (h2 : lctx.find? fv = none) :
---     WF (lctx.mkLetDecl fv name type bi nonDep kind)
---        (.ldecl ds.length fv name type bi nonDep kind :: ds) := by
---   simp [mkLetDecl, ← h1.decls_size]; exact .cons (d := .ldecl ..) h2 rfl h1
-
--- theorem WF.find?_eq (h : WF lctx ds) : lctx.find? fv = ds.find? fun d => fv == d.fvarId := by
---   simp [find?, h.fvarIdToDecl.find?_eq]
---   induction h with
---   | nil => simp
---   | @cons _ _ _ d h1 h2 h3 ih =>
---     have nd := (h3.fvarIdToDecl.insert (b := d) h1).nodupKeys
---     rw [h3.fvarIdToDecl.find?_eq] at h1
---     rw [(h3.fvarIdToDecl.toList'_insert _ _ h1).lookup_eq nd]
---     simp [List.find?, List.lookup]; split <;> [rfl; simpa using ih]
+    (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none)
+    (h3 : TrExpr env Us Δ ty ty') (h4 : TrExpr env Us Δ val val')
+    (h5 : env.HasType Us.length Δ.toCtx val' ty') :
+    TrLCtx env Us (lctx.mkLetDecl fv name ty val bi kind) ((some fv, .vlet ty' val') :: Δ) :=
+  .cons rfl h2 rfl h1 (.vlet h3 h4 h5)

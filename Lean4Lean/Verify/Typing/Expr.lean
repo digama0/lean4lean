@@ -30,8 +30,8 @@ def TrProj (Δ : VLCtx) (structName : Name) (idx : Nat) (e : VExpr) : VExpr → 
 
 variable (env : VEnv) (Us : List Name) in
 inductive TrExpr : VLCtx → Expr → VExpr → Prop
-  | bvar : Δ.find? (.inl i) = some (d, n) → TrExpr Δ (.bvar i) (d.value.liftN n)
-  | fvar : Δ.find? (.inr fv) = some (d, n) → TrExpr Δ (.fvar fv) (d.value.liftN n)
+  | bvar : Δ.find? (.inl i) = some (e, A) → TrExpr Δ (.bvar i) e
+  | fvar : Δ.find? (.inr fv) = some (e, A) → TrExpr Δ (.fvar fv) e
   | sort : VLevel.ofLevel Us u = some u' → TrExpr Δ (.sort u) (.sort u')
   | const :
     env.constants c = some (some ci) →
