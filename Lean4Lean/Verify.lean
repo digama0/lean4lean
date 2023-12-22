@@ -1,1 +1,1 @@
-import Lean4Lean.Verify.Typing.LocalContext
+import Lean4Lean.Verify.Typing.Lemmas

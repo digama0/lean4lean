@@ -48,6 +48,16 @@ theorem List.Forall₂.imp (H : ∀ a b, R a b → S a b)
   | _, [] => by simp only [map, forall₂_nil_right_iff]
   | _, b :: u => by simp only [map, forall₂_cons_right_iff, forall₂_map_right_iff]
 
+theorem List.Forall₂.flip : ∀ {a b}, Forall₂ (flip R) b a → Forall₂ R a b
+  | _, _, Forall₂.nil => Forall₂.nil
+  | _ :: _, _ :: _, Forall₂.cons h₁ h₂ => Forall₂.cons h₁ h₂.flip
+
+theorem List.Forall₂.forall_exists_l {l₁ l₂} (h : Forall₂ R l₁ l₂) : ∀ a ∈ l₁, ∃ b ∈ l₂, R a b := by
+  induction h with simp [*] | cons _ _ ih => exact fun a h => .inr (ih _ h)
+
+theorem List.Forall₂.forall_exists_r {l₁ l₂} (h : Forall₂ R l₁ l₂) : ∀ b ∈ l₂, ∃ a ∈ l₁, R a b :=
+  h.flip.forall_exists_l
+
 theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → length l₁ = length l₂
   | _, _, Forall₂.nil => rfl
   | _, _, Forall₂.cons _ h₂ => congrArg Nat.succ (Forall₂.length_eq h₂)
@@ -62,6 +72,14 @@ def List.All (P : α → Prop) : List α → Prop
 theorem List.All.imp {P Q : α → Prop} (h : ∀ a, P a → Q a) : ∀ {l : List α}, l.All P → l.All Q
   | [] => id
   | _::_ => And.imp (h _) (List.All.imp h)
+
+theorem List.append_eq_append_of_length_le {a b c d : List α} (h : length a ≤ length c) :
+  a ++ b = c ++ d ↔ ∃ a', c = a ++ a' ∧ b = a' ++ d := by
+  rw [append_eq_append_iff, or_iff_left_iff_imp]
+  rintro ⟨c', rfl, rfl⟩
+  rw [← Nat.add_zero c.length, length_append,
+    Nat.add_le_add_iff_left, Nat.le_zero, length_eq_zero] at h
+  subst h; exact ⟨[], by simp⟩
 
 instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
@@ -83,3 +101,8 @@ theorem Array.get_modify {arr : Array α} {x i} (h : i < arr.size) :
   simp [modify, modifyM, Id.run]; split
   · simp [get_set _ _ _ h]; split <;> simp [*]
   · rw [if_neg (mt (by rintro rfl; exact h) ‹_›)]
+
+theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
+    l.mapM f = some l' ↔ List.Forall₂ (f · = some ·) l l' := by
+  induction l generalizing l' <;>
+    simp [List.mapM_nil, List.mapM_cons, bind, List.forall₂_cons_left_iff, *, pure, @eq_comm _ l']

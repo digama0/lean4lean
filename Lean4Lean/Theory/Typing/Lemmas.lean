@@ -10,6 +10,28 @@ inductive Ctx.LiftN (n : Nat) : Nat → List VExpr → List VExpr → Prop where
 
 def Ctx.LiftN.one : Ctx.LiftN 1 0 Γ (A::Γ) := .zero [_]
 
+theorem Ctx.LiftN.isSuffix (H : Ctx.LiftN n k Γ Γ') :
+    ∃ Γ₀ As Δ Δ',
+      As.length = n ∧ Δ.length = k ∧ Δ'.length = k ∧
+      Γ = Δ ++ Γ₀ ∧ Γ' = Δ' ++ As ++ Γ₀ := by
+  induction H with
+  | @zero Γ As h => exact ⟨Γ, As, [], [], h, rfl, rfl, rfl, rfl⟩
+  | succ _ ih =>
+    obtain ⟨_, _, Δ, Δ', hn, hΔ, hΔ', rfl, rfl⟩ := ih
+    exact ⟨_, _, _ :: Δ, _ :: Δ', hn, by simp [hΔ], by simp [hΔ'], rfl, rfl⟩
+
+theorem Ctx.LiftN.comp (h1 : k1 ≤ k2) (h2 : k2 ≤ n1 + k1) :
+    Ctx.LiftN n1 k1 Γ₀ Γ₁ → Ctx.LiftN n2 k2 Γ₁ Γ₂ → Ctx.LiftN (n1+n2) k1 Γ₀ Γ₂
+  | .zero As h, H2 => by
+    obtain ⟨Γ₀', _, Δ, Δ', hn, hΔ, hΔ', eq, rfl⟩ := H2.isSuffix
+    obtain ⟨As, rfl, rfl⟩ := (List.append_eq_append_of_length_le (by rwa [h, hΔ])).1 eq.symm
+    rw [← List.append_assoc]
+    exact .zero _ (by simp [← h, hΔ, hΔ', hn, Nat.add_left_comm, Nat.add_comm])
+  | .succ H1, .succ H2 =>
+    have h1 := Nat.le_of_succ_le_succ h1
+    have h2 := Nat.le_of_succ_le_succ h2
+    liftN'_liftN' h1 h2 ▸ (H1.comp h1 h2 H2).succ
+
 variable (Γ₀ : List VExpr) (e₀ A₀ : VExpr) in
 inductive Ctx.InstN : Nat → List VExpr → List VExpr → Prop where
   | zero : Ctx.InstN 0 (A₀ :: Γ₀) Γ₀
@@ -94,6 +116,12 @@ theorem CtxClosed.lookup (h : CtxClosed Γ) (hL : Lookup Γ n A) : A.ClosedN Γ.
   | .zero, ⟨h1, h2⟩ => h2.liftN
   | .succ hL, ⟨h1, h2⟩ => (CtxClosed.lookup h1 hL).liftN
 
+theorem Ctx.LiftN.right (h : CtxClosed Γ) (Γ') : Ctx.LiftN Γ'.length Γ.length Γ (Γ ++ Γ') :=
+  match Γ, h with
+  | [], _ => by simpa using LiftN.zero (Γ := []) Γ'
+  | A :: Γ, ⟨h1, h2⟩ => by
+    simpa [h2.liftN_eq (Nat.le_refl _)] using LiftN.succ (LiftN.right h1 Γ') (A := A)
+
 inductive VObject where
   | const (n : Name) (oci : Option VConstant)
   | defeq (df : VDefEq)
@@ -158,6 +186,10 @@ theorem IsDefEq.defeq' (h1 : IsDefEq env U Γ A B (.sort u))
 theorem IsDefEq.hasType {env : VEnv} (H : env.IsDefEq U Γ e1 e2 A) :
     env.HasType U Γ e1 A ∧ env.HasType U Γ e2 A := ⟨H.trans H.symm, H.symm.trans H⟩
 
+theorem IsDefEqU.refl {env : VEnv} (h1 : e.WF env U Γ) : env.IsDefEqU U Γ e e := h1
+theorem IsDefEqU.symm {env : VEnv} (h1 : env.IsDefEqU U Γ e₁ e₂) : env.IsDefEqU U Γ e₂ e₁ :=
+  h1.imp fun _ => (·.symm)
+
 inductive Ordered : VEnv → Prop where
   | empty : Ordered ∅
   | const :
@@ -197,6 +229,25 @@ theorem Ordered.induction (motive : VEnv → Nat → VExpr → VExpr → Prop)
     · let ⟨hl, hr⟩ := h2
       exact ⟨type h1 ih hl, type h1 ih hr⟩
     · exact ih.2 hdf
+
+variable (env : VEnv) (U : Nat) (Γ₀ : List VExpr) in
+inductive IsDefEqCtx : List VExpr → List VExpr → Prop
+  | zero : IsDefEqCtx Γ₀ Γ₀
+  | succ :  IsDefEqCtx Γ₁ Γ₂ → env.IsDefEq U Γ₁ A₁ A₂ (.sort u) → IsDefEqCtx (A₁ :: Γ₁) (A₂ :: Γ₂)
+
+theorem IsDefEqCtx.length_eq : IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → Γ₁.length = Γ₂.length
+  | .zero => rfl
+  | .succ h  _ => congrArg Nat.succ h.length_eq
+
+theorem IsDefEqCtx.isSuffix : IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → Γ₀ <:+ Γ₁ ∧ Γ₀ <:+ Γ₂
+  | .zero => ⟨List.suffix_refl _, List.suffix_refl _⟩
+  | .succ h _ =>
+    let ⟨h1, h2⟩ := h.isSuffix
+    ⟨h1.trans (List.suffix_cons _ _), h2.trans (List.suffix_cons _ _)⟩
+
+theorem IsDefEqCtx.isType : IsDefEqCtx env U [] Γ₁ Γ₂ → OnCtx Γ₁ (env.IsType U)
+  | .zero => ⟨⟩
+  | .succ h1 h2 => ⟨h1.isType, _, h2.hasType.1⟩
 
 variable (henv : OnTypes env fun _ e A => e.ClosedN ∧ A.ClosedN) in
 theorem IsDefEq.closedN' (H : env.IsDefEq U Γ e1 e2 A) (hΓ : CtxClosed Γ) :
@@ -250,6 +301,14 @@ theorem Ordered.closedC (H : Ordered env)
 theorem IsDefEq.closedN {env : VEnv} (henv : env.Ordered)
     (H : env.IsDefEq U Γ e1 e2 A) (hΓ : CtxClosed Γ) : e1.ClosedN Γ.length :=
   (H.closedN' henv.closed hΓ).1
+
+variable (henv : Ordered env) in
+theorem IsDefEqCtx.closed (H : CtxClosed Γ₀) :
+    IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → CtxClosed Γ₁ ∧ CtxClosed Γ₂
+  | .zero => ⟨H, H⟩
+  | .succ h1 h2 =>
+    have ⟨c1, c2⟩ := h1.closed H
+    ⟨⟨c1, h2.closedN henv c1⟩, ⟨c2, by simpa [h1.length_eq] using h2.symm.closedN henv c1⟩⟩
 
 variable {env env' : VEnv} (henv : env ≤ env') in
 theorem IsDefEq.mono (H : env.IsDefEq U Γ e1 e2 A) : env'.IsDefEq U Γ e1 e2 A := by
@@ -388,10 +447,14 @@ theorem IsDefEq.weak (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U (B::Γ) e1.lift e2.lift A.lift := H.weakN henv .one
 
 variable (henv : Ordered env) in
-theorem IsDefEq.weak0 (H : env.IsDefEq U [] e1 e2 A) : env.IsDefEq U Γ e1 e2 A := by
-  have ⟨h1, h2, h3⟩ := H.closedN' henv.closed ⟨⟩
-  simpa [h1.liftN_eq (Nat.zero_le _), h2.liftN_eq (Nat.zero_le _),
-    h3.liftN_eq (Nat.zero_le _)] using H.weakN henv (.zero Γ rfl)
+theorem IsDefEq.weakR (hΓ : CtxClosed Γ) (H : env.IsDefEq U Γ e1 e2 A) (Γ') :
+    env.IsDefEq U (Γ ++ Γ') e1 e2 A := by
+  have ⟨h1, h2, h3⟩ := H.closedN' henv.closed hΓ
+  simpa [h1.liftN_eq, h2.liftN_eq, h3.liftN_eq] using H.weakN henv (.right hΓ Γ')
+
+variable (henv : Ordered env) in
+theorem IsDefEq.weak0 (H : env.IsDefEq U [] e1 e2 A) : env.IsDefEq U Γ e1 e2 A :=
+  H.weakR henv (Γ := []) ⟨⟩ _
 
 variable (henv : Ordered env) in
 nonrec theorem HasType.weak0 (H : env.HasType U [] e A) : env.HasType U Γ e A := H.weak0 henv
@@ -477,14 +540,40 @@ theorem IsType.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀
     (H : env.IsType U Γ₁ A) (h₀ : env.HasType U Γ₀ e₀ A₀) :
     env.IsType U Γ (A.inst e₀ k) := let ⟨_, h⟩ := H; ⟨_, h.instN henv W h₀⟩
 
-theorem IsDefEq.defeqDF_l (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
-    (h2 : env.IsDefEq U (A::Γ) e1 e2 B) : env.IsDefEq U (A'::Γ) e1 e2 B := by
+theorem IsDefEq.defeqDF_l' (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
+    (h2 : env.IsDefEq U (Δ++A::Γ) e1 e2 B) : env.IsDefEq U (Δ++A'::Γ) e1 e2 B := by
+  have ⟨_, H1, H2⟩ : ∃ Γ', Ctx.LiftN 1 (Δ.length + 1) (Δ ++ A :: Γ) Γ' ∧
+      Ctx.InstN (A' :: Γ) (VExpr.bvar 0) (liftN 1 A) Δ.length Γ' (Δ ++ A' :: Γ) := by
+    clear h1 h2
+    induction Δ with
+    | nil => exact ⟨_, .succ (.one (A := A')), .zero⟩
+    | cons B Δ ih =>
+      have ⟨Γ', h1, h2⟩ := ih
+      exact ⟨_, .succ h1, by simpa [instN_bvar0] using h2.succ (A := liftN 1 B (Δ.length + 1))⟩
   simpa [instN_bvar0] using
-    h2.weakN henv (.succ (.one (A := A'))) |>.instN henv
-      (h1.weakN henv (.one (A := A')) |>.symm.defeq (.bvar .zero)) .zero
+    instN henv (h1.weakN henv (.one (A := A')) |>.symm.defeq (.bvar .zero)) H2 (.weakN henv H1 h2)
+
+theorem IsDefEq.defeqDF_l (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
+    (h2 : env.IsDefEq U (A::Γ) e1 e2 B) : env.IsDefEq U (A'::Γ) e1 e2 B :=
+  .defeqDF_l' (Δ := []) henv h1 h2
 
 theorem HasType.defeq_l (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
     (h2 : env.HasType U (A::Γ) e B) : env.HasType U (A'::Γ) e B := h1.defeqDF_l henv h2
+
+theorem IsDefEq.defeqDFC' (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ₁ Γ₂)
+    (h2 : env.IsDefEq U (Δ ++ Γ₁) e₁ e₂ A) : env.IsDefEq U (Δ ++ Γ₂) e₁ e₂ A := by
+  induction h1 generalizing e₁ e₂ A Δ with
+  | zero => exact h2
+  | @succ _ _ _ A₂ _ _ AA ih =>
+    simpa using ih (Δ := Δ ++ [A₂]) (by simpa using AA.defeqDF_l' henv h2)
+
+theorem IsDefEq.defeqDFC (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ₁ Γ₂)
+    (h2 : env.IsDefEq U Γ₁ e₁ e₂ A) : env.IsDefEq U Γ₂ e₁ e₂ A := .defeqDFC' (Δ := []) henv h1 h2
+
+theorem IsDefEqCtx.symm (henv : Ordered env) :
+    IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → IsDefEqCtx env U Γ₀ Γ₂ Γ₁
+  | .zero => .zero
+  | .succ h1 h2 => .succ (h1.symm henv) (h2.symm.defeqDFC henv h1)
 
 variable (henv : Ordered env)
   (envIH : env.OnTypes fun U e _ => ∀ A B, e = A.forallE B →
@@ -642,35 +731,3 @@ theorem IsDefEq.instDF
       .trans (.appDF (.lamDF hA hf) ha) <|
       .defeqDF (.symm hi) (.beta hf.hasType.2 ha.hasType.2)
   H2 hf <| H2 hB (.sort (hB.sort_r henv (Γ := _::_) ⟨hΓ, _, hA⟩))
-
-variable (env : VEnv) (U : Nat) (Γ : List VExpr) in
-inductive IsDefEqTr : VExpr → VExpr → Prop
-  | one : env.IsDefEq U Γ e1 e2 V → IsDefEqTr e1 e2
-  | trans : IsDefEqTr e1 e2 → IsDefEqTr e2 e3 → IsDefEqTr e1 e3
-
-theorem IsDefEqTr.symm (H : IsDefEqTr env U Γ e1 e2) : IsDefEqTr env U Γ e2 e1 := by
-  induction H with
-  | one h => exact .one h.symm
-  | trans _ _ ih1 ih2 => exact .trans ih2 ih1
-
-variable (henv : Ordered env) in
-theorem IsDefEqTr.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEqTr U Γ e1 e2) :
-    env.IsDefEqTr U Γ' (e1.liftN n k) (e2.liftN n k) := by
-  induction H with
-  | one h => exact .one (.weakN henv W h)
-  | trans _ _ ih1 ih2 => exact .trans ih1 ih2
-
-variable {env : VEnv} {ls : List VLevel} (hls : ∀ l ∈ ls, l.WF U') in
-theorem IsDefEqTr.instL (H : env.IsDefEqTr U Γ e1 e2) :
-    env.IsDefEqTr U' (Γ.map (VExpr.instL ls)) (e1.instL ls) (e2.instL ls) := by
-  induction H with
-  | one h => exact .one (.instL hls h)
-  | trans _ _ ih1 ih2 => exact .trans ih1 ih2
-
-variable (henv : Ordered env) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) in
-theorem IsDefEqTr.instN
-    (H : env.IsDefEqTr U Γ₁ e1 e2) (h₀ : env.HasType U Γ₀ e₀ A₀) :
-    env.IsDefEqTr U Γ (e1.inst e₀ k) (e2.inst e₀ k) := by
-  induction H with
-  | one h => exact .one (.instN henv h₀ W h)
-  | trans _ _ ih1 ih2 => exact .trans ih1 ih2

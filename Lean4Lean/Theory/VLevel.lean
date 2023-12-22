@@ -109,3 +109,10 @@ def ofLevel : Lean.Level → Option VLevel
     let i := ls.indexOf n
     if i < ls.length then some (.param i) else none
   | .mvar _ => none
+
+theorem WF.of_ofLevel (h : ofLevel ls l = some l') : l'.WF ls.length := by
+  induction l generalizing l' with simp [ofLevel, bind, Option.bind_eq_some] at h
+  | zero => cases h; trivial
+  | succ _ ih => obtain ⟨l', h, ⟨⟩⟩ := h; exact @ih l' h
+  | max _ _ ih1 ih2 | imax _ _ ih1 ih2 => obtain ⟨_, h1, _, h2, ⟨⟩⟩ := h; exact ⟨ih1 h1, ih2 h2⟩
+  | param n => split at h <;> cases h; assumption

@@ -516,9 +516,14 @@ theorem HasType.app_inv (H : env.HasType U Γ (.app f a) V) :
   H.app_inv' henv hΓ (.inl rfl)
 
 variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.app_inv (H : VExpr.WF env U Γ (.app f a)) :
+    ∃ A B, env.HasType U Γ f (.forallE A B) ∧ env.HasType U Γ a A :=
+  let ⟨_, H⟩ := H; HasType.app_inv henv hΓ H
+
+variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.lam_inv'
     (H : env.IsDefEq U Γ e1 e2 V) (eq : e1 = .lam A body ∨ e2 = .lam A body) :
-    env.IsType U Γ A ∧ ∃ B, env.HasType U (A::Γ) body B := by
+    env.IsType U Γ A ∧ body.WF env U (A::Γ) := by
   have H' := H.strong henv hΓ; clear H hΓ
   induction H' with
   | symm _ ih => exact ih eq.symm
@@ -542,8 +547,13 @@ theorem IsDefEq.lam_inv'
 
 variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem HasType.lam_inv (H : env.HasType U Γ (.lam A body) V) :
-    env.IsType U Γ A ∧ ∃ B, env.HasType U (A::Γ) body B :=
+    env.IsType U Γ A ∧ body.WF env U (A::Γ) :=
   H.lam_inv' henv hΓ (.inl rfl)
+
+variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.lam_inv (H : VExpr.WF env U Γ (.lam A body)) :
+    env.IsType U Γ A ∧ body.WF env U (A::Γ) :=
+  let ⟨_, H⟩ := H; HasType.lam_inv henv hΓ H
 
 variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.const_inv'
@@ -573,3 +583,8 @@ variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem HasType.const_inv (H : env.HasType U Γ (.const c ls) V) :
     ∃ ci, env.constants c = some (some ci) ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
   H.const_inv' henv hΓ (.inl rfl)
+
+variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.const_inv (H : VExpr.WF env U Γ (.const c ls)) :
+    ∃ ci, env.constants c = some (some ci) ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
+  let ⟨_, H⟩ := H; HasType.const_inv henv hΓ H

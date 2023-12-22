@@ -11,9 +11,6 @@ theorem IsDefEq.uniq (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     (h1 : env.IsDefEq U Γ e₁ e₂ A) (h2 : env.IsDefEq U Γ e₂ e₃ B) :
     ∃ u, env.IsDefEq U Γ A B (.sort u) := sorry
 
-def IsDefEqU (env : VEnv) (U : Nat) (Γ : List VExpr) (e₁ e₂ : VExpr) :=
-  ∃ A, env.IsDefEq U Γ e₁ e₂ A
-
 theorem IsDefEq.uniqU (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     (h1 : env.IsDefEq U Γ e₁ e₂ A) (h2 : env.IsDefEq U Γ e₂ e₃ B) :
     env.IsDefEqU U Γ A B := let ⟨_, h⟩ := h1.uniq henv hΓ h2; ⟨_, h⟩
@@ -48,12 +45,32 @@ theorem IsDefEqU.defeqDF (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
   have ⟨_, hA⟩ := h₂.isType henv hΓ
   exact .defeqDF (hA.trans_l henv hΓ h₁) h₂
 
+theorem IsDefEqU.of_l (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+    (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.HasType U Γ e₁ A) :
+    env.IsDefEq U Γ e₁ e₂ A := let ⟨_, h⟩ := h1; h2.trans_l henv hΓ h
+
+theorem HasType.defeqU_l (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+    (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.HasType U Γ e₁ A) :
+    env.HasType U Γ e₂ A := (h1.of_l henv hΓ h2).hasType.2
+
+theorem IsDefEqU.of_r (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+    (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.HasType U Γ e₂ A) :
+    env.IsDefEq U Γ e₁ e₂ A := (h1.symm.of_l henv hΓ h2).symm
+
+theorem HasType.defeqU_r (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+    (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.HasType U Γ e₂ A) :
+    env.HasType U Γ e₁ A := (h1.of_r henv hΓ h2).hasType.1
+
+theorem IsDefEqU.trans (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+    (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.IsDefEqU U Γ e₂ e₃) :
+    env.IsDefEqU U Γ e₁ e₃ := h1.imp fun _ h1 => let ⟨_, h2⟩ := h2; h1.trans_l henv hΓ h2
+
 theorem IsDefEqU.sort_inv (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     (h1 : env.IsDefEqU U Γ (.sort u) (.sort v)) : u ≈ v := sorry
 
 theorem IsDefEqU.forallE_inv (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     (h1 : env.IsDefEqU U Γ (.forallE A B) (.forallE A' B')) :
-    env.IsDefEqU U Γ A A' ∧ env.IsDefEqU U (A::Γ) B B' := sorry
+    (∃ u, env.IsDefEq U Γ A A' (.sort u)) ∧ ∃ u, env.IsDefEq U (A::Γ) B B' (.sort u) := sorry
 
 theorem IsDefEqU.sort_forallE_inv (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) :
     ¬env.IsDefEqU U Γ (.sort u) (.forallE A B) := sorry
