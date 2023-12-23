@@ -14,7 +14,9 @@ lean_exe lean4lean where
   supportInterpreter := true
 
 @[default_target]
-lean_lib Lean4Lean.Theory
+lean_lib Lean4Lean.Theory where
+  globs := #[.andSubmodules `Lean4Lean.Theory]
 
 @[default_target]
-lean_lib Lean4Lean.Verify
+lean_lib Lean4Lean.Verify where
+  globs := #[.andSubmodules `Lean4Lean.Verify]

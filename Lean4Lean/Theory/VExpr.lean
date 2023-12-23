@@ -503,3 +503,108 @@ theorem instN_bvar0 (e : VExpr) (k : Nat) :
     inst (e.liftN 1 (k+1)) (.bvar 0) k = e := by
   induction e generalizing k with simp [liftN, inst, *]
   | bvar i => induction i generalizing k <;> cases k <;> simp [*, lift, liftN]
+
+end VExpr
+
+inductive Lift : Type where
+  | refl : Lift
+  | skip : Lift → Lift
+  | cons : Lift → Lift
+
+@[simp] def Lift.skipN : Nat → Lift
+  | 0   => .refl
+  | n+1 => .skip (Lift.skipN n)
+
+@[simp] def Lift.consN (l : Lift) : Nat → Lift
+  | 0  => l
+  | k+1 => .cons (Lift.consN l k)
+
+@[simp] def Lift.comp (l₁ l₂ : Lift) : Lift :=
+  match l₂, l₁ with
+  | .refl,    l₁       => l₁
+  | .skip l₂, l₁       => .skip (l₁.comp l₂)
+  | .cons l₂, .refl    => .cons l₂
+  | .cons l₂, .skip l₁ => .skip (l₁.comp l₂)
+  | .cons l₂, .cons l₁ => .cons (l₁.comp l₂)
+
+@[simp] def Lift.depth : Lift → Nat
+  | .refl   => 0
+  | .skip l => l.depth + 1
+  | .cons l => l.depth
+
+theorem Lift.depth_comp : Lift.depth (.comp l₁ l₂) = l₁.depth + l₂.depth :=
+  match l₂, l₁ with
+  | .refl,    _        => rfl
+  | .skip _,  _        => congrArg Nat.succ Lift.depth_comp
+  | .cons _,  .refl    => (Nat.zero_add _).symm
+  | .cons _,  .skip _  => (congrArg Nat.succ Lift.depth_comp).trans (Nat.succ_add ..).symm
+  | .cons l₂, .cons l₁ => @Lift.depth_comp l₁ l₂
+
+@[simp] theorem Lift.depth_consN : Lift.depth (.consN l n) = l.depth := by induction n <;> simp [*]
+
+theorem Lift.consN_consN : Lift.consN (.consN l a) b = .consN l (a + b) := by
+  induction b <;> simp [*]
+
+theorem Lift.consN_comp : Lift.consN (.comp l₁ l₂) n = .comp (.consN l₁ n) (.consN l₂ n) := by
+  induction n <;> simp [*]
+
+@[simp] theorem Lift.depth_skipN : Lift.depth (.skipN n) = n := by induction n <;> simp [*]
+
+theorem Lift.consN_skip_eq : consN (skip l) k = comp (consN l k) (consN (skipN 1) k) := by
+  rw [← consN_comp]; rfl
+
+theorem Lift.depth_succ (H : l.depth = n + 1) :
+    ∃ l' k, Lift.depth l' = n ∧ l = Lift.consN (.skip l') k := by
+  match l with
+  | .skip l => cases H; exact ⟨l, 0, rfl, rfl⟩
+  | .cons l =>
+    obtain ⟨l, k, rfl, ⟨⟩⟩ := depth_succ (l := l) H
+    exact ⟨l, k+1, rfl, rfl⟩
+
+theorem Lift.depth_succ' (H : l.depth = n + 1) :
+    ∃ l' k, Lift.depth l' = n ∧ l = Lift.comp l' (.consN (.skipN 1) k) := by
+  let ⟨l', k, h1, h2⟩ := depth_succ H
+  exact ⟨.consN l' k, k, by simp [h1], by rwa [← consN_skip_eq]⟩
+
+@[simp] def Lift.liftVar : Lift → Nat → Nat
+  | .refl, n => n
+  | .skip l, n => l.liftVar n + 1
+  | .cons _, 0 => 0
+  | .cons l, n+1 => l.liftVar n + 1
+
+theorem liftVar_comp : Lift.liftVar (.comp l₁ l₂) n = l₂.liftVar (l₁.liftVar n) := by
+  induction l₂ generalizing l₁ n <;> [skip; skip; cases l₁ <;> [skip; skip; cases n]] <;> simp [*]
+
+theorem liftVar_skipN : (Lift.skipN n).liftVar i = i + n := by
+  induction n generalizing i with
+  | zero => rfl
+  | succ _ ih => simp [ih, Nat.add_right_comm]; rfl
+
+theorem liftVar_consN_skipN : (Lift.consN (.skipN n) k).liftVar i = liftVar n i k := by
+  induction k generalizing i with
+  | zero => simp [liftVar_skipN]
+  | succ k ih =>
+    cases i with simp [liftVar, Nat.succ_lt_succ_iff, ih]
+    | succ i => split <;> rfl
+
+theorem liftVar_depth_zero (H : l.depth = 0) : Lift.liftVar l n = n := by
+  induction l generalizing n <;> [skip; skip; cases n] <;> simp_all [Lift.depth]
+
+namespace VExpr
+
+@[simp] def lift' : VExpr → Lift → VExpr
+  | .bvar i, k => .bvar (k.liftVar i)
+  | .sort u, _ => .sort u
+  | .const c us, _ => .const c us
+  | .app fn arg, k => .app (fn.lift' k) (arg.lift' k)
+  | .lam ty body, k => .lam (ty.lift' k) (body.lift' k.cons)
+  | .forallE ty body, k => .forallE (ty.lift' k) (body.lift' k.cons)
+
+theorem lift'_consN_skipN : e.lift' (.consN (.skipN n) k) = liftN n e k := Eq.symm <| by
+  induction e generalizing k <;> simp [liftN, liftVar_consN_skipN, *]
+
+theorem lift'_comp {e : VExpr} : e.lift' (.comp l₁ l₂) = (e.lift' l₁).lift' l₂ := Eq.symm <| by
+  induction e generalizing l₁ l₂ <;> simp [liftVar_comp, *]
+
+theorem lift'_depth_zero {e : VExpr} (H : l.depth = 0) : e.lift' l = e := by
+  induction e generalizing l <;> simp_all [liftVar_depth_zero]

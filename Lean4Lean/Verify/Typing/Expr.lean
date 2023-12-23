@@ -1,13 +1,14 @@
 import Lean4Lean.Theory.Typing.Basic
+import Lean4Lean.Verify.NameGenerator
 import Lean4Lean.Verify.VLCtx
 
 namespace Lean4Lean
 open Lean
 
-variable (fvars : List FVarId) in
+variable (fvars : FVarId → Prop) in
 def InScope : Expr → (k :_:= 0) → Prop
   | .bvar i, k => i < k
-  | .fvar fv, _ => fv ∈ fvars
+  | .fvar fv, _ => fvars fv
   | .sort .., _ | .const .., _ | .lit .., _ => True
   | .app f a, k => InScope f k ∧ InScope a k
   | .lam _ d b _, k

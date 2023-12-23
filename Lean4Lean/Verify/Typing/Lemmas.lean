@@ -3,7 +3,17 @@ import Lean4Lean.Theory.Typing.Strong
 import Lean4Lean.Theory.Typing.UniqueTyping
 
 namespace Lean4Lean
-open VEnv
+open VEnv Lean
+
+theorem InScope.mono {P Q : FVarId → Prop} (H : ∀ fv, P fv → Q fv) :
+    ∀ {e k}, InScope P e k → InScope Q e k
+  | .bvar _, _, h | .sort .., _, h | .const .., _, h | .lit .., _, h => h
+  | .fvar _, _, h => H _ h
+  | .app .., _, ⟨h1, h2⟩
+  | .lam .., _, ⟨h1, h2⟩
+  | .forallE .., _, ⟨h1, h2⟩ => ⟨h1.mono H, h2.mono H⟩
+  | .letE .., _, ⟨h1, h2, h3⟩ => ⟨h1.mono H, h2.mono H, h3.mono H⟩
+  | .proj _ _ e, _, h | .mdata _ e, _, h => h.mono (e := e) H
 
 theorem VLocalDecl.WF.hasType :
     ∀ {d}, VLocalDecl.WF env U Δ d → env.HasType U (VLCtx.toCtx ((ofv, d) :: Δ)) d.value d.type

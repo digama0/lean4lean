@@ -9,29 +9,32 @@ def isAsSafeAs : DefinitionSafety → ConstantInfo → Bool
   | .partial, ci => !ci.isUnsafe
   | .safe, ci => !ci.isUnsafe && !ci.isPartial
 
-def TrConstant (safety : DefinitionSafety) (ci : ConstantInfo) (ci' : VConstant) : Prop :=
+variable (safety : DefinitionSafety) (env : VEnv) in
+def TrConstant (ci : ConstantInfo) (ci' : VConstant) : Prop :=
   isAsSafeAs safety ci ∧ ci.levelParams.length = ci'.uvars ∧
-  TrExpr ci.levelParams [] ci.type ci'.type
+  TrExpr env ci.levelParams [] ci.type ci'.type
 
-def TrConstVal (safety : DefinitionSafety) (ci : ConstantInfo) (ci' : VConstVal) : Prop :=
-  TrConstant safety ci ci'.toVConstant ∧ ci.name = ci'.name
+variable (safety : DefinitionSafety) (env : VEnv) in
+def TrConstVal (ci : ConstantInfo) (ci' : VConstVal) : Prop :=
+  TrConstant safety env ci ci'.toVConstant ∧ ci.name = ci'.name
 
-def TrDefVal (safety : DefinitionSafety) (ci : ConstantInfo) (ci' : VDefVal) : Prop :=
-  TrConstVal safety ci ci'.toVConstVal ∧
-  TrExpr ci.levelParams [] ci.value! ci'.value
+variable (safety : DefinitionSafety) (env : VEnv) in
+def TrDefVal (ci : ConstantInfo) (ci' : VDefVal) : Prop :=
+  TrConstVal safety env ci ci'.toVConstVal ∧
+  TrExpr env ci.levelParams [] ci.value! ci'.value
 
-def AddQuot1 (name : Name) (kind : QuotKind) (ci' : VConstant) (P : ConstMap → Prop)
+def AddQuot1 (env : VEnv) (name : Name) (kind : QuotKind) (ci' : VConstant) (P : ConstMap → Prop)
     (m : ConstMap) : Prop :=
   ∃ levelParams type,
     let ci := .quotInfo { name, kind, levelParams, type }
-    TrConstant .safe ci ci' ∧
+    TrConstant .safe env ci ci' ∧
     P (m.insert name ci)
 
-def AddQuot (m1 m2 : ConstMap) : Prop :=
-  AddQuot1 ``Quot .type quotConst (m := m1) <|
-  AddQuot1 ``Quot.mk .ctor quotMkConst <|
-  AddQuot1 ``Quot.lift .lift quotLiftConst <|
-  AddQuot1 ``Quot.ind .ind quotMkConst (Eq m2)
+def AddQuot (env : VEnv) (m1 m2 : ConstMap) : Prop :=
+  AddQuot1 env ``Quot .type quotConst (m := m1) <|
+  AddQuot1 env ``Quot.mk .ctor quotMkConst <|
+  AddQuot1 env ``Quot.lift .lift quotLiftConst <|
+  AddQuot1 env ``Quot.ind .ind quotMkConst (Eq m2)
 
 def AddInduct (m1 : ConstMap) (decl : VInductDecl) (m2 : ConstMap) : Prop := sorry
 
@@ -44,19 +47,19 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name ci) Q env'
   | axiom :
-    TrConstant safety (.axiomInfo ci) ci' →
+    TrConstant safety env (.axiomInfo ci) ci' →
     ci'.WF env →
     env.addConst ci.name (some ci') = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.axiomInfo ci)) Q env'
   | defn {ci' : VDefVal} :
-    TrDefVal safety (.defnInfo ci) ci' →
+    TrDefVal safety env (.defnInfo ci) ci' →
     ci'.WF env →
     env.addConst ci.name (some ci'.toVConstant) = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
   | opaque {ci' : VDefVal} :
-    TrDefVal safety (.opaqueInfo ci) ci' →
+    TrDefVal safety env (.opaqueInfo ci) ci' →
     ci'.WF env →
     env.addConst ci.name (some ci'.toVConstant) = some env' →
     TrEnv' C Q env →
@@ -64,7 +67,7 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | quot :
     env.QuotReady →
     env.addQuot = some env' →
-    AddQuot C C' →
+    AddQuot env C C' →
     TrEnv' C false env →
     TrEnv' C' true env'
   | induct :

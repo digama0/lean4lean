@@ -32,6 +32,55 @@ theorem Ctx.LiftN.comp (h1 : k1 ≤ k2) (h2 : k2 ≤ n1 + k1) :
     have h2 := Nat.le_of_succ_le_succ h2
     liftN'_liftN' h1 h2 ▸ (H1.comp h1 h2 H2).succ
 
+inductive Ctx.Lift' : Lift → List VExpr → List VExpr → Prop where
+  | refl : Ctx.Lift' .refl Γ Γ
+  | skip : Ctx.Lift' l Γ Γ' → Ctx.Lift' (.skip l) Γ (A :: Γ')
+  | cons : Ctx.Lift' l Γ Γ' → Ctx.Lift' (.cons l) (A::Γ) (A.lift' l :: Γ')
+
+theorem Ctx.liftN_iff_lift' : Ctx.LiftN n k Γ Γ' ↔ Ctx.Lift' (.consN (.skipN n) k) Γ Γ' := by
+  constructor <;> intro h
+  · induction h with
+    | zero As =>
+      subst n
+      induction As with
+      | nil => simp [Lift'.refl]
+      | cons _ _ ih => exact .skip ih
+    | succ _ ih => rw [← lift'_consN_skipN]; exact .cons ih
+  · induction k generalizing Γ Γ' with
+    | zero =>
+      obtain ⟨_, rfl, eq⟩ : ∃ As, Γ' = As ++ Γ ∧ As.length = n := by
+        induction n generalizing Γ' with
+        | zero => cases h; exact ⟨[], rfl, rfl⟩
+        | succ n ih => let .skip h := h; obtain ⟨_, rfl, rfl⟩ := ih h; exact ⟨_::_, rfl, rfl⟩
+      exact .zero _ eq
+    | succ k ih => let .cons h := h; rw [lift'_consN_skipN]; exact .succ (ih h)
+
+theorem Ctx.Lift'.comp (H1 : Ctx.Lift' l₁ Γ₁ Γ₂) (H2 : Ctx.Lift' l₂ Γ₂ Γ₃) :
+    Ctx.Lift' (.comp l₁ l₂) Γ₁ Γ₃ := by
+  induction H2 generalizing l₁ Γ₁ with
+  | refl => exact H1
+  | skip _ ih => exact .skip (ih H1)
+  | cons H2 ih =>
+    cases H1 with
+    | refl => exact .cons H2
+    | skip H1 => exact .skip (ih H1)
+    | cons H1 => rw [← VExpr.lift'_comp]; exact .cons (ih H1)
+
+theorem Ctx.Lift'.of_cons_skip (H : Ctx.Lift' (Lift.consN (.skip l) k) Γ₁ Γ₃) :
+    ∃ Γ₂, Ctx.Lift' (Lift.consN l k) Γ₁ Γ₂ ∧ Ctx.LiftN 1 k Γ₂ Γ₃ := by
+  induction k generalizing Γ₁ Γ₃ with
+  | zero => let .skip H := H; exact ⟨_, H, .one⟩
+  | succ k ih =>
+    let .cons (A := A) H := H
+    let ⟨_, h1, h2⟩ := ih H
+    refine ⟨_, .cons h1, ?_⟩
+    simp only [Ctx.liftN_iff_lift'] at h2 ⊢
+    simpa [← VExpr.lift'_comp, ← Lift.consN_comp] using h2.cons (A := lift' A (.consN l k))
+
+theorem Ctx.Lift'.depth_zero (h : l.depth = 0) : Ctx.Lift' l Γ Γ' → Γ = Γ'
+  | .refl => rfl
+  | .cons (l := l) H => by rw [VExpr.lift'_depth_zero (l := l) h, H.depth_zero (l := l) h]
+
 variable (Γ₀ : List VExpr) (e₀ A₀ : VExpr) in
 inductive Ctx.InstN : Nat → List VExpr → List VExpr → Prop where
   | zero : Ctx.InstN 0 (A₀ :: Γ₀) Γ₀
@@ -65,8 +114,9 @@ theorem Lookup.weakN (W : Ctx.LiftN n k Γ Γ') (H : Lookup Γ i A) :
     | .zero => rw [liftVar_zero, ← lift_liftN']; exact .zero
     | .succ H => rw [liftVar_succ, ← lift_liftN']; exact (ih H).succ
 
-theorem Lookup.weakN_inv (W : Ctx.LiftN n k Γ Γ') (H : Lookup Γ' (liftVar n i k) (A.liftN n k)) :
-    Lookup Γ i A := by
+theorem Lookup.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
+    Lookup Γ' (liftVar n i k) (A.liftN n k) ↔ Lookup Γ i A := by
+  refine ⟨fun H => ?_, fun H => H.weakN W⟩
   induction W generalizing i A with
   | zero As =>
     rw [liftVar_base, Nat.add_comm] at H
@@ -89,6 +139,17 @@ theorem Lookup.weakN_inv (W : Ctx.LiftN n k Γ Γ') (H : Lookup Γ' (liftVar n i
       simp at H; let .succ H := H
       obtain ⟨_, rfl, rfl⟩ := of_liftN_eq_liftN (k2 := 0) eA
       exact .succ (ih H)
+
+theorem Lookup.weak'_iff (W : Ctx.Lift' l Γ Γ') :
+    Lookup Γ' (l.liftVar i) (A.lift' l) ↔ Lookup Γ i A := by
+  generalize e : l.depth = n
+  induction n generalizing l Γ' with
+  | zero => rw [liftVar_depth_zero e, VExpr.lift'_depth_zero e, W.depth_zero e]
+  | succ n ih =>
+    obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
+    have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
+    rw [Lift.consN_skip_eq, liftVar_comp, liftVar_consN_skipN, lift'_comp, lift'_consN_skipN,
+      weakN_iff W2, ih W1 Lift.depth_consN]
 
 theorem Lookup.instL : Lookup Γ i A → Lookup (Γ.map (VExpr.instL ls)) i (A.instL ls)
   | .zero => instL_liftN ▸ .zero
@@ -458,6 +519,18 @@ theorem IsDefEq.weak0 (H : env.IsDefEq U [] e1 e2 A) : env.IsDefEq U Γ e1 e2 A 
 
 variable (henv : Ordered env) in
 nonrec theorem HasType.weak0 (H : env.HasType U [] e A) : env.HasType U Γ e A := H.weak0 henv
+
+variable (henv : Ordered env) in
+theorem IsDefEq.weak' (W : Ctx.Lift' l Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :
+    env.IsDefEq U Γ' (e1.lift' l) (e2.lift' l) (A.lift' l) := by
+  generalize e : l.depth = n
+  induction n generalizing l Γ' with
+  | zero => simpa [lift'_depth_zero e, W.depth_zero e] using H
+  | succ n ih =>
+    obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
+    have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
+    simp only [Lift.consN_skip_eq, lift'_comp, lift'_consN_skipN]
+    exact (ih W1 Lift.depth_consN).weakN henv W2
 
 theorem IsType.lookup (henv : Ordered env) (h : OnCtx Γ (IsType env U)) (hL : Lookup Γ n A) :
     env.IsType U Γ A := h.lookup hL <| .weakN henv .one

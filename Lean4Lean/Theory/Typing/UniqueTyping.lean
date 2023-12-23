@@ -75,12 +75,12 @@ theorem IsDefEqU.forallE_inv (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)
 theorem IsDefEqU.sort_forallE_inv (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) :
     ¬env.IsDefEqU U Γ (.sort u) (.forallE A B) := sorry
 
-variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+variable (henv : Ordered env) (hΓ : OnCtx Γ' (env.IsType U)) in
 theorem IsDefEqU.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     env.IsDefEqU U Γ' (e1.liftN n k) (e2.liftN n k) ↔ env.IsDefEqU U Γ e1 e2 := by
   refine ⟨fun h => have := henv; have := hΓ; sorry, fun h => h.weakN henv W⟩
 
-theorem IsDefEq.skips (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+theorem IsDefEq.skips (henv : Ordered env) (hΓ : OnCtx Γ' (env.IsType U))
     (W : Ctx.LiftN n k Γ Γ')
     (H : env.IsDefEq U Γ' e₁ e₂ A) (h1 : e₁.Skips n k) (h2 : e₂.Skips n k) :
     ∃ B, env.IsDefEq U Γ' e₁ e₂ B ∧ B.Skips n k := by
@@ -93,9 +93,9 @@ variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) (hΓ : OnCtx Γ 
 theorem IsDefEq.weakN_iff' (W : Ctx.LiftN n k Γ Γ') :
     env.IsDefEq U Γ' (e1.liftN n k) (e2.liftN n k) (A.liftN n k) ↔ env.IsDefEq U Γ e1 e2 A := by
   refine ⟨fun h => ?_, fun h => h.weakN henv W⟩
-  have ⟨_, H⟩ := (IsDefEqU.weakN_iff henv hΓ W).1 ⟨_, h⟩
+  have ⟨_, H⟩ := (IsDefEqU.weakN_iff henv hΓ' W).1 ⟨_, h⟩
   refine IsDefEqU.defeqDF henv hΓ ?_ H
-  exact (IsDefEqU.weakN_iff henv hΓ W).1 <| (H.weakN henv W).uniqU henv hΓ' h.symm
+  exact (IsDefEqU.weakN_iff henv hΓ' W).1 <| (H.weakN henv W).uniqU henv hΓ' h.symm
 
 variable (henv : Ordered env) in
 theorem _root_.Lean4Lean.OnCtx.weakN_inv
@@ -125,7 +125,41 @@ theorem IsType.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     env.IsType U Γ' (A.liftN n k) ↔ env.IsType U Γ A :=
   exists_congr fun _ => HasType.weakN_iff henv hΓ' W (A := .sort _)
 
-variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
 theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
     (h1 : env.HasType U Γ' e A) (h2 : e.Skips n k) : ∃ B, env.HasType U Γ' e B ∧ B.Skips n k :=
-  IsDefEq.skips henv hΓ W h1 h2 h2
+  IsDefEq.skips henv hΓ' W h1 h2 h2
+
+variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
+theorem IsDefEqU.weak'_iff (W : Ctx.Lift' l Γ Γ') :
+    env.IsDefEqU U Γ' (e1.lift' l) (e2.lift' l) ↔ env.IsDefEqU U Γ e1 e2 := by
+  generalize e : l.depth = n
+  induction n generalizing l Γ' with
+  | zero => simp [VExpr.lift'_depth_zero e, W.depth_zero e]
+  | succ n ih =>
+    obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
+    have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
+    simp only [Lift.consN_skip_eq, VExpr.lift'_comp, VExpr.lift'_consN_skipN,
+      weakN_iff henv hΓ' W2, ih (hΓ'.weakN_inv henv W2) W1 Lift.depth_consN]
+
+variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
+theorem IsDefEq.weak'_iff (W : Ctx.Lift' l Γ Γ') :
+    env.IsDefEq U Γ' (e1.lift' l) (e2.lift' l) (A.lift' l) ↔ env.IsDefEq U Γ e1 e2 A := by
+  generalize e : l.depth = n
+  induction n generalizing l Γ' with
+  | zero => simp [VExpr.lift'_depth_zero e, W.depth_zero e]
+  | succ n ih =>
+    obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
+    have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
+    simp only [Lift.consN_skip_eq, VExpr.lift'_comp, VExpr.lift'_consN_skipN,
+      weakN_iff henv hΓ' W2, ih (hΓ'.weakN_inv henv W2) W1 Lift.depth_consN]
+
+variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
+theorem HasType.weak'_iff (W : Ctx.Lift' l Γ Γ') :
+    env.HasType U Γ' (e.lift' l) (A.lift' l) ↔ env.HasType U Γ e A :=
+  IsDefEq.weak'_iff henv hΓ' W
+
+variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
+theorem IsType.weak'_iff (W : Ctx.Lift' l Γ Γ') :
+    env.IsType U Γ' (e.lift' l) ↔ env.IsType U Γ e :=
+  exists_congr fun _ => HasType.weak'_iff henv hΓ' W (A := .sort _)

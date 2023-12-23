@@ -9,6 +9,9 @@ open scoped List
 noncomputable def _root_.Lean.LocalContext.toList (lctx : LocalContext) : List LocalDecl :=
   lctx.decls.toList'.reverse.filterMap id
 
+noncomputable def _root_.Lean.LocalContext.fvars (lctx : LocalContext) : List FVarId :=
+  lctx.toList.map (·.fvarId)
+
 variable (env : VEnv) (Us : List Name) (Δ : VLCtx) in
 inductive TrLocalDecl : LocalDecl → VLocalDecl → Prop
   | vlam : TrExpr env Us Δ ty ty' → env.IsType Us.length Δ.toCtx ty' →
@@ -74,9 +77,15 @@ theorem TrLCtx.contains_eq (H : TrLCtx env Us lctx Δ) :
     lctx.contains fv = (Δ.find? (.inr fv)).isSome := by
   rw [LocalContext.contains, PersistentHashMap.find?_isSome]; exact H.find?_isSome
 
+theorem TrLCtx.fvars_eq (H : TrLCtx env Us lctx Δ) : lctx.fvars = Δ.fvars := by
+  simp [LocalContext.fvars, VLCtx.fvars, LocalContext.toList]
+  induction H with
+  | nil => rfl
+  | cons h1 _ _ _ _ ih => simp [h1, ← ih]
+
 theorem TrLCtx.wf : TrLCtx env Us lctx Δ → Δ.WF env Us.length
   | .nil => ⟨⟩
-  | .cons _ h2 _ h4 h5 => ⟨h4.wf, by simpa [bind, ← h4.find?_eq_none'], h5.wf⟩
+  | .cons _ _ _ h4 h5 => ⟨h4.wf, by simpa [bind, ← h4.find?_eq_none'], h5.wf⟩
 
 theorem TrLCtx.mkLocalDecl
     (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none) (h3 : TrExpr env Us Δ ty ty')
