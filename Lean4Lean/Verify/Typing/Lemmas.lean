@@ -7,15 +7,18 @@ namespace Lean4Lean
 open VEnv Lean
 open scoped List
 
-theorem InScope.mono {P Q : FVarId → Prop} (H : ∀ fv, P fv → Q fv) :
-    ∀ {e k}, InScope P e k → InScope Q e k
-  | .bvar _, _, h | .sort .., _, h | .const .., _, h | .lit .., _, h => h
-  | .fvar _, _, h => H _ h
-  | .app .., _, ⟨h1, h2⟩
-  | .lam .., _, ⟨h1, h2⟩
-  | .forallE .., _, ⟨h1, h2⟩ => ⟨h1.mono H, h2.mono H⟩
-  | .letE .., _, ⟨h1, h2, h3⟩ => ⟨h1.mono H, h2.mono H, h3.mono H⟩
-  | .proj _ _ e, _, h | .mdata _ e, _, h => h.mono (e := e) H
+theorem InScope.mp {P Q R : FVarId → Prop} (H : ∀ fv, P fv → Q fv → R fv) :
+    ∀ {e k}, InScope P e k → InScope Q e k → InScope R e k
+  | .bvar _, _, l, _ | .sort .., _, l, _ | .const .., _, l, _ | .lit .., _, l, _ => l
+  | .fvar _, _, l, r => H _ l r
+  | .app .., _, ⟨l1, l2⟩, ⟨r1, r2⟩
+  | .lam .., _, ⟨l1, l2⟩, ⟨r1, r2⟩
+  | .forallE .., _, ⟨l1, l2⟩, ⟨r1, r2⟩ => ⟨l1.mp H r1, l2.mp H r2⟩
+  | .letE .., _, ⟨l1, l2, l3⟩, ⟨r1, r2, r3⟩ => ⟨l1.mp H r1, l2.mp H r2, l3.mp H r3⟩
+  | .proj _ _ e, _, l, r | .mdata _ e, _, l, r => l.mp (e := e) H r
+
+theorem InScope.mono {P Q : FVarId → Prop} (H : ∀ fv, P fv → Q fv)
+    (h : InScope P e k) : InScope Q e k := h.mp (fun _ h _ => H _ h) h
 
 theorem InScope.natLitToConstructor : InScope P (.natLitToConstructor n) k := by
   cases n <;> simp [InScope]

@@ -18,3 +18,5 @@ theorem LE.trans {ngen₁ ngen₃ ngen₃ : NameGenerator} : ngen₁ ≤ ngen₂
 
 theorem Reserves.mono : ngen ≤ ngen' → Reserves ngen fv → Reserves ngen' fv
   | ⟨h₁⟩ => fun H _ hi => Nat.lt_of_lt_of_le (H _ hi) h₁
+
+theorem LE.next {ngen : NameGenerator} : ngen ≤ ngen.next := ⟨Nat.le_succ _⟩
