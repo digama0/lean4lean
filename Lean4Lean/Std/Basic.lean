@@ -1,3 +1,4 @@
+import Std.CodeAction
 import Std.Data.Array.Lemmas
 import Std.Data.HashMap.Basic
 
@@ -110,3 +111,6 @@ theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
     l.mapM f = some l' ↔ List.Forall₂ (f · = some ·) l l' := by
   induction l generalizing l' <;>
     simp [List.mapM_nil, List.mapM_cons, bind, List.forall₂_cons_left_iff, *, pure, @eq_comm _ l']
+
+@[simp] theorem Option.bind_eq_none' {o : Option α} {f : α → Option β} :
+    o.bind f = none ↔ ∀ a, o = some a → f a = none := by cases o <;> simp

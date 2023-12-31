@@ -53,6 +53,10 @@ theorem HasType.defeqU_l (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.HasType U Γ e₁ A) :
     env.HasType U Γ e₂ A := (h1.of_l henv hΓ h2).hasType.2
 
+theorem IsType.defeqU_l (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+    (h1 : env.IsDefEqU U Γ A₁ A₂) (h2 : env.IsType U Γ A₁) :
+    env.IsType U Γ A₂ := h2.imp fun _ h2 => h2.defeqU_l henv hΓ h1
+
 theorem IsDefEqU.of_r (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.HasType U Γ e₂ A) :
     env.IsDefEq U Γ e₁ e₂ A := (h1.symm.of_l henv hΓ h2).symm
@@ -79,6 +83,10 @@ variable (henv : Ordered env) (hΓ : OnCtx Γ' (env.IsType U)) in
 theorem IsDefEqU.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     env.IsDefEqU U Γ' (e1.liftN n k) (e2.liftN n k) ↔ env.IsDefEqU U Γ e1 e2 := by
   refine ⟨fun h => have := henv; have := hΓ; sorry, fun h => h.weakN henv W⟩
+
+variable (henv : Ordered env) (hΓ : OnCtx Γ' (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
+    VExpr.WF env U Γ' (e.liftN n k) ↔ VExpr.WF env U Γ e := IsDefEqU.weakN_iff henv hΓ W
 
 theorem IsDefEq.skips (henv : Ordered env) (hΓ : OnCtx Γ' (env.IsType U))
     (W : Ctx.LiftN n k Γ Γ')

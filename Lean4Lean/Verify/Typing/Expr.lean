@@ -17,17 +17,17 @@ def InScope : Expr → (k :_:= 0) → Prop
   | .proj _ _ e, k | .mdata _ e, k => InScope e k
   | .mvar .., _ => False
 
-def VLocalDecl.WF (env : VEnv) (U : Nat) (Δ : VLCtx) : VLocalDecl → Prop
-  | .vlam type => env.IsType U Δ.toCtx type
-  | .vlet type value => env.HasType U Δ.toCtx value type
+def VLocalDecl.WF (env : VEnv) (U : Nat) (Γ : List VExpr) : VLocalDecl → Prop
+  | .vlam type => env.IsType U Γ type
+  | .vlet type value => env.HasType U Γ value type
 
 variable (env : VEnv) (U : Nat) in
 def VLCtx.WF : VLCtx → Prop
   | [] => True
   | (ofv, d) :: (Δ : VLCtx) =>
-    VLCtx.WF Δ ∧ (do Δ.lookup (some (← ofv))) = none ∧ VLocalDecl.WF env U Δ d
+    VLCtx.WF Δ ∧ (do Δ.lookup (some (← ofv))) = none ∧ VLocalDecl.WF env U Δ.toCtx d
 
-def TrProj (Δ : VLCtx) (structName : Name) (idx : Nat) (e : VExpr) : VExpr → Prop := sorry
+def TrProj (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr) : VExpr → Prop := sorry
 
 variable (env : VEnv) (Us : List Name) in
 inductive TrExpr : VLCtx → Expr → VExpr → Prop
@@ -59,4 +59,4 @@ inductive TrExpr : VLCtx → Expr → VExpr → Prop
     TrExpr Δ (.letE name ty val body bi) body'
   | lit : TrExpr Δ l.toConstructor e → TrExpr Δ (.lit l) e
   | mdata : TrExpr Δ e e' → TrExpr Δ (.mdata d e) e'
-  | proj : TrExpr Δ e e' → TrProj Δ s i e' e'' → TrExpr Δ (.proj s i e) e''
+  | proj : TrExpr Δ e e' → TrProj Δ.toCtx s i e' e'' → TrExpr Δ (.proj s i e) e''

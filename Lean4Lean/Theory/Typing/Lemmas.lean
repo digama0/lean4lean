@@ -232,9 +232,9 @@ theorem IsDefEq.const
     (h1 : env.constants c = some (some ci)) (h2 : ∀ l ∈ ls, l.WF U) (h3 : ls.length = ci.uvars) :
     HasType env U Γ (.const c ls) (ci.type.instL ls) :=
   .constDF h1 h2 h2 h3 (.rfl fun _ _ => rfl)
-theorem IsDefEq.app (h1 : HasType env U Γ f (.forallE A B)) (h2 : HasType env U Γ a A) :
+theorem HasType.app (h1 : HasType env U Γ f (.forallE A B)) (h2 : HasType env U Γ a A) :
     HasType env U Γ (.app f a) (B.inst a) := .appDF h1 h2
-theorem IsDefEq.lam (h1 : HasType env U Γ A (.sort u)) (h2 : HasType env U (A::Γ) body B) :
+theorem HasType.lam (h1 : HasType env U Γ A (.sort u)) (h2 : HasType env U (A::Γ) body B) :
     HasType env U Γ (.lam A body) (.forallE A B) := .lamDF h1 h2
 theorem IsDefEq.forallE
     (h1 : HasType env U Γ A (.sort u)) (h2 : HasType env U (A::Γ) body (.sort v)) :
@@ -642,6 +642,9 @@ theorem IsDefEq.defeqDFC' (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ�
 
 theorem IsDefEq.defeqDFC (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ₁ Γ₂)
     (h2 : env.IsDefEq U Γ₁ e₁ e₂ A) : env.IsDefEq U Γ₂ e₁ e₂ A := .defeqDFC' (Δ := []) henv h1 h2
+
+theorem IsType.defeqDFC (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ₁ Γ₂)
+    (h2 : env.IsType U Γ₁ A) : env.IsType U Γ₂ A := h2.imp fun _ => (·.defeqDFC henv h1)
 
 theorem IsDefEqCtx.symm (henv : Ordered env) :
     IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → IsDefEqCtx env U Γ₀ Γ₂ Γ₁

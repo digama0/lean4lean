@@ -25,6 +25,10 @@ def VLocalDecl.type : VLocalDecl → VExpr
   | .vlam A => A.lift
   | .vlet A _ => A
 
+def VLocalDecl.liftN : VLocalDecl → Nat → Nat → VLocalDecl
+  | .vlam A, n, k => .vlam (A.liftN n k)
+  | .vlet A e, n, k => .vlet (A.liftN n k) (e.liftN n k)
+
 def VLCtx := List (Option FVarId × VLocalDecl)
 
 namespace VLCtx
@@ -44,6 +48,10 @@ def find? : VLCtx → Nat ⊕ FVarId → Option (VExpr × VExpr)
     | some v => do let (e, A) ← find? Δ v; some (e.liftN d.depth, A.liftN d.depth)
 
 def fvars (Δ : VLCtx) : List FVarId := Δ.filterMap (·.1)
+
+@[simp] theorem fvars_nil : fvars [] = [] := rfl
+@[simp] theorem fvars_cons_none {Δ : VLCtx} : fvars ((none, d) :: Δ) = fvars Δ := rfl
+@[simp] theorem fvars_cons_some {Δ : VLCtx} : fvars ((some fv, d) :: Δ) = fv :: fvars Δ := rfl
 
 def toCtx : VLCtx → List VExpr
   | [] => []
@@ -65,5 +73,14 @@ theorem lookup_isSome : ∀ {Δ : VLCtx}, (Δ.lookup (some fv)).isSome = (Δ.fin
 
 theorem lookup_eq_none {Δ : VLCtx} : Δ.lookup (some fv) = none ↔ Δ.find? (.inr fv) = none := by
   simp only [← Option.not_isSome_iff_eq_none, lookup_isSome]
+
+theorem mem_fvars : ∀ {Δ : VLCtx}, fv ∈ fvars Δ ↔ ∃ x, Δ.lookup (some fv) = some x
+  | [] => by simp
+  | (ofv, d) :: Δ => by
+    cases ofv with
+    | none => simp [List.lookup, show (some fv == none) = false from rfl, mem_fvars]
+    | some fv' =>
+      simp [List.lookup, show (some fv == some fv') = (fv == fv') from rfl]
+      cases e : fv == fv' <;> simp at e <;> simp [e, mem_fvars]
 
 end VLCtx

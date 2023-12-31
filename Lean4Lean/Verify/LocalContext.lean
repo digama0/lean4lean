@@ -21,7 +21,7 @@ inductive TrLocalDecl : LocalDecl → VLocalDecl → Prop
     env.HasType Us.length Δ.toCtx val' ty' →
     TrLocalDecl (.ldecl n fv name ty val bi kind) (.vlet ty' val')
 
-theorem TrLocalDecl.wf : TrLocalDecl env Us Δ d d' → d'.WF env Us.length Δ
+theorem TrLocalDecl.wf : TrLocalDecl env Us Δ d d' → d'.WF env Us.length Δ.toCtx
   | .vlam _ h | .vlet _ _ h => h
 
 variable (env : VEnv) (Us : List Name) in

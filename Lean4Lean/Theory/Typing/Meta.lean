@@ -45,6 +45,6 @@ macro_rules | `(tactic| type_tac) => `(tactic|
     (case f => type_tac); (case a => type_tac); (case eq => exact rfl)
   | refine IsDefEq.const' ?h1 ?h2 ?h3 ?eq (ci := ?_)
     (case h1 => assumption); (case h2 => decide); (case h3 => decide); (case eq => exact rfl)
-  | refine IsDefEq.lam ?h1 ?h2 (u := ?_)
+  | refine HasType.lam ?h1 ?h2 (u := ?_)
     (case h1 => type_tac); (case h2 => type_tac)
 )

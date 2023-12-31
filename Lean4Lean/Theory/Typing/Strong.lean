@@ -541,7 +541,7 @@ theorem IsDefEq.lam_inv'
     exact ihee (.inl eq)
   | eta _ _ hA _ _ _ he' _ _ _ ih =>
     obtain ⟨⟨⟩⟩ | eq := eq
-    · exact ⟨⟨_, hA.defeq.hasType.1⟩, _, .app he'.defeq.hasType.1 (.bvar .zero)⟩
+    · exact ⟨⟨_, hA.defeq.hasType.1⟩, _, he'.defeq.hasType.1.app (.bvar .zero)⟩
     · exact ih (.inl eq)
   | _ => match eq with.
 
