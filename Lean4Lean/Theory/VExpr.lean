@@ -504,6 +504,11 @@ theorem instN_bvar0 (e : VExpr) (k : Nat) :
   induction e generalizing k with simp [liftN, inst, *]
   | bvar i => induction i generalizing k <;> cases k <;> simp [*, lift, liftN]
 
+def OnVars (P : Nat → Prop) (e : VExpr) : Prop := ∀ k, e.Skips 1 k ∨ P k
+
+theorem OnVars.mono {P Q : Nat → Prop} (H : ∀ i, P i → Q i) (h : OnVars P e) : OnVars Q e :=
+  fun _ => (h _).imp_right (H _)
+
 end VExpr
 
 inductive Lift : Type where

@@ -33,6 +33,11 @@ def VLCtx := List (Option FVarId × VLocalDecl)
 
 namespace VLCtx
 
+def bvars : VLCtx → Nat
+  | [] => 0
+  | (none, _) :: Δ => bvars Δ + 1
+  | (some _, _) :: Δ => bvars Δ
+
 def next : Option FVarId → Nat ⊕ FVarId → Option (Nat ⊕ FVarId)
   | none, .inl 0 => none
   | none, .inl (n+1) => some (.inl n)
@@ -46,6 +51,12 @@ def find? : VLCtx → Nat ⊕ FVarId → Option (VExpr × VExpr)
     match next ofv v with
     | none => some (d.value, d.type)
     | some v => do let (e, A) ← find? Δ v; some (e.liftN d.depth, A.liftN d.depth)
+
+def vlamName : VLCtx → Nat → Option (Option FVarId)
+  | [], _ => none
+  | (_, .vlet ..) :: Δ, i
+  | (_, .vlam ..) :: Δ, i+1 => vlamName Δ i
+  | (ofv, .vlam ..) :: _, 0 => some ofv
 
 def fvars (Δ : VLCtx) : List FVarId := Δ.filterMap (·.1)
 
@@ -71,16 +82,23 @@ theorem lookup_isSome : ∀ {Δ : VLCtx}, (Δ.lookup (some fv)).isSome = (Δ.fin
       cases fv' == fv <;> simp [lookup_isSome]
       cases find? Δ (.inr fv) <;> simp [bind]
 
-theorem lookup_eq_none {Δ : VLCtx} : Δ.lookup (some fv) = none ↔ Δ.find? (.inr fv) = none := by
-  simp only [← Option.not_isSome_iff_eq_none, lookup_isSome]
-
-theorem mem_fvars : ∀ {Δ : VLCtx}, fv ∈ fvars Δ ↔ ∃ x, Δ.lookup (some fv) = some x
+theorem lookup_eq_some : ∀ {Δ : VLCtx}, (∃ x, Δ.lookup (some fv) = some x) ↔ fv ∈ fvars Δ
   | [] => by simp
   | (ofv, d) :: Δ => by
     cases ofv with
-    | none => simp [List.lookup, show (some fv == none) = false from rfl, mem_fvars]
+    | none => simp [List.lookup, show (some fv == none) = false from rfl, lookup_eq_some]
     | some fv' =>
       simp [List.lookup, show (some fv == some fv') = (fv == fv') from rfl]
-      cases e : fv == fv' <;> simp at e <;> simp [e, mem_fvars]
+      cases e : fv == fv' <;> simp at e <;> simp [e, lookup_eq_some]
+
+theorem find?_eq_some : (∃ x, Δ.find? (.inr fv) = some x) ↔ fv ∈ fvars Δ := by
+  rw [← Option.isSome_iff_exists, ← lookup_isSome, Option.isSome_iff_exists, lookup_eq_some]
+
+theorem vlamName_mem_fvars : ∀ {Δ : VLCtx} {i}, Δ.vlamName i = some (some fv) → fv ∈ fvars Δ
+  | (none, .vlet ..) :: Δ, _, h
+  | (none, .vlam ..) :: Δ, _+1, h => vlamName_mem_fvars (Δ := Δ) h
+  | (some _, .vlet ..) :: Δ, _, h
+  | (some _, .vlam ..) :: Δ, _+1, h => .tail _ <| vlamName_mem_fvars (Δ := Δ) h
+  | (some _fv, .vlam ..) :: _, 0, rfl => .head _
 
 end VLCtx

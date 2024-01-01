@@ -7,18 +7,36 @@ namespace Lean4Lean
 open VEnv Lean
 open scoped List
 
-theorem InScope.mp {P Q R : FVarId → Prop} (H : ∀ fv, P fv → Q fv → R fv) :
-    ∀ {e k}, InScope P e k → InScope Q e k → InScope R e k
-  | .bvar _, _, l, _ | .sort .., _, l, _ | .const .., _, l, _ | .lit .., _, l, _ => l
-  | .fvar _, _, l, r => H _ l r
-  | .app .., _, ⟨l1, l2⟩, ⟨r1, r2⟩
-  | .lam .., _, ⟨l1, l2⟩, ⟨r1, r2⟩
-  | .forallE .., _, ⟨l1, l2⟩, ⟨r1, r2⟩ => ⟨l1.mp H r1, l2.mp H r2⟩
-  | .letE .., _, ⟨l1, l2, l3⟩, ⟨r1, r2, r3⟩ => ⟨l1.mp H r1, l2.mp H r2, l3.mp H r3⟩
-  | .proj _ _ e, _, l, r | .mdata _ e, _, l, r => l.mp (e := e) H r
+theorem InScope.mp (H : ∀ fv, P fv → Q fv → R fv) :
+    ∀ {e}, InScope P e k → InScope Q e k → InScope R e k
+  | .bvar _, l, _ | .sort .., l, _ | .const .., l, _ | .lit .., l, _ => l
+  | .fvar _, l, r => H _ l r
+  | .app .., ⟨l1, l2⟩, ⟨r1, r2⟩
+  | .lam .., ⟨l1, l2⟩, ⟨r1, r2⟩
+  | .forallE .., ⟨l1, l2⟩, ⟨r1, r2⟩ => ⟨l1.mp H r1, l2.mp H r2⟩
+  | .letE .., ⟨l1, l2, l3⟩, ⟨r1, r2, r3⟩ => ⟨l1.mp H r1, l2.mp H r2, l3.mp H r3⟩
+  | .proj _ _ e, l, r | .mdata _ e, l, r => l.mp (e := e) H r
 
-theorem InScope.mono {P Q : FVarId → Prop} (H : ∀ fv, P fv → Q fv)
-    (h : InScope P e k) : InScope Q e k := h.mp (fun _ h _ => H _ h) h
+theorem InScope.mono (H : ∀ fv, P fv → Q fv) (h : InScope P e k) : InScope Q e k :=
+  h.mp (fun _ h _ => H _ h) h
+
+theorem InScope.mono_r (H : k ≤ k') : ∀ {e}, InScope P e k → InScope P e k'
+  | .bvar _, h => Nat.lt_of_lt_of_le h H
+  | .fvar _, h | .sort .., h | .const .., h | .lit .., h => h
+  | .app .., ⟨h1, h2⟩ => ⟨h1.mono_r H, h2.mono_r H⟩
+  | .lam .., ⟨h1, h2⟩
+  | .forallE .., ⟨h1, h2⟩ => ⟨h1.mono_r H, h2.mono_r (Nat.succ_le_succ H)⟩
+  | .letE .., ⟨h1, h2, h3⟩ => ⟨h1.mono_r H, h2.mono_r H, h3.mono_r (Nat.succ_le_succ H)⟩
+  | .proj _ _ e, h | .mdata _ e, h => h.mono_r (e := e) H
+
+theorem InScope.mix : ∀ {e}, InScope P e k → InScope Q e k' → InScope P e k'
+  | .bvar _, _, l | .sort .., l, _ | .const .., l, _ | .lit .., l, _ => l
+  | .fvar _, l, _ => l
+  | .app .., ⟨l1, l2⟩, ⟨r1, r2⟩
+  | .lam .., ⟨l1, l2⟩, ⟨r1, r2⟩
+  | .forallE .., ⟨l1, l2⟩, ⟨r1, r2⟩ => ⟨l1.mix r1, l2.mix r2⟩
+  | .letE .., ⟨l1, l2, l3⟩, ⟨r1, r2, r3⟩ => ⟨l1.mix r1, l2.mix r2, l3.mix r3⟩
+  | .proj _ _ e, l, r | .mdata _ e, l, r => l.mix (e := e) r
 
 theorem InScope.natLitToConstructor : InScope P (.natLitToConstructor n) k := by
   cases n <;> simp [InScope]
@@ -78,8 +96,7 @@ theorem VLCtx.WF.fvars_nodup : ∀ {Δ}, VLCtx.WF env U Δ → Δ.fvars.Nodup
   | (none, _) :: Δ, ⟨hΔ, _, _⟩ => fvars_nodup (Δ := Δ) hΔ
   | (some fv, _) :: Δ, ⟨hΔ,  h, _⟩ => by
     suffices fv ∉ fvars Δ from (fvars_nodup hΔ).cons (fun _ h e => this (e ▸ h))
-    simp [bind] at h
-    simpa only [mem_fvars, ← Option.isSome_iff_exists, Option.not_isSome_iff_eq_none] using h
+    simpa using h
 
 namespace VLCtx
 
@@ -112,7 +129,7 @@ theorem LiftN.wf (W : LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U :
   | skip_fvar _ _ _ ih => exact ih hΔ'.1
   | cons_bvar _ W ih =>
     let ⟨hΔ', _, h2⟩ := hΔ'
-    exact ⟨ih hΔ', rfl, (VLocalDecl.weakN_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
+    exact ⟨ih hΔ', fun., (VLocalDecl.weakN_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
 
 variable (henv : Ordered env) in
 theorem LiftN.fvars_suffix (W : LiftN Δ Δ' dk n k) : Δ.fvars <:+ Δ'.fvars := by
@@ -133,9 +150,7 @@ theorem LiftN.find? (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
       cases eq : fv' == fv <;> simp
       · exact ⟨_, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
       · refine ((List.pairwise_cons.1 hΔ'.fvars_nodup).1 fv' ?_ rfl).elim
-        refine W.fvars_suffix.subset (mem_fvars.2 ?_)
-        rw [← Option.isSome_iff_exists, lookup_isSome, (beq_iff_eq ..).1 eq]
-        exact Option.isSome_iff_exists.2 ⟨_, H⟩
+        exact W.fvars_suffix.subset ((beq_iff_eq ..).1 eq ▸ find?_eq_some.1 ⟨_, H⟩)
   | cons_bvar d _ ih =>
     simp [VLCtx.find?] at H ⊢
     obtain ⟨_|i⟩ | fv := v <;> simp [VLCtx.next, bind] at H ⊢ <;>
@@ -164,14 +179,14 @@ theorem TrExpr.weakN (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.lengt
     exact .app (h1.weakN henv W.toCtx) (h2.weakN henv W.toCtx) (ih1 W hΔ') (ih2 W hΔ')
   | lam h1 _ _ ih1 ih2 =>
     have h1 := h1.weakN henv W.toCtx
-    exact .lam h1 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', rfl, h1⟩)
+    exact .lam h1 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', fun., h1⟩)
   | forallE h1 h2 _ _ ih1 ih2 =>
     have h1 := h1.weakN henv W.toCtx
     have h2 := h2.weakN henv W.toCtx.succ
-    exact .forallE h1 h2 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', rfl, h1⟩)
+    exact .forallE h1 h2 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', fun., h1⟩)
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     have h1 := h1.weakN henv W.toCtx
-    exact .letE h1 (ih1 W hΔ') (ih2 W hΔ') (ih3 (W.cons_bvar _) ⟨hΔ', rfl, h1⟩)
+    exact .letE h1 (ih1 W hΔ') (ih2 W hΔ') (ih3 (W.cons_bvar _) ⟨hΔ', fun., h1⟩)
   | lit _ ih => exact .lit (ih W hΔ')
   | mdata _ ih => exact .mdata (ih W hΔ')
   | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weakN W.toCtx)
@@ -193,7 +208,7 @@ inductive VLCtx.IsDefEq : VLCtx → VLCtx → Prop
   | nil : VLCtx.IsDefEq [] []
   | cons {Δ₁ Δ₂ : VLCtx} :
     VLCtx.IsDefEq Δ₁ Δ₂ →
-    (do Δ₁.lookup (some (← ofv))) = none →
+    (∀ fv, ofv = some fv → fv ∉ Δ₁.fvars) →
     VLocalDecl.IsDefEq env U Δ₁.toCtx d₁ d₂ →
     VLCtx.IsDefEq ((ofv, d₁) :: Δ₁) ((ofv, d₂) :: Δ₂)
 
@@ -212,16 +227,10 @@ theorem VLCtx.IsDefEq.defeqCtx : VLCtx.IsDefEq env U Δ₁ Δ₂ → env.IsDefEq
   | .cons h1 _ (.vlam h2) => .succ h1.defeqCtx h2
   | .cons h1 _ (.vlet ..) => h1.defeqCtx
 
-theorem VLCtx.IsDefEq.lookup_eq_none :
-    VLCtx.IsDefEq env U Δ₁ Δ₂ → (Δ₁.lookup fv = none ↔ Δ₂.lookup fv = none)
+theorem VLCtx.IsDefEq.fvars : VLCtx.IsDefEq env U Δ₁ Δ₂ → Δ₁.fvars = Δ₂.fvars
   | .nil => by simp
-  | .cons h1 _ _ => by simp [List.lookup]; split <;> simp [h1.lookup_eq_none]
-
-theorem VLCtx.IsDefEq.bind_lookup_eq_none (H : VLCtx.IsDefEq env U Δ₁ Δ₂) :
-    (do Δ₁.lookup (some (← ofv))) = none ↔ (do Δ₂.lookup (some (← ofv))) = none := by
-  simp only [bind, Option.bind_eq_none]
-  repeat rw [forall_comm, forall_comm (α := VLocalDecl)]; refine forall_congr' fun _ => ?_
-  simp only [← Option.eq_none_iff_forall_not_mem, H.lookup_eq_none]
+  | .cons (ofv := none) h1 h2 _ => h1.fvars
+  | .cons (ofv := some fv) h1 h2 _ => by simp [h1.fvars]
 
 theorem VLocalDecl.IsDefEq.wf : VLocalDecl.IsDefEq env U Γ d₁ d₂ → VLocalDecl.WF env U Γ d₁
   | .vlam h3 => ⟨_, h3.hasType.1⟩
@@ -245,7 +254,7 @@ variable (henv : Ordered env) in
 theorem VLCtx.IsDefEq.symm : VLCtx.IsDefEq env U Δ₁ Δ₂ → VLCtx.IsDefEq env U Δ₂ Δ₁
   | .nil => .nil
   | .cons h1 h2 h3 =>
-    .cons h1.symm (by simpa [h1.bind_lookup_eq_none] using h2) (h3.symm.defeqDFC henv h1.defeqCtx)
+    .cons h1.symm (by simpa [h1.fvars] using h2) (h3.symm.defeqDFC henv h1.defeqCtx)
 
 variable (henv : Ordered env) in
 theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
@@ -267,6 +276,32 @@ theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
       rintro ⟨d₁', n₁'⟩ H1' rfl rfl ⟨d₂', n₂'⟩ H2' rfl rfl
       simpa [VLocalDecl.depth] using find?_uniq hΔ H1' H2'
 
+variable (henv : Ordered env) in
+theorem TrExpr.inScope (H : TrExpr env Us Δ e e') : InScope (· ∈ Δ.fvars) e Δ.bvars := by
+  induction H with
+  | @bvar e A Δ i h1 =>
+    simp [InScope]
+    induction Δ generalizing i e A with
+    | nil => cases h1
+    | cons d Δ ih =>
+      match d, i with
+      | (none, _), 0 => exact Nat.succ_pos _
+      | (none, _), _ + 1 =>
+        simp [VLCtx.find?, VLCtx.next, bind] at h1
+        obtain ⟨⟨_, _⟩, h1, rfl, rfl⟩ := h1
+        exact Nat.succ_lt_succ (ih h1)
+      | (some _, _), _ =>
+        simp [VLCtx.find?, VLCtx.next, bind] at h1
+        obtain ⟨⟨_, _⟩, h1, rfl, rfl⟩ := h1
+        exact ih h1
+  | fvar h1 => exact VLCtx.find?_eq_some.1 ⟨_, h1⟩
+  | sort | const | lit | mdata => trivial
+  | app _ _ _ _ ih1 ih2
+  | lam _ _ _ ih1 ih2
+  | forallE _ _ _ _ ih1 ih2 => exact ⟨ih1, ih2⟩
+  | letE _ _ _ _ ih1 ih2 ih3 => exact ⟨ih1, ih2, ih3⟩
+  | proj _ _ ih => exact ih
+
 theorem TrProj.wf (H1 : TrProj Δ s i e e') (H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := sorry
 
 variable (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.WF env Us.length Δ) in
@@ -281,10 +316,10 @@ theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx 
   | app h1 h2 => exact ⟨_, h1.app h2⟩
   | lam h1 _ _ _ ih2 =>
     have ⟨_, h1'⟩ := h1
-    have ⟨_, h2'⟩ := ih2 ⟨hΔ, rfl, h1⟩
+    have ⟨_, h2'⟩ := ih2 ⟨hΔ, fun., h1⟩
     refine ⟨_, h1'.lam h2'⟩
   | forallE h1 h2 => have ⟨_, h1'⟩ := h1; have ⟨_, h2'⟩ := h2; exact ⟨_, .forallE h1' h2'⟩
-  | letE h1 _ _ _ _ _ ih3 => exact ih3 ⟨hΔ, rfl, h1⟩
+  | letE h1 _ _ _ _ _ ih3 => exact ih3 ⟨hΔ, fun., h1⟩
   | lit _ ih | mdata _ ih => exact ih hΔ
   | proj _ h2 ih => exact h2.wf (ih hΔ)
 
@@ -311,18 +346,18 @@ theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ 
   | lam l1 _ _ ih2 ih3 =>
     let ⟨_, l1⟩ := l1; let .lam _ r2 r3 := H2
     have hA := ih2 hΔ r2 |>.of_l henv hΔ.wf.toCtx l1
-    have ⟨_, hb⟩ := ih3 (hΔ.cons rfl <| .vlam hA) r3
+    have ⟨_, hb⟩ := ih3 (hΔ.cons fun. <| .vlam hA) r3
     exact ⟨_, .lamDF hA hb⟩
   | forallE l1 l2 _ _ ih3 ih4 =>
     let ⟨_, l1'⟩ := l1; let ⟨_, l2⟩ := l2; let .forallE _ _ r3 r4 := H2
     have hA := ih3 hΔ r3 |>.of_l henv hΔ.wf.toCtx l1'
-    have hB := ih4 (hΔ.cons rfl (.vlam hA)) r4 |>.of_l (Γ := _::_) henv ⟨hΔ.wf.toCtx, l1⟩ l2
+    have hB := ih4 (hΔ.cons fun. <| .vlam hA) r4 |>.of_l (Γ := _::_) henv ⟨hΔ.wf.toCtx, l1⟩ l2
     exact ⟨_, .forallEDF hA hB⟩
   | letE l1 _ _ _ ih2 ih3 ih4 =>
     have hΓ := hΔ.wf.toCtx
     let .letE _ r2 r3 r4 := H2
     have ⟨_, hb⟩ := l1.isType henv hΓ
-    refine ih4 (hΔ.cons rfl ?_) r4
+    refine ih4 (hΔ.cons (fun.) ?_) r4
     exact .vlet (ih3 hΔ r3 |>.of_l henv hΓ l1) (ih2 hΔ r2 |>.of_l henv hΓ hb)
   | lit _ ih1 => let .lit r1 := H2; exact ih1 hΔ r1
   | mdata _ ih1 => let .mdata r1 := H2; exact ih1 hΔ r1
@@ -344,10 +379,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     obtain ⟨_, h1, _⟩ := h1
     have ⟨_, h1⟩ := ih h1 hΔ₁ (Nat.lt_of_succ_lt_succ hs)
     exact ⟨_, _, h1, rfl⟩
-  | @fvar e A _ fv h1 =>
-    simp [InScope, VLCtx.mem_fvars, ← Option.isSome_iff_exists, VLCtx.lookup_isSome] at hs
-    let ⟨_, h⟩ := Option.isSome_iff_exists.1 hs
-    exact ⟨_, .fvar h⟩
+  | @fvar e A _ fv h1 => let ⟨_, h⟩ := VLCtx.find?_eq_some.2 hs; exact ⟨_, .fvar h⟩
   | sort h1 => exact ⟨_, .sort h1⟩
   | const h1 h2 h3 => exact ⟨_, .const h1 h2 h3⟩
   | app h1 h2 hf ha ih1 ih2 =>
@@ -366,7 +398,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hs.1
     have htt := ht.uniq henv hΔ (ih1.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
     have ⟨_, ih2⟩ := ih2 (W.cons_bvar (.vlam _))
-      (hΔ.cons (ofv := none) rfl <| .vlam htt) hs.2.fvars_cons
+      (hΔ.cons (ofv := none) fun. <| .vlam htt) hs.2.fvars_cons
     have h1 := HasType.weakN_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx
       |>.1 (htt.hasType.2.defeqDFC henv hΔ.defeqCtx)
     exact ⟨_, .lam ⟨_, h1⟩ ih1 ih2⟩
@@ -375,11 +407,11 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hs.1
     have htt := ht.uniq henv hΔ (ih1.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
-    have hΔ' := hΔ.cons (ofv := none) rfl <| .vlam htt
+    have hΔ' := hΔ.cons (ofv := none) fun. <| .vlam htt
     have ⟨_, ih2⟩ := ih2 (W.cons_bvar (.vlam _)) hΔ' hs.2.fvars_cons
     have h1' := htt.hasType.2.defeqDFC henv hΔ.defeqCtx
     have h1 := HasType.weakN_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx |>.1 h1'
-    have hΔ₂' : VLCtx.WF _ _ ((none, .vlam _) :: _) := ⟨hΔ₂, rfl, _, h1'⟩
+    have hΔ₂' : VLCtx.WF _ _ ((none, .vlam _) :: _) := ⟨hΔ₂, fun., _, h1'⟩
     have h2 := (HasType.weakN_iff (A := .sort _) henv hΔ₂'.toCtx (W.cons_bvar (.vlam _)).toCtx).1 <|
       hb.uniq henv hΔ' (ih2.weakN henv (W.cons_bvar _) hΔ₂')
       |>.of_l (Γ := _::_) henv ⟨hΔ₁.toCtx, _, htt.hasType.1⟩ h2
@@ -392,7 +424,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     have hvv := hv.uniq henv hΔ (ih2.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
     let ⟨_, h2⟩ := h1.isType henv hΔ₁.toCtx
     have htt := ht.uniq henv hΔ (ih1.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h2
-    have ⟨_, ih3⟩ := ih3 (W.cons_bvar (.vlet ..)) (hΔ.cons rfl <| .vlet hvv htt) hs.2.2.fvars_cons
+    have ⟨_, ih3⟩ := ih3 (W.cons_bvar (.vlet ..)) (hΔ.cons fun. <| .vlet hvv htt) hs.2.2.fvars_cons
     have h1 := HasType.weakN_iff henv hΔ₂.toCtx W.toCtx
       |>.1 ((htt.defeqDF hvv).hasType.2.defeqDFC henv hΔ.defeqCtx)
     exact ⟨_, .letE h1 ih1 ih2 ih3⟩
@@ -405,3 +437,48 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     have ⟨_, h2⟩ := h2.defeqDFC henv hΔ.defeqCtx htt
     have ⟨_, h2⟩ := h2.weakN_inv henv hΔ₂.toCtx W.toCtx
     exact ⟨_, .proj ih h2⟩
+
+def VLocalDecl.OnVars (P : Nat → Prop) : VLocalDecl → Prop
+  | .vlam A => A.OnVars P
+  | .vlet A e => A.OnVars P ∧ e.OnVars P
+
+def IsUpSet (P : Nat → Prop) : List VExpr → Prop
+  | [] => True
+  | A :: Γ => (P 0 → A.OnVars (fun k => P (k + 1))) ∧ IsUpSet (fun k => P (k + 1)) Γ
+
+def VLocalDecl.ClosedN : VLocalDecl → (k : Nat := 0) → Prop
+  | .vlam A, k => A.ClosedN k
+  | .vlet A e, k => A.ClosedN k ∧ e.ClosedN k
+
+def VLCtx.Closed : VLCtx → Prop
+  | [] => True
+  | (none, _) :: _ => False
+  | (some _, d) :: (Δ : VLCtx) => Δ.Closed ∧ d.ClosedN Δ.bvars
+
+def IsFVarUpSet (P : FVarId → Prop) : VLCtx → Prop
+  | [] => True
+  | (none, _) :: Δ => IsFVarUpSet P Δ
+  | (some fv, d) :: (Δ : VLCtx) =>
+    (P fv → d.OnVars fun i => ∀ fv, Δ.vlamName i = some (some fv) → P fv) ∧
+    IsFVarUpSet P Δ
+
+theorem IsFVarUpSet.congr :
+    ∀ {Δ}, (H : ∀ fv ∈ VLCtx.fvars Δ, P fv ↔ Q fv) → IsFVarUpSet P Δ ↔ IsFVarUpSet Q Δ
+  | [], _ => .rfl
+  | (none, _) :: Δ, H => congr (Δ := Δ) H
+  | (some fv, d) :: (Δ : VLCtx), H => by
+    refine and_congr (imp_congr (H _ (.head _)) ?_) (congr fun fv h => H _ (.tail _ h))
+    apply iff_of_eq; congr; funext i; refine forall_congr fun fv => propext ?_
+    exact imp_congr_right fun ha => H _ (.tail _ (VLCtx.vlamName_mem_fvars ha))
+
+theorem IsFVarUpSet.and_fvars : IsFVarUpSet P Δ ↔ IsFVarUpSet (fun fv => P fv ∧ fv ∈ Δ.fvars) Δ :=
+  IsFVarUpSet.congr fun _ h => (and_iff_left h).symm
+
+theorem IsFVarUpSet.trivial : ∀ {Δ}, IsFVarUpSet (fun _ => True) Δ
+  | [] => ⟨⟩
+  | (none, _) :: Δ => trivial (Δ := Δ)
+  | (some _, d) :: Δ =>
+    ⟨fun _ => by cases d <;> simp [VLocalDecl.OnVars, VExpr.OnVars], trivial⟩
+
+theorem IsFVarUpSet.fvars : IsFVarUpSet (· ∈ Δ.fvars) Δ :=
+  (IsFVarUpSet.congr fun _ => iff_true_intro).2 trivial

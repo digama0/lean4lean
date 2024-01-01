@@ -114,3 +114,6 @@ theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
 
 @[simp] theorem Option.bind_eq_none' {o : Option α} {f : α → Option β} :
     o.bind f = none ↔ ∀ a, o = some a → f a = none := by cases o <;> simp
+
+@[simp] theorem Option.forall_ne_some {o : Option α} : (∀ a, o ≠ some a) ↔ o = none := by
+  cases o <;> simp

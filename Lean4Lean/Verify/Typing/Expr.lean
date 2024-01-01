@@ -25,7 +25,7 @@ variable (env : VEnv) (U : Nat) in
 def VLCtx.WF : VLCtx → Prop
   | [] => True
   | (ofv, d) :: (Δ : VLCtx) =>
-    VLCtx.WF Δ ∧ (do Δ.lookup (some (← ofv))) = none ∧ VLocalDecl.WF env U Δ.toCtx d
+    VLCtx.WF Δ ∧ (∀ fv, ofv = some fv → fv ∉ Δ.fvars) ∧ VLocalDecl.WF env U Δ.toCtx d
 
 def TrProj (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr) : VExpr → Prop := sorry
 

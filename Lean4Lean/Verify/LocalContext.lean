@@ -53,6 +53,12 @@ theorem TrLCtx.forall₂ :
   | .nil => by simp [LocalContext.toList]
   | .cons h1 _ _ h4 _ => by subst h1; simp [LocalContext.toList]; exact .cons rfl h4.forall₂
 
+theorem TrLCtx.fvars_eq (H : TrLCtx env Us lctx Δ) : lctx.fvars = Δ.fvars := by
+  simp [LocalContext.fvars, VLCtx.fvars, LocalContext.toList]
+  induction H with
+  | nil => rfl
+  | cons h1 _ _ _ _ ih => simp [h1, ← ih]
+
 theorem TrLCtx.find?_isSome (H : TrLCtx env Us lctx Δ) :
     (lctx.find? fv).isSome = (Δ.find? (.inr fv)).isSome := by
   rw [LocalContext.find?, H.map_wf.find?_eq, ← VLCtx.lookup_isSome,
@@ -65,27 +71,17 @@ theorem TrLCtx.find?_isSome (H : TrLCtx env Us lctx Δ) :
     simp [List.find?, List.lookup, show (some fv == some d.fvarId) = (fv == d.fvarId) from rfl]
     split <;> simp [*]
 
-theorem TrLCtx.find?_eq_none (H : TrLCtx env Us lctx Δ) :
-    lctx.find? fv = none ↔ Δ.find? (.inr fv) = none := by
-  simp only [← Option.not_isSome_iff_eq_none, H.find?_isSome]
+theorem TrLCtx.find?_eq_some (H : TrLCtx env Us lctx Δ) :
+    (∃ d, lctx.find? fv = some d) ↔ fv ∈ Δ.fvars := by
+  rw [← Option.isSome_iff_exists, H.find?_isSome, Option.isSome_iff_exists, VLCtx.find?_eq_some]
 
-theorem TrLCtx.find?_eq_none' (H : TrLCtx env Us lctx Δ) :
-    lctx.find? fv = none ↔ Δ.lookup (some fv) = none := by
-  simp only [H.find?_eq_none, VLCtx.lookup_eq_none]
-
-theorem TrLCtx.contains_eq (H : TrLCtx env Us lctx Δ) :
-    lctx.contains fv = (Δ.find? (.inr fv)).isSome := by
-  rw [LocalContext.contains, PersistentHashMap.find?_isSome]; exact H.find?_isSome
-
-theorem TrLCtx.fvars_eq (H : TrLCtx env Us lctx Δ) : lctx.fvars = Δ.fvars := by
-  simp [LocalContext.fvars, VLCtx.fvars, LocalContext.toList]
-  induction H with
-  | nil => rfl
-  | cons h1 _ _ _ _ ih => simp [h1, ← ih]
+theorem TrLCtx.contains (H : TrLCtx env Us lctx Δ) : lctx.contains fv ↔ fv ∈ Δ.fvars := by
+  rw [LocalContext.contains, PersistentHashMap.find?_isSome, Option.isSome_iff_exists]
+  exact H.find?_eq_some
 
 theorem TrLCtx.wf : TrLCtx env Us lctx Δ → Δ.WF env Us.length
   | .nil => ⟨⟩
-  | .cons _ _ _ h4 h5 => ⟨h4.wf, by simpa [bind, ← h4.find?_eq_none'], h5.wf⟩
+  | .cons _ h2 _ h4 h5 => ⟨h4.wf, by simpa [← h4.find?_eq_some], h5.wf⟩
 
 theorem TrLCtx.mkLocalDecl
     (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none) (h3 : TrExpr env Us Δ ty ty')

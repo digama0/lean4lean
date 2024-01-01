@@ -62,8 +62,8 @@ theorem IsDefEqU.of_r (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     env.IsDefEq U Γ e₁ e₂ A := (h1.symm.of_l henv hΓ h2).symm
 
 theorem HasType.defeqU_r (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
-    (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.HasType U Γ e₂ A) :
-    env.HasType U Γ e₁ A := (h1.of_r henv hΓ h2).hasType.1
+    (h1 : env.IsDefEqU U Γ A₁ A₂) (h2 : env.HasType U Γ e A₁) :
+    env.HasType U Γ e A₂ := h1.defeqDF henv hΓ h2
 
 theorem IsDefEqU.trans (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
     (h1 : env.IsDefEqU U Γ e₁ e₂) (h2 : env.IsDefEqU U Γ e₂ e₃) :
