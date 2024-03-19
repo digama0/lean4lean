@@ -352,7 +352,7 @@ theorem IsDefEqStrong.forallE_inv' (hΓ : CtxStrong env U Γ)
     have C2 := (A2.instL h2).defeq.closedN henv ⟨⟨⟩, C1⟩
     rw [C1.liftN_eq (Nat.zero_le _), C2.liftN_eq (by exact Nat.le_refl _)] at this
     simpa [liftN]
-  | _ => match eq with.
+  | _ => nomatch eq
 
 variable (henv : Ordered env) (envIH : env.OnTypes (EnvStrong env)) in
 theorem IsDefEqStrong.isType' (hΓ : CtxStrong env U Γ) (H : env.IsDefEqStrong U Γ e1 e2 A) :
@@ -508,7 +508,7 @@ theorem IsDefEq.app_inv'
   | eta _ _ _ _ _ _ _ _ _ _ ih =>
     obtain ⟨⟨⟩⟩ | eq := eq
     exact ih (.inl eq)
-  | _ => match eq with.
+  | _ => nomatch eq
 
 variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem HasType.app_inv (H : env.HasType U Γ (.app f a) V) :
@@ -543,7 +543,7 @@ theorem IsDefEq.lam_inv'
     obtain ⟨⟨⟩⟩ | eq := eq
     · exact ⟨⟨_, hA.defeq.hasType.1⟩, _, he'.defeq.hasType.1.app (.bvar .zero)⟩
     · exact ih (.inl eq)
-  | _ => match eq with.
+  | _ => nomatch eq
 
 variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem HasType.lam_inv (H : env.HasType U Γ (.lam A body) V) :
@@ -577,7 +577,7 @@ theorem IsDefEq.const_inv'
   | eta _ _ _ _ _ _ _ _ _ _ ih =>
     obtain ⟨⟨⟩⟩ | eq := eq
     exact ih (.inl eq)
-  | _ => match eq with.
+  | _ => nomatch eq
 
 variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem HasType.const_inv (H : env.HasType U Γ (.const c ls) V) :

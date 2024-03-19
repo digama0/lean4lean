@@ -41,4 +41,4 @@ where
     | imax _  u₂, v         => go u₂ v
     | succ u,     succ v    => go u v
     | _,          _         => k ()
-termination_by _ u v => (u, v)
+  termination_by (u, v)

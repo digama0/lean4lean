@@ -272,7 +272,7 @@ theorem Ordered.induction (motive : VEnv → Nat → VExpr → VExpr → Prop)
       Ordered env → OnTypes env (motive env) → HasType env U [] e A → motive env U e A)
     (H : Ordered env) : OnTypes env (motive env) := by
   induction H with
-  | empty => exact ⟨fun., fun.⟩
+  | empty => exact ⟨nofun, nofun⟩
   | const h1 h2 h3 ih =>
     apply OnTypes.mono .rfl (mono (addConst_le h3))
     unfold addConst at h3; split at h3 <;> cases h3
@@ -698,7 +698,7 @@ theorem IsDefEq.forallE_inv'
     have C2 := (A2.instL h2).closedN henv ⟨⟨⟩, C1⟩
     rw [C1.liftN_eq (Nat.zero_le _), C2.liftN_eq (by exact Nat.le_refl _)] at this
     simpa [liftN]
-  | _ => match eq with.
+  | _ => nomatch eq
 
 theorem HasType.forallE_inv (henv : Ordered env) (H : env.HasType U Γ (A.forallE B) V) :
     env.IsType U Γ A ∧ env.IsType U (A::Γ) B := by
@@ -738,7 +738,7 @@ theorem IsDefEq.sort_inv'
     intro e eq IH
     cases e <;> cases eq; rename_i u
     exact VLevel.WF.inst h2
-  | _ => match eq with.
+  | _ => nomatch eq
 
 theorem IsDefEq.sort_inv_l (henv : Ordered env) (H : env.IsDefEq U Γ (.sort u) e2 V) : u.WF U :=
   H.sort_inv' henv (.inl rfl)

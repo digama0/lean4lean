@@ -63,7 +63,7 @@ theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → le
   | _, _, Forall₂.nil => rfl
   | _, _, Forall₂.cons _ h₂ => congrArg Nat.succ (Forall₂.length_eq h₂)
 
-theorem List.map_id' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
+theorem List.map_id'' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
   induction l <;> simp_all
 
 theorem List.map_fst_lookup {f : α → β} [BEq β] (l : List α) (b : β) :
@@ -112,7 +112,7 @@ theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
   induction l generalizing l' <;>
     simp [List.mapM_nil, List.mapM_cons, bind, List.forall₂_cons_left_iff, *, pure, @eq_comm _ l']
 
-@[simp] theorem Option.bind_eq_none' {o : Option α} {f : α → Option β} :
+@[simp] theorem Option.bind_eq_none'' {o : Option α} {f : α → Option β} :
     o.bind f = none ↔ ∀ a, o = some a → f a = none := by cases o <;> simp
 
 @[simp] theorem Option.forall_ne_some {o : Option α} : (∀ a, o ≠ some a) ↔ o = none := by

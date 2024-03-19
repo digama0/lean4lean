@@ -110,8 +110,8 @@ def checkInductiveTypes
         assert! stats.indConsts.size == indTypes.size
         assert! stats.params.size == nparams
         stats
+  termination_by indTypes.size - dIdx
   loopInd 0 { (default : InductiveStats) with levels := lparams.map .param }
-termination_by loopInd => indTypes.size - dIdx
 
 def hasIndOcc (indConsts : Array Expr) (t : Expr) : Bool :=
   (t.find? fun
@@ -320,7 +320,7 @@ def loopInd1 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α
     loopInd1 (dIdx + 1) (recInfos.push { motive, minors := #[], indices, major }) k
   else
     k recInfos
-termination_by _ => indTypes.size - dIdx
+termination_by indTypes.size - dIdx
 
 variable (stats : InductiveStats) in
 def loopCtorArgs (t : Expr) (k : Expr → Array Expr → Array Expr → M α) : M α :=
@@ -364,7 +364,7 @@ def loopU (i : Nat) (v : Array Expr) (k : Array Expr → M α) : M α := do
     loopU (i + 1) (v.push vi) k
   else
     k v
-termination_by _ => u.size - i
+termination_by u.size - i
 
 variable (stats : InductiveStats) (indTypeName : Name) (dIdx : Nat) in
 def loopCtors (recInfos : Array RecInfo)
@@ -392,7 +392,7 @@ def loopInd2 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α
     loopInd2 (dIdx + 1) recInfos k
   else
     k recInfos
-termination_by _ => indTypes.size - dIdx
+termination_by indTypes.size - dIdx
 
 end mkRecInfos
 
@@ -426,6 +426,7 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
           loopU (i + 1) (v.push val) k
         else
           k v
+      termination_by u.size - i
       loopU 0 #[] fun v => do
       let lctx ← getLCtx
       let rule := {
@@ -438,7 +439,6 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
       return (rule, minorIdx + 1)
     rules := rules.push rule
   return rules.toList
-termination_by loopU => u.size - i
 
 def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
     (isNested : Bool) : M Environment := do

@@ -115,4 +115,4 @@ theorem WF.of_ofLevel (h : ofLevel ls l = some l') : l'.WF ls.length := by
   | zero => cases h; trivial
   | succ _ ih => obtain ⟨l', h, ⟨⟩⟩ := h; exact @ih l' h
   | max _ _ ih1 ih2 | imax _ _ ih1 ih2 => obtain ⟨_, h1, _, h2, ⟨⟩⟩ := h; exact ⟨ih1 h1, ih2 h2⟩
-  | param n => split at h <;> cases h; assumption
+  | param n => exact h.2 ▸ h.1

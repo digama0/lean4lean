@@ -129,7 +129,7 @@ theorem LiftN.wf (W : LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U :
   | skip_fvar _ _ _ ih => exact ih hΔ'.1
   | cons_bvar _ W ih =>
     let ⟨hΔ', _, h2⟩ := hΔ'
-    exact ⟨ih hΔ', fun., (VLocalDecl.weakN_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
+    exact ⟨ih hΔ', nofun, (VLocalDecl.weakN_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
 
 variable (henv : Ordered env) in
 theorem LiftN.fvars_suffix (W : LiftN Δ Δ' dk n k) : Δ.fvars <:+ Δ'.fvars := by
@@ -179,14 +179,14 @@ theorem TrExpr.weakN (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.lengt
     exact .app (h1.weakN henv W.toCtx) (h2.weakN henv W.toCtx) (ih1 W hΔ') (ih2 W hΔ')
   | lam h1 _ _ ih1 ih2 =>
     have h1 := h1.weakN henv W.toCtx
-    exact .lam h1 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', fun., h1⟩)
+    exact .lam h1 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
   | forallE h1 h2 _ _ ih1 ih2 =>
     have h1 := h1.weakN henv W.toCtx
     have h2 := h2.weakN henv W.toCtx.succ
-    exact .forallE h1 h2 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', fun., h1⟩)
+    exact .forallE h1 h2 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     have h1 := h1.weakN henv W.toCtx
-    exact .letE h1 (ih1 W hΔ') (ih2 W hΔ') (ih3 (W.cons_bvar _) ⟨hΔ', fun., h1⟩)
+    exact .letE h1 (ih1 W hΔ') (ih2 W hΔ') (ih3 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
   | lit _ ih => exact .lit (ih W hΔ')
   | mdata _ ih => exact .mdata (ih W hΔ')
   | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weakN W.toCtx)
@@ -316,10 +316,10 @@ theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx 
   | app h1 h2 => exact ⟨_, h1.app h2⟩
   | lam h1 _ _ _ ih2 =>
     have ⟨_, h1'⟩ := h1
-    have ⟨_, h2'⟩ := ih2 ⟨hΔ, fun., h1⟩
+    have ⟨_, h2'⟩ := ih2 ⟨hΔ, nofun, h1⟩
     refine ⟨_, h1'.lam h2'⟩
   | forallE h1 h2 => have ⟨_, h1'⟩ := h1; have ⟨_, h2'⟩ := h2; exact ⟨_, .forallE h1' h2'⟩
-  | letE h1 _ _ _ _ _ ih3 => exact ih3 ⟨hΔ, fun., h1⟩
+  | letE h1 _ _ _ _ _ ih3 => exact ih3 ⟨hΔ, nofun, h1⟩
   | lit _ ih | mdata _ ih => exact ih hΔ
   | proj _ h2 ih => exact h2.wf (ih hΔ)
 
@@ -346,18 +346,18 @@ theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ 
   | lam l1 _ _ ih2 ih3 =>
     let ⟨_, l1⟩ := l1; let .lam _ r2 r3 := H2
     have hA := ih2 hΔ r2 |>.of_l henv hΔ.wf.toCtx l1
-    have ⟨_, hb⟩ := ih3 (hΔ.cons fun. <| .vlam hA) r3
+    have ⟨_, hb⟩ := ih3 (hΔ.cons nofun <| .vlam hA) r3
     exact ⟨_, .lamDF hA hb⟩
   | forallE l1 l2 _ _ ih3 ih4 =>
     let ⟨_, l1'⟩ := l1; let ⟨_, l2⟩ := l2; let .forallE _ _ r3 r4 := H2
     have hA := ih3 hΔ r3 |>.of_l henv hΔ.wf.toCtx l1'
-    have hB := ih4 (hΔ.cons fun. <| .vlam hA) r4 |>.of_l (Γ := _::_) henv ⟨hΔ.wf.toCtx, l1⟩ l2
+    have hB := ih4 (hΔ.cons nofun <| .vlam hA) r4 |>.of_l (Γ := _::_) henv ⟨hΔ.wf.toCtx, l1⟩ l2
     exact ⟨_, .forallEDF hA hB⟩
   | letE l1 _ _ _ ih2 ih3 ih4 =>
     have hΓ := hΔ.wf.toCtx
     let .letE _ r2 r3 r4 := H2
     have ⟨_, hb⟩ := l1.isType henv hΓ
-    refine ih4 (hΔ.cons (fun.) ?_) r4
+    refine ih4 (hΔ.cons nofun ?_) r4
     exact .vlet (ih3 hΔ r3 |>.of_l henv hΓ l1) (ih2 hΔ r2 |>.of_l henv hΓ hb)
   | lit _ ih1 => let .lit r1 := H2; exact ih1 hΔ r1
   | mdata _ ih1 => let .mdata r1 := H2; exact ih1 hΔ r1
@@ -398,7 +398,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hs.1
     have htt := ht.uniq henv hΔ (ih1.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
     have ⟨_, ih2⟩ := ih2 (W.cons_bvar (.vlam _))
-      (hΔ.cons (ofv := none) fun. <| .vlam htt) hs.2.fvars_cons
+      (hΔ.cons (ofv := none) nofun <| .vlam htt) hs.2.fvars_cons
     have h1 := HasType.weakN_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx
       |>.1 (htt.hasType.2.defeqDFC henv hΔ.defeqCtx)
     exact ⟨_, .lam ⟨_, h1⟩ ih1 ih2⟩
@@ -407,11 +407,11 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hs.1
     have htt := ht.uniq henv hΔ (ih1.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
-    have hΔ' := hΔ.cons (ofv := none) fun. <| .vlam htt
+    have hΔ' := hΔ.cons (ofv := none) nofun <| .vlam htt
     have ⟨_, ih2⟩ := ih2 (W.cons_bvar (.vlam _)) hΔ' hs.2.fvars_cons
     have h1' := htt.hasType.2.defeqDFC henv hΔ.defeqCtx
     have h1 := HasType.weakN_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx |>.1 h1'
-    have hΔ₂' : VLCtx.WF _ _ ((none, .vlam _) :: _) := ⟨hΔ₂, fun., _, h1'⟩
+    have hΔ₂' : VLCtx.WF _ _ ((none, .vlam _) :: _) := ⟨hΔ₂, nofun, _, h1'⟩
     have h2 := (HasType.weakN_iff (A := .sort _) henv hΔ₂'.toCtx (W.cons_bvar (.vlam _)).toCtx).1 <|
       hb.uniq henv hΔ' (ih2.weakN henv (W.cons_bvar _) hΔ₂')
       |>.of_l (Γ := _::_) henv ⟨hΔ₁.toCtx, _, htt.hasType.1⟩ h2
@@ -424,7 +424,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     have hvv := hv.uniq henv hΔ (ih2.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
     let ⟨_, h2⟩ := h1.isType henv hΔ₁.toCtx
     have htt := ht.uniq henv hΔ (ih1.weakN henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h2
-    have ⟨_, ih3⟩ := ih3 (W.cons_bvar (.vlet ..)) (hΔ.cons fun. <| .vlet hvv htt) hs.2.2.fvars_cons
+    have ⟨_, ih3⟩ := ih3 (W.cons_bvar (.vlet ..)) (hΔ.cons nofun <| .vlet hvv htt) hs.2.2.fvars_cons
     have h1 := HasType.weakN_iff henv hΔ₂.toCtx W.toCtx
       |>.1 ((htt.defeqDF hvv).hasType.2.defeqDFC henv hΔ.defeqCtx)
     exact ⟨_, .letE h1 ih1 ih2 ih3⟩
