@@ -26,6 +26,6 @@ inductive VDecl where
   | axiom (_ : VConstVal)
   | def (_ : VDefVal)
   | opaque (_ : VDefVal)
-  | example (_ : VConstant)
+  | example (_ : VDefVal)
   | quot
   | induct (_ : VInductDecl)

@@ -8,10 +8,6 @@ inductive Lookup : List VExpr → Nat → VExpr → Prop where
 
 namespace VEnv
 
-inductive Judgment where
-  | hasType (e A : VExpr)
-  | defeq (e1 e2 A : VExpr)
-
 section
 set_option hygiene false
 local notation:65 Γ " ⊢ " e " : " A:30 => IsDefEq Γ e e A
