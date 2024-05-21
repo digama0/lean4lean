@@ -70,18 +70,30 @@ def whnf (e : Expr) : RecM Expr := fun m => m.whnf e
 @[inline] def withLCtx [MonadWithReaderOf LocalContext m] (lctx : LocalContext) (x : m α) : m α :=
   withReader (fun _ => lctx) x
 
+/--
+Ensures that `e` is defeq to some `e' := .sort ..`, returning `e'`. If not,
+throws an error with `s` (the expression required be a sort).
+-/
 def ensureSortCore (e s : Expr) : RecM Expr := do
   if e.isSort then return e
   let e ← whnf e
   if e.isSort then return e
   throw <| .typeExpected (← getEnv) (← getLCtx) s
 
+/--
+Ensures that `e` is defeq to some `e' := .forallE ..`, returning `e'`. If not,
+throws an error with `s := f a` (the application requiring `f` to be of
+function type).
+-/
 def ensureForallCore (e s : Expr) : RecM Expr := do
   if e.isForall then return e
   let e ← whnf e
   if e.isForall then return e
   throw <| .funExpected (← getEnv) (← getLCtx) s
 
+/--
+Checks that `l` does not contain any level parameters not found in the context `tc`.
+-/
 def checkLevel (tc : Context) (l : Level) : Except KernelException Unit := do
   if let some n2 := l.getUndefParam tc.lparams then
     throw <| .other s!"invalid reference to undefined universe level parameter '{n2}'"
@@ -91,6 +103,9 @@ def inferFVar (tc : Context) (name : FVarId) : Except KernelException Expr := do
     return decl.type
   throw <| .other "unknown free variable"
 
+/--
+Infers the type of `.const e ls`.
+-/
 def inferConstant (tc : Context) (name : Name) (ls : List Level) (inferOnly : Bool) :
     Except KernelException Expr := do
   let e := Expr.const name ls
@@ -110,8 +125,17 @@ def inferConstant (tc : Context) (name : Name) (ls : List Level) (inferOnly : Bo
       checkLevel tc l
   return info.instantiateTypeLevelParams ls
 
+/--
+Infers the type of expression `e`. If `inferOnly := false`, this function will
+throw an error if and only if `e` is not typeable according to Lean's
+algorithmic typing judgment. Setting `inferOnly := true` optimizes to avoid
+unnecessary checks in the case that `e` is already known to be well-typed.
+-/
 def inferType (e : Expr) (inferOnly := true) : RecM Expr := fun m => m.inferType e inferOnly
 
+/--
+Infers the type of lambda expression `e`.
+-/
 def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
   loop fvars : Expr → RecM Expr
   | .lam name dom body bi => do
@@ -119,6 +143,7 @@ def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let id := ⟨← mkFreshId⟩
     withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
       let fvars := fvars.push (.fvar id)
+      -- FIXME this should happen before extending the local context (as it does in `inferForall`)
       if !inferOnly then
         _ ← ensureSortCore (← inferType d inferOnly) d
       loop fvars body
@@ -127,6 +152,9 @@ def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let r := r.cheapBetaReduce
     return (← getLCtx).mkForall fvars r
 
+/--
+Infers the type of for-all expression `e`.
+-/
 def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
   loop fvars us : Expr → RecM Expr
   | .forallE name dom body bi => do
@@ -145,6 +173,13 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
 /--
 Returns whether `t` and `s` are definitionally equal according to Lean's
 algorithmic definitional equality judgment.
+
+NOTE: This function does not do any typechecking of its own on `t` and `s`.
+So, when this is used as part of a typechecking routine, it is expected that
+they are already well-typed (that is, that `check t` and `check s` 
+did not/would not throw an error). This ensures in particular that any calls to
+`inferType e (inferOnly := false)` on subterms `e` would not fail, so we know
+that `e` types as the return value of `inferType e (inferOnly := true)`.
 -/
 def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore t s
 
@@ -155,6 +190,9 @@ def isDefEq (t s : Expr) : RecM Bool := do
     modify fun st => { st with eqvManager := st.eqvManager.addEquiv t s }
   pure r
 
+/--
+Infers the type of application `e`, assuming that `e` is already well-typed.
+-/
 def inferApp (e : Expr) : RecM Expr := do
   e.withApp fun f args => do
   let mut fType ← inferType f
@@ -181,6 +219,9 @@ def markUsed (n : Nat) (fvars : Array Expr) (b : Expr) (used : Array Bool) : Arr
             return false
       return true
 
+/--
+Infers the type of let-expression `e`.
+-/
 def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
   loop fvars vals : Expr → RecM Expr
   | .letE name type val body _ => do
@@ -190,6 +231,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
     withLCtx ((← getLCtx).mkLetDecl id name type val) do
       let fvars := fvars.push (.fvar id)
       let vals := vals.push val
+      -- FIXME this should happen before extending the local context
       if !inferOnly then
         _ ← ensureSortCore (← inferType type inferOnly) type
         let valType ← inferType val inferOnly
@@ -212,11 +254,18 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
     for fvar in fvars, b in used do
       if b then
         usedFVars := usedFVars.push fvar
+    -- FIXME `usedFVars` is never used
     return (← getLCtx).mkForall fvars r
 
+/--
+Checks if `e` is definitionally equal to `Prop`.
+-/
 def isProp (e : Expr) : RecM Bool :=
   return (← whnf (← inferType e)) == .prop
 
+/--
+Infers the type of structure projection `e`.
+-/
 def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Expr := do
   let e := Expr.proj typeName idx struct
   let type ← whnf structType
@@ -237,6 +286,7 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
   for i in [:idx] do
     let .forallE _ dom b _ ← whnf r | fail
     if b.hasLooseBVars then
+      -- prop structs cannot have non-prop dependent fields
       if isPropType then if !(← isProp dom) then fail
       r := b.instantiate1 (.proj I_name i struct)
     else
@@ -245,6 +295,7 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
   if isPropType then if !(← isProp dom) then fail
   return dom
 
+@[inherit_doc inferType]
 def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
   if e.isBVar then
     throw <| .other
@@ -275,6 +326,8 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
         let fType ← ensureForallCore (← inferType' f inferOnly) e
         let aType ← inferType' a inferOnly
         let dType := fType.bindingDomain!
+        -- it can be shown that if `e` is typeable as `T`, then `T` is typeable as `Sort l`
+        -- for some universe level `l`, so this use of `isDefEq` is valid
         if !(← isDefEq dType aType) then
           throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType aType
         pure <| fType.bindingBody!.instantiate1 a
@@ -293,7 +346,7 @@ Setting `cheapRec` or `cheapProj` to `true` will cause the major premise/struct
 argument to be reduced "lazily" (using `whnfCore` rather than `whnf`) when
 reducing recursor applications/struct projections. This can be a useful
 optimization if we're checking the definitional equality of two recursor
-applications/struct projections of the same recursor/projections, where we
+applications/struct projections of the same recursor/projection, where we
 might save some work by directly checking if the major premises/struct
 arguments are defeq (rather than eagerly applying a recursor rule/projection).
 -/
@@ -396,6 +449,11 @@ def isDelta (env : Environment) (e : Expr) : Option ConstantInfo := do
         return ci
   none
 
+/--
+Checks if `e` has a head constant that can be delta-reduced (that is, it is a
+theorem or definition), returning its value (instantiated by level parameters)
+if so.
+-/
 def unfoldDefinitionCore (env : Environment) (e : Expr) : Option Expr := do
   if let .const _ ls := e then
     if let some d := isDelta env e then
@@ -857,21 +915,44 @@ def Methods.withFuel : Nat → Methods
       whnf := fun e => whnf' e (withFuel n)
       inferType := fun e i => inferType' e i (withFuel n) }
 
+/--
+Runs `x` with a limit on the recursion depth.
+-/
 def RecM.run (x : RecM α) : M α := x (Methods.withFuel 1000)
 
+/--
+With the level context `lps`, infers the type of expression `e` and checks that
+`e` is well-typed according to Lean's typing judgment.
+
+Use `inferType` to infer type alone.
+-/
 def check (e : Expr) (lps : List Name) : M Expr :=
   withReader ({ · with lparams := lps }) (inferType e (inferOnly := false)).run
 
+@[inherit_doc whnf']
 def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 
+/--
+Infers the type of expression `e`. Note that this uses the optimization
+`inferOnly := false`, and so should only be used for the purpose of type
+inference on terms that are known to be well-typed. To typecheck terms for the
+first time, use `check`.
+-/
 def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
+@[inherit_doc isDefEqCore]
 def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
 
+@[inherit_doc ensureSortCore]
 def ensureSort (t : Expr) (s := t) : M Expr := (ensureSortCore t s).run
 
+@[inherit_doc ensureForallCore]
 def ensureForall (t : Expr) (s := t) : M Expr := (ensureForallCore t s).run
 
+/--
+Ensures that `e` is defeq to some `e' := .sort (_ + 1)`, returning `e'`. If not,
+throws an error with `s` (the expression required be a type).
+-/
 def ensureType (e : Expr) : M Expr := do ensureSort (← inferType e) e
 
 def etaExpand (e : Expr) : M Expr :=
