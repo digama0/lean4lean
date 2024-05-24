@@ -8,6 +8,9 @@ open private add from Lean.Environment
 namespace AddInductive
 open TypeChecker
 
+/--
+Record of free variables to be used in generating recursor types/rules.
+-/
 structure RecInfo where
   motive : Expr
   minors : Array Expr
@@ -16,6 +19,7 @@ structure RecInfo where
   deriving Inhabited
 
 structure InductiveStats where
+  -- FIXME lctx is unused
   lctx : LocalContext := {}
   levels : List Level
   resultLevel : Level
@@ -54,6 +58,12 @@ def getType (fvar : Expr) : M Expr :=
 
 def checkName (name : Name) : M Unit := fun c => c.env.checkName name c.allowPrimitive
 
+/--
+Checks that the types of the mutually defined `indTypes` are valid, namely that
+they have the same parameters and inhabit the same universes. Collects
+information about these types in an `InductiveStats` that is passed to the
+callback `k`.
+-/
 def checkInductiveTypes
     (lparams : List Name) (nparams : Nat) (indTypes : Array InductiveType)
     (k : InductiveStats → M α) : M α := do
@@ -66,6 +76,8 @@ def checkInductiveTypes
       checkName (mkRecName indType.name)
       env.checkNoMVarNoFVar indType.name type
       _ ← check type lparams
+      -- checks that the parameters are valid, counts the number of indices,
+      -- and gets the sort that this inductive inhabits
       let rec loop stats type i nindices fuel k : M α := match fuel with
       | 0 => throw .deepRecursion
       | fuel+1 => do
@@ -133,10 +145,15 @@ function returning `T'` where `T'` is another inductive datatype (possibly equal
 in the same mutual declaration. -/
 def isReflexive (indTypes : Array InductiveType) (indConsts : Array Expr) : Bool :=
   let rec loop
+    -- `hasIndOcc indConsts dom` is sufficient since constructor positivity is
+    -- checked elsewhere
     | .forallE _ dom body _ => dom.isForall && hasIndOcc indConsts dom || loop body
     | _ => false
   indTypes.any fun indType => indType.ctors.any fun ctor => loop ctor.type
 
+/--
+Adds a `ConstantInfo.inductInfo` for each of `indTypes` to `env`.
+-/
 def declareInductiveTypes
     (stats : InductiveStats)
     (levelParams : List Name) (numParams : Nat) (indTypes : Array InductiveType)
@@ -192,6 +209,12 @@ def checkPositivity (stats : InductiveStats) (t : Expr) (ctor : Name) (idx : Nat
       throw <| .other s!"arg #{idx + 1} of '{ctor
         }' has a non valid occurrence of the datatypes being declared"
 
+/--
+Checks whether the constructors `mkAppN indTypes[i].ctors[j] stats.params` are
+admissible for their inductive types `mkAppN stats.indConsts[i] stats.params`,
+requiring that they are well-typed and respect positivity and output type
+constraints.
+-/
 def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
     (stats : InductiveStats) (isUnsafe : Bool) : M Unit := do
   let env ← getEnv
@@ -215,6 +238,7 @@ def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
             unless ← isDefEq dom (← getType param) do
               throw <| .other
                 s!"arg #{i + 1} of '{n}' does not match inductive datatype parameters"
+            -- instantiate params with those from the inductive type signature
             loop (body.instantiate1 param) (i + 1) fuel
           else
             let s ← ensureType dom
@@ -229,6 +253,9 @@ def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
           throw <| .other s!"invalid return type for '{n}'"
       loop t 0 1000
 
+/--
+Adds a `ConstantInfo.ctorInfo` for each of the constructors of `indTypes` to `env`.
+-/
 def declareConstructors (stats : InductiveStats) (levelParams : List Name)
     (indTypes : Array InductiveType) (isUnsafe : Bool)
     (env : Environment) : Environment :=
@@ -247,7 +274,16 @@ def declareConstructors (stats : InductiveStats) (levelParams : List Name)
         numFields := assert! arity ≥ stats.params.size; arity - stats.params.size
       }
 
-/-- Return true if recursor can map into any universe -/
+/--
+Returns true if the recursors of `indTypes` can map into any universe
+(i.e, they are large-eliminating).
+
+Inductives that live in some `Type u` are always large-eliminating.
+Mutual inductives that live in `Prop` are never large-eliminating.
+Single inductives in `Prop` are large-eliminating iff they have no
+constructors, or a single constructor whose non-proof fields are all output
+type parameters/indices.
+-/
 def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool := do
   if stats.isNotZero then return true
   let #[indType] := indTypes | return false
@@ -269,6 +305,13 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
     loop ctor.type 0 #[] 1000
   | _ => return false
 
+/--
+Returns the universe level to use for the sort of the output type of the
+recursors of `indTypes`.
+
+This is a fresh universe level parameter if the recursors of `indTypes` are
+large-eliminating, and level zero (output type `Prop`) otherwise.
+-/
 partial -- TODO: remove
 def getElimLevel (stats : InductiveStats) (lparams : List Name) (indTypes : Array InductiveType) :
     M Level := do
@@ -287,6 +330,10 @@ def isKTarget (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool
     | _ => true
   return loop 0 ctor.type
 
+/--
+Assuming that `t := I p₁ ⋯ pₙ i₁ ⋯ iₘ` is a valid application of inductive type `I`,
+returns the index of `I` within its mutual block and the list of indices `#[i₁, ⋯, iₘ]`.
+-/
 @[inline] def getIIndices (stats : InductiveStats) (t : Expr) : Nat × Array Expr :=
   ((isValidIndApp? stats t).get!, t.getAppArgs[stats.params.size:])
 
@@ -323,6 +370,11 @@ def loopInd1 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α
 termination_by indTypes.size - dIdx
 
 variable (stats : InductiveStats) in
+/--
+Assuming that `t` is a constructor type, returns `k t' bu u`, where `t'` is the
+output type, `bu` is a list of fvars for each of the argument types, and `u` is
+the fvars of `bu` corresponding to the recursive constructor fields.
+-/
 def loopCtorArgs (t : Expr) (k : Expr → Array Expr → Array Expr → M α) : M α :=
   loop t 0 #[] #[] 1000
 where
@@ -352,6 +404,10 @@ where
       k uiTy xs
 
 variable (stats : InductiveStats) (u : Array Expr) (recInfos : Array RecInfo) in
+/--
+Given a list `u` of recursive constructor field types, returns `k v`,
+where `v` is a list of fresh fvars for each inductive hypothesis.
+-/
 def loopU (i : Nat) (v : Array Expr) (k : Array Expr → M α) : M α := do
   if _h : i < u.size then
     let ui := u[i]
@@ -367,6 +423,11 @@ def loopU (i : Nat) (v : Array Expr) (k : Array Expr → M α) : M α := do
 termination_by u.size - i
 
 variable (stats : InductiveStats) (indTypeName : Name) (dIdx : Nat) in
+/--
+Given `recInfos`, returns `k recInfos'`, where each of the `RecInfo`s in
+`recInfos'` has been completed by populating it with fvars for their recursor's
+minor premises.
+-/
 def loopCtors (recInfos : Array RecInfo)
     (ctors : List Constructor) (k : Array RecInfo → M α) : M α := match ctors with
   | ctor::ctors =>
@@ -384,6 +445,7 @@ def loopCtors (recInfos : Array RecInfo)
   | [] => k recInfos
 
 variable (stats : InductiveStats) (indTypes : Array InductiveType) in
+@[inherit_doc loopCtors]
 def loopInd2 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α) : M α := do
   if _h : dIdx < indTypes.size then
     let indType := indTypes[dIdx]
@@ -396,6 +458,10 @@ termination_by indTypes.size - dIdx
 
 end mkRecInfos
 
+/--
+Given the list of inductive types `indTypes`, returns `k recInfos`, where
+`recInfos` contains all of the fvars needed to construct the recursor types/rules.
+-/
 def mkRecInfos (stats : InductiveStats) (indTypes : Array InductiveType)
     (elimLevel : Level) (k : Array RecInfo → M α) : M α :=
   mkRecInfos.loopInd1 stats indTypes elimLevel 0 #[] fun recInfos =>
@@ -407,6 +473,9 @@ def getRecLevels (elimLevel : Level) (levels : List Level) : List Level :=
 def getRecLevelParams (elimLevel : Level) (lparams : List Name) : List Name :=
   if let .param u := elimLevel then u :: lparams else lparams
 
+/--
+Constructs the recursor rules corresponding to each constructor in `indTypes`.
+-/
 def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : InductiveStats)
     (dIdx : Nat) (motives : Array Expr) (minors : Array Expr) :
     StateT Nat M (List RecursorRule) := do
@@ -440,6 +509,10 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
     rules := rules.push rule
   return rules.toList
 
+/--
+If the inductive types declared in `types` are admissible, adds their types,
+constructors and recursors to the to the environment.
+-/
 def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
     (isNested : Bool) : M Environment := do
   let isUnsafe := (← read).safety != .safe
@@ -465,6 +538,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
     let indType := indTypes[dIdx]'h.2
     let info := recInfos[dIdx]!
     let ty :=
+      -- all of the recursors in the block share the same parameters, motives, and minor premises
       lctx.mkForall stats.params <|
       lctx.mkForall motives <|
       lctx.mkForall minors <|
@@ -489,6 +563,10 @@ namespace ElimNestedInductive
 structure Result where
   ngen : NameGenerator
   nparams : Nat
+  /--
+  Mapping from aux inductive type names to their original nested occurrences,
+  where this block's `nparams` parameters have been replaced by loose bvars.
+  -/
   aux2nested : NameMap Expr -- exprs contain `nparams` loose bvars
   types : List InductiveType
 
@@ -507,6 +585,24 @@ def restoreCtorName (r : Result) (env' : Environment) (c : Name) : Name := Id.ru
   let .const I _ := e.getAppFn | unreachable!
   c.replacePrefix name I
 
+/--
+Given a lambda or forall expression `e` binding `r.nparams` parameters `As`:
+- Replaces all uses of aux inductive types with the nested occurrences
+  found in the original inductive type declarations that generated them.
+- Replaces all uses of aux inductive constructor applications with
+  constructor applications of the nested occurrence's inductive type.
+The loose bvars in the nested occurrences' parameters are instantiated by `As`.
+
+This is meant to be used in the following cases:
+  1) On recursor types/rules and constructor types of inductive types referencing
+     aux inductive types.
+  2) On the recursor types/rules of aux inductive types themselves,
+     which are then added as additional elimination principles under the block's
+     first-declared inductive type.
+This aligns these rules/constructors with the original declaration of the
+nested inductive, eliminating the need for the aux inductive while
+maintaining the mutual recursion principle that was generated between them.
+-/
 def restoreNested (r : Result) (env' : Environment) (e : Expr)
     (auxRec : NameMap Name := {}) : Expr :=
   Id.run <| StateT.run' (s := { namePrefix := `_nested_fresh : NameGenerator }) do
@@ -546,8 +642,17 @@ end Result
 
 structure State where
   ngen : NameGenerator := { namePrefix := `_nested_fresh }
+  /--
+  List of nested type family occurrences paired with the name of its
+  corresponding aux inductive type.
+  -/
   nestedAux : Array (Expr × Name) := {}
   lvls : List Level
+  /--
+  List of inductive type declarations to be incrementally updated with
+  declarations corresponding to the aux inductive types that are
+  replacing nested occurrences.
+  -/
   newTypes : Array InductiveType
   nextIdx : Nat := 1
   deriving Inhabited
@@ -612,7 +717,20 @@ def instantiateForallParams (e : Expr) (hi : Nat) (params : Array Expr) :
     e := body
   return e.instantiateRevRange 0 hi params
 
-/-- If `e` is a nested occurrence `I Ds is`, return `Iaux As is` -/
+/--
+In the context `lctx` with parameters `As`, if `e` is a nested occurrence
+`I Ds is`, constructs a new aux inductive type `Iaux` representing
+the "specialization" of `I` to `Ds`, abstracted over the parameters
+corresponding to `As`, with the inductive type family `Iaux As` isomorphic to
+`I Ds`. This eliminates the non-positive instance(s) in `Ds` (any other
+non-positive instances are not replaced, and will result in an error).
+Auxiliary constructor types for `Iaux` are similarly constructed.
+
+`Iaux`, together with similarly constructed aux inductive type decls for
+each of the inductives in `I`'s mutual block, are added to this mutual block.
+
+Returns `Iaux As is`.
+-/
 def replaceIfNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr) (e : Expr) :
     M (Option Expr) := do
   let some I_val ← isNestedInductiveApp? e | return none
@@ -620,11 +738,11 @@ def replaceIfNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr
   let .const I_name I_lvls := fn | unreachable!
   let I_nparams := I_val.numParams
   assert! I_nparams ≤ args.size
-  let IAs := mkAppRange fn 0 I_nparams args -- `I As`
-  let Iparams ← replaceParams params IAs As
+  let IDs := mkAppRange fn 0 I_nparams args -- `I Ds`
+  let IDsParams ← replaceParams params IDs As
   let st ← get
   if let some auxI_name := st.nestedAux.findSome? fun (e, n) =>
-    if e == Iparams then some n else none
+    if e == IDsParams then some n else none
   then
     return mkAppRange (mkAppN (.const auxI_name st.lvls) As) I_nparams args.size args
   let mut result := none
@@ -632,18 +750,20 @@ def replaceIfNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr
   for J_name in I_val.all do
     let .inductInfo J_info ← env.get J_name | unreachable!
     let J := .const J_name I_lvls
-    let JAs := mkAppRange J 0 I_nparams args
+    let JDs := mkAppRange J 0 I_nparams args
     let auxJ_name ← mkUniqueName (`_nested ++ J_name)
+    -- (the aux inductives will use `(← get).lvls` for their `levelParams`)
     let auxJ_type := J_info.type.instantiateLevelParams J_info.levelParams I_lvls
     let auxJ_type := lctx.mkForall As <| ← instantiateForallParams auxJ_type I_nparams args
-    let JAs' ← replaceParams params JAs As
-    modify fun st => { st with nestedAux := st.nestedAux.push (JAs', auxJ_name) }
+    -- must replace `As` with `params` before adding to cache because different constructors will have different `As`
+    let JDsParams ← replaceParams params JDs As
+    modify fun st => { st with nestedAux := st.nestedAux.push (JDsParams, auxJ_name) }
     if J_name == I_name then
       result := some <|
         mkAppRange (mkAppN (.const auxJ_name (← get).lvls) As) I_nparams args.size args
     let auxJ_ctors ← J_info.ctors.mapM fun J_ctor_name => do
       let J_ctor_info ← env.get J_ctor_name
-      -- auxJ_cnstr_type still has references to `J`, this will be fixed later when we process it.
+      -- auxJ_cnstr_type still has references to `J`, this will be fixed in a subsequent iteration of `ElimNestedInductive.run`
       let auxJ_ctor_name := J_ctor_name.replacePrefix J_name auxJ_name
       let auxJ_ctor_type := J_ctor_info.type.instantiateLevelParams J_ctor_info.levelParams I_lvls
       let auxJ_ctor_type ← instantiateForallParams auxJ_ctor_type I_nparams args
@@ -653,6 +773,14 @@ def replaceIfNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr
   assert! result.isSome
   return result
 
+/--
+In the context `lctx` with parameters `As`, returns constructor type `e` where
+all nested occurrences have been replaced by specialized auxiliary types so
+that there are no non-positive occurrences in the parameters of any inductive
+type found in `e`. `params` are the parameters of this mutual inductive block,
+and are used to replace `As` when necessary for caching. Updates this mutual
+inductive block to include these new auxiliary types.
+-/
 def replaceAllNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr) (e : Expr) :
     M Expr := e.replaceM (replaceIfNested lctx params As)
 
@@ -668,6 +796,12 @@ def withParams (type : Expr) (nparams : Nat)
     let arg := .fvar id
     loop lctx (body.instantiate1 arg) (params.push arg) i
 
+/--
+Converts the mutual inductive block declaration `types` such that any nested
+instances of inductive types found in their constructors have been replaced
+with fresh auxiliary inductive types. The new block of inductive types
+(including these auxiliary types) is returned in `Result.types`.
+-/
 def run (nparams : Nat) (types : List InductiveType) : M Result := do
   let I :: _ := types
     | throw <| .other s!"invalid empty (mutual) inductive datatype declaration, {""
@@ -679,6 +813,7 @@ def run (nparams : Nat) (types : List InductiveType) : M Result := do
     let s ← get
     if _h : i < s.newTypes.size then
       let indType := s.newTypes[i]
+      -- constructors with all instances of nested types replaced by auxiliary ones (that are specific to `indType`)
       let ctors ← indType.ctors.mapM fun ctor => do
         withParams ctor.type nparams fun lctx ctorType As => do
         assert! As.size == nparams
@@ -691,6 +826,11 @@ def run (nparams : Nat) (types : List InductiveType) : M Result := do
   loop 0 1000
 end ElimNestedInductive
 
+/--
+Creates a mapping from the recursor names of aux inductive types to the names
+of new recursors namespaced under the first-declared inductive of this block.
+Returns this mapping, along with a list of all of the aux recursor names.
+-/
 def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
     List Name × NameMap Name := Id.run do
   let mainType :: _ := types | unreachable!
@@ -699,17 +839,81 @@ def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
   let some (.inductInfo mainInfo) := env'.find? mainName | unreachable!
   let allNames := mainInfo.all
   assert! allNames.length > ntypes
-  let mut oldRecNames := #[]
+  let mut auxRecNames := #[]
   let mut recMap : NameMap Name := {}
   let mut nextIdx := 1
-  for indName in allNames.drop ntypes do
-    let oldRecName := mkRecName indName
+  for auxIndName in allNames.drop ntypes do
+    let auxRecName := mkRecName auxIndName
     let newRecName := (mkRecName mainName).appendIndexAfter nextIdx
     nextIdx := nextIdx + 1
-    recMap := recMap.insert oldRecName newRecName
-    oldRecNames := oldRecNames.push oldRecName
-  return (oldRecNames.toList, recMap)
+    recMap := recMap.insert auxRecName newRecName
+    auxRecNames := auxRecNames.push auxRecName
+  return (auxRecNames.toList, recMap)
 
+/--
+Adds the inductive types, constructors, and recursors corresponding to the
+mutual block of inductive declarations `types` to `env`, where `lparams` is a
+list of level parameters, and `nparams` is the number of inductive type
+parameters (which must be the same for every inductive in the block).
+
+This happens in three steps:
+  1) `types` is preprocessed to eliminate occurrences of nested inductive types
+     by substituting them for specialized auxiliary inductive types which are
+     added to the mutual block.
+  2) This block is then processed to check admissibility and generate the types,
+     constructors, and recursors (+ recursor rules) for each of the declarations.
+     If there were no nested occurrences, these constants are added to the `env`
+     which is then returned.
+  3) If there were nested occurrences, these terms are processed to replace any
+     uses of the auxiliary inductive types/constructors with those of the
+     original type from the nested occurrence. The auxiliary inductive types'
+     recursors are namespaced under the first-declared inductive of this block,
+     and finally only the original (non-auxiliary) inductive declarations'
+     constants are added to the environment.
+
+For example, consider the following nested inductive type:
+```
+inductive N (α : Type): Type where
+| mk : Option (N α) → N α
+```
+After (1), its declaration would be converted to:
+```
+mutual
+inductive N (α : Type) : Type where
+| mk : _nested_Option α → N α
+
+inductive _nested_Option (α : Type) where
+| none : _nested_Option α
+| some : N α → _nested_Option α
+end
+```
+The recursors generated by (2) would be:
+```
+Lean.N.rec.{u} {α : Type}
+  {m1 : N α → Sort u} {m2 : _nested_Option α → Sort u}
+  (mk : (a : _nested_Option α) → m2 a → m1 (N.mk a))
+  (none : m2 _nested_Option.none) (some : (a : N α) → m1 a → m2 (_nested_Option.some a))
+  (t : N α) : m1 t
+Lean._nested_Option.rec.{u} {α : Type}
+  {m1 : N α → Sort u} {m2 : _nested_Option α → Sort u}
+  (mk : (a : _nested_Option α) → m2 a → m1 (N.mk a))
+  (none : m2 _nested_Option.none) (some : (a : N α) → m1 a → m2 (_nested_Option.some a))
+  (t : _nested_Option α) : m2 t
+```
+Following the replacement of auxiliary inductive types/constructors in (3), these would become:
+```
+Lean.N.rec.{u} {α : Type}
+  {m1 : N α → Sort u} {m2 : Option (N α) → Sort u}
+  (mk : (a : Option (N α)) → m2 a → m1 (N.mk a))
+  (none : m2 none) (some : (val : N α) → m1 val → m2 (some val))
+  (t : N α) : m1 t
+Lean.N.rec_1.{u} {α : Type}
+  {m1 : N α → Sort u} {m2 : Option (N α) → Sort u}
+  (mk : (a : Option (N α)) → m2 a → m1 (N.mk a))
+  (none : m2 none) (some : (val : N α) → m1 val → m2 (some val))
+  (t : Option (N α)) : m2 t
+```
+-/
 def Environment.addInductive (env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe allowPrimitive : Bool) :
     Except KernelException Environment := do
