@@ -364,8 +364,9 @@ def reduceRecursor (e : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) :
   return none
 
 /--
-Gets the weak-head normal form of the free variable `e`,
-which is the weak-head normal form of its definition if `e` is a let variable and itself if it is a lambda variable.
+Gets the weak-head normal form of the free variable `e`, which is the weak-head
+normal form of its definition if `e` is a let variable and itself if it is a
+lambda variable.
 -/
 def whnfFVar (e : Expr) (cheapRec cheapProj : Bool) : RecM Expr := do
   if let some (.ldecl (value := v) ..) := (← getLCtx).find? e.fvarId! then
@@ -609,8 +610,8 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
 /--
-If `t` and `s` have matching head constructors and are not projections or
-(non-α-equivalent) applications, checks that they are definitionally equal.
+If `t` and `s` have matching head constructors and are not (non-α-equivalent)
+projections or applications, checks that they are definitionally equal.
 Otherwise, defers to the calling function.
 -/
 def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
@@ -629,7 +630,7 @@ def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
   | _, _ => return .undef
 
 /--
-Assuming that `t` and `s` have the same constant heads, returns true if they
+Assuming that `t` and `s` have the same function heads, returns true if they
 are applications with definitionally equal arguments (in which case they are
 defeq), and false otherwise (deferring further defeq checking to caller).
 -/
@@ -642,7 +643,8 @@ def isDefEqArgs (t s : Expr) : RecM Bool := do
   | _, _ => return true
 
 /--
-Checks if `t` and `s` are defeq after applying η-expansion to `s`.
+Assuming `t` and `s` are WHNF, checks if they are defeq on account of `t` being
+an η-expansion of `s`.
 
 Assuming that `s` has a function type `(x : A) -> B x`, it η-expands to
 `fun (x : A) => s x` (which it is definitionally equal to by the η rule).
@@ -658,11 +660,11 @@ def tryEtaExpansion (t s : Expr) : RecM Bool :=
   tryEtaExpansionCore t s <||> tryEtaExpansionCore s t
 
 /--
-Checks if `t` and `s` are application-defeq (as in `isDefEqApp`)
-after applying struct-η-expansion to `t`.
+Assuming `t` and `s` in WHNF, checks if they are defeq on account of `s` being
+defeq to the struct-η-expansion of `t`.
 
-Assuming that `s` has a struct type `S` constructor `S.mk` and projection
-functions `pᵢ : S → Tᵢ`, it struct-η-expands to `S.mk (p₁ s) ... (pₙ s)` (which
+Assuming that `t` has a struct type `S`, constructor `S.mk`, and projection
+functions `pᵢ : S → Tᵢ`, it struct-η-expands to `S.mk (p₁ t) ... (pₙ t)` (which
 it is definitionally equal to by the struct-η rule).
 -/
 def tryEtaStructCore (t s : Expr) : RecM Bool := do
@@ -674,11 +676,15 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
   unless ← isDefEq (← inferType t) (← inferType s) do return false
   let args := s.getAppArgs
   for h : i in [fInfo.numParams:args.size] do
+    -- since `t` is in WHNF, and assuming it is not a constructor application, this projection cannot reduce
+    -- (so we are directly checking if `s` is defeq to the struct-η-expansion of `t`)
     unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) (args[i]'h.2) do return false
   return true
 
 @[inherit_doc tryEtaStructCore]
 def tryEtaStruct (t s : Expr) : RecM Bool :=
+  -- FIXME can return false if `t` and `s` are both constructor applications
+  -- (we have already called `isDefEqApp` on them, which returned false)
   tryEtaStructCore t s <||> tryEtaStructCore s t
 
 /--
@@ -726,8 +732,9 @@ def tryUnfoldProjApp (e : Expr) : RecM (Option Expr) := do
 Performs a single step of δ-reduction on `tn`, `sn`, or both (according to
 optimizations) followed by weak-head normalization (without further
 δ-reduction). If the resulting terms have matching head constructors (excluding
-non-α-equivalent applications and projections) returns whether `tn` and `sn`
-are defeq. Otherwise, a return value indicates to the calling
+non-α-equivalent applications and projections), or are applications with the
+same defined constant function head and defeq args, returns whether `tn` and
+`sn` are defeq. Otherwise, a return value indicates to the calling
 `lazyDeltaReduction` that δ-reduction is to be continued.
 
 If δ-reduction+weak-head-normalization cannot be continued (i.e. we have a
@@ -879,11 +886,11 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
     if tf == sf && Level.isEquivList tl sl then return true
   | .fvar tv, .fvar sv => if tv == sv then return true
   | .proj _ ti te, .proj _ si se =>
-    -- optimized by `lazyDeltaReductionStep` using `cheapProj = true`
+    -- optimized by the previous reduction functions using `cheapProj = true`
     if ti == si then if ← isDefEq te se then return true
   | _, _ => pure ()
 
-  -- `lazyDeltaReductionStep` used `cheapProj = true`, so we may not have a complete WHNF
+  -- the previous reduction functions used `cheapProj = true`, so we may not have a complete WHNF
   let tnn ← whnfCore tn
   let snn ← whnfCore sn
   if !(unsafe ptrEq tnn tn && ptrEq snn sn) then
