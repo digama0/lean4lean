@@ -143,7 +143,7 @@ def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let id := ⟨← mkFreshId⟩
     withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
       let fvars := fvars.push (.fvar id)
-      -- FIXME this should happen before extending the local context (as it does in `inferForall`)
+      -- FIXME(kernel) this should happen before extending the local context (as it does in `inferForall`)
       if !inferOnly then
         _ ← ensureSortCore (← inferType d inferOnly) d
       loop fvars body
@@ -231,7 +231,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
     withLCtx ((← getLCtx).mkLetDecl id name type val) do
       let fvars := fvars.push (.fvar id)
       let vals := vals.push val
-      -- FIXME this should happen before extending the local context
+      -- FIXME(kernel) this should happen before extending the local context
       if !inferOnly then
         _ ← ensureSortCore (← inferType type inferOnly) type
         let valType ← inferType val inferOnly
@@ -254,7 +254,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
     for fvar in fvars, b in used do
       if b then
         usedFVars := usedFVars.push fvar
-    -- FIXME `usedFVars` is never used
+    -- FIXME(kernel) `usedFVars` is never used
     return (← getLCtx).mkForall fvars r
 
 /--
@@ -429,7 +429,7 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
         pure e
     else
       let r := f.mkAppRevRange 0 rargs.size rargs
-      -- FIXME replace with reduceRecursor? adding arguments can only result in further normalization if the head reduced to a partial recursor application
+      -- FIXME(kernel) replace with reduceRecursor? adding arguments can only result in further normalization if the head reduced to a partial recursor application
       save <|← whnfCore r cheapRec cheapProj
   | .letE _ _ val body _ =>
     save <|← whnfCore (body.instantiate1 val) cheapRec cheapProj
@@ -683,7 +683,7 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
 
 @[inherit_doc tryEtaStructCore]
 def tryEtaStruct (t s : Expr) : RecM Bool :=
-  -- FIXME can return false if `t` and `s` are both constructor applications
+  -- FIXME(kernel) can return false if `t` and `s` are both constructor applications
   -- (we have already called `isDefEqApp` on them, which returned false)
   tryEtaStructCore t s <||> tryEtaStructCore s t
 
@@ -752,7 +752,7 @@ def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
   match isDelta env tn, isDelta env sn with
   | none, none => return .unknown tn sn
   | some _, none =>
-    -- FIXME hasn't whnfCore already been called on sn? so when would this case arise?
+    -- FIXME(kernel) hasn't whnfCore already been called on sn? so when would this case arise?
     if let some sn' ← tryUnfoldProjApp sn then
       cont tn sn'
     else
