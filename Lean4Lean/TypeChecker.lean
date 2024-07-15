@@ -941,7 +941,7 @@ def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 
 /--
 Infers the type of expression `e`. Note that this uses the optimization
-`inferOnly := false`, and so should only be used for the purpose of type
+`inferOnly := true`, and so should only be used for the purpose of type
 inference on terms that are known to be well-typed. To typecheck terms for the
 first time, use `check`.
 -/
@@ -957,8 +957,7 @@ def ensureSort (t : Expr) (s := t) : M Expr := (ensureSortCore t s).run
 def ensureForall (t : Expr) (s := t) : M Expr := (ensureForallCore t s).run
 
 /--
-Ensures that `e` is defeq to some `e' := .sort (_ + 1)`, returning `e'`. If not,
-throws an error with `s` (the expression required be a type).
+Ensures that `e` is a type/proposition. If it is not, throws an error.
 -/
 def ensureType (e : Expr) : M Expr := do ensureSort (← inferType e) e
 
