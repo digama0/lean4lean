@@ -21,8 +21,8 @@ theorem Lookup.succ' (h : Lookup Γ n ty) (eq : ty.lift = ty') :
 syntax "lookup_tac" : tactic
 macro_rules | `(tactic| lookup_tac) => `(tactic|
   first
-  | refine Lookup.zero' ?a (ty' := ?_); case a => exact rfl
-  | refine Lookup.succ' ?a ?b (ty := ?_) (ty' := ?_); (case a => lookup_tac); case b => exact rfl
+  | refine Lookup.zero' ?_; exact rfl
+  | refine Lookup.succ' (ty := ?_) ?_ ?_ <;> [skip; lookup_tac; exact rfl]
 )
 
 theorem IsDefEq.app' (h1 : HasType env U Γ f (.forallE A B)) (h2 : HasType env U Γ a A)
@@ -37,14 +37,10 @@ theorem IsDefEq.const'
 syntax "type_tac" : tactic -- TODO: write an actual tactic
 macro_rules | `(tactic| type_tac) => `(tactic|
   first
-  | refine IsDefEq.forallE ?a ?b (u := ?_) (v := ?_)
-    (case a => type_tac); (case b => type_tac)
-  | refine IsDefEq.sort ?a; (case a => decide)
-  | refine IsDefEq.bvar ?a; (case a => lookup_tac)
-  | refine IsDefEq.app' ?f ?a ?eq (A := ?_) (B := ?_)
-    (case f => type_tac); (case a => type_tac); (case eq => exact rfl)
-  | refine IsDefEq.const' ?h1 ?h2 ?h3 ?eq (ci := ?_)
-    (case h1 => assumption); (case h2 => decide); (case h3 => decide); (case eq => exact rfl)
-  | refine HasType.lam ?h1 ?h2 (u := ?_)
-    (case h1 => type_tac); (case h2 => type_tac)
+  | refine IsDefEq.forallE (u := ?_) (v := ?_) ?_ ?_ <;> [skip; skip; type_tac; type_tac]
+  | refine IsDefEq.sort ?_; decide
+  | refine IsDefEq.bvar ?_; lookup_tac
+  | refine IsDefEq.app' (A := ?_) (B := ?_) ?_ ?_ ?_ <;> [skip; skip; type_tac; type_tac; exact rfl]
+  | refine IsDefEq.const' (ci := ?_) ?_ ?_ ?_ ?_ <;> [skip; assumption; decide; decide; exact rfl]
+  | refine HasType.lam (u := ?_) ?_ ?_ <;> [skip; type_tac; type_tac]
 )

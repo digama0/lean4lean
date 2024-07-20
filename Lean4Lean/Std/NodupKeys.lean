@@ -1,5 +1,5 @@
-import Std.Data.List.Perm
-import Std.Tactic.SeqFocus
+import Batteries.Data.List.Perm
+import Batteries.Tactic.SeqFocus
 
 namespace List
 def NodupKeys (l : List (α × β)) : Prop := Nodup (l.map (·.1))

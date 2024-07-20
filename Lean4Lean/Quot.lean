@@ -1,4 +1,4 @@
-import Std.Tactic.OpenPrivate
+import Batteries.Tactic.OpenPrivate
 import Lean4Lean.Environment.Basic
 import Lean4Lean.Expr
 import Lean4Lean.LocalContext

@@ -1,6 +1,8 @@
-import Std.CodeAction
-import Std.Data.Array.Lemmas
-import Std.Data.HashMap.Basic
+import Batteries.CodeAction
+import Batteries.Data.Array.Lemmas
+import Batteries.Data.HashMap.Basic
+
+attribute [simp] Option.bind_eq_some List.filterMap_cons
 
 theorem funext_iff {β : α → Sort u} {f₁ f₂ : ∀ x : α, β x} : f₁ = f₂ ↔ ∀ a, f₁ a = f₂ a :=
   Iff.intro (fun h _ ↦ h ▸ rfl) funext
@@ -63,7 +65,7 @@ theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → le
   | _, _, Forall₂.nil => rfl
   | _, _, Forall₂.cons _ h₂ => congrArg Nat.succ (Forall₂.length_eq h₂)
 
-theorem List.map_id'' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
+theorem List.map_id''' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
   induction l <;> simp_all
 
 theorem List.map_fst_lookup {f : α → β} [BEq β] (l : List α) (b : β) :
@@ -90,7 +92,7 @@ instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
   trans h1 h2 := by simp at *; exact h1.trans h2
 
-instance [BEq α] [LawfulBEq α] [Hashable α] : Std.HashMap.LawfulHashable α where
+instance [BEq α] [LawfulBEq α] [Hashable α] : Batteries.HashMap.LawfulHashable α where
   hash_eq h := by simp at *; subst h; rfl
 
 instance : LawfulBEq Lean.FVarId where

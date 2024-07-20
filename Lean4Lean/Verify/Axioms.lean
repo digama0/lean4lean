@@ -53,7 +53,7 @@ noncomputable def toList' [BEq α] [Hashable α] (m : PersistentHashMap α β) :
     (.empty : PersistentHashMap α β).toList' = [] := by
   have this n : @Node.toList' α β (.entries ⟨.replicate n .null⟩) = [] := by
     simp [Node.toList']
-    induction n <;> simp [*]
+    induction n <;> simp [*, List.replicate_succ]
   apply this
 
 inductive WF [BEq α] [Hashable α] : PersistentHashMap α β → Prop where
@@ -62,13 +62,13 @@ inductive WF [BEq α] [Hashable α] : PersistentHashMap α β → Prop where
 
 /-- We can't prove this because `Lean.PersistentHashMap.insertAux` is opaque -/
 axiom WF.toList'_insert {α β} [BEq α] [Hashable α]
-    [PartialEquivBEq α] [Std.HashMap.LawfulHashable α]
+    [PartialEquivBEq α] [Batteries.HashMap.LawfulHashable α]
     {m : PersistentHashMap α β} (_ : WF m) (a : α) (b : β) :
     m.toList'.lookup a = none → (m.insert a b).toList' ~ (a, b) :: m.toList'
 
 /-- We can't prove this because `Lean.PersistentHashMap.findAux` is opaque -/
 axiom WF.find?_eq {α β} [BEq α] [Hashable α]
-    [PartialEquivBEq α] [Std.HashMap.LawfulHashable α]
+    [PartialEquivBEq α] [Batteries.HashMap.LawfulHashable α]
     {m : PersistentHashMap α β} (_ : WF m) (a : α) : m.find? a = m.toList'.lookup a
 
 /-- We can't prove this because `Lean.PersistentHashMap.{findAux, containsAux}` are opaque -/
@@ -79,7 +79,7 @@ theorem find?_isSome {α β} [BEq α] [Hashable α]
     (m : PersistentHashMap α β) (a : α) : m.contains a = (m.find? a).isSome := findAux_isSome ..
 
 theorem WF.nodupKeys [BEq α] [Hashable α]
-    [LawfulBEq α] [Std.HashMap.LawfulHashable α]
+    [LawfulBEq α] [Batteries.HashMap.LawfulHashable α]
     {m : PersistentHashMap α β} (h : WF m) : m.toList'.NodupKeys := by
   induction h with
   | empty => simp; exact .nil
