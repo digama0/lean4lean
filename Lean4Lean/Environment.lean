@@ -53,6 +53,8 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
   if check then
     -- TODO(Leo): we must add support for handling tasks here
     M.run env (safety := .safe) (lctx := {}) do
+      if !(← isProp v.type) then
+        throw <| .thmTypeIsNotProp env v.name v.type
       checkConstantVal env v.toConstantVal
       checkNoMVarNoFVar env v.name v.value
       let valType ← TypeChecker.check v.value v.levelParams

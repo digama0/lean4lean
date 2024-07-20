@@ -100,13 +100,6 @@ instance : LawfulBEq Lean.FVarId where
 theorem beq_comm [BEq α] [PartialEquivBEq α] (a b : α) : (a == b) = (b == a) :=
   Bool.eq_iff_iff.2 ⟨PartialEquivBEq.symm, PartialEquivBEq.symm⟩
 
-theorem Array.get_modify {arr : Array α} {x i} (h : i < arr.size) :
-    (arr.modify x f).get ⟨i, by simp [h]⟩ =
-    if x = i then f (arr.get ⟨i, h⟩) else arr.get ⟨i, h⟩ := by
-  simp [modify, modifyM, Id.run]; split
-  · simp [get_set _ _ _ h]; split <;> simp [*]
-  · rw [if_neg (mt (by rintro rfl; exact h) ‹_›)]
-
 theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
     l.mapM f = some l' ↔ List.Forall₂ (f · = some ·) l l' := by
   induction l generalizing l' <;>

@@ -32,6 +32,5 @@ theorem NodupKeys.lookup_eq_some [BEq α] [LawfulBEq α]
     let (a', b') := p
     simp [lookup] at nd ⊢; split <;> rename_i h
     · simp at h; subst a'; simp [eq_comm]
-      refine (or_iff_left_of_imp fun h => ?_).symm
-      cases nd.1 _ h rfl
+      exact (nomatch nd.1 _ · rfl)
     · simp at h; simp [h, ih nd.2]

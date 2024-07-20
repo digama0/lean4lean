@@ -51,7 +51,7 @@ theorem TrLCtx.map_toList : TrLCtx env Us lctx Δ →
 theorem TrLCtx.forall₂ :
     TrLCtx env Us lctx Δ → lctx.toList.Forall₂ Δ (R := fun d d' => d'.1 = some d.fvarId)
   | .nil => by simp [LocalContext.toList]
-  | .cons h1 _ _ h4 _ => by subst h1; simp [LocalContext.toList]; exact .cons rfl h4.forall₂
+  | .cons h1 _ _ h4 _ => by subst h1; simp [LocalContext.toList]; exact h4.forall₂
 
 theorem TrLCtx.fvars_eq (H : TrLCtx env Us lctx Δ) : lctx.fvars = Δ.fvars := by
   simp [LocalContext.fvars, VLCtx.fvars, LocalContext.toList]

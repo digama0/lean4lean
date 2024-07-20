@@ -385,16 +385,16 @@ def reduceNative (_env : Environment) (e : Expr) : Except KernelException (Optio
     throw <| .other s!"lean4lean does not support 'reduceNat {c}' reduction"
   return none
 
-def natLitExt? (e : Expr) : Option Nat := if e == .natZero then some 0 else e.natLit?
+def rawNatLitExt? (e : Expr) : Option Nat := if e == .natZero then some 0 else e.rawNatLit?
 
 def reduceBinNatOp (f : Nat → Nat → Nat) (a b : Expr) : RecM (Option Expr) := do
-  let some v1 := natLitExt? (← whnf a) | return none
-  let some v2 := natLitExt? (← whnf b) | return none
+  let some v1 := rawNatLitExt? (← whnf a) | return none
+  let some v2 := rawNatLitExt? (← whnf b) | return none
   return some <| .lit <| .natVal <| f v1 v2
 
 def reduceBinNatPred (f : Nat → Nat → Bool) (a b : Expr) : RecM (Option Expr) := do
-  let some v1 := natLitExt? (← whnf a) | return none
-  let some v2 := natLitExt? (← whnf b) | return none
+  let some v1 := rawNatLitExt? (← whnf a) | return none
+  let some v2 := rawNatLitExt? (← whnf b) | return none
   return toExpr <| f v1 v2
 
 def reduceNat (e : Expr) : RecM (Option Expr) := do
@@ -403,7 +403,7 @@ def reduceNat (e : Expr) : RecM (Option Expr) := do
   if nargs == 1 then
     let f := e.appFn!
     if f == .const ``Nat.succ [] then
-      let some v := natLitExt? (← whnf e.appArg!) | return none
+      let some v := rawNatLitExt? (← whnf e.appArg!) | return none
       return some <| .lit <| .natVal <| v + 1
   else if nargs == 2 then
     let .app (.app (.const f _) a) b := e | return none
@@ -720,6 +720,8 @@ def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
 def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
+
+def isProp (t : Expr) : M Bool := (Inner.isProp t).run
 
 def ensureSort (t : Expr) (s := t) : M Expr := (ensureSortCore t s).run
 
