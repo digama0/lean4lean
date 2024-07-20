@@ -2,6 +2,10 @@ import Lean.Expr
 
 namespace Lean
 
+/--
+Reduces an expression of the form (λ x₁ ... xₙ, x₁) a₁ ... aₙ aₙ₊₁ ... aₘ
+to aᵢ aₙ₊₁ ... aₘ.
+-/
 def Expr.cheapBetaReduce (e : Expr) : Expr := Id.run do
   if !e.isApp then return e
   let fn := e.getAppFn
@@ -18,7 +22,7 @@ def Expr.cheapBetaReduce (e : Expr) : Expr := Id.run do
   let rec loop i fn : Id Expr :=
     if i < args.size then
       match fn with
-      | .lam _ _ dom .. => loop (i + 1) dom
+      | .lam _ _ bod .. => loop (i + 1) bod
       | _ => cont i fn
     else cont i fn
   loop 0 fn

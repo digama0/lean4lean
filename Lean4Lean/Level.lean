@@ -10,6 +10,9 @@ def forEach [Monad m] (l : Level) (f : Level → m Bool) : m Unit := do
   | .max l₁ l₂ | .imax l₁ l₂ => l₁.forEach f; l₂.forEach f
   | .zero | .param .. | .mvar .. => pure ()
 
+/--
+Returns `some n` if level parameter `n` appears in `l` and `n ∉ ps`.
+-/
 def getUndefParam (l : Level) (ps : List Name) : Option Name := Id.run do
   (·.2) <$> StateT.run (s := none) do
     l.forEach fun l => do
