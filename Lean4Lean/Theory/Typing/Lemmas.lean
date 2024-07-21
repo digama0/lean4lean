@@ -660,7 +660,7 @@ theorem IsDefEq.forallE_inv'
   induction H generalizing A B with
   | symm _ ih => exact ih eq.symm
   | trans _ _ ih1 ih2
-  | proofIrrel _ h1 h2 _ ih1 ih2 =>
+  | proofIrrel _ _ _ _ ih1 ih2 =>
     obtain eq | eq := eq
     · exact ih1 (.inl eq)
     · exact ih2 (.inr eq)
