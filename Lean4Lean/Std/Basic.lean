@@ -41,6 +41,10 @@ theorem List.Forall₂.imp (H : ∀ a b, R a b → S a b)
     {l₁ l₂} (h : Forall₂ R l₁ l₂) : Forall₂ S l₁ l₂ := by
   induction h <;> constructor <;> [(apply H; assumption); assumption]
 
+theorem List.Forall₂.trans (H : ∀ a b c, R a b → S b c → T a c)
+    {l₁ l₂ l₃} (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ S l₂ l₃) : Forall₂ T l₁ l₃ := by
+  induction h₁ generalizing l₃ <;> cases h₂ <;> constructor <;> solve_by_elim
+
 @[simp] theorem List.forall₂_map_left_iff {f : γ → α} :
     ∀ {l u}, Forall₂ R (map f l) u ↔ Forall₂ (fun c b => R (f c) b) l u
   | [], _ => by simp only [map, forall₂_nil_left_iff]
