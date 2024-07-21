@@ -121,22 +121,35 @@ structure Typing where
     Γ ⊢ A : .sort u → Γ ⊢ A ≡ A' →
     A::Γ ⊢ body : .sort v → A::Γ ⊢ body ≡ body' →
     Γ ⊢ .forallE A body ≡ .forallE A' body'
+  const :
+    env.constants c = some (some ci) →
+    (∀ l ∈ ls, l.WF univs) → ls.length = ci.uvars →
+    Γ ⊢ .const c ls : ci.type.instL ls
   app : Γ ⊢ f : .forallE A B → Γ ⊢ a : A → Γ ⊢ .app f a : .inst B a
   lam : Γ ⊢ A : .sort u → A::Γ ⊢ body : B → Γ ⊢ .lam A body : .forallE A B
   forallE : Γ ⊢ A : .sort u → A::Γ ⊢ B : .sort v → Γ ⊢ .forallE A B : .sort (.imax u v)
+  -- beta : A::Γ ⊢ e : B → Γ ⊢ e' : A → Γ ⊢ .app (.lam A e) e' ≡ e.inst e'
   eta : Γ ⊢ e : .forallE A B → Γ ⊢ .lam A (.app e.lift (.bvar 0)) ≡ e
   proofIrrel : Γ ⊢ p : .sort .zero → Γ ⊢ h : p → Γ ⊢ h' : p → Γ ⊢ h ≡ h'
   isDefEq_weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     Γ' ⊢ e1.liftN n k ≡ e2.liftN n k ↔ Γ ⊢ e1 ≡ e2
   hasType_weakN_iff (W : Ctx.LiftN n k Γ Γ') : Γ' ⊢ e.liftN n k : A.liftN n k ↔ Γ ⊢ e : A
   hasTypeU_weakN_inv (W : Ctx.LiftN n k Γ Γ') : Γ' ⊢ e.liftN n k : A → ∃ A', Γ ⊢ e : A'
+  isDefEq_instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
+    (H : Γ₁ ⊢ e1 ≡ e2) (h₀ : Γ₀ ⊢ e₀ : A₀) : Γ ⊢ e1.inst e₀ k ≡ e2.inst e₀ k
+  hasType_instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
+    (H : Γ₁ ⊢ e1 : A) (h₀ : Γ₀ ⊢ e₀ : A₀) : Γ ⊢ e1.inst e₀ k : A.inst e₀ k
   isDefEq_DFC : IsDefEqCtx IsDefEq Γ₀ Γ₁ Γ₂ → Γ₁ ⊢ e1 ≡ e2 → Γ₂ ⊢ e1 ≡ e2
   hasType_DFC : IsDefEqCtx IsDefEq Γ₀ Γ₁ Γ₂ → Γ₁ ⊢ e : A → Γ₂ ⊢ e : A
   has_type : Γ ⊢ e₁ ≡ e₂ → ∃ A, Γ ⊢ e₁ : A
   is_type : Γ ⊢ e : A → ∃ u, Γ ⊢ A : .sort u
-  sort_inv : Γ ⊢ .sort u : p → u.WF univs
+  bvar_inv : Γ ⊢ .bvar i : V → ∃ A, Lookup Γ i A
+  sort_inv : Γ ⊢ .sort u : V → u.WF univs
+  const_inv : Γ ⊢ .const c ls : V →
+    ∃ ci, env.constants c = some (some ci) ∧ (∀ l ∈ ls, l.WF univs) ∧ ls.length = ci.uvars
   forallE_inv : Γ ⊢ .forallE A B : V → ∃ u v, Γ ⊢ A : .sort u ∧ A::Γ ⊢ B : .sort v
   app_inv : Γ ⊢ .app f a : V → ∃ A B, Γ ⊢ f : .forallE A B ∧ Γ ⊢ a : A
+  lam_inv : Γ ⊢ .lam A e : V → ∃ u B, Γ ⊢ A : .sort u ∧ A::Γ ⊢ e : B
   uniq : Γ ⊢ e : A₁ → Γ ⊢ e : A₂ → Γ ⊢ A₁ ≡ A₂
   defeq_l : Γ ⊢ e₁ ≡ e₂ → Γ ⊢ e₁ : A → Γ ⊢ e₂ : A
   defeq_r : Γ ⊢ A₁ ≡ A₂ → Γ ⊢ e : A₁ → Γ ⊢ e : A₂
@@ -147,6 +160,11 @@ theorem Typing.IsDefEq.weakN {TY : Typing} (W : Ctx.LiftN n k Γ Γ') :
     TY.IsDefEq Γ e1 e2 → TY.IsDefEq Γ' (e1.liftN n k) (e2.liftN n k) := (TY.isDefEq_weakN_iff W).2
 theorem Typing.HasType.weakN {TY : Typing} (W : Ctx.LiftN n k Γ Γ') :
     TY.HasType Γ e A → TY.HasType Γ' (e.liftN n k) (A.liftN n k) := (TY.hasType_weakN_iff W).2
+
+theorem Typing.IsDefEq.instN {TY : Typing} : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ → TY.IsDefEq Γ₁ e1 e2 →
+    TY.HasType Γ₀ e₀ A₀ → TY.IsDefEq Γ (e1.inst e₀ k) (e2.inst e₀ k) := TY.isDefEq_instN
+theorem Typing.HasType.instN {TY : Typing} : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ → TY.HasType Γ₁ e A →
+    TY.HasType Γ₀ e₀ A₀ → TY.HasType Γ (e.inst e₀ k) (A.inst e₀ k) := TY.hasType_instN
 
 end
 
@@ -234,7 +252,7 @@ theorem NormalEq.symm (H : NormalEq TY Γ e1 e2) : NormalEq TY Γ e2 e1 := by
 theorem NormalEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : NormalEq TY Γ e1 e2) :
     NormalEq TY Γ' (e1.liftN n k) (e2.liftN n k) := by
   induction H generalizing k Γ' with
-  | refl h => refine .refl (h.weakN W)
+  | refl h => exact .refl (h.weakN W)
   | sortDF h1 h2 h3 => exact .sortDF h1 h2 h3
   | constDF h1 h2 h3 h4 h5 => exact .constDF h1 h2 h3 h4 h5
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
@@ -253,6 +271,60 @@ theorem NormalEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : NormalEq TY Γ e1 e2) :
     simp [liftN] at this; rwa [lift_liftN']
   | proofIrrel h1 h2 h3 =>
     exact .proofIrrel (h1.weakN W) (h2.weakN W) (h3.weakN W)
+
+variable (h₀ : Typing.HasType TY Γ₀ e₀ A₀) in
+theorem NormalEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : NormalEq TY Γ₁ e1 e2) :
+    NormalEq TY Γ (e1.inst e₀ k) (e2.inst e₀ k) := by
+  induction H generalizing Γ k with
+  | refl h => exact .refl (h.instN W h₀)
+  | sortDF h1 h2 h3 => exact .sortDF h1 h2 h3
+  | constDF h1 h2 h3 h4 h5 => exact .constDF h1 h2 h3 h4 h5
+  | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
+    exact .appDF (h1.instN W h₀) (h2.instN W h₀) (h3.instN W h₀) (h4.instN W h₀) (ih1 W) (ih2 W)
+  | lamDF h1 h2 _ _ ih1 ih2 =>
+    exact .lamDF (h1.instN W h₀) (h2.instN W h₀) (ih1 W) (ih2 W.succ)
+  | forallEDF h1 h2 _ h4 _ ih1 ih2 =>
+    exact .forallEDF (h1.instN W h₀) (h2.instN W h₀) (ih1 W) (h4.instN W.succ h₀) (ih2 W.succ)
+  | etaL h1 _ ih =>
+    refine .etaL (h1.instN W h₀) ?_
+    simpa [inst, lift_instN_lo] using ih W.succ
+  | etaR h1 _ ih =>
+    refine .etaR (h1.instN W h₀) ?_
+    simpa [inst, lift_instN_lo] using ih W.succ
+  | proofIrrel h1 h2 h3 => exact .proofIrrel (h1.instN W h₀) (h2.instN W h₀) (h3.instN W h₀)
+
+variable (h₀ : Typing.HasType TY Γ₀ e₀ A₀) (H' : NormalEq TY Γ₀ e₀ e₀') in
+theorem NormalEq.instN_r (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : Typing.HasType TY Γ₁ e A) :
+    NormalEq TY Γ (e.inst e₀ k) (e.inst e₀' k) := by
+  induction e generalizing Γ₁ Γ k A with dsimp [inst]
+  | bvar i =>
+    have ⟨ty, h⟩ := TY.bvar_inv H; clear H
+    induction W generalizing i ty with
+    | zero =>
+      cases h with simp [inst_lift]
+      | zero => exact H'
+      | succ h => exact .refl (TY.bvar h)
+    | succ _ ih =>
+      cases h with simp
+      | zero => exact .refl (TY.bvar .zero)
+      | succ h => exact (ih _ _ h).weakN .one
+  | sort => exact .refl (TY.sort (TY.sort_inv H))
+  | const =>
+    let ⟨_, h1, h2, h3⟩ := TY.const_inv H
+    exact .refl (TY.const h1 h2 h3)
+  | app fn arg ih1 ih2 =>
+    let ⟨_, _, h1, h2⟩ := TY.app_inv H
+    specialize ih1 W h1; have hf := h1.instN W h₀
+    specialize ih2 W h2; have ha := h2.instN W h₀
+    exact .appDF hf (TY.defeq_l ih1.defeq hf) ha (TY.defeq_l ih2.defeq ha) ih1 ih2
+  | lam A body ih1 ih2 =>
+    let ⟨_, _, h1, h2⟩ := TY.lam_inv H
+    have hA := h1.instN W h₀
+    exact .lamDF hA (TY.refl hA) (ih1 W h1) (ih2 W.succ h2)
+  | forallE A B ih1 ih2 =>
+    let ⟨_, _, h1, h2⟩ := TY.forallE_inv H
+    have hA := h1.instN W h₀
+    exact .forallEDF hA (TY.refl hA) (ih1 W h1) (h2.instN W.succ h₀) (ih2 W.succ h2)
 
 variable (TY : Typing) in
 theorem NormalEq.defeqDFC (W : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
