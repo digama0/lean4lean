@@ -88,7 +88,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
   for v in vs do
     env' := add env' (.defnInfo v)
   if check then
-    M.run env (safety := v₀.safety) (lctx := {}) do
+    M.run env' (safety := v₀.safety) (lctx := {}) do
       for v in vs do
         checkNoMVarNoFVar env' v.name v.value
         let valType ← TypeChecker.check v.value v.levelParams
