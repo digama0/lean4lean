@@ -429,7 +429,7 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
         pure e
     else
       let r := f.mkAppRevRange 0 rargs.size rargs
-      -- FIXME(kernel) replace with reduceRecursor? adding arguments can only result in further normalization if the head reduced to a partial recursor application
+      -- FIXME(kernel) guard with reduceRecursor (as in the previous case)? adding arguments can only result in further normalization if the head reduced to a partial recursor application
       save <|← whnfCore r cheapRec cheapProj
   | .letE _ _ val body _ =>
     save <|← whnfCore (body.instantiate1 val) cheapRec cheapProj
@@ -610,12 +610,15 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
 /--
-If `t` and `s` have matching head constructors and are not (non-α-equivalent)
-projections or applications, checks that they are definitionally equal.
+Checks that `t` and `s` are definitionally equal if:
+- they are α-equivalent
+- they have matching head constructors and are not (non-α-equivalent)
+  projections or applications
+- they have previously been checked for definitional equality
 Otherwise, defers to the calling function.
 -/
 def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
-  -- optimization for terms that are already α-equivalent
+  -- optimization for terms that are already α-equivalent or were previously checked
   if ← modifyGet fun (.mk a1 a2 a3 a4 a5 a6 (eqvManager := m)) =>
     let (b, m) := m.isEquiv useHash t s
     (b, .mk a1 a2 a3 a4 a5 a6 (eqvManager := m))
