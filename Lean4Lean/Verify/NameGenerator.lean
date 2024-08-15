@@ -13,7 +13,7 @@ instance : LE NameGenerator := ⟨NameGenerator.LE⟩
 
 theorem LE.rfl {ngen : NameGenerator} : ngen ≤ ngen := ⟨Nat.le_refl _⟩
 
-theorem LE.trans {ngen₁ ngen₃ ngen₃ : NameGenerator} : ngen₁ ≤ ngen₂ → ngen₂ ≤ ngen₃ → ngen₁ ≤ ngen₃
+theorem LE.trans {ngen₁ ngen₂ ngen₃ : NameGenerator} : ngen₁ ≤ ngen₂ → ngen₂ ≤ ngen₃ → ngen₁ ≤ ngen₃
   | ⟨h₁⟩, ⟨h₂⟩ => ⟨Nat.le_trans h₁ h₂⟩
 
 theorem Reserves.mono : ngen ≤ ngen' → Reserves ngen fv → Reserves ngen' fv

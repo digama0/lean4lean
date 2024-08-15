@@ -174,7 +174,7 @@ def LevelWF (U : Nat) : VExpr → Prop
 theorem LevelWF.instL_id {e : VExpr} (h : e.LevelWF U) :
     e.instL ((List.range U).map .param) = e := by
   induction e <;> simp_all [instL, LevelWF, VLevel.inst_id]
-  case const => exact List.map_id'' _ fun _ h1 => VLevel.inst_id (h _ h1)
+  case const => exact List.map_id''' _ fun _ h1 => VLevel.inst_id (h _ h1)
 
 theorem levelWF_liftN : (liftN n e k).LevelWF U ↔ e.LevelWF U := by
   induction e generalizing k <;> simp [liftN, LevelWF, *]

@@ -312,7 +312,7 @@ theorem IsDefEqStrong.forallE_inv' (hΓ : CtxStrong env U Γ)
   induction H generalizing A B with
   | symm _ ih => exact ih hΓ eq.symm
   | trans _ _ ih1 ih2
-  | proofIrrel _ h1 h2 _ ih1 ih2 =>
+  | proofIrrel _ _ _ _ ih1 ih2 =>
     obtain eq | eq := eq
     · exact ih1 hΓ (.inl eq)
     · exact ih2 hΓ (.inr eq)
@@ -321,7 +321,7 @@ theorem IsDefEqStrong.forallE_inv' (hΓ : CtxStrong env U Γ)
     · exact ⟨⟨_, h1.hasType.1⟩, _, h2.hasType.1⟩
     · exact ⟨⟨_, h1.hasType.2⟩, _, h1.defeqDF_l henv hΓ h2.hasType.2⟩
   | defeqDF _ _ _ _ ih2 => exact ih2 hΓ eq
-  | @beta _ _ _ _ _ e _ hu _ h1 h2 h3 h4 _ _ _ _ ih3 ih4 =>
+  | @beta _ _ _ _ _ e _ _ _ h1 _ _ h4 _ _ _ _ ih3 ih4 =>
     obtain ⟨⟨⟩⟩ | eq := eq
     cases e with
     | bvar i =>

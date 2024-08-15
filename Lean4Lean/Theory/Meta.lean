@@ -1,4 +1,4 @@
-import Std.Lean.Expr
+import Batteries.Lean.Expr
 import Lean4Lean.Std.Control
 import Lean4Lean.Std.ToExpr
 import Lean4Lean.Theory.VEnv
@@ -73,7 +73,7 @@ def toVExprCore (bis : Option (TSyntaxArray ``Parser.Term.funBinder))
     (e : Term) : TermElabM (Nat × VExpr) := do
   toVExprWrapper bis fun map => do
     let e ← elabForVExpr (← elabTerm e none)
-    let ls ← getLevelNames
+    let ls := (← getLevelNames).reverse
     return (ls.length, ← ofExpr ls map e)
 
 syntax "vexpr(" atomic(Parser.Term.funBinder* " ⊢ ")? term ")" : term
@@ -103,7 +103,7 @@ elab_rules : term
       let e₁ ← elabForVExpr e₁
       let e₂ ← elabForVExpr e₂
       let ty ← elabForVExpr ty
-      let ls ← getLevelNames
+      let ls := (← getLevelNames).reverse
       return toExpr {
         uvars := ls.length
         lhs := ← ofExpr ls map e₁

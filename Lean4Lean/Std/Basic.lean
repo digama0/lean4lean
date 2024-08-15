@@ -1,6 +1,8 @@
-import Std.CodeAction
-import Std.Data.Array.Lemmas
-import Std.Data.HashMap.Basic
+import Batteries.CodeAction
+import Batteries.Data.Array.Lemmas
+import Batteries.Data.HashMap.Basic
+
+attribute [simp] Option.bind_eq_some List.filterMap_cons
 
 theorem funext_iff {β : α → Sort u} {f₁ f₂ : ∀ x : α, β x} : f₁ = f₂ ↔ ∀ a, f₁ a = f₂ a :=
   Iff.intro (fun h _ ↦ h ▸ rfl) funext
@@ -39,6 +41,10 @@ theorem List.Forall₂.imp (H : ∀ a b, R a b → S a b)
     {l₁ l₂} (h : Forall₂ R l₁ l₂) : Forall₂ S l₁ l₂ := by
   induction h <;> constructor <;> [(apply H; assumption); assumption]
 
+theorem List.Forall₂.trans (H : ∀ a b c, R a b → S b c → T a c)
+    {l₁ l₂ l₃} (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ S l₂ l₃) : Forall₂ T l₁ l₃ := by
+  induction h₁ generalizing l₃ <;> cases h₂ <;> constructor <;> solve_by_elim
+
 @[simp] theorem List.forall₂_map_left_iff {f : γ → α} :
     ∀ {l u}, Forall₂ R (map f l) u ↔ Forall₂ (fun c b => R (f c) b) l u
   | [], _ => by simp only [map, forall₂_nil_left_iff]
@@ -63,7 +69,7 @@ theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → le
   | _, _, Forall₂.nil => rfl
   | _, _, Forall₂.cons _ h₂ => congrArg Nat.succ (Forall₂.length_eq h₂)
 
-theorem List.map_id'' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
+theorem List.map_id''' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
   induction l <;> simp_all
 
 theorem List.map_fst_lookup {f : α → β} [BEq β] (l : List α) (b : β) :
@@ -90,7 +96,7 @@ instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
   trans h1 h2 := by simp at *; exact h1.trans h2
 
-instance [BEq α] [LawfulBEq α] [Hashable α] : Std.HashMap.LawfulHashable α where
+instance [BEq α] [LawfulBEq α] [Hashable α] : Batteries.HashMap.LawfulHashable α where
   hash_eq h := by simp at *; subst h; rfl
 
 instance : LawfulBEq Lean.FVarId where
@@ -99,13 +105,6 @@ instance : LawfulBEq Lean.FVarId where
 
 theorem beq_comm [BEq α] [PartialEquivBEq α] (a b : α) : (a == b) = (b == a) :=
   Bool.eq_iff_iff.2 ⟨PartialEquivBEq.symm, PartialEquivBEq.symm⟩
-
-theorem Array.get_modify {arr : Array α} {x i} (h : i < arr.size) :
-    (arr.modify x f).get ⟨i, by simp [h]⟩ =
-    if x = i then f (arr.get ⟨i, h⟩) else arr.get ⟨i, h⟩ := by
-  simp [modify, modifyM, Id.run]; split
-  · simp [get_set _ _ _ h]; split <;> simp [*]
-  · rw [if_neg (mt (by rintro rfl; exact h) ‹_›)]
 
 theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
     l.mapM f = some l' ↔ List.Forall₂ (f · = some ·) l l' := by

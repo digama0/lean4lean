@@ -3,7 +3,7 @@ open Lake DSL
 
 package lean4lean
 
-require std from git "https://github.com/leanprover/std4" @ "main"
+require batteries from git "https://github.com/leanprover-community/batteries" @ "main"
 
 @[default_target]
 lean_lib Lean4Lean

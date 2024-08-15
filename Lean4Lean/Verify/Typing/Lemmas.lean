@@ -1,4 +1,4 @@
-import Std.Data.String.Lemmas
+import Batteries.Data.String.Lemmas
 import Lean4Lean.Verify.Typing.Expr
 import Lean4Lean.Theory.Typing.Strong
 import Lean4Lean.Theory.Typing.UniqueTyping
@@ -371,7 +371,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
   | @bvar e A Δ₁ i h1 =>
     suffices ∃ p, Δ.find? (.inl i) = some p from let ⟨_, h⟩ := this; ⟨_, .bvar h⟩
     simp [InScope] at hs
-    induction W generalizing i e A Δ₁ with | @cons_bvar _ Δ₂ _ _ _ d W ih => ?_ | _ => cases hs
+    induction W generalizing i e A Δ₁ with | @cons_bvar _ Δ₂ _ _ _ d _ ih => ?_ | _ => cases hs
     obtain ⟨d, Δ₂, rfl, hΔ₁⟩ : ∃ d Δ₁', Δ₁ = (none, d) :: Δ₁' ∧
         VLCtx.IsDefEq env Us.length Δ₁' Δ₂ := by cases d <;> cases hΔ <;> exact ⟨_, _, rfl, ‹_›⟩
     simp [VLCtx.find?] at h1 ⊢
@@ -379,7 +379,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     obtain ⟨_, h1, _⟩ := h1
     have ⟨_, h1⟩ := ih h1 hΔ₁ (Nat.lt_of_succ_lt_succ hs)
     exact ⟨_, _, h1, rfl⟩
-  | @fvar e A _ fv h1 => let ⟨_, h⟩ := VLCtx.find?_eq_some.2 hs; exact ⟨_, .fvar h⟩
+  | @fvar _ _ _ fv => let ⟨_, h⟩ := VLCtx.find?_eq_some.2 hs; exact ⟨_, .fvar h⟩
   | sort h1 => exact ⟨_, .sort h1⟩
   | const h1 h2 h3 => exact ⟨_, .const h1 h2 h3⟩
   | app h1 h2 hf ha ih1 ih2 =>
@@ -392,7 +392,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
     have := this.1 ⟨_, (h1.app h2).defeqDFC henv hΔ.defeqCtx⟩
     have ⟨_, _, h1, h2⟩ := this.app_inv henv (W.wf henv hΔ₂).toCtx
     exact ⟨_, .app h1 h2 ih1 ih2⟩
-  | lam h1 ht hb ih1 ih2 =>
+  | lam h1 ht _ ih1 ih2 =>
     let ⟨_, h1⟩ := h1
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hs.1
@@ -417,7 +417,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
       |>.of_l (Γ := _::_) henv ⟨hΔ₁.toCtx, _, htt.hasType.1⟩ h2
       |>.hasType.2.defeqDFC henv (.succ hΔ.defeqCtx htt)
     exact ⟨_, .forallE ⟨_, h1⟩ ⟨_, h2⟩ ih1 ih2⟩
-  | letE h1 ht hv hb ih1 ih2 ih3 =>
+  | letE h1 ht hv _ ih1 ih2 ih3 =>
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hs.1
     let ⟨val₁, ih2⟩ := ih2 W hΔ hs.2.1
@@ -431,7 +431,7 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
   | lit _ ih => let ⟨_, ih⟩ := ih W hΔ .toConstructor; exact ⟨_, .lit ih⟩
   | mdata _ ih => let ⟨_, ih⟩ := ih W hΔ hs; exact ⟨_, .mdata ih⟩
   | proj h1 h2 ih =>
-    have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
+    have hΔ₂ := (hΔ.symm henv).wf
     let ⟨_, ih⟩ := ih W hΔ hs
     have htt := h1.uniq henv hΔ (ih.weakN henv W hΔ₂)
     have ⟨_, h2⟩ := h2.defeqDFC henv hΔ.defeqCtx htt

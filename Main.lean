@@ -101,7 +101,7 @@ def addDecl (d : Declaration) : M Unit := do
     let t2 ← IO.monoMsNow
     if t2 - t1 > 1000 then
       if (← read).compare then
-        let t3 ← match (← get).env.addDecl d with
+        let t3 ← match (← get).env.addDecl {} d with
         | .ok _ => IO.monoMsNow
         | .error ex => _root_.throwKernelException ex
         if (t2 - t1) > 2 * (t3 - t2) then

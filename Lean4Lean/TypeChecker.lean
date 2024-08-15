@@ -484,7 +484,7 @@ def reduceNative (_env : Environment) (e : Expr) : Except KernelException (Optio
     throw <| .other s!"lean4lean does not support 'reduceNat {c}' reduction"
   return none
 
-def natLitExt? (e : Expr) : Option Nat := if e == .natZero then some 0 else e.natLit?
+def rawNatLitExt? (e : Expr) : Option Nat := if e == .natZero then some 0 else e.rawNatLit?
 
 /--
 Reduces the application `f a b` to a Nat literal if `a` and `b` can be reduced
@@ -493,8 +493,8 @@ to Nat literals.
 Note: `f` should have an (efficient) external implementation.
 -/
 def reduceBinNatOp (f : Nat → Nat → Nat) (a b : Expr) : RecM (Option Expr) := do
-  let some v1 := natLitExt? (← whnf a) | return none
-  let some v2 := natLitExt? (← whnf b) | return none
+  let some v1 := rawNatLitExt? (← whnf a) | return none
+  let some v2 := rawNatLitExt? (← whnf b) | return none
   return some <| .lit <| .natVal <| f v1 v2
 
 /--
@@ -504,8 +504,8 @@ reduced to Nat literals.
 Note: `f` should have an (efficient) external implementation.
 -/
 def reduceBinNatPred (f : Nat → Nat → Bool) (a b : Expr) : RecM (Option Expr) := do
-  let some v1 := natLitExt? (← whnf a) | return none
-  let some v2 := natLitExt? (← whnf b) | return none
+  let some v1 := rawNatLitExt? (← whnf a) | return none
+  let some v2 := rawNatLitExt? (← whnf b) | return none
   return toExpr <| f v1 v2
 
 /--
@@ -520,7 +520,7 @@ def reduceNat (e : Expr) : RecM (Option Expr) := do
   if nargs == 1 then
     let f := e.appFn!
     if f == .const ``Nat.succ [] then
-      let some v := natLitExt? (← whnf e.appArg!) | return none
+      let some v := rawNatLitExt? (← whnf e.appArg!) | return none
       return some <| .lit <| .natVal <| v + 1
   else if nargs == 2 then
     let .app (.app (.const f _) a) b := e | return none
@@ -952,6 +952,9 @@ def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
 @[inherit_doc isDefEqCore]
 def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
+
+@[inherit_doc Inner.isProp]
+def isProp (t : Expr) : M Bool := (Inner.isProp t).run
 
 @[inherit_doc ensureSortCore]
 def ensureSort (t : Expr) (s := t) : M Expr := (ensureSortCore t s).run
