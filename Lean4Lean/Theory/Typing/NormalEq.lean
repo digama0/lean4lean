@@ -9,6 +9,185 @@ inductive IsDefEqCtx : List VExpr → List VExpr → Prop
   | zero : IsDefEqCtx Γ₀ Γ₀
   | succ : IsDefEqCtx Γ₁ Γ₂ → IsDefEq Γ₁ A₁ A₂ → IsDefEqCtx (A₁ :: Γ₁) (A₂ :: Γ₂)
 
+inductive Pattern where
+  | const (c : Name)
+  | app (f a : Pattern)
+  | var (f : Pattern)
+
+inductive Subpattern (p : Pattern) : Pattern → Prop where
+  | refl : Subpattern p p
+  | appL : Subpattern p f → Subpattern p (.app f a)
+  | appR : Subpattern p a → Subpattern p (.app f a)
+  | varL : Subpattern p f → Subpattern p (.var f)
+
+theorem Subpattern.trans {p₁ p₂ p₃} (H₁ : Subpattern p₁ p₂) (H₂ : Subpattern p₂ p₃) : Subpattern p₁ p₃ := by
+  induction H₂ with
+  | refl => exact H₁
+  | appL _ ih => exact .appL ih
+  | appR _ ih => exact .appR ih
+  | varL _ ih => exact .varL ih
+
+theorem Subpattern.sizeOf_le {p₁ p₂} (H₁ : Subpattern p₁ p₂) : sizeOf p₁ ≤ sizeOf p₂ := by
+  induction H₁ <;> simp <;> omega
+
+theorem Subpattern.antisymm {p₁ p₂} (H₁ : Subpattern p₁ p₂) (H₂ : Subpattern p₂ p₁) : p₂ = p₁ := by
+  cases id H₂ with
+  | refl => rfl
+  | _ h₂ =>
+    have H₁ := H₁.sizeOf_le
+    have h₂ := h₂.sizeOf_le
+    simp at H₁; omega
+
+def Pattern.inter : Pattern → Pattern → Option Pattern
+  | .const c, .const c' => if c = c' then some (.const c) else none
+  | .app f a, .app f' a' => return .app (← f.inter f') (← a.inter a')
+  | .var f, .var f' => return .var (← f.inter f')
+  | .app f a, .var f' => return .app (← f.inter f') a
+  | .var f, .app f' a' => return .app (← f.inter f') a'
+  | _, _ => none
+
+theorem Pattern.inter_self (p : Pattern) : p.inter p = some p := by induction p <;> simp [*, inter]
+
+inductive Pattern.LE : Pattern → Pattern → Prop where
+  | refl : LE p p
+  | var : LE f f' → LE (.var f) (.var f')
+  | app : LE f f' → LE a a' → LE (.app f a) (.app f' a')
+  | app_var : LE f f' → LE (.app f a) (.var f')
+
+def Pattern.Path : Pattern → Type × Type
+  | .const _ => (Unit, Empty)
+  | .app f a => (f.Path.1 ⊕ a.Path.1, f.Path.2 ⊕ a.Path.2)
+  | .var f => (f.Path.1, Option f.Path.2)
+
+inductive Pattern.Matches : (p : Pattern) → VExpr → (p.Path.1 → List VLevel) → (p.Path.2 → VExpr) → Prop
+  | const : Matches (.const c) (.const c ls) (fun _ => ls) nofun
+  | var : Matches f f' f1 g1 → Matches (.var f) (.app f' a') f1 (·.elim a' g1)
+  | app : Matches f f' f1 g1 → Matches a a' f2 g2 →
+    Matches (.app f a) (.app f' a') (Sum.elim f1 f2) (Sum.elim g1 g2)
+
+theorem Pattern.Matches.uniq {p : Pattern} {e : VExpr} {m1 m2 m1' m2'}
+    (H1 : Pattern.Matches p e m1 m2) (H2 : Pattern.Matches p e m1' m2') : m1 = m1' ∧ m2 = m2' := by
+  induction H1 <;> cases H2
+  · simp
+  · next ih _ h => simp [ih h]
+  · next ih1 ih2 _ _ _ _ h1 h2 => simp [ih1 h1, ih2 h2]
+
+inductive Pattern.RHS (p : Pattern) where
+  | fixed (e : p.Path.1) (c : VExpr) (_ : c.Closed)
+  | app (f a : RHS p)
+  | var (e : p.Path.2)
+
+inductive Pattern.Check (p : Pattern) where
+  | true
+  | defeq (x y : RHS p) (rest : Check p)
+
+def Pattern.RHS.apply {p : Pattern}
+    (m1 : p.Path.1 → List VLevel) (m2 : p.Path.2 → VExpr) : p.RHS → VExpr
+  | .fixed path c _ => c.instL (m1 path)
+  | .var path => m2 path
+  | .app f a => .app (f.apply m1 m2) (a.apply m1 m2)
+
+theorem Pattern.RHS.liftN_apply {p : Pattern} {m1 m2} (r : p.RHS) :
+    (r.apply m1 m2).liftN n k = (r.apply m1 fun x => (m2 x).liftN n k) := by
+  induction r <;> simp [*, apply, liftN, ← instL_liftN]
+  rw [ClosedN.liftN_eq ‹_› (Nat.zero_le _)]
+
+theorem Pattern.matches_liftN {p : Pattern} {e : VExpr} {m1 m2'} :
+    p.Matches (e.liftN n k) m1 m2' ↔
+    ∃ m2, p.Matches e m1 m2 ∧ ∀ x, m2' x = (m2 x).liftN n k := by
+  constructor
+  · intro h; generalize eq : e.liftN n k = e' at h
+    induction h generalizing e with
+    | const => cases e <;> cases eq; exact ⟨_, .const, nofun⟩
+    | var _ ih =>
+      cases e <;> cases eq
+      have ⟨_, l1, l2⟩ := ih rfl
+      refine ⟨_, .var l1, ?_⟩
+      rintro (_|_) <;> solve_by_elim
+    | app _ _ ih1 ih2 =>
+      cases e <;> cases eq
+      have ⟨_, l1, l2⟩ := ih1 rfl
+      have ⟨_, r1, r2⟩ := ih2 rfl
+      refine ⟨_, .app l1 r1, ?_⟩
+      rintro (_|_) <;> solve_by_elim
+  · intro ⟨m2, h1, h2⟩
+    induction h1 with
+    | const => exact (show m2' = _ by ext ⟨⟩) ▸ .const
+    | var _ ih =>
+      have := (ih (h2 <| some ·)).var (a' := ?_)
+      rwa [(_ : m2' = _)]; ext (_|_) <;> simp [h2 none]
+    | app _ _ ih1 ih2 =>
+      have := (ih1 (h2 <| .inl ·)).app (ih2 (h2 <| .inr ·))
+      rwa [(_ : m2' = _)]; ext (_|_) <;> rfl
+
+theorem Pattern.RHS.instN_apply {p : Pattern} {m1 m2} (r : p.RHS) :
+    (r.apply m1 m2).inst e₀ k = (r.apply m1 fun x => (m2 x).inst e₀ k) := by
+  induction r <;> simp [*, apply, inst]
+  rw [(ClosedN.instL ‹_›).instN_eq (Nat.zero_le _)]
+
+theorem Pattern.matches_instN {p : Pattern} {e : VExpr} {m1 m2} (H : p.Matches e m1 m2) :
+    p.Matches (e.inst e₀ k) m1 fun x => (m2 x).inst e₀ k := by
+  induction H with
+  | const => erw [show (fun _ : Empty => _) = _ by ext ⟨⟩]; exact .const
+  | var _ ih =>
+    rw [(_ : (fun _ => _) = _)]; exact ih.var
+    ext (_|_) <;> rfl
+  | app _ _ ih1 ih2 =>
+    rw [(_ : (fun _ => _) = _)]; exact ih1.app ih2
+    ext (_|_) <;> rfl
+
+theorem Pattern.matches_inter {p q : Pattern} {e : VExpr} :
+    (∃ m1 m2, p.Matches e m1 m2) ∧ (∃ m1 m2, q.Matches e m1 m2) ↔
+    (∃ r m1 m2, p.inter q = some r ∧ r.Matches e m1 m2) := by
+  constructor
+  · rintro ⟨⟨m1, m2, hp⟩, ⟨m3, m4, hq⟩⟩
+    induction hp generalizing q  <;> cases hq <;> simp [inter]
+    · case const.const => exact ⟨_, _, .const⟩
+    · case var.var ih _ _ _ ih' =>
+      have ⟨rf, mf1, mf2, hf1, hf2⟩ := ih _ _ ih'
+      exact ⟨_, ⟨_, hf1, rfl⟩, _, _, .var hf2⟩
+    · case var.app ihf _ _ _ _ _ _ ihf' ha2 =>
+      have ⟨rf, mf1, mf2, hf1, hf2⟩ := ihf _ _ ihf'
+      exact ⟨_, ⟨_, hf1, rfl⟩, _, _, .app hf2 ha2⟩
+    · case app.var ha2 ihf _ _ _ _ ihf' =>
+      have ⟨rf, mf1, mf2, hf1, hf2⟩ := ihf _ _ ihf'
+      exact ⟨_, ⟨_, hf1, rfl⟩, _, _, .app hf2 ha2⟩
+    · case app.app ihf iha _ _ _ _ _ _ ihf' iha' =>
+      have ⟨rf, mf1, mf2, hf1, hf2⟩ := ihf _ _ ihf'
+      have ⟨ra, ma1, ma2, ha1, ha2⟩ := iha _ _ iha'
+      exact ⟨_, ⟨_, hf1, _, ha1, rfl⟩, _, _, .app hf2 ha2⟩
+  · rintro ⟨r, m1, m2, h1, h2⟩
+    induction p generalizing q e r <;> cases q <;> simp [inter] at h1 <;> [
+        obtain ⟨rfl, rfl⟩ := h1; obtain ⟨_, wf, _, wa, rfl⟩ := h1;
+        obtain ⟨_, wf, rfl⟩ := h1; obtain ⟨_, wf, rfl⟩ := h1; obtain ⟨_, wf, rfl⟩ := h1
+      ] <;> cases h2
+    · exact ⟨⟨_, _, .const⟩, ⟨_, _, .const⟩⟩
+    · next ihf iha _ _ _ _ _ _ _ _ hf _ _ ha =>
+      have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
+      have ⟨⟨ma1, ma2, ha⟩, ⟨ma1', ma2', ha'⟩⟩ := iha _ _ _ wa ha
+      exact ⟨⟨_, _, .app hf ha⟩, ⟨_, _, .app hf' ha'⟩⟩
+    · next ihf _ _ _ _ _ _ _ hf _ _ ha =>
+      have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
+      exact ⟨⟨_, _, .app hf ha⟩, ⟨_, _, .var hf'⟩⟩
+    · next ihf _ _ _ _ _ _ _ hf _ _ ha' =>
+      have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
+      exact ⟨⟨_, _, .var hf⟩, ⟨_, _, .app hf' ha'⟩⟩
+    · next ihf _ _ _ _ _ hf =>
+      have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
+      exact ⟨⟨_, _, .var hf⟩, ⟨_, _, .var hf'⟩⟩
+
+def Pattern.Check.OK (defeq : VExpr → VExpr → Prop) {p : Pattern}
+    (m1 : p.Path.1 → List VLevel) (m2 : p.Path.2 → VExpr) : p.Check → Prop
+  | .true => True
+  | .defeq a b rest => defeq (RHS.apply m1 m2 a) (RHS.apply m1 m2 b) ∧ rest.OK defeq m1 m2
+
+theorem Pattern.Check.OK.map
+    {df df' : VExpr → VExpr → Prop} {p : Pattern} {ck : p.Check} {m1 m2 m1' m2'}
+    (h : ∀ a b : p.RHS,
+      df (a.apply m1 m2) (b.apply m1 m2) → df' (a.apply m1' m2') (b.apply m1' m2'))
+    (H : ck.OK df m1 m2) : ck.OK df' m1' m2' := by
+  induction ck <;> simp [OK, *] at H ⊢; cases H; constructor <;> solve_by_elim
+
 section
 set_option hygiene false
 local notation:65 Γ " ⊢ " e " : " A:36 => HasType Γ e A
@@ -19,6 +198,7 @@ structure Typing where
   univs : Nat
   IsDefEq : List VExpr → VExpr → VExpr → Prop
   HasType : List VExpr → VExpr → VExpr → Prop
+  Pat : (p : Pattern) → p.RHS × p.Check → Prop
   refl : Γ ⊢ e : A → Γ ⊢ e ≡ e
   symm : Γ ⊢ e₁ ≡ e₂ → Γ ⊢ e₂ ≡ e₁
   trans : Γ ⊢ e₁ ≡ e₂ → Γ ⊢ e₂ ≡ e₃ → Γ ⊢ e₁ ≡ e₃
@@ -43,7 +223,7 @@ structure Typing where
   app : Γ ⊢ f : .forallE A B → Γ ⊢ a : A → Γ ⊢ .app f a : .inst B a
   lam : Γ ⊢ A : .sort u → A::Γ ⊢ body : B → Γ ⊢ .lam A body : .forallE A B
   forallE : Γ ⊢ A : .sort u → A::Γ ⊢ B : .sort v → Γ ⊢ .forallE A B : .sort (.imax u v)
-  -- beta : A::Γ ⊢ e : B → Γ ⊢ e' : A → Γ ⊢ .app (.lam A e) e' ≡ e.inst e'
+  beta : A::Γ ⊢ e : B → Γ ⊢ e' : A → Γ ⊢ .app (.lam A e) e' ≡ e.inst e'
   eta : Γ ⊢ e : .forallE A B → Γ ⊢ .lam A (.app e.lift (.bvar 0)) ≡ e
   proofIrrel : Γ ⊢ p : .sort .zero → Γ ⊢ h : p → Γ ⊢ h' : p → Γ ⊢ h ≡ h'
   isDefEq_weakN_iff (W : Ctx.LiftN n k Γ Γ') :
@@ -70,16 +250,59 @@ structure Typing where
   defeq_r : Γ ⊢ A₁ ≡ A₂ → Γ ⊢ e : A₁ → Γ ⊢ e : A₂
   -- univ_defInv : Γ ⊢ .sort u ≡ .sort v → u ≈ v
   forallE_defInv : Γ ⊢ .forallE A B ≡ .forallE A' B' → Γ ⊢ A ≡ A' ∧ A::Γ ⊢ B ≡ B'
+  pat_uniq : Pat p₁ r → Pat p₂ r' → Subpattern p₃ p₁ → p₂.inter p₃ = some p₄ →
+    p₁ = p₂ ∧ p₂ = p₃ ∧ HEq r r'
+  pat_wf : Pat p r → p.Matches e m1 m2 → Γ ⊢ e : A →
+    r.2.OK (IsDefEq Γ) m1 m2 → Γ ⊢ e ≡ r.1.apply m1 m2
 
-theorem Typing.IsDefEq.weakN {TY : Typing} (W : Ctx.LiftN n k Γ Γ') :
+variable {TY : Typing}
+
+theorem Typing.IsDefEq.weakN (W : Ctx.LiftN n k Γ Γ') :
     TY.IsDefEq Γ e1 e2 → TY.IsDefEq Γ' (e1.liftN n k) (e2.liftN n k) := (TY.isDefEq_weakN_iff W).2
-theorem Typing.HasType.weakN {TY : Typing} (W : Ctx.LiftN n k Γ Γ') :
+theorem Typing.HasType.weakN (W : Ctx.LiftN n k Γ Γ') :
     TY.HasType Γ e A → TY.HasType Γ' (e.liftN n k) (A.liftN n k) := (TY.hasType_weakN_iff W).2
 
-theorem Typing.IsDefEq.instN {TY : Typing} : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ → TY.IsDefEq Γ₁ e1 e2 →
+theorem Typing.IsDefEq.instN : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ → TY.IsDefEq Γ₁ e1 e2 →
     TY.HasType Γ₀ e₀ A₀ → TY.IsDefEq Γ (e1.inst e₀ k) (e2.inst e₀ k) := TY.isDefEq_instN
-theorem Typing.HasType.instN {TY : Typing} : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ → TY.HasType Γ₁ e A →
+theorem Typing.HasType.instN : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ → TY.HasType Γ₁ e A →
     TY.HasType Γ₀ e₀ A₀ → TY.HasType Γ (e.inst e₀ k) (A.inst e₀ k) := TY.hasType_instN
+
+theorem Pattern.Check.OK.weakN (W : Ctx.LiftN n k Γ Γ') {p : Pattern}
+    (ck : p.Check) {m1 m2} (H : ck.OK (TY.IsDefEq Γ) m1 m2) :
+    ck.OK (TY.IsDefEq Γ') m1 fun x => (m2 x).liftN n k := by
+  refine H.map fun a b h => ?_
+  simp only [← Pattern.RHS.liftN_apply]
+  exact h.weakN W
+
+theorem Pattern.Check.OK.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H₀ : TY.HasType Γ₀ e₀ A₀)
+    {p : Pattern} (ck : p.Check) {m1 m2} (H : ck.OK (TY.IsDefEq Γ₁) m1 m2) :
+    ck.OK (TY.IsDefEq Γ) m1 fun x => (m2 x).inst e₀ k := by
+  refine H.map fun a b h => ?_
+  simp only [← Pattern.RHS.instN_apply]
+  exact h.instN W H₀
+
+open Pattern.RHS in
+theorem Typing.IsDefEq.apply_pat
+    (ih : ∀ a A, TY.HasType Γ (m2 a) A →  TY.IsDefEq Γ (m2 a) (m2' a))
+    (he : TY.HasType Γ (apply m1 m2 r) A) :
+     TY.IsDefEq Γ (apply m1 m2 r) (apply m1 m2' r) := by
+  induction r generalizing A with simp [apply] at he ⊢
+  | fixed path c _ => exact TY.refl he
+  | app hf ha ih1 ih2 =>
+    let ⟨_, _, h1, h2⟩ := TY.app_inv he
+    exact TY.appDF h1 (ih1 h1) h2 (ih2 h2)
+  | var path => exact ih path _ he
+
+theorem Pattern.Matches.hasType {p : Pattern} {e : VExpr} {m1 m2}
+    (H : p.Matches e m1 m2) (H2 : TY.HasType Γ e V) (a) : ∃ A, TY.HasType Γ (m2 a) A := by
+  induction H generalizing V with
+  | const => cases a
+  | var _ ih =>
+    have ⟨_, _, hf, ha⟩ := TY.app_inv H2
+    exact a.rec ⟨_, ha⟩ (ih hf)
+  | app _ _ ih1 ih2 =>
+    have ⟨_, _, hf, ha⟩ := TY.app_inv H2
+    exact a.rec (ih1 hf) (ih2 ha)
 
 end
 
@@ -372,7 +595,6 @@ private theorem meas_liftN : meas (e.liftN n k) = meas e := by
   induction e generalizing k <;> simp [*, meas]
 private theorem meas_lift : meas e.lift = meas e := meas_liftN
 
-variable (TY : Typing) in
 attribute [local simp] meas meas_lift in
 theorem NormalEq.trans : NormalEq TY Γ e1 e2 → NormalEq TY Γ e2 e3 → NormalEq TY Γ e1 e3
   | .sortDF l1 _ l3, .sortDF r1 r2 r3 => .sortDF l1 r2 (l3.trans r3)
@@ -422,3 +644,16 @@ theorem NormalEq.trans : NormalEq TY Γ e1 e2 → NormalEq TY Γ e2 e3 → Norma
       (.weakN .one H1) (.refl (TY.bvar .zero))
   | H1, .proofIrrel h1 h2 h3 => .proofIrrel h1 (TY.defeq_l H1.symm.defeq h2) h3
 termination_by meas e1 + meas e2 + meas e3
+
+open Pattern.RHS in
+theorem NormalEq.apply_pat
+    (ih : ∀ a A, TY.HasType Γ (m2 a) A → NormalEq TY Γ (m2 a) (m2' a))
+    (he : TY.HasType Γ (apply m1 m2 r) A) :
+    NormalEq TY Γ (apply m1 m2 r) (apply m1 m2' r) := by
+  induction r generalizing A with simp [apply] at he ⊢
+  | fixed path c _ => exact .refl he
+  | app hf ha ih1 ih2 =>
+    let ⟨_, _, h1, h2⟩ := TY.app_inv he
+    exact .appDF h1 (TY.defeq_l (ih1 h1).defeq h1)
+      h2 (TY.defeq_l (ih2 h2).defeq h2) (ih1 h1) (ih2 h2)
+  | var path => exact ih path _ he

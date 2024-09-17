@@ -1,4 +1,5 @@
 import Batteries.CodeAction
+import Batteries.Data.Sum.Basic
 import Batteries.Data.Array.Lemmas
 import Batteries.Data.HashMap.Basic
 
