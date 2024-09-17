@@ -5,9 +5,6 @@ import Batteries.Data.HashMap.Basic
 
 attribute [simp] Option.bind_eq_some List.filterMap_cons
 
-theorem funext_iff {β : α → Sort u} {f₁ f₂ : ∀ x : α, β x} : f₁ = f₂ ↔ ∀ a, f₁ a = f₂ a :=
-  Iff.intro (fun h _ ↦ h ▸ rfl) funext
-
 protected theorem Nat.le_iff_exists_add {a b : Nat} : a ≤ b ↔ ∃ c, b = a + c :=
   ⟨fun h => ⟨_, (Nat.add_sub_cancel' h).symm⟩, fun ⟨_, h⟩ => h ▸ Nat.le_add_right ..⟩
 
@@ -110,7 +107,8 @@ theorem beq_comm [BEq α] [PartialEquivBEq α] (a b : α) : (a == b) = (b == a) 
 theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
     l.mapM f = some l' ↔ List.Forall₂ (f · = some ·) l l' := by
   induction l generalizing l' <;>
-    simp [List.mapM_nil, List.mapM_cons, bind, List.forall₂_cons_left_iff, *, pure, @eq_comm _ l']
+    simp only [mapM_nil, mapM_cons, bind, pure, Option.bind_eq_some, Option.some.injEq,
+      forall₂_nil_left_iff, forall₂_cons_left_iff, @eq_comm _ l', exists_and_left, *]
 
 @[simp] theorem Option.bind_eq_none'' {o : Option α} {f : α → Option β} :
     o.bind f = none ↔ ∀ a, o = some a → f a = none := by cases o <;> simp

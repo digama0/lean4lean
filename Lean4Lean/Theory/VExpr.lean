@@ -443,7 +443,6 @@ theorem inst_instVar_hi (i : Nat) (e2 e3 : VExpr) (k j : Nat) :
     · simp [Nat.succ_lt_succ hi, inst, instVar, h, h']
     split <;> rename_i hi'
     · subst i
-      simp
       suffices liftN (j+k+1) .. = _ by rw [this]; exact (inst_liftN ..).symm
       exact (liftN'_liftN' (Nat.zero_le _) (Nat.le_add_left k j)).symm
     · have hk := Nat.lt_of_le_of_ne (Nat.not_lt.1 hi) (Ne.symm hi')

@@ -62,27 +62,27 @@ theorem VLocalDecl.is_liftN {Δ : VLCtx} :
   | .vlam _ => .one
   | .vlet .. => .zero []
 
-variable (env : VEnv) (U : Nat) (Γ : List VExpr) in
+variable! (env : VEnv) (U : Nat) (Γ : List VExpr) in
 inductive VLocalDecl.IsDefEq : VLocalDecl → VLocalDecl → Prop
   | vlam : env.IsDefEq U Γ type₁ type₂ (.sort u) → VLocalDecl.IsDefEq (.vlam type₁) (.vlam type₂)
   | vlet :
     env.IsDefEq U Γ value₁ value₂ type₁ → env.IsDefEq U Γ type₁ type₂ (.sort u) →
     VLocalDecl.IsDefEq (.vlet type₁ value₁) (.vlet type₂ value₂)
 
-variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.LiftN n k Γ Γ') in
+variable! (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.LiftN n k Γ Γ') in
 theorem VLocalDecl.weakN_iff : VLocalDecl.WF env U Γ' (d.liftN n k) ↔ VLocalDecl.WF env U Γ d :=
   match d with
   | .vlam .. => IsType.weakN_iff henv hΓ' W
   | .vlet .. => HasType.weakN_iff henv hΓ' W
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem VLCtx.WF.find?_wf {Δ : VLCtx} (hΔ : VLCtx.WF env U Δ) (H : Δ.find? v = some (e, A)) :
     env.HasType U Δ.toCtx e A := by
   let (ofv, d') :: Δ := Δ
   unfold VLCtx.find? at H; split at H
   · cases H; exact hΔ.2.2.hasType
   · simp [bind, Option.bind_eq_some] at H
-    obtain ⟨⟨d'', n'⟩, H, rfl, rfl⟩ := H
+    obtain ⟨d'', n', H, rfl, rfl⟩ := H
     obtain h3 := hΔ.1.find?_wf H
     exact h3.weakN henv VLocalDecl.is_liftN
 
@@ -122,7 +122,7 @@ theorem LiftN.toCtx (W : LiftN Δ Δ' dk n k) : Ctx.LiftN n k Δ.toCtx Δ'.toCtx
     | .vlet .. => exact ih
     | .vlam A => exact .succ ih
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem LiftN.wf (W : LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U := by
   induction W with
   | refl => exact hΔ'
@@ -131,7 +131,6 @@ theorem LiftN.wf (W : LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U :
     let ⟨hΔ', _, h2⟩ := hΔ'
     exact ⟨ih hΔ', nofun, (VLocalDecl.weakN_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
 
-variable (henv : Ordered env) in
 theorem LiftN.fvars_suffix (W : LiftN Δ Δ' dk n k) : Δ.fvars <:+ Δ'.fvars := by
   induction W with
   | refl => exact List.suffix_refl _
@@ -145,20 +144,20 @@ theorem LiftN.find? (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
   | @skip_fvar _ Δ' _ fv' _ W ih =>
     simp [VLCtx.find?]
     cases v with simp [VLCtx.next, bind]
-    | inl => exact ⟨_, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
+    | inl => exact ⟨_, _, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
     | inr fv =>
       cases eq : fv' == fv <;> simp
-      · exact ⟨_, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
+      · exact ⟨_, _, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
       · refine ((List.pairwise_cons.1 hΔ'.fvars_nodup).1 fv' ?_ rfl).elim
         exact W.fvars_suffix.subset ((beq_iff_eq ..).1 eq ▸ find?_eq_some.1 ⟨_, H⟩)
   | cons_bvar d _ ih =>
     simp [VLCtx.find?] at H ⊢
     obtain ⟨_|i⟩ | fv := v <;> simp [VLCtx.next, bind] at H ⊢ <;>
       [(obtain ⟨rfl, rfl⟩ := H);
-       (obtain ⟨⟨e, A⟩, H, rfl, rfl⟩ := H
-        refine ⟨_, ih (v := .inl i) hΔ'.1 H, ?_⟩);
-       (obtain ⟨⟨e, A⟩, H, rfl, rfl⟩ := H
-        refine ⟨_, ih (v := .inr fv) hΔ'.1 H, ?_⟩)] <;>
+       (obtain ⟨e, A, H, rfl, rfl⟩ := H
+        refine ⟨_, _, ih (v := .inl i) hΔ'.1 H, ?_⟩);
+       (obtain ⟨e, A, H, rfl, rfl⟩ := H
+        refine ⟨_, _, ih (v := .inr fv) hΔ'.1 H, ?_⟩)] <;>
       open VLocalDecl in
       cases d <;> simp [VExpr.lift_liftN', liftN, value, type, depth, VExpr.liftN]
 
@@ -167,7 +166,7 @@ end VLCtx
 theorem TrProj.weakN (W : Ctx.LiftN n k Γ Γ')
     (H : TrProj Γ s i e e') : TrProj Γ' s i (e'.liftN n k) (e'.liftN n k) := sorry
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem TrExpr.weakN (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
     (H : TrExpr env Us Δ e e') : TrExpr env Us Δ' e (e'.liftN n k) := by
   induction H generalizing Δ' dk k with
@@ -191,7 +190,7 @@ theorem TrExpr.weakN (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.lengt
   | mdata _ ih => exact .mdata (ih W hΔ')
   | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weakN W.toCtx)
 
-variable (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
+variable! (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
 theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
     (h1 : env.HasType U Γ' e A) (h2 : e.Skips n k) : ∃ B, env.HasType U Γ' e B ∧ B.Skips n k :=
   IsDefEq.skips henv hΓ' W h1 h2 h2
@@ -203,7 +202,7 @@ theorem TrProj.defeqDFC (henv : Ordered env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ
     (he : env.IsDefEqU U Γ₁ e₁ e₂) (H : TrProj Γ₁ s i e₁ e') :
     ∃ e', TrProj Γ₂ s i e₂ e' := sorry
 
-variable (env : VEnv) (U : Nat) in
+variable! (env : VEnv) (U : Nat) in
 inductive VLCtx.IsDefEq : VLCtx → VLCtx → Prop
   | nil : VLCtx.IsDefEq [] []
   | cons {Δ₁ Δ₂ : VLCtx} :
@@ -212,12 +211,12 @@ inductive VLCtx.IsDefEq : VLCtx → VLCtx → Prop
     VLocalDecl.IsDefEq env U Δ₁.toCtx d₁ d₂ →
     VLCtx.IsDefEq ((ofv, d₁) :: Δ₁) ((ofv, d₂) :: Δ₂)
 
-variable (henv : Ordered env) (hΓ : OnCtx Γ (IsType env U)) in
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (IsType env U)) in
 theorem VLocalDecl.IsDefEq.refl : ∀ {d}, VLocalDecl.WF env U Γ d → VLocalDecl.IsDefEq env U Γ d d
   | .vlam _, ⟨_, h1⟩ => .vlam h1
   | .vlet .., h1 => let ⟨_, h2⟩ := h1.isType henv hΓ; .vlet h1 h2
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem VLCtx.IsDefEq.refl : ∀ {Δ}, VLCtx.WF env U Δ → VLCtx.IsDefEq env U Δ Δ
   | [], _ => .nil
   | (_, _) :: _, ⟨h1, h2, h3⟩ => .cons (IsDefEq.refl h1) h2 (.refl henv h1.toCtx h3)
@@ -250,13 +249,13 @@ theorem VLocalDecl.IsDefEq.defeqDFC (henv : Ordered env) (hΓ : IsDefEqCtx env U
   | .vlam h1 => .vlam (h1.defeqDFC henv hΓ)
   | .vlet h1 h2 => .vlet (h1.defeqDFC henv hΓ) (h2.defeqDFC henv hΓ)
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem VLCtx.IsDefEq.symm : VLCtx.IsDefEq env U Δ₁ Δ₂ → VLCtx.IsDefEq env U Δ₂ Δ₁
   | .nil => .nil
   | .cons h1 h2 h3 =>
     .cons h1.symm (by simpa [h1.fvars] using h2) (h3.symm.defeqDFC henv h1.defeqCtx)
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
     (H1 : Δ₁.find? v = some (e₁, A₁)) (H2 : Δ₂.find? v = some (e₂, A₂)) :
     env.IsDefEqU U Δ₁.toCtx A₁ A₂ ∧ env.IsDefEq U Δ₁.toCtx e₁ e₂ A₁ := by
@@ -266,17 +265,16 @@ theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
     revert H1 H2; unfold VLCtx.find?; split
     · rintro ⟨⟩ ⟨⟩; exact ⟨⟨_, h2.weak henv⟩, .bvar .zero⟩
     · simp [bind, Option.bind_eq_some]
-      rintro ⟨d₁', n₁'⟩ H1' rfl rfl ⟨d₂', n₂'⟩ H2' rfl rfl
+      rintro d₁' n₁' H1' rfl rfl d₂' n₂' H2' rfl rfl
       obtain ⟨h2, h3⟩ := find?_uniq hΔ H1' H2'
       exact ⟨h2.weakN henv .one, h3.weak henv⟩
   | .vlet h3 h4 =>
     revert H1 H2; unfold VLCtx.find?; split
     · rintro ⟨⟩ ⟨⟩; exact ⟨⟨_, h4⟩, h3⟩
     · simp [bind, Option.bind_eq_some]
-      rintro ⟨d₁', n₁'⟩ H1' rfl rfl ⟨d₂', n₂'⟩ H2' rfl rfl
+      rintro d₁' n₁' H1' rfl rfl d₂' n₂' H2' rfl rfl
       simpa [VLocalDecl.depth] using find?_uniq hΔ H1' H2'
 
-variable (henv : Ordered env) in
 theorem TrExpr.inScope (H : TrExpr env Us Δ e e') : InScope (· ∈ Δ.fvars) e Δ.bvars := by
   induction H with
   | @bvar e A Δ i h1 =>
@@ -288,11 +286,11 @@ theorem TrExpr.inScope (H : TrExpr env Us Δ e e') : InScope (· ∈ Δ.fvars) e
       | (none, _), 0 => exact Nat.succ_pos _
       | (none, _), _ + 1 =>
         simp [VLCtx.find?, VLCtx.next, bind] at h1
-        obtain ⟨⟨_, _⟩, h1, rfl, rfl⟩ := h1
+        obtain ⟨_, _, h1, rfl, rfl⟩ := h1
         exact Nat.succ_lt_succ (ih h1)
       | (some _, _), _ =>
         simp [VLCtx.find?, VLCtx.next, bind] at h1
-        obtain ⟨⟨_, _⟩, h1, rfl, rfl⟩ := h1
+        obtain ⟨_, _, h1, rfl, rfl⟩ := h1
         exact ih h1
   | fvar h1 => exact VLCtx.find?_eq_some.1 ⟨_, h1⟩
   | sort | const | lit | mdata => trivial
@@ -304,7 +302,7 @@ theorem TrExpr.inScope (H : TrExpr env Us Δ e e') : InScope (· ∈ Δ.fvars) e
 
 theorem TrProj.wf (H1 : TrProj Δ s i e e') (H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := sorry
 
-variable (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.WF env Us.length Δ) in
+variable! (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.WF env Us.length Δ) in
 theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx e' := by
   induction H with
   | bvar h1 | fvar h1 => exact ⟨_, hΔ.find?_wf henv h1⟩
@@ -323,12 +321,12 @@ theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx 
   | lit _ ih | mdata _ ih => exact ih hΔ
   | proj _ h2 ih => exact h2.wf (ih hΔ)
 
-variable (henv : Ordered env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
+variable! (henv : Ordered env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
 theorem TrProj.uniq (H1 : TrProj Γ₁ s i e₁ e₁') (H2 : TrProj Γ₂ s i e₂ e₂')
     (H : env.IsDefEqU U Γ₁ e₁ e₂) :
     env.IsDefEqU U Γ₁ e₁' e₂' := sorry
 
-variable (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
+variable! (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
 theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ e e₂) :
     env.IsDefEqU Us.length Δ₁.toCtx e₁ e₂ := by
   induction H1 generalizing Δ₂ e₂ with
@@ -361,7 +359,7 @@ theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ 
     exact .vlet (ih3 hΔ r3 |>.of_l henv hΓ l1) (ih2 hΔ r2 |>.of_l henv hΓ hb)
   | lit _ ih1 => let .lit r1 := H2; exact ih1 hΔ r1
   | mdata _ ih1 => let .mdata r1 := H2; exact ih1 hΔ r1
-  | proj _ l2 ih1 => let .proj r1 r2 := H2; exact l2.uniq r2 (ih1 hΔ r1)
+  | proj _ l2 ih1 => let .proj r1 r2 := H2; exact l2.uniq henv hΔ.defeqCtx r2 (ih1 hΔ r1)
 
 theorem TrExpr.weakN_inv (henv : Ordered env)
     (W : VLCtx.LiftN Δ Δ₂ dk n k) (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂)
@@ -376,9 +374,9 @@ theorem TrExpr.weakN_inv (henv : Ordered env)
         VLCtx.IsDefEq env Us.length Δ₁' Δ₂ := by cases d <;> cases hΔ <;> exact ⟨_, _, rfl, ‹_›⟩
     simp [VLCtx.find?] at h1 ⊢
     rcases i with _ | i <;> simp [VLCtx.next, bind] at h1 ⊢
-    obtain ⟨_, h1, _⟩ := h1
+    obtain ⟨_, _, h1, _⟩ := h1
     have ⟨_, h1⟩ := ih h1 hΔ₁ (Nat.lt_of_succ_lt_succ hs)
-    exact ⟨_, _, h1, rfl⟩
+    exact ⟨_, _, _, _, h1, rfl, rfl⟩
   | @fvar _ _ _ fv => let ⟨_, h⟩ := VLCtx.find?_eq_some.2 hs; exact ⟨_, .fvar h⟩
   | sort h1 => exact ⟨_, .sort h1⟩
   | const h1 h2 h3 => exact ⟨_, .const h1 h2 h3⟩

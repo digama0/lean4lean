@@ -9,7 +9,7 @@ import Lean4Lean.Environment
 
 namespace Lean
 
-def HashMap.keyNameSet (m : HashMap Name α) : NameSet :=
+def HashMap.keyNameSet (m : Std.HashMap Name α) : NameSet :=
   m.fold (fun s n _ => s.insert n) {}
 
 namespace Environment
@@ -54,7 +54,7 @@ end Lean
 open Lean
 
 structure Context where
-  newConstants : HashMap Name ConstantInfo
+  newConstants : Std.HashMap Name ConstantInfo
   verbose := false
   compare := false
 
@@ -132,7 +132,7 @@ and add it to the environment.
 -/
 partial def replayConstant (name : Name) : M Unit := do
   if ← isTodo name then
-    let some ci := (← read).newConstants.find? name | unreachable!
+    let some ci := (← read).newConstants[name]? | unreachable!
     replayConstants ci.getUsedConstants
     -- Check that this name is still pending: a mutual block may have taken care of it.
     if (← get).pending.contains name then
@@ -148,7 +148,7 @@ partial def replayConstant (name : Name) : M Unit := do
       | .inductInfo info =>
         let lparams := info.levelParams
         let nparams := info.numParams
-        let all ← info.all.mapM fun n => do pure <| ((← read).newConstants.find! n)
+        let all ← info.all.mapM fun n => do pure <| (← read).newConstants[n]!
         for o in all do
           -- There is exactly one awkward special case here:
           -- `String` is a primitive type, which depends on `Char.ofNat` to exist
@@ -160,7 +160,7 @@ partial def replayConstant (name : Name) : M Unit := do
             { s with remaining := s.remaining.erase o.name, pending := s.pending.erase o.name }
         let ctorInfo ← all.mapM fun ci => do
           pure (ci, ← ci.inductiveVal!.ctors.mapM fun n => do
-            pure ((← read).newConstants.find! n))
+            pure (← read).newConstants[n]!)
         -- Make sure we are really finished with the constructors.
         for (_, ctors) in ctorInfo do
           for ctor in ctors do
@@ -194,7 +194,7 @@ when we replayed the inductives.
 -/
 def checkPostponedConstructors : M Unit := do
   for ctor in (← get).postponedConstructors do
-    match (← get).env.constants.find? ctor, (← read).newConstants.find? ctor with
+    match (← get).env.constants.find? ctor, (← read).newConstants[ctor]? with
     | some (.ctorInfo info), some (.ctorInfo info') =>
       if ! (info == info') then throw <| IO.userError s!"Invalid constructor {ctor}"
     | _, _ => throw <| IO.userError s!"No such constructor {ctor}"
@@ -205,7 +205,7 @@ when we replayed the inductives.
 -/
 def checkPostponedRecursors : M Unit := do
   for ctor in (← get).postponedRecursors do
-    match (← get).env.constants.find? ctor, (← read).newConstants.find? ctor with
+    match (← get).env.constants.find? ctor, (← read).newConstants[ctor]? with
     | some (.recInfo info), some (.recInfo info') =>
       if ! (info == info') then throw <| IO.userError s!"Invalid recursor {ctor}"
     | _, _ => throw <| IO.userError s!"No such recursor {ctor}"

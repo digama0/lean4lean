@@ -65,14 +65,14 @@ def inst : VLevel → VLevel
   | .param i => ls.getD i .zero
 
 theorem inst_inst {l : VLevel} : (l.inst ls).inst ls' = l.inst (ls.map (VLevel.inst ls')) := by
-  induction l <;> simp [inst, *, List.getD_eq_getElem?, List.getElem?_map]
+  induction l <;> simp [inst, *, List.getD_eq_getElem?_getD, List.getElem?_map]
   case param n => cases ls[n]? <;> simp [inst]
 
 theorem inst_id {l : VLevel} (h : l.WF u) : l.inst ((List.range u).map .param) = l := by
-  induction l <;> simp_all [inst, WF, List.getD_eq_getElem?, List.getElem?_range]
+  induction l <;> simp_all [inst, WF, List.getD_eq_getElem?_getD, List.getElem?_range]
 
 theorem eval_inst {l : VLevel} : (l.inst ls).eval ns = l.eval (ls.map (VLevel.eval ns)) := by
-  induction l <;> simp [eval, inst, *, List.getD_eq_getElem?]
+  induction l <;> simp [eval, inst, *, List.getD_eq_getElem?_getD]
   case param n => cases ls[n]? <;> simp [eval]
 
 theorem WF.inst {l : VLevel} (H : ∀ l ∈ ls, l.WF n) : (l.inst ls).WF n := by
@@ -81,7 +81,7 @@ theorem WF.inst {l : VLevel} (H : ∀ l ∈ ls, l.WF n) : (l.inst ls).WF n := by
   | succ _ ih => exact ih
   | max _ _ ih1 ih2 | imax _ _ ih1 ih2 => exact ⟨ih1, ih2⟩
   | param i =>
-    simp [VLevel.inst, List.getD_eq_getElem?]
+    simp [VLevel.inst, List.getD_eq_getElem?_getD]
     cases e : ls[i]? with
     | none => trivial
     | some => exact H _ (List.getElem?_mem e)

@@ -1,4 +1,5 @@
 import Lean4Lean.Theory.Typing.Basic
+import Lean4Lean.Std.Variable!
 
 namespace Lean4Lean
 
@@ -310,7 +311,7 @@ theorem IsDefEqCtx.isType : IsDefEqCtx env U [] Γ₁ Γ₂ → OnCtx Γ₁ (env
   | .zero => ⟨⟩
   | .succ h1 h2 => ⟨h1.isType, _, h2.hasType.1⟩
 
-variable (henv : OnTypes env fun _ e A => e.ClosedN ∧ A.ClosedN) in
+variable! (henv : OnTypes env fun _ e A => e.ClosedN ∧ A.ClosedN) in
 theorem IsDefEq.closedN' (H : env.IsDefEq U Γ e1 e2 A) (hΓ : CtxClosed Γ) :
     e1.ClosedN Γ.length ∧ e2.ClosedN Γ.length ∧ A.ClosedN Γ.length := by
   induction H with
@@ -363,7 +364,7 @@ theorem IsDefEq.closedN {env : VEnv} (henv : env.Ordered)
     (H : env.IsDefEq U Γ e1 e2 A) (hΓ : CtxClosed Γ) : e1.ClosedN Γ.length :=
   (H.closedN' henv.closed hΓ).1
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEqCtx.closed (H : CtxClosed Γ₀) :
     IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → CtxClosed Γ₁ ∧ CtxClosed Γ₂
   | .zero => ⟨H, H⟩
@@ -371,7 +372,7 @@ theorem IsDefEqCtx.closed (H : CtxClosed Γ₀) :
     have ⟨c1, c2⟩ := h1.closed H
     ⟨⟨c1, h2.closedN henv c1⟩, ⟨c2, by simpa [h1.length_eq] using h2.symm.closedN henv c1⟩⟩
 
-variable {env env' : VEnv} (henv : env ≤ env') in
+variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem IsDefEq.mono (H : env.IsDefEq U Γ e1 e2 A) : env'.IsDefEq U Γ e1 e2 A := by
   induction H with
   | bvar h => exact .bvar h
@@ -428,7 +429,7 @@ theorem Ordered.defEqWF (H : Ordered env) (h : env.defeqs df) : df.WF env := by
     · assumption
     · exact ih h
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem CtxWF.closed (h : OnCtx Γ (IsType env U)) : CtxClosed Γ :=
   match Γ, h with
   | [], _ => trivial
@@ -466,7 +467,7 @@ theorem IsDefEq.levelWF (H : env.IsDefEq U Γ e1 e2 A) (W : OnCtx Γ fun _ A => 
     exact ⟨hh, hh', hp⟩
   | extra _ h2 => exact ⟨.instL h2, .instL h2, .instL h2⟩
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U Γ' (e1.liftN n k) (e2.liftN n k) (A.liftN n k) := by
   induction H generalizing k Γ' with
@@ -495,32 +496,32 @@ theorem IsDefEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) 
       hA3.instL.liftN_eq (Nat.zero_le _)]
     exact .extra h1 h2 h3
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem HasType.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.HasType U Γ e A) :
     env.HasType U Γ' (e.liftN n k) (A.liftN n k) := IsDefEq.weakN henv W H
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsType.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsType U Γ A) :
     env.IsType U Γ' (A.liftN n k) := let ⟨_, h⟩ := H; ⟨_, h.weakN henv W⟩
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEq.weak (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U (B::Γ) e1.lift e2.lift A.lift := H.weakN henv .one
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEq.weakR (hΓ : CtxClosed Γ) (H : env.IsDefEq U Γ e1 e2 A) (Γ') :
     env.IsDefEq U (Γ ++ Γ') e1 e2 A := by
   have ⟨h1, h2, h3⟩ := H.closedN' henv.closed hΓ
   simpa [h1.liftN_eq, h2.liftN_eq, h3.liftN_eq] using H.weakN henv (.right hΓ Γ')
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEq.weak0 (H : env.IsDefEq U [] e1 e2 A) : env.IsDefEq U Γ e1 e2 A :=
   H.weakR henv (Γ := []) ⟨⟩ _
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 nonrec theorem HasType.weak0 (H : env.HasType U [] e A) : env.HasType U Γ e A := H.weak0 henv
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEq.weak' (W : Ctx.Lift' l Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U Γ' (e1.lift' l) (e2.lift' l) (A.lift' l) := by
   generalize e : l.depth = n
@@ -535,7 +536,7 @@ theorem IsDefEq.weak' (W : Ctx.Lift' l Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :
 theorem IsType.lookup (henv : Ordered env) (h : OnCtx Γ (IsType env U)) (hL : Lookup Γ n A) :
     env.IsType U Γ A := h.lookup hL <| .weakN henv .one
 
-variable {env : VEnv} {ls : List VLevel} (hls : ∀ l ∈ ls, l.WF U') in
+variable! {env : VEnv} {ls : List VLevel} (hls : ∀ l ∈ ls, l.WF U') in
 theorem IsDefEq.instL (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U' (Γ.map (VExpr.instL ls)) (e1.instL ls) (e2.instL ls) (A.instL ls) := by
   induction H with
@@ -565,7 +566,7 @@ theorem HasType.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.HasTyp
 theorem IsType.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.IsType U Γ A) :
     env.IsType U' (Γ.map (VExpr.instL ls)) (A.instL ls) := let ⟨_, h⟩ := H; ⟨_, h.instL hls⟩
 
-variable (henv : Ordered env) (h₀ : env.HasType U Γ₀ e₀ A₀) in
+variable! (henv : Ordered env) (h₀ : env.HasType U Γ₀ e₀ A₀) in
 theorem IsDefEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : env.IsDefEq U Γ₁ e1 e2 A) :
     env.IsDefEq U Γ (e1.inst e₀ k) (e2.inst e₀ k) (A.inst e₀ k) := by
   induction H generalizing Γ k with
@@ -651,7 +652,7 @@ theorem IsDefEqCtx.symm (henv : Ordered env) :
   | .zero => .zero
   | .succ h1 h2 => .succ (h1.symm henv) (h2.symm.defeqDFC henv h1)
 
-variable (henv : Ordered env)
+variable! (henv : Ordered env)
   (envIH : env.OnTypes fun U e _ => ∀ A B, e = A.forallE B →
     env.IsType U [] A ∧ env.IsType U [A] B) in
 theorem IsDefEq.forallE_inv'
@@ -711,7 +712,7 @@ theorem HasType.forallE_inv (henv : Ordered env) (H : env.HasType U Γ (A.forall
 theorem IsType.forallE_inv (henv : Ordered env) (H : env.IsType U Γ (A.forallE B)) :
     env.IsType U Γ A ∧ env.IsType U (A::Γ) B := let ⟨_, h⟩ := H; h.forallE_inv henv
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEq.sort_inv'
     (H : env.IsDefEq U Γ e1 e2 V) (eq : e1 = .sort u ∨ e2 = .sort u) : u.WF U := by
   induction H with
@@ -752,7 +753,7 @@ theorem HasType.sort_inv (henv : Ordered env) (H : env.HasType U Γ (.sort u) V)
 theorem IsType.sort_inv (henv : Ordered env) (H : env.IsType U Γ (.sort u)) : u.WF U :=
   let ⟨_, h⟩ := H; h.sort_inv henv
 
-variable (henv : Ordered env)
+variable! (henv : Ordered env)
   (envIH : env.OnTypes fun U e A => env.HasType U [] e A ∧ env.IsType U [] A) in
 theorem IsDefEq.isType' (hΓ : OnCtx Γ (env.IsType U)) (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsType U Γ A := by

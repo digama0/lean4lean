@@ -17,7 +17,7 @@ structure TypeChecker.State where
   whnfCoreCache : ExprMap Expr := {}
   whnfCache : ExprMap Expr := {}
   eqvManager : EquivManager := {}
-  failure : HashSet (Expr × Expr) := {}
+  failure : Std.HashSet (Expr × Expr) := {}
 
 structure TypeChecker.Context where
   env : Environment
@@ -244,7 +244,7 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
         }replace them with free variables before invoking it"
   assert! !e.hasLooseBVars
   let state ← get
-  if let some r := (cond inferOnly state.inferTypeI state.inferTypeC).find? e then
+  if let some r := (cond inferOnly state.inferTypeI state.inferTypeC)[e]? then
     return r
   let r ← match e with
     | .lit l => pure l.type
@@ -313,7 +313,7 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
   | .mdata _ e => return ← whnfCore' e cheapRec cheapProj
   | .fvar id => if !isLetFVar (← getLCtx) id then return e
   | .app .. | .letE .. | .proj .. => pure ()
-  if let some r := (← get).whnfCoreCache.find? e then
+  if let some r := (← get).whnfCoreCache[e]? then
     return r
   let rec save r := do
     if !cheapRec && !cheapProj then
@@ -429,7 +429,7 @@ def whnf' (e : Expr) : RecM Expr := do
       return e
   | .lam .. | .app .. | .const .. | .letE .. | .proj .. => pure ()
   -- check cache
-  if let some r := (← get).whnfCache.find? e then
+  if let some r := (← get).whnfCache[e]? then
     return r
   let rec loop t
   | 0 => throw .deterministicTimeout
@@ -541,7 +541,7 @@ def isDefEqProofIrrel (t s : Expr) : RecM LBool := do
   if !(← isProp tType) then return .undef
   toLBoolM <| isDefEq tType (← inferType s)
 
-def failedBefore (failure : HashSet (Expr × Expr)) (t s : Expr) : Bool :=
+def failedBefore (failure : Std.HashSet (Expr × Expr)) (t s : Expr) : Bool :=
   if t.hash < s.hash then
     failure.contains (t, s)
   else if t.hash > s.hash then

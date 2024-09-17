@@ -68,7 +68,7 @@ theorem ParRed.weakN (W : Ctx.LiftN n k Γ Γ') (H : ParRed TY Γ e1 e2) :
     refine .extra h1 (Pattern.matches_liftN.2 ⟨_, h2, funext_iff.1 rfl⟩)
       (h3.weakN W) (fun a => ih _ W)
 
-variable (H₀ : ParRed TY Γ₀ a1 a2) (H₀' : TY.HasType Γ₀ a1 A₀) in
+variable! (H₀ : ParRed TY Γ₀ a1 a2) (H₀' : TY.HasType Γ₀ a1 A₀) in
 theorem ParRed.instN (W : Ctx.InstN Γ₀ a1 A₀ k Γ₁ Γ)
     (H : ParRed TY Γ₁ e1 e2) : ParRed TY Γ (e1.inst a1 k) (e2.inst a2 k) := by
   induction H generalizing Γ k with
@@ -173,8 +173,8 @@ theorem CParRed.exists (H : TY.HasType Γ e A) : ∃ e', CParRed TY Γ e e' := b
     · obtain ⟨A, e, a, rfl⟩ := h
       have ⟨_, _, hf, ha⟩ := TY.app_inv H'
       have ⟨_, _, _, he⟩ := TY.lam_inv hf
-      have ⟨_, he⟩ := e_ih.1.2.2.1.1 he
-      have ⟨_, ha⟩ := e_ih.2.1.1 ha
+      have ⟨_, he⟩ := e_ih.1.2.2.1 he
+      have ⟨_, ha⟩ := e_ih.2.1 ha
       exact ⟨_, .beta he ha⟩
     by_cases h' : ∃ p r m1 m2, TY.Pat p r ∧ p.Matches e m1 m2 ∧ r.2.OK (TY.IsDefEq Γ) m1 m2
     · let ⟨p, r, m1, m2, h1, hp2, hp3⟩ := h'
@@ -187,13 +187,13 @@ theorem CParRed.exists (H : TY.HasType Γ e A) : ∃ e', CParRed TY Γ e e' := b
         let .app hm1 hm2 := hp2
         have ⟨_, _, H1, H2⟩ := TY.app_inv H'
         have ⟨m2l, hl⟩ := ih1 _ H1 e_ih.1.2 _ _ hm1
-        have ⟨m2r, hr⟩ := ih2 _ H2 e_ih.2.1.2 _ _ hm2
+        have ⟨m2r, hr⟩ := ih2 _ H2 e_ih.2.2 _ _ hm2
         exact ⟨Sum.elim m2l m2r, Sum.rec hl hr⟩
       | var _ ih =>
         let .var hm1 := hp2
         have ⟨_, _, H1, H2⟩ := TY.app_inv H'
         have ⟨m2l, hl⟩ := ih _ H1 e_ih.1.2 _ _ hm1
-        have ⟨e', hs⟩ := e_ih.2.1.1 H2
+        have ⟨e', hs⟩ := e_ih.2.1 H2
         exact ⟨Option.rec e' m2l, Option.rec hs hl⟩
     · exact hn ⟨
         fun _ _ _ hn => h ⟨_, _, _, hn⟩,
@@ -205,15 +205,15 @@ theorem CParRed.exists (H : TY.HasType Γ e A) : ∃ e', CParRed TY Γ e e' := b
   | app ih1 ih2 =>
     have ⟨_, _, hf, ha⟩ := TY.app_inv H
     have ⟨_, h1⟩ := e_ih.1.1 hf
-    have ⟨_, h2⟩ := e_ih.2.1.1 ha
+    have ⟨_, h2⟩ := e_ih.2.1 ha
     exact neut _ H e_ih fun hn => ⟨_, .app hn h1 h2⟩
   | lam ih1 ih2 =>
     have ⟨_, _, hA, he⟩ := TY.lam_inv H
     have ⟨_, h1⟩ := e_ih.1.1 hA
-    have ⟨_, h2⟩ := e_ih.2.1.1 he
+    have ⟨_, h2⟩ := e_ih.2.1 he
     exact ⟨_, .lam h1 h2⟩
   | forallE ih1 ih2 =>
     have ⟨_, _, hA, hB⟩ := TY.forallE_inv H
     have ⟨_, h1⟩ := e_ih.1.1 hA
-    have ⟨_, h2⟩ := e_ih.2.1.1 hB
+    have ⟨_, h2⟩ := e_ih.2.1 hB
     exact ⟨_, .forallE h1 h2⟩

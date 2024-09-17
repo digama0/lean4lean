@@ -6,6 +6,8 @@ namespace Lean4Lean
 open Lean
 open scoped List
 
+attribute [-simp] List.filterMap_reverse
+
 noncomputable def _root_.Lean.LocalContext.toList (lctx : LocalContext) : List LocalDecl :=
   lctx.decls.toList'.reverse.filterMap id
 

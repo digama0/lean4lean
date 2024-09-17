@@ -410,7 +410,7 @@ theorem NormalEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : NormalEq TY Γ e1 e2) :
   | proofIrrel h1 h2 h3 =>
     exact .proofIrrel (h1.weakN W) (h2.weakN W) (h3.weakN W)
 
-variable (h₀ : Typing.HasType TY Γ₀ e₀ A₀) in
+variable! (h₀ : Typing.HasType TY Γ₀ e₀ A₀) in
 theorem NormalEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : NormalEq TY Γ₁ e1 e2) :
     NormalEq TY Γ (e1.inst e₀ k) (e2.inst e₀ k) := by
   induction H generalizing Γ k with
@@ -431,7 +431,7 @@ theorem NormalEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : NormalEq 
     simpa [inst, lift_instN_lo] using ih W.succ
   | proofIrrel h1 h2 h3 => exact .proofIrrel (h1.instN W h₀) (h2.instN W h₀) (h3.instN W h₀)
 
-variable (h₀ : Typing.HasType TY Γ₀ e₀ A₀) (H' : NormalEq TY Γ₀ e₀ e₀') in
+variable! (h₀ : Typing.HasType TY Γ₀ e₀ A₀) (H' : NormalEq TY Γ₀ e₀ e₀') in
 theorem NormalEq.instN_r (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : Typing.HasType TY Γ₁ e A) :
     NormalEq TY Γ (e.inst e₀ k) (e.inst e₀' k) := by
   induction e generalizing Γ₁ Γ k A with dsimp [inst]

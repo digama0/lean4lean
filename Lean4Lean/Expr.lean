@@ -8,33 +8,33 @@ def arrow (d b : Expr) : Expr := .forallE `a d b .default
 
 namespace ReplaceImpl
 
-abbrev ReplaceT := StateT Cache
+unsafe abbrev ReplaceT := StateT (PtrMap Expr Expr)
 
 @[inline]
 unsafe def cacheT [Monad m] (key : Expr) (result : Expr) : ReplaceT m Expr := do
-  modify (·.store key result)
+  modify (·.insert key result)
   pure result
 
 @[specialize]
 unsafe def replaceUnsafeT [Monad m] (f? : Expr → m (Option Expr)) (e : Expr) : ReplaceT m Expr := do
   let rec @[specialize] visit (e : Expr) := do
-    if (← get).hasResultFor e then
-      return (← get).getResultFor e
-    else match ← f? e with
-      | some eNew => cacheT e eNew
-      | none      => match e with
-        | Expr.forallE _ d b _   => cacheT e <| e.updateForallE! (← visit d) (← visit b)
-        | Expr.lam _ d b _       => cacheT e <| e.updateLambdaE! (← visit d) (← visit b)
-        | Expr.mdata _ b         => cacheT e <| e.updateMData! (← visit b)
-        | Expr.letE _ t v b _    => cacheT e <| e.updateLet! (← visit t) (← visit v) (← visit b)
-        | Expr.app f a           => cacheT e <| e.updateApp! (← visit f) (← visit a)
-        | Expr.proj _ _ b        => cacheT e <| e.updateProj! (← visit b)
-        | e                      => pure e
+    if let some result := (← get).find? e then
+      return result
+    match ← f? e with
+    | some eNew => cacheT e eNew
+    | none      => match e with
+      | Expr.forallE _ d b _   => cacheT e <| e.updateForallE! (← visit d) (← visit b)
+      | Expr.lam _ d b _       => cacheT e <| e.updateLambdaE! (← visit d) (← visit b)
+      | Expr.mdata _ b         => cacheT e <| e.updateMData! (← visit b)
+      | Expr.letE _ t v b _    => cacheT e <| e.updateLet! (← visit t) (← visit v) (← visit b)
+      | Expr.app f a           => cacheT e <| e.updateApp! (← visit f) (← visit a)
+      | Expr.proj _ _ b        => cacheT e <| e.updateProj! (← visit b)
+      | e                      => pure e
   visit e
 
 @[inline]
 unsafe def replaceUnsafe' [Monad m] (f? : Expr → m (Option Expr)) (e : Expr) : m Expr :=
-  (replaceUnsafeT f? e).run' (Cache.new e)
+  (replaceUnsafeT f? e).run' mkPtrMap
 
 end ReplaceImpl
 

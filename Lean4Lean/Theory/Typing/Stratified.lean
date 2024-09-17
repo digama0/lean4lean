@@ -13,7 +13,7 @@ def DefInv (env : VEnv) (U : Nat) (Γ : List VExpr) : VExpr → VExpr → Prop
   | .sort u, .sort v => u ≈ v
   | _, _ => True
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 nonrec theorem DefInv.symm (h : DefInv env U Γ e1 e2) : DefInv env U Γ e2 e1 := by
   cases e1 <;> cases e2 <;> try trivial
   · exact h.symm
@@ -71,7 +71,7 @@ inductive IsDefEq1 : List VExpr → VExpr → VExpr → VExpr → Prop where
 
 end
 
-variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.induction1
     (defEq : List VExpr → VExpr → VExpr → VExpr → Prop)
     (hasType : List VExpr → VExpr → VExpr → Prop)
@@ -114,7 +114,7 @@ theorem IsDefEq.induction1
   | extra h1 h2 h3 _ _ _ _ _ _ _ _ _ ihl' ihr' =>
     exact ⟨ihl'.1, ihr'.1, .extra h1 h2 h3⟩
 
-variable (henv : Ordered env)
+variable! {env : VEnv}
   {defEq : List VExpr → VExpr → VExpr → VExpr → Prop}
   (IH : ∀ {Γ e1 e2 A}, defEq Γ e1 e2 A → env.IsDefEq U Γ e1 e2 A) in
 theorem HasType1.induction (H : env.HasType1 U defEq Γ e A) : env.HasType U Γ e A := by
@@ -127,7 +127,7 @@ theorem HasType1.induction (H : env.HasType1 U defEq Γ e A) : env.HasType U Γ 
   | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
   | defeq h1 _ ih => exact (IH h1).defeq ih
 
-variable (henv : Ordered env)
+variable! {env : VEnv}
   {hasType : List VExpr → VExpr → VExpr → Prop}
   {defEq : List VExpr → VExpr → VExpr → VExpr → Prop}
   (hty : ∀ {Γ e A}, hasType Γ e A → env.HasType U Γ e A)
@@ -150,7 +150,7 @@ theorem IsDefEq1.induction
   | extra h1 h2 h3 => exact .extra h1 h2 h3
 
 /-
-variable
+variable!
   {U : Nat}
   (hasType : List VExpr → VExpr → VExpr → Prop)
   (hasType' : List VExpr → VExpr → VExpr → Prop)
@@ -179,13 +179,13 @@ protected theorem IsDefEq1.hasType_ind
   | proofIrrel h1 h2 h3 => exact .proofIrrel (hty h1) (hty h2) (hty h3)
   | extra h1 h2 h3 => exact .extra h1 h2 h3
 
-variable
+variable!
   (hasType : List VExpr → VExpr → VExpr → Prop)
   (defEq : List VExpr → VExpr → VExpr → VExpr → Prop) in
 inductive IsDefEqU1 : List VExpr → VExpr → VExpr → VLevel → Prop
   | refl : hasType Γ A (.sort u) → IsDefEqU1 Γ A A u
 
-variable (henv : Ordered env)
+variable! (henv : Ordered env)
   {hasType : List VExpr → VExpr → VExpr → Prop}
   {defEq : List VExpr → VExpr → VExpr → VExpr → Prop}
   (refl : ∀ {Γ e A}, hasType Γ e A → defEq' Γ e e A)
@@ -207,7 +207,7 @@ theorem IsDefEq1.unique_typing1
   | proofIrrel h1 h2 h3 => exact .proofIrrel (hty h1) (hty h2) (hty h3)
   | extra h1 h2 h3 => exact .extra h1 h2 h3
 
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem HasType1.unique_typing'
     (H1 : env.HasType1 U (IsDefEq1 env U hasType defEq) Γ e A1)
     (H2 : env.HasType1 U (IsDefEq1 env U hasType defEq) Γ e A2) :
@@ -256,7 +256,7 @@ theorem HasType1.unique_typing'
 -/
 
 /-
-variable (henv : Ordered env) in
+variable! (henv : Ordered env) in
 theorem IsDefEq.unique_typing'
     (H1 : env.IsDefEq U Γ e1 e2 A1) (H2 : env.IsDefEq U Γ e1 e2 A2) :
     ∃ u, env.IsDefEq U Γ A1 A2 (.sort u) := by
@@ -286,7 +286,7 @@ theorem IsDefEq.unique_typing'
 
 
 /- depends on church-rosser
-variable {env : VEnv} (henv : env.Ordered) in
+variable! {env : VEnv} (henv : env.Ordered) in
 theorem IsDefEq.weakN_inv (W : Ctx.LiftN n k Γ Γ')
     (H : env.IsDefEq U Γ' (e1.liftN n k) (e2.liftN n k) (A.liftN n k)) :
     env.IsDefEq U Γ e1 e2 A := by
@@ -321,12 +321,12 @@ theorem IsDefEq.weakN_inv (W : Ctx.LiftN n k Γ Γ')
   --   exact .extra h1 h2 h3
   | _ => sorry
 
-variable {env : VEnv} (henv : env.Ordered) in
+variable! {env : VEnv} (henv : env.Ordered) in
 theorem HasType.weakN_inv (W : Ctx.LiftN n k Γ Γ')
     (H : env.HasType U Γ' (e.liftN n k) (A.liftN n k)) :
     env.HasType U Γ e A := IsDefEq.weakN_inv henv W H
 
-variable {env : VEnv} (henv : env.Ordered) in
+variable! {env : VEnv} (henv : env.Ordered) in
 theorem IsType.weakN_inv (W : Ctx.LiftN n k Γ Γ') (H : env.IsType U Γ' (A.liftN n k)) :
     env.IsType U Γ A := let ⟨_, h⟩ := H; ⟨_, h.weakN_inv henv W⟩
 -/

@@ -1,4 +1,4 @@
-import Lean4Lean.UnionFind
+import Batteries.Data.UnionFind.Basic
 
 namespace Lean
 
@@ -6,7 +6,7 @@ abbrev EquivManager.NodeRef := Nat
 open EquivManager
 
 structure EquivManager where
-  uf : Lean4Lean.UnionFind := {}
+  uf : Batteries.UnionFind := {}
   toNodeMap : ExprMap NodeRef := {}
 
 namespace EquivManager
@@ -25,7 +25,7 @@ def merge (m : EquivManager) (n1 n2 : NodeRef) : EquivManager :=
   else m
 
 def toNode (e : Expr) : StateM EquivManager NodeRef := fun m => do
-  if let some r := m.toNodeMap.find? e then
+  if let some r := m.toNodeMap[e]? then
     return (r, m)
   let { uf, toNodeMap } := m
   let r := uf.size

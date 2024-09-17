@@ -14,7 +14,7 @@ theorem addQuot_WF (henv : Ordered env) (hq : QuotReady env) :
   rintro ⟨_, _, _, _, eq, _⟩ ⟨⟩; exact .defeq henv ⟨by type_tac, by type_tac⟩
 
 section
-variable (henv : addQuot env = some env')
+variable (henv : addQuot env = some env') include henv
 
 theorem addQuot_objs : env'.HasObjects [.defeq quotDefEq, .const `Quot.lift quotLiftConst,
     .const `Quot.ind quotIndConst, .const `Quot.mk quotMkConst, .const `Quot quotConst] := by

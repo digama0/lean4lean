@@ -51,7 +51,7 @@ inductive IsDefEqU1 : List VExpr → VExpr → VExpr → Prop where
 
 end
 
-variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.inductionU1
     (defEq : List VExpr → VExpr → VExpr → Prop)
     (hasType : List VExpr → VExpr → VExpr → Prop)
@@ -96,7 +96,7 @@ theorem IsDefEq.inductionU1
   | extra h1 h2 h3 _ _ _ _ _ _ _ _ _ ihl' ihr' =>
     exact ⟨ihl'.1, ihr'.1, .extra h1 h2 h3⟩
 
-variable (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
   {defEq : List VExpr → VExpr → VExpr → Prop}
   (IH : ∀ {Γ e1 e2 A}, env.HasType U Γ e1 A → defEq Γ e1 e2 → env.IsDefEq U Γ e1 e2 A) in
 theorem HasTypeU1.induction (H : env.HasTypeU1 U defEq Γ e A) : env.HasType U Γ e A := by
