@@ -7,7 +7,7 @@ namespace Lean
 noncomputable def PersistentArrayNode.toList' : PersistentArrayNode α → List α :=
   PersistentArrayNode.rec
     (motive_1 := fun _ => List α) (motive_2 := fun _ => List α) (motive_3 := fun _ => List α)
-    (node := fun _ => id) (leaf := (·.data)) (fun _ => id) [] (fun _ _ a b => a ++ b)
+    (node := fun _ => id) (leaf := (·.toList)) (fun _ => id) [] (fun _ _ a b => a ++ b)
 
 namespace PersistentArray
 
@@ -16,7 +16,7 @@ inductive WF : PersistentArray α → Prop where
   | push : WF arr → WF (arr.push x)
 
 noncomputable def toList' (arr : PersistentArray α) : List α :=
-  arr.root.toList' ++ arr.tail.data
+  arr.root.toList' ++ arr.tail.toList
 
 @[simp] theorem toList'_empty : (.empty : PersistentArray α).toList' = [] := rfl
 
@@ -41,7 +41,7 @@ noncomputable def Node.toList' : Node α β → List (α × β) :=
   Node.rec
     (motive_1 := fun _ => List (α × β)) (motive_2 := fun _ => List (α × β))
     (motive_3 := fun _ => List (α × β)) (motive_4 := fun _ => List (α × β))
-    (entries := fun _ => id) (collision := fun ks xs _ => ks.data.zip xs.data)
+    (entries := fun _ => id) (collision := fun ks xs _ => ks.toList.zip xs.toList)
     (mk := fun _ => id)
     (nil := []) (cons := fun _ _ l1 l2 => l1 ++ l2)
     (entry := fun a b => [(a, b)]) (ref := fun _ => id) (null := [])

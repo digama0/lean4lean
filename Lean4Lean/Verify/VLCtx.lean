@@ -5,6 +5,8 @@ namespace Lean4Lean
 
 open Lean (FVarId Expr)
 
+attribute [-simp] Option.isSome_eq_isSome -- FIXME: this should not be a simp lemma in core
+
 inductive VLocalDecl where
   | vlam (type : VExpr)
   | vlet (type value : VExpr)

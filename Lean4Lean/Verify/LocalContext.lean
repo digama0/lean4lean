@@ -7,6 +7,7 @@ open Lean
 open scoped List
 
 attribute [-simp] List.filterMap_reverse
+attribute [-simp] Option.isSome_eq_isSome -- FIXME: this should not be a simp lemma in core
 
 noncomputable def _root_.Lean.LocalContext.toList (lctx : LocalContext) : List LocalDecl :=
   lctx.decls.toList'.reverse.filterMap id
