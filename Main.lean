@@ -283,8 +283,10 @@ unsafe def main (args : List String) : IO UInt32 := do
       for path in (← SearchPath.findAllWithExt sp "olean") do
         if let some m ← searchModuleNameOfFileName path sp then
           tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare))
+      let mut err := false
       for (m, t) in tasks do
         if let .error e := t.get then
-          IO.eprintln s!"lean4lean found a problem in {m}"
-          throw e
+          IO.eprintln s!"lean4lean found a problem in {m}:\n{e.toString}"
+          err := true
+      if err then return 1
   return 0
