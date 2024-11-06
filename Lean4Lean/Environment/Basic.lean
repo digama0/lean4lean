@@ -7,6 +7,10 @@ def get (env : Environment) (n : Name) : Except KernelException ConstantInfo :=
   | some ci => pure ci
   | none => throw <| .unknownConstant env n
 
+/--
+Throws an exception if the given list of universe level parameter names
+contains any duplicates.
+-/
 def checkDuplicatedUnivParams : List Name → Except KernelException Unit
   | [] => pure ()
   | p :: ls => do
