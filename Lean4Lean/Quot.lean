@@ -71,7 +71,7 @@ def Environment.addQuot (env : Environment) : Except KernelException Environment
   let all_quot := (← read).mkForall #[a] <| .app β quotMk_a
   withLocalDecl `q quot_r .implicit fun q => do
   -- constant Quot.ind.{u} {α : Sort u} {r : α → α → Prop} {β : @Quot.{u} α r → Prop} :
-  --   (∀ a : α, β (@Quot.mk.{u} α r a)) → ∀ q : @Quot.{u} α r, β q */
+  --   (∀ a : α, β (@Quot.mk.{u} α r a)) → ∀ q : @Quot.{u} α r, β q
   let env := add env <| .quotInfo {
     name := ``Quot.ind, kind := .ind, levelParams := [`u]
     type := (← read).mkForall #[α, r, β] <|
@@ -79,6 +79,23 @@ def Environment.addQuot (env : Environment) : Except KernelException Environment
   }
   return markQuotInit env
 
+/--
+Reduces the head application of a quotient eliminator as follows:
+
+```
+Quot.lift.{u, v} {α : Sort u} {r : α → α → Prop} {β : Sort v} (f : α → β) :
+  (∀ a b : α, r a b → f a = f b) → @Quot.{u} α r → β
+
+Quot.lift f h (Quot.mk r a) ... ⟶ f a ...
+```
+
+```
+Quot.ind.{u} {α : Sort u} {r : α → α → Prop} {β : @Quot.{u} α r → Prop} :
+  (∀ a : α, β (@Quot.mk.{u} α r a)) → ∀ q : @Quot.{u} α r, β q
+
+Quot.ind p (Quot.mk r a) ... ⟶ p a ...
+```
+-/
 def quotReduceRec [Monad m] (e : Expr) (whnf : Expr → m Expr) : m (Option Expr) := do
   let .const fn _ := e.getAppFn | return none
   let cont mkPos argPos := do
