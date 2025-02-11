@@ -592,7 +592,7 @@ private def meas : VExpr → Nat
   | .lam A e => meas A + meas e + 3
 
 private theorem meas_liftN : meas (e.liftN n k) = meas e := by
-  induction e generalizing k <;> simp [*, meas]
+  induction e generalizing k <;> simp [*, meas, liftN]
 private theorem meas_lift : meas e.lift = meas e := meas_liftN
 
 attribute [local simp] meas meas_lift in

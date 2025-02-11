@@ -3,7 +3,7 @@ Copyright (c) 2023 Kyle Miller. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Kyle Miller
 -/
-import Lean4Lean.Std.DeriveToExpr
+import Lean
 
 /-! # `ToExpr` instances for Mathlib
 
@@ -16,33 +16,6 @@ In addition, we provide some additional `ToExpr` instances for core definitions.
 -/
 
 set_option autoImplicit true
-
-section override
-namespace Lean
-
-attribute [-instance] Lean.instToExprOption
-
-deriving instance ToExpr for Option
-
-attribute [-instance] Lean.instToExprList
-
-deriving instance ToExpr for List
-
-attribute [-instance] Lean.instToExprArray
-
-instance {α : Type u} [ToExpr α] [ToLevel.{u}] : ToExpr (Array α) :=
-  let type := toTypeExpr α
-  { toExpr     := fun as => mkApp2 (mkConst ``List.toArray [toLevel.{u}]) type (toExpr as.toList)
-    toTypeExpr := mkApp (mkConst ``Array [toLevel.{u}]) type }
-
-attribute [-instance] Lean.instToExprProd
-
-deriving instance ToExpr for Prod
-
-deriving instance ToExpr for System.FilePath
-
-end Lean
-end override
 
 namespace Mathlib
 open Lean
