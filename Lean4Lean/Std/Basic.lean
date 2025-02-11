@@ -1,5 +1,4 @@
 import Batteries.CodeAction
-import Batteries.Data.Sum.Basic
 import Batteries.Data.Array.Lemmas
 import Batteries.Data.HashMap.Basic
 
@@ -106,9 +105,11 @@ theorem beq_comm [BEq α] [PartialEquivBEq α] (a b : α) : (a == b) = (b == a) 
 
 theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
     l.mapM f = some l' ↔ List.Forall₂ (f · = some ·) l l' := by
-  induction l generalizing l' <;>
-    simp only [mapM_nil, mapM_cons, bind, pure, Option.bind_eq_some, Option.some.injEq,
-      forall₂_nil_left_iff, forall₂_cons_left_iff, @eq_comm _ l', exists_and_left, *]
+  induction l generalizing l' with
+  | nil => simp only [mapM_nil, pure, Option.some.injEq, forall₂_nil_left_iff, @eq_comm _ l']
+  | cons x l ih =>
+    simp [mapM_cons, Bind.bind, pure, Option.bind_eq_some, Option.some.injEq, forall₂_cons_left_iff,
+      @eq_comm _ l', exists_and_left, ih]
 
 @[simp] theorem Option.bind_eq_none'' {o : Option α} {f : α → Option β} :
     o.bind f = none ↔ ∀ a, o = some a → f a = none := by cases o <;> simp

@@ -39,10 +39,11 @@ theorem InScope.mix : ∀ {e}, InScope P e k → InScope Q e k' → InScope P e 
   | .proj _ _ e, l, r | .mdata _ e, l, r => l.mix (e := e) r
 
 theorem InScope.natLitToConstructor : InScope P (.natLitToConstructor n) k := by
-  cases n <;> simp [InScope]
+  cases n <;> simp [InScope, Expr.natLitToConstructor, Expr.natZero, Expr.natSucc]
 
 theorem InScope.strLitToConstructor : InScope P (.strLitToConstructor s) k := by
-  simp [InScope, String.foldr_eq]; induction s.data <;> simp [*, InScope]
+  simp [InScope, String.foldr_eq, Expr.strLitToConstructor]
+  induction s.data <;> simp [*, InScope]
 
 theorem InScope.toConstructor : ∀ {l : Literal}, InScope P l.toConstructor k
   | .natVal _ => .natLitToConstructor
