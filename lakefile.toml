@@ -1,0 +1,23 @@
+name = "lean4lean"
+defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verify"]
+
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "main"
+
+[[lean_lib]]
+name = "Lean4Lean"
+
+[[lean_lib]]
+name = "Lean4Lean.Theory"
+globs = ["Lean4Lean.Theory.*"]
+
+[[lean_lib]]
+name = "Lean4Lean.Verify"
+globs = ["Lean4Lean.Verify.*"]
+
+[[lean_exe]]
+name = "lean4lean"
+root = "Main"
+supportInterpreter = true
