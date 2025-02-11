@@ -452,7 +452,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
   let elimLevel ← getElimLevel stats lparams indTypes
   mkRecInfos stats indTypes elimLevel fun recInfos => do
   let motives := recInfos.map (·.motive)
-  let minors := recInfos.concatMap (·.minors)
+  let minors := recInfos.flatMap (·.minors)
   let numMinors := minors.size
   let numMotives := motives.size
   let all := indTypes.map (·.name) |>.toList
