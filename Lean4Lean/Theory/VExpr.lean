@@ -131,7 +131,7 @@ protected theorem ClosedN.liftN (self : ClosedN e k) : ClosedN (e.liftN n j) (k+
 
 theorem ClosedN.liftN_eq_rev (self : ClosedN (liftN n e j) k) (h : k ≤ j) : liftN n e j = e := by
   induction e generalizing k j with
-    (simp [ClosedN] at self; simp [self, liftN, *])
+    (simp [liftN, ClosedN] at self; simp [self, liftN, *])
   | bvar i =>
     refine liftVar_lt (Nat.lt_of_lt_of_le ?_ h)
     unfold liftVar at self; split at self <;>
@@ -180,7 +180,7 @@ theorem levelWF_liftN : (liftN n e k).LevelWF U ↔ e.LevelWF U := by
   induction e generalizing k <;> simp [liftN, LevelWF, *]
 
 theorem LevelWF.instL (h : ∀ l ∈ ls, l.WF U) : (instL ls e).LevelWF U := by
-  induction e <;> simp [instL, VLevel.WF.inst h, LevelWF, *]
+  induction e <;> simp [VExpr.instL, VLevel.WF.inst h, LevelWF, *]
 
 alias ⟨LevelWF.liftN_rev, LevelWF.liftN⟩ := levelWF_liftN
 
@@ -399,7 +399,7 @@ theorem instL_unliftN : instL ls (unliftN e n k) = unliftN (instL ls e) n k := b
 
 theorem Skips.of_instL (self : (instL ls e).Skips n k) : e.Skips n k := by
   rw [skips_iff] at self ⊢
-  induction e generalizing k <;> simp_all [Skips']
+  induction e generalizing k <;> simp_all [Skips', instL]
 
 theorem of_liftN_eq_instL (h : liftN n e1 k = instL ls e2) :
     ∃ e', e1 = instL ls e' ∧ e2 = liftN n e' k := by

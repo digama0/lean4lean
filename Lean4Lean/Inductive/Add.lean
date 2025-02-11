@@ -196,7 +196,7 @@ def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
     (stats : InductiveStats) (isUnsafe : Bool) : M Unit := do
   let env ← getEnv
   for h : idx in [:indTypes.size] do
-    let indType := indTypes[idx]'h.2
+    let indType := indTypes[idx]
     let mut foundCtors : NameSet := {}
     for ctor in indType.ctors do
       let n := ctor.name
@@ -452,7 +452,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
   let elimLevel ← getElimLevel stats lparams indTypes
   mkRecInfos stats indTypes elimLevel fun recInfos => do
   let motives := recInfos.map (·.motive)
-  let minors := recInfos.concatMap (·.minors)
+  let minors := recInfos.flatMap (·.minors)
   let numMinors := minors.size
   let numMotives := motives.size
   let all := indTypes.map (·.name) |>.toList
@@ -462,7 +462,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
   StateT.run' (s := 0) do
   let mut env ← getEnv
   for h : dIdx in [:indTypes.size] do
-    let indType := indTypes[dIdx]'h.2
+    let indType := indTypes[dIdx]
     let info := recInfos[dIdx]!
     let ty :=
       lctx.mkForall stats.params <|

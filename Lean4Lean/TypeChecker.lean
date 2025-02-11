@@ -520,7 +520,7 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
   unless ← isDefEq (← inferType t) (← inferType s) do return false
   let args := s.getAppArgs
   for h : i in [fInfo.numParams:args.size] do
-    unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) (args[i]'h.2) do return false
+    unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) args[i] do return false
   return true
 
 def tryEtaStruct (t s : Expr) : RecM Bool :=
