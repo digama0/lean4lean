@@ -84,7 +84,7 @@ theorem WF.inst {l : VLevel} (H : ∀ l ∈ ls, l.WF n) : (l.inst ls).WF n := by
     simp [VLevel.inst, List.getD_eq_getElem?_getD]
     cases e : ls[i]? with
     | none => trivial
-    | some => exact H _ (List.getElem?_mem e)
+    | some => exact H _ (List.mem_of_getElem? e)
 
 theorem id_WF : ∀ l ∈ (List.range u).map param, l.WF u := by simp [WF]
 
