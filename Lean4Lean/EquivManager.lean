@@ -1,6 +1,7 @@
 import Batteries.Data.UnionFind.Basic
 
-namespace Lean
+namespace Lean4Lean
+open Lean
 
 abbrev EquivManager.NodeRef := Nat
 open EquivManager

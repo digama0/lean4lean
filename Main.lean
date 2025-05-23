@@ -97,7 +97,7 @@ def addDecl (d : Declaration) : M Unit := do
   if (← read).verbose then
     println! "adding {d.name}"
   let t1 ← IO.monoMsNow
-  match (← get).env.addDecl' d true with
+  match Lean4Lean.addDecl (← get).env d true with
   | .ok env =>
     let t2 ← IO.monoMsNow
     if t2 - t1 > 1000 then

@@ -36,7 +36,8 @@ def AddQuot (env : VEnv) (m1 m2 : ConstMap) : Prop :=
   AddQuot1 env ``Quot.lift .lift quotLiftConst <|
   AddQuot1 env ``Quot.ind .ind quotMkConst (Eq m2)
 
-def AddInduct (m1 : ConstMap) (decl : VInductDecl) (m2 : ConstMap) : Prop := sorry
+inductive AddInduct (m1 : ConstMap) (decl : VInductDecl) (m2 : ConstMap) : Prop
+  -- TODO
 
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where

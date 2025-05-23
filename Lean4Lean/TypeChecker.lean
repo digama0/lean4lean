@@ -6,7 +6,8 @@ import Lean4Lean.Instantiate
 import Lean4Lean.ForEachExprV
 import Lean4Lean.EquivManager
 
-namespace Lean
+namespace Lean4Lean
+open Lean
 
 abbrev InferCache := ExprMap Expr
 

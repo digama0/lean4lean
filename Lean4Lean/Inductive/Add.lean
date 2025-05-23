@@ -1,7 +1,8 @@
 import Lean4Lean.TypeChecker
 import Lean4Lean.Stream
 
-namespace Lean
+namespace Lean4Lean
+open Lean
 
 open private add from Lean.Environment
 

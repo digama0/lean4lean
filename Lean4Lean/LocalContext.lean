@@ -1,6 +1,7 @@
 import Lean.LocalContext
 
-namespace Lean
+namespace Lean4Lean
+open Lean
 
 class MonadLocalNameGenerator (m : Type u → Type v) where
   withFreshId : (Name → m α) → m α

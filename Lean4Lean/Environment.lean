@@ -3,9 +3,8 @@ import Lean4Lean.Quot
 import Lean4Lean.Inductive.Add
 import Lean4Lean.Primitive
 
-namespace Lean
-namespace Environment
-open TypeChecker
+namespace Lean4Lean
+open Lean TypeChecker Environment
 
 open private add from Lean.Environment
 
@@ -97,7 +96,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
   return env'
 
 /-- Type check given declaration and add it to the environment -/
-def addDecl' (env : Environment) (decl : @& Declaration) (check := true) :
+def addDecl (env : Environment) (decl : Declaration) (check := true) :
     Except KernelException Environment := do
   match decl with
   | .axiomDecl v => addAxiom env v check

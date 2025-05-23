@@ -3,7 +3,8 @@ import Lean4Lean.Environment.Basic
 import Lean4Lean.Expr
 import Lean4Lean.LocalContext
 
-namespace Lean
+namespace Lean4Lean
+open Lean
 
 open private add markQuotInit from Lean.Environment
 

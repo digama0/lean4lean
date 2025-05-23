@@ -1,7 +1,8 @@
 import Lean.Structure
 import Lean4Lean.Expr
 
-namespace Lean
+namespace Lean4Lean
+open Lean
 
 section
 variable [Monad m] (env : Environment)
