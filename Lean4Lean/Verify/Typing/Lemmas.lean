@@ -70,7 +70,7 @@ inductive VLocalDecl.IsDefEq : VLocalDecl → VLocalDecl → Prop
     env.IsDefEq U Γ value₁ value₂ type₁ → env.IsDefEq U Γ type₁ type₂ (.sort u) →
     VLocalDecl.IsDefEq (.vlet type₁ value₁) (.vlet type₂ value₂)
 
-variable! (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.LiftN n k Γ Γ') in
+variable! (henv : VEnv.WF ds env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.LiftN n k Γ Γ') in
 theorem VLocalDecl.weakN_iff : VLocalDecl.WF env U Γ' (d.liftN n k) ↔ VLocalDecl.WF env U Γ d :=
   match d with
   | .vlam .. => IsType.weakN_iff henv hΓ' W
@@ -123,7 +123,7 @@ theorem LiftN.toCtx (W : LiftN Δ Δ' dk n k) : Ctx.LiftN n k Δ.toCtx Δ'.toCtx
     | .vlet .. => exact ih
     | .vlam A => exact .succ ih
 
-variable! (henv : Ordered env) in
+variable! (henv : VEnv.WF ds env) in
 theorem LiftN.wf (W : LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U := by
   induction W with
   | refl => exact hΔ'
@@ -191,15 +191,15 @@ theorem TrExpr.weakN (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.lengt
   | mdata _ ih => exact .mdata (ih W hΔ')
   | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weakN W.toCtx)
 
-variable! (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U)) in
+variable! (henv : VEnv.WF ds env) (hΓ' : OnCtx Γ' (env.IsType U)) in
 theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
     (h1 : env.HasType U Γ' e A) (h2 : e.Skips n k) : ∃ B, env.HasType U Γ' e B ∧ B.Skips n k :=
   IsDefEq.skips henv hΓ' W h1 h2 h2
 
-theorem TrProj.weakN_inv (henv : Ordered env) (hΓ' : OnCtx Γ' (env.IsType U))
+theorem TrProj.weakN_inv (henv : VEnv.WF ds env) (hΓ' : OnCtx Γ' (env.IsType U))
     (W : Ctx.LiftN n k Γ Γ') : TrProj Γ' s i (e.liftN n k) e' → ∃ e', TrProj Γ s i e e' := sorry
 
-theorem TrProj.defeqDFC (henv : Ordered env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ₂)
+theorem TrProj.defeqDFC (henv : VEnv.WF ds env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ₂)
     (he : env.IsDefEqU U Γ₁ e₁ e₂) (H : TrProj Γ₁ s i e₁ e') :
     ∃ e', TrProj Γ₂ s i e₂ e' := sorry
 
@@ -322,12 +322,12 @@ theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx 
   | lit _ ih | mdata _ ih => exact ih hΔ
   | proj _ h2 ih => exact h2.wf (ih hΔ)
 
-variable! (henv : Ordered env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
+variable! (henv : VEnv.WF ds env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
 theorem TrProj.uniq (H1 : TrProj Γ₁ s i e₁ e₁') (H2 : TrProj Γ₂ s i e₂ e₂')
     (H : env.IsDefEqU U Γ₁ e₁ e₂) :
     env.IsDefEqU U Γ₁ e₁' e₂' := sorry
 
-variable! (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
+variable! (henv : VEnv.WF ds env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
 theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ e e₂) :
     env.IsDefEqU Us.length Δ₁.toCtx e₁ e₂ := by
   induction H1 generalizing Δ₂ e₂ with
@@ -362,7 +362,7 @@ theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ 
   | mdata _ ih1 => let .mdata r1 := H2; exact ih1 hΔ r1
   | proj _ l2 ih1 => let .proj r1 r2 := H2; exact l2.uniq henv hΔ.defeqCtx r2 (ih1 hΔ r1)
 
-theorem TrExpr.weakN_inv (henv : Ordered env)
+theorem TrExpr.weakN_inv (henv : VEnv.WF ds env)
     (W : VLCtx.LiftN Δ Δ₂ dk n k) (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂)
     (H : TrExpr env Us Δ₁ e e') (hs : InScope (· ∈ VLCtx.fvars Δ) e dk) :
     ∃ e', TrExpr env Us Δ e e' := by

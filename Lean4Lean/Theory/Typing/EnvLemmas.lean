@@ -22,3 +22,5 @@ theorem VEnv.WF.ordered (H : WF ds env) : Ordered env := by
     | «example» _ => exact ih
     | quot h1 h2 => exact addQuot_WF ih h1 h2
     | induct h1 h2 => exact addInduct_WF ih h1 h2
+
+instance : CoeOut (VEnv.WF ds env) env.Ordered := ⟨(·.ordered)⟩
