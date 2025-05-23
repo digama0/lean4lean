@@ -35,6 +35,8 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
     env.addInduct decl = some env' →
     VDecl.WF env (.induct decl) env'
 
-inductive VEnv.WF : List VDecl → VEnv → Prop where
-  | empty : VEnv.WF [] .empty
-  | decl {env} : VDecl.WF env d env' → env.WF ds → env'.WF (d::ds)
+inductive VEnv.WF' : List VDecl → VEnv → Prop where
+  | empty : VEnv.WF' [] .empty
+  | decl {env} : VDecl.WF env d env' → env.WF' ds → env'.WF' (d::ds)
+
+def VEnv.WF (env : VEnv) : Prop := ∃ ds, VEnv.WF' ds env

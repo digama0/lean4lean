@@ -80,7 +80,7 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
   TrEnv' safety env.constants env.header.quotInit venv
 
-theorem TrEnv'.WF (H : TrEnv' C Q env venv) : ∃ ds, venv.WF ds := by
+theorem TrEnv'.WF (H : TrEnv' C Q env venv) : venv.WF := by
   induction H with
   | empty => exact ⟨_, .empty⟩
   | block _ h _ ih =>
@@ -104,7 +104,4 @@ theorem TrEnv'.WF (H : TrEnv' C Q env venv) : ∃ ds, venv.WF ds := by
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .induct h1 h2⟩
 
-nonrec theorem TrEnv.WF (H : TrEnv safety env venv) : ∃ ds, venv.WF ds := H.WF
-
-theorem TrEnv.ordered (H : TrEnv safety env venv) : venv.Ordered :=
-  let ⟨_, H⟩ := H.WF; H.ordered
+nonrec theorem TrEnv.WF (H : TrEnv safety env venv) : venv.WF := H.WF
