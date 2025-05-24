@@ -42,3 +42,13 @@ where
     | succ u,     succ v    => go u v
     | _,          _         => k ()
   termination_by (u, v)
+
+def realDepth : Level → Nat
+  | .zero
+  | .param _
+  | .mvar _ => 0
+  | .succ u => u.realDepth + 1
+  | .max u v
+  | .imax u v => u.realDepth.max v.realDepth + 1
+
+def Safe (l : Level) : Prop := l.realDepth < 2 ^ 24

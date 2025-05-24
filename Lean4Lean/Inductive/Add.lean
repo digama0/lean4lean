@@ -532,11 +532,11 @@ def restoreNested (r : Result) (env' : Environment) (e : Expr)
     if let some nested := r.aux2nested.find? c then
       let args := t.getAppArgs
       assert! args.size ≥ r.nparams
-      return mkAppRange (nested.instantiateRev As) r.nparams args.size args
+      return mkAppRange (nested.instantiateRev' As) r.nparams args.size args
     let (nested, auxI_name) ← r.getNestedIfAuxCtor env' c
     let args := t.getAppArgs
     assert! args.size ≥ r.nparams
-    let nested' := nested.instantiateRev As
+    let nested' := nested.instantiateRev' As
     nested'.withApp fun I I_args => do
     let .const I_c I_ls := I | unreachable!
     let c' := .const (c.replacePrefix auxI_name I_c) I_ls
@@ -574,7 +574,7 @@ def illFormed : KernelException :=
 
 def replaceParams (params : Array Expr) (e : Expr) (As : Array Expr) : M Expr := do
   assert! As.size == params.size
-  return (e.abstract As).instantiateRev params
+  return (e.abstract As).instantiateRev' params
 
 /-- IF `e` is of the form `I Ds is` where
   1) `I` is a nested inductive datatype (i.e., a previously declared inductive datatype),
@@ -611,7 +611,7 @@ def instantiateForallParams (e : Expr) (hi : Nat) (params : Array Expr) :
   for _ in [:hi] do
     let .forallE _ _ body _ := e | throw illFormed
     e := body
-  return e.instantiateRevRange 0 hi params
+  return e.instantiateRevRange' 0 hi params
 
 /-- If `e` is a nested occurrence `I Ds is`, return `Iaux As is` -/
 def replaceIfNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr) (e : Expr) :

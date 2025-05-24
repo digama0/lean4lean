@@ -12,7 +12,7 @@ def isAsSafeAs : DefinitionSafety → ConstantInfo → Bool
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrConstant (ci : ConstantInfo) (ci' : VConstant) : Prop :=
   isAsSafeAs safety ci ∧ ci.levelParams.length = ci'.uvars ∧
-  TrExpr env ci.levelParams [] ci.type ci'.type
+  TrExprS env ci.levelParams [] ci.type ci'.type
 
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrConstVal (ci : ConstantInfo) (ci' : VConstVal) : Prop :=
@@ -21,7 +21,7 @@ def TrConstVal (ci : ConstantInfo) (ci' : VConstVal) : Prop :=
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrDefVal (ci : ConstantInfo) (ci' : VDefVal) : Prop :=
   TrConstVal safety env ci ci'.toVConstVal ∧
-  TrExpr env ci.levelParams [] ci.value! ci'.value
+  TrExprS env ci.levelParams [] ci.value! ci'.value
 
 def AddQuot1 (env : VEnv) (name : Name) (kind : QuotKind) (ci' : VConstant) (P : ConstMap → Prop)
     (m : ConstMap) : Prop :=

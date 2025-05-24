@@ -38,6 +38,8 @@ def bvars : VLCtx → Nat
   | (none, _) :: Δ => bvars Δ + 1
   | (some _, _) :: Δ => bvars Δ
 
+abbrev NoBV (Δ : VLCtx) : Prop := Δ.bvars = 0
+
 def next : Option FVarId → Nat ⊕ FVarId → Option (Nat ⊕ FVarId)
   | none, .inl 0 => none
   | none, .inl (n+1) => some (.inl n)

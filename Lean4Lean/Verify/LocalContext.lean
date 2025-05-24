@@ -42,6 +42,10 @@ theorem TrLCtx.decls_wf : TrLCtx env Us lctx Δ → lctx.decls.WF
   | .nil => .empty
   | .cons _ _ _ h2 _ => .push h2.decls_wf
 
+theorem TrLCtx.noBV : TrLCtx env Us lctx Δ → Δ.NoBV
+  | .nil => rfl
+  | .cons _ _ _ h2 _ => h2.noBV
+
 theorem TrLCtx.map_toList : TrLCtx env Us lctx Δ →
     lctx.fvarIdToDecl.toList' ~ lctx.toList.map fun d => (d.fvarId, d)
   | .nil => by simp [LocalContext.toList]

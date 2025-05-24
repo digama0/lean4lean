@@ -88,3 +88,11 @@ theorem WF.nodupKeys [BEq α] [Hashable α]
     refine (h2.toList'_insert _ _ h1).nodupKeys_iff.2 (List.nodupKeys_cons.2 ⟨?_, ih⟩)
     rintro ⟨a, b⟩ h3 rfl
     cases h1.symm.trans (ih.lookup_eq_some.2 h3)
+
+end PersistentHashMap
+
+-- FIXME: lean4#8464
+open private mkAppRangeAux from Lean.Expr in
+axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Expr) :
+  mkAppRangeAux n args i e =
+    if i < n then mkAppRangeAux n args (i + 1) (mkApp e (args.get! i)) else e

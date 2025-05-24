@@ -1,7 +1,9 @@
 import Batteries.Data.String.Lemmas
 import Lean4Lean.Verify.Typing.Expr
+import Lean4Lean.Verify.Expr
 import Lean4Lean.Theory.Typing.Strong
 import Lean4Lean.Theory.Typing.UniqueTyping
+import Lean4Lean.Instantiate
 
 namespace Lean4Lean
 open VEnv Lean
@@ -92,6 +94,8 @@ theorem VLCtx.WF.toCtx : ∀ {Δ}, VLCtx.WF env U Δ → OnCtx Δ.toCtx (env.IsT
   | (_, .vlam _) :: _, ⟨hΔ, _, hA⟩ => ⟨hΔ.toCtx, hA⟩
   | (_, .vlet ..) :: _, ⟨hΔ, _, _⟩ => hΔ.toCtx
 
+instance : Coe (VLCtx.WF env U Δ) (OnCtx Δ.toCtx (env.IsType U)) := ⟨(·.toCtx)⟩
+
 theorem VLCtx.WF.fvars_nodup : ∀ {Δ}, VLCtx.WF env U Δ → Δ.fvars.Nodup
   | [], _ => .nil
   | (none, _) :: Δ, ⟨hΔ, _, _⟩ => fvars_nodup (Δ := Δ) hΔ
@@ -168,8 +172,8 @@ theorem TrProj.weakN (W : Ctx.LiftN n k Γ Γ')
     (H : TrProj Γ s i e e') : TrProj Γ' s i (e'.liftN n k) (e'.liftN n k) := sorry
 
 variable! (henv : Ordered env) in
-theorem TrExpr.weakN (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
-    (H : TrExpr env Us Δ e e') : TrExpr env Us Δ' e (e'.liftN n k) := by
+theorem TrExprS.weakN (W : VLCtx.LiftN Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
+    (H : TrExprS env Us Δ e e') : TrExprS env Us Δ' e (e'.liftN n k) := by
   induction H generalizing Δ' dk k with
   | bvar h1 => exact .bvar (W.find? hΔ' h1)
   | fvar h1 => exact .fvar (W.find? hΔ' h1)
@@ -256,7 +260,7 @@ theorem VLCtx.IsDefEq.symm : VLCtx.IsDefEq env U Δ₁ Δ₂ → VLCtx.IsDefEq e
   | .cons h1 h2 h3 =>
     .cons h1.symm (by simpa [h1.fvars] using h2) (h3.symm.defeqDFC henv h1.defeqCtx)
 
-variable! (henv : Ordered env) in
+variable! (henv : VEnv.WF env) in
 theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
     (H1 : Δ₁.find? v = some (e₁, A₁)) (H2 : Δ₂.find? v = some (e₂, A₂)) :
     env.IsDefEqU U Δ₁.toCtx A₁ A₂ ∧ env.IsDefEq U Δ₁.toCtx e₁ e₂ A₁ := by
@@ -276,7 +280,7 @@ theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
       rintro d₁' n₁' H1' rfl rfl d₂' n₂' H2' rfl rfl
       simpa [VLocalDecl.depth] using find?_uniq hΔ H1' H2'
 
-theorem TrExpr.inScope (H : TrExpr env Us Δ e e') : InScope (· ∈ Δ.fvars) e Δ.bvars := by
+theorem TrExprS.inScope (H : TrExprS env Us Δ e e') : InScope (· ∈ Δ.fvars) e Δ.bvars := by
   induction H with
   | @bvar e A Δ i h1 =>
     simp [InScope]
@@ -304,7 +308,7 @@ theorem TrExpr.inScope (H : TrExpr env Us Δ e e') : InScope (· ∈ Δ.fvars) e
 theorem TrProj.wf (H1 : TrProj Δ s i e e') (H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := sorry
 
 variable! (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.WF env Us.length Δ) in
-theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx e' := by
+theorem TrExprS.wf (H : TrExprS env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx e' := by
   induction H with
   | bvar h1 | fvar h1 => exact ⟨_, hΔ.find?_wf henv h1⟩
   | sort h1 => exact ⟨_, .sort (.of_ofLevel h1)⟩
@@ -322,13 +326,33 @@ theorem TrExpr.wf (H : TrExpr env Us Δ e e') : VExpr.WF env Us.length Δ.toCtx 
   | lit _ ih | mdata _ ih => exact ih hΔ
   | proj _ h2 ih => exact h2.wf (ih hΔ)
 
+variable! (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.WF env Us.length Δ) in
+theorem TrExprS.trExpr (H : TrExprS env Us Δ e e') : TrExpr env Us Δ e e' :=
+  ⟨_, H, H.wf henv hΔ⟩
+
+theorem TrExpr.defeq (henv : VEnv.WF env) (hΔ : OnCtx Δ.toCtx (env.IsType Us.length))
+    (h1 : TrExpr env Us Δ e e₁) (h2 : env.IsDefEqU Us.length Δ.toCtx e₁ e₂) :
+    TrExpr env Us Δ e e₂ := let ⟨_, H, h1⟩ := h1; ⟨_, H, h1.trans henv hΔ h2⟩
+
+theorem TrExpr.app (henv : VEnv.WF env) (hΔ : OnCtx Δ.toCtx (env.IsType Us.length))
+    (h1 : env.HasType Us.length Δ.toCtx f' (.forallE A B))
+    (h2 : env.HasType Us.length Δ.toCtx a' A)
+    (h3 : TrExpr env Us Δ f f')
+    (h4 : TrExpr env Us Δ a a') :
+    TrExpr env Us Δ (.app f a) (.app f' a') :=
+  let ⟨_, s3, h3⟩ := h3
+  let ⟨_, s4, h4⟩ := h4
+  have h3 := h3.of_r henv hΔ h1
+  have h4 := h4.of_r henv hΔ h2
+  ⟨_, .app h3.hasType.1 h4.hasType.1 s3 s4, _, h3.appDF h4⟩
+
 variable! (henv : VEnv.WF env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
 theorem TrProj.uniq (H1 : TrProj Γ₁ s i e₁ e₁') (H2 : TrProj Γ₂ s i e₂ e₂')
     (H : env.IsDefEqU U Γ₁ e₁ e₂) :
     env.IsDefEqU U Γ₁ e₁' e₂' := sorry
 
 variable! (henv : VEnv.WF env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
-theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ e e₂) :
+theorem TrExprS.uniq (H1 : TrExprS env Us Δ₁ e e₁) (H2 : TrExprS env Us Δ₂ e e₂) :
     env.IsDefEqU Us.length Δ₁.toCtx e₁ e₂ := by
   induction H1 generalizing Δ₂ e₂ with
   | bvar l1 => let .bvar r1 := H2; exact ⟨_, (hΔ.find?_uniq henv l1 r1).2⟩
@@ -336,7 +360,7 @@ theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ 
   | sort l1 => let .sort r1 := H2; cases l1.symm.trans r1; exact ⟨_, .sort (.of_ofLevel l1)⟩
   | const l1 l2 l3 =>
     let .const r1 r2 r3 := H2; cases l1.symm.trans r1; cases l2.symm.trans r2
-    exact (TrExpr.const l1 l2 l3).wf henv hΔ.wf
+    exact (TrExprS.const l1 l2 l3).wf henv hΔ.wf
   | app l1 l2 _ _ ih3 ih4 =>
     let .app _ _ r3 r4 := H2
     exact ⟨_, .appDF
@@ -362,10 +386,10 @@ theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ 
   | mdata _ ih1 => let .mdata r1 := H2; exact ih1 hΔ r1
   | proj _ l2 ih1 => let .proj r1 r2 := H2; exact l2.uniq henv hΔ.defeqCtx r2 (ih1 hΔ r1)
 
-theorem TrExpr.weakN_inv (henv : VEnv.WF env)
+theorem TrExprS.weakN_inv (henv : VEnv.WF env)
     (W : VLCtx.LiftN Δ Δ₂ dk n k) (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂)
-    (H : TrExpr env Us Δ₁ e e') (hs : InScope (· ∈ VLCtx.fvars Δ) e dk) :
-    ∃ e', TrExpr env Us Δ e e' := by
+    (H : TrExprS env Us Δ₁ e e') (hs : InScope (· ∈ VLCtx.fvars Δ) e dk) :
+    ∃ e', TrExprS env Us Δ e e' := by
   induction H generalizing Δ Δ₂ dk k with
   | @bvar e A Δ₁ i h1 =>
     suffices ∃ p, Δ.find? (.inl i) = some p from let ⟨_, h⟩ := this; ⟨_, .bvar h⟩
@@ -481,3 +505,132 @@ theorem IsFVarUpSet.trivial : ∀ {Δ}, IsFVarUpSet (fun _ => True) Δ
 
 theorem IsFVarUpSet.fvars : IsFVarUpSet (· ∈ Δ.fvars) Δ :=
   (IsFVarUpSet.congr fun _ => iff_true_intro).2 trivial
+
+inductive LambdaBodyN : Nat → Expr → Expr → Prop
+  | zero : LambdaBodyN 0 e e
+  | succ : LambdaBodyN n body e → LambdaBodyN (n+1) (.lam i ty body bi) e
+
+theorem LambdaBodyN.safe (H : LambdaBodyN n e1 e2) : e1.Safe → e2.Safe := by
+  induction H with
+  | zero => exact id
+  | succ _ ih => exact fun h => ih h.2
+
+theorem LambdaBodyN.add (H1 : LambdaBodyN m e1 e2) (H2 : LambdaBodyN n e2 e3) :
+    LambdaBodyN (n + m) e1 e3 := by
+  induction H1 with
+  | zero => exact H2
+  | succ _ ih => exact .succ (ih H2)
+
+@[simp] theorem Nat.max_eq_zero : max a b = 0 ↔ a = 0 ∧ b = 0 := by
+  simp only [← Nat.le_zero, Nat.max_le]
+
+inductive BetaReduce : Expr → Expr → Prop
+  | refl : BetaReduce e e
+  | trans : BetaReduce e₁ e₂ → BetaReduce e₂ e₃ → BetaReduce e₁ e₃
+  | app : BetaReduce f f' → BetaReduce (.app f a) (.app f' a)
+  | beta : BetaReduce (.app (.lam i ty body bi) e) (body.instantiate1' e)
+
+theorem BetaReduce.appRevList (H : BetaReduce f f') :
+    BetaReduce (f.mkAppRevList es) (f'.mkAppRevList es) := by
+  induction es with
+  | nil => exact H
+  | cons _ _ ih => exact .app ih
+
+-- theorem BetaReduce.cheapBetaReduce (hs : e.Safe) : BetaReduce e e.cheapBetaReduce := by
+--   simp [Expr.cheapBetaReduce]
+--   split; · exact .refl
+--   split; · exact .refl
+--   let rec loop {e i fn args cont} (H : LambdaBodyN i e fn) (hi : i ≤ args.size) :
+--     ∃ n fn', LambdaBodyN n e fn' ∧ n ≤ args.size ∧
+--       Expr.cheapBetaReduce.loop args cont i fn = cont n fn' := by
+--     unfold Expr.cheapBetaReduce.loop; split
+--     · split
+--       · exact loop (by simpa [Nat.add_comm] using H.add (.succ .zero)) ‹_›
+--       · exact ⟨_, _, H, Nat.le_of_lt ‹_›, rfl⟩
+--     · exact ⟨_, _, H, hi, rfl⟩
+--   refine let ⟨i, fn, h1, h2, eq⟩ := loop .zero (Nat.zero_le _); eq ▸ ?_; clear eq
+--   split <;> rename_i h3
+--   · simp [Expr.hasLooseBVars, (h1.safe hs.getAppFn).looseBVarRange_eq] at h3
+--     simp [Expr.getAppArgs_eq] at h2 ⊢
+--     have ⟨l₁, l₂, len, eq⟩ : ∃ l₁ l₂, l₁.length = i ∧ e.getAppArgsRevList.reverse = l₁ ++ l₂ :=
+--       ⟨_, _, List.length_take_of_le (by simp [h2]), (List.take_append_drop ..).symm⟩
+--     rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) len (by simp [← eq])]
+--     replace eq := congrArg List.reverse eq; simp at eq
+--     rw [← e.mkAppRevList_getAppArgsRevList, eq]; simp
+--     refine .appRevList ?_
+--     generalize e.getAppFn = e₀ at h1
+--     clear h2 eq
+--     have : BetaReduce (e₀.mkAppRevList l₁.reverse) (fn.instantiateList l₁) := by
+--       subst i; clear h3
+--       induction l₁ generalizing e₀ fn with
+--       | nil => let .zero := h1; exact .refl
+--       | cons a l ih =>
+--         let .succ (body := body) h1 := h1
+--         have := ih _ _ h1
+--         simp
+--         refine .trans (.appRevList .beta) (ih _ _ ?_)
+--         generalize l.length = n at h1
+--         have (i) : LambdaBodyN n
+--             (Expr.instantiate1'.go a body i)
+--             (Expr.instantiate1'.go a fn (n + i)) := by
+--           induction h1 with
+--           | zero => exact .zero
+--           | succ =>
+--             refine .succ _
+
+
+--       induction h1 generalizing l₁ with
+--       | zero => let [] := l₁; exact .refl
+--       | succ _ ih =>
+--         let a :: l₁ := l₁
+--         simp at len ⊢
+--         refine .trans ?_ (ih h3 _ len)
+--         induction l₁.reverse with
+--         | nil => exact .beta
+--   split
+--   · done
+--   · exact .refl
+
+-- theorem TrExpr.cheapBetaReduce (H : TrExpr env Us Δ e e')
+--     (henv : VEnv.WF env) (hΓ : VLCtx.WF env Us.length Δ)
+--     (hΔ : Δ.NoBV) (hs : e.Safe) :
+--     TrExpr env Us Δ e.cheapBetaReduce e' := by
+--   simp [Expr.cheapBetaReduce]
+--   split; · exact H
+--   split; · exact H
+--   let rec loop {e i fn args cont} (H : LambdaBodyN i e fn) (hi : i ≤ args.size) :
+--     ∃ n fn', LambdaBodyN n e fn' ∧ n ≤ args.size ∧
+--       Expr.cheapBetaReduce.loop args cont i fn = cont n fn' := by
+--     unfold Expr.cheapBetaReduce.loop; split
+--     · split
+--       · exact loop (by simpa [Nat.add_comm] using H.add (.succ .zero)) ‹_›
+--       · exact ⟨_, _, H, Nat.le_of_lt ‹_›, rfl⟩
+--     · exact ⟨_, _, H, hi, rfl⟩
+--   refine let ⟨i, fn, h1, h2, eq⟩ := loop .zero (Nat.zero_le _); eq ▸ ?_; clear eq
+--   split <;> rename_i h3
+--   · simp [Expr.hasLooseBVars, (h1.safe hs.getAppFn).looseBVarRange_eq] at h3
+--     simp [Expr.getAppArgs_eq] at h2 ⊢
+--     have ⟨l₁, l₂, len, eq⟩ : ∃ l₁ l₂, l₁.length = i ∧ e.getAppArgsRevList.reverse = l₁ ++ l₂ :=
+--       ⟨_, _, List.length_take_of_le (by simp [h2]), (List.take_append_drop ..).symm⟩
+--     rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) len (by simp [← eq])]
+--     replace eq := congrArg List.reverse eq; simp at eq
+--     let ⟨e'', H1, H2⟩ := H
+--     suffices TrExpr env Us Δ (fn.mkAppRevList l₂.reverse) e'' from this.defeq henv hΓ H2
+--     clear e' H H2; revert H1
+--     rw [← e.mkAppRevList_getAppArgsRevList, eq]; simp
+--     induction l₂.reverse generalizing e'' with (simp; intro H1)
+--     | cons a l ih =>
+--       let .app h1 h2 h3 h4 := H1
+--       refine .app henv hΓ h1 h2 (ih _ h3) (h4.trExpr henv hΓ)
+--     | nil => ?_
+--     generalize e.getAppFn = e₀ at H1 h1
+--     clear h2
+--     induction h1 generalizing l₁ with
+--     | zero => let [] := l₁; simp at H1; exact H1.trExpr henv hΓ
+--     | succ _ ih =>
+--       let a :: l₁ := l₁
+--       simp [Expr.realLooseBVarRange] at ih len H1
+--       done
+--   split
+--   · done
+--   · exact H

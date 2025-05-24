@@ -6,6 +6,34 @@ def prop : Expr := .sort .zero
 
 def arrow (d b : Expr) : Expr := .forallE `a d b .default
 
+def realLooseBVarRange : Expr → Nat
+  | .bvar i => i + 1
+  | .const ..
+  | .sort _
+  | .fvar _
+  | .mvar _
+  | .lit _ => 0
+  | .mdata _ e
+  | .proj _ _ e => e.realLooseBVarRange
+  | .app e1 e2 => max e1.realLooseBVarRange e2.realLooseBVarRange
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => max e1.realLooseBVarRange (e2.realLooseBVarRange - 1)
+  | .letE _ e1 e2 e3 _ => max (max e1.realLooseBVarRange e2.realLooseBVarRange) (e3.realLooseBVarRange - 1)
+
+def Safe : Expr → Prop
+  | .bvar i => i < 2^20 - 1
+  | .const ..
+  | .sort _ -- TODO: should this use Level.Safe?
+  | .fvar _
+  | .mvar _
+  | .lit _ => True
+  | .mdata _ e
+  | .proj _ _ e => e.Safe
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.Safe ∧ e2.Safe
+  | .letE _ e1 e2 e3 _ => e1.Safe ∧ e2.Safe ∧ e3.Safe
+
 namespace ReplaceImpl
 
 unsafe abbrev ReplaceT := StateT (PtrMap Expr Expr)
