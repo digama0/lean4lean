@@ -17,6 +17,10 @@ def InScope : Expr → (k :_:= 0) → Prop
   | .proj _ _ e, k | .mdata _ e, k => InScope e k
   | .mvar .., _ => False
 
+nonrec abbrev _root_.Lean.Expr.InScope := @InScope
+abbrev Closed := @InScope (fun _ => True)
+nonrec abbrev _root_.Lean.Expr.Closed := @Closed
+
 def VLocalDecl.WF (env : VEnv) (U : Nat) (Γ : List VExpr) : VLocalDecl → Prop
   | .vlam type => env.IsType U Γ type
   | .vlet type value => env.HasType U Γ value type

@@ -25,6 +25,25 @@ def cheapBetaReduce (e : Expr) : Expr := Id.run do
   loop 0 fn
 
 /--
+  Lift loose bound variables `>= s` in `e` by `d`. -/
+@[implemented_by liftLooseBVars]
+def liftLooseBVars' (e : @& Expr) (s d : @& Nat) : Expr :=
+  match e with
+  | e@(.bvar i) => if i < s then e else .bvar (i + d)
+  | .mdata m e => .mdata m (liftLooseBVars' e s d)
+  | .proj n i e => .proj n i (liftLooseBVars' e s d)
+  | .app f a => .app (liftLooseBVars' f s d) (liftLooseBVars' a s d)
+  | .lam n t b bi => .lam n (liftLooseBVars' t s d) (liftLooseBVars' b (s+1) d) bi
+  | .forallE n t b bi => .forallE n (liftLooseBVars' t s d) (liftLooseBVars' b (s+1) d) bi
+  | .letE n t v b bi =>
+    .letE n (liftLooseBVars' t s d) (liftLooseBVars' v s d) (liftLooseBVars' b (s+1) d) bi
+  | e@(.const ..)
+  | e@(.sort _)
+  | e@(.fvar _)
+  | e@(.mvar _)
+  | e@(.lit _) => e
+
+/--
 Instantiates loose bound variable `0` in `e` using the expression `subst`,
 where in particular a loose `Expr.bvar i` at binding depth `d` is instantiated with `subst` if `i = d`,
 and otherwise it is replaced with `Expr.bvar (i - 1)`; non-loose bound variables are not touched.
@@ -34,7 +53,8 @@ def instantiate1' (e : @& Expr) (subst : @& Expr) : Expr :=
   go e 0
 where
   go : Expr → Nat → Expr
-  | e@(.bvar i), d => if i < d then e else if i = d then subst.liftLooseBVars 0 d else .bvar (i - 1)
+  | e@(.bvar i), d =>
+    if i < d then e else if i = d then subst.liftLooseBVars' 0 d else .bvar (i - 1)
   | .mdata m e, d => .mdata m (go e d)
   | .proj s i e, d => .proj s i (go e d)
   | .app f a, d => .app (go f d) (go a d)

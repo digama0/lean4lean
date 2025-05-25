@@ -55,6 +55,11 @@ theorem InScope.fvars_cons :
     InScope (· ∈ VLCtx.fvars Δ) e k → InScope (· ∈ VLCtx.fvars ((ofv, d) :: Δ)) e k :=
   InScope.mono fun a h => by cases ofv <;> simp [h]
 
+theorem Closed.getAppFn {e} (h : Closed e) : Closed e.getAppFn := by
+  unfold Expr.getAppFn; split
+  · exact Closed.getAppFn h.1
+  · exact h
+
 theorem VLocalDecl.WF.hasType : ∀ {d}, VLocalDecl.WF env U (VLCtx.toCtx Δ) d →
     env.HasType U (VLCtx.toCtx ((ofv, d) :: Δ)) d.value d.type
   | .vlam _, _ => .bvar .zero
@@ -515,14 +520,16 @@ theorem LambdaBodyN.safe (H : LambdaBodyN n e1 e2) : e1.Safe → e2.Safe := by
   | zero => exact id
   | succ _ ih => exact fun h => ih h.2
 
+theorem LambdaBodyN.closed (H : LambdaBodyN n e1 e2) : e1.Closed k → e2.Closed (k + n) := by
+  induction H generalizing k with
+  | zero => exact id
+  | succ _ ih => exact fun h => (Nat.add_right_comm .. ▸ ih h.2 :)
+
 theorem LambdaBodyN.add (H1 : LambdaBodyN m e1 e2) (H2 : LambdaBodyN n e2 e3) :
     LambdaBodyN (n + m) e1 e3 := by
   induction H1 with
   | zero => exact H2
   | succ _ ih => exact .succ (ih H2)
-
-@[simp] theorem Nat.max_eq_zero : max a b = 0 ↔ a = 0 ∧ b = 0 := by
-  simp only [← Nat.le_zero, Nat.max_le]
 
 inductive BetaReduce : Expr → Expr → Prop
   | refl : BetaReduce e e
@@ -536,101 +543,89 @@ theorem BetaReduce.appRevList (H : BetaReduce f f') :
   | nil => exact H
   | cons _ _ ih => exact .app ih
 
--- theorem BetaReduce.cheapBetaReduce (hs : e.Safe) : BetaReduce e e.cheapBetaReduce := by
---   simp [Expr.cheapBetaReduce]
---   split; · exact .refl
---   split; · exact .refl
---   let rec loop {e i fn args cont} (H : LambdaBodyN i e fn) (hi : i ≤ args.size) :
---     ∃ n fn', LambdaBodyN n e fn' ∧ n ≤ args.size ∧
---       Expr.cheapBetaReduce.loop args cont i fn = cont n fn' := by
---     unfold Expr.cheapBetaReduce.loop; split
---     · split
---       · exact loop (by simpa [Nat.add_comm] using H.add (.succ .zero)) ‹_›
---       · exact ⟨_, _, H, Nat.le_of_lt ‹_›, rfl⟩
---     · exact ⟨_, _, H, hi, rfl⟩
---   refine let ⟨i, fn, h1, h2, eq⟩ := loop .zero (Nat.zero_le _); eq ▸ ?_; clear eq
---   split <;> rename_i h3
---   · simp [Expr.hasLooseBVars, (h1.safe hs.getAppFn).looseBVarRange_eq] at h3
---     simp [Expr.getAppArgs_eq] at h2 ⊢
---     have ⟨l₁, l₂, len, eq⟩ : ∃ l₁ l₂, l₁.length = i ∧ e.getAppArgsRevList.reverse = l₁ ++ l₂ :=
---       ⟨_, _, List.length_take_of_le (by simp [h2]), (List.take_append_drop ..).symm⟩
---     rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) len (by simp [← eq])]
---     replace eq := congrArg List.reverse eq; simp at eq
---     rw [← e.mkAppRevList_getAppArgsRevList, eq]; simp
---     refine .appRevList ?_
---     generalize e.getAppFn = e₀ at h1
---     clear h2 eq
---     have : BetaReduce (e₀.mkAppRevList l₁.reverse) (fn.instantiateList l₁) := by
---       subst i; clear h3
---       induction l₁ generalizing e₀ fn with
---       | nil => let .zero := h1; exact .refl
---       | cons a l ih =>
---         let .succ (body := body) h1 := h1
---         have := ih _ _ h1
---         simp
---         refine .trans (.appRevList .beta) (ih _ _ ?_)
---         generalize l.length = n at h1
---         have (i) : LambdaBodyN n
---             (Expr.instantiate1'.go a body i)
---             (Expr.instantiate1'.go a fn (n + i)) := by
---           induction h1 with
---           | zero => exact .zero
---           | succ =>
---             refine .succ _
+private def instantiateListUp : Expr → List Expr → Nat → Expr
+  | e, [], _ => e
+  | e, a :: as, n => Expr.instantiate1'.go a (instantiateListUp e as (n+1)) n
 
+private theorem instantiateListUp_eq_self (h : e.realLooseBVarRange ≤ i) :
+    instantiateListUp e as i = e := by
+  induction as generalizing i with simp [instantiateListUp] | cons a as ih => ?_
+  rw [ih, Expr.instantiate1'_go_eq_self h]; omega
 
---       induction h1 generalizing l₁ with
---       | zero => let [] := l₁; exact .refl
---       | succ _ ih =>
---         let a :: l₁ := l₁
---         simp at len ⊢
---         refine .trans ?_ (ih h3 _ len)
---         induction l₁.reverse with
---         | nil => exact .beta
---   split
---   · done
---   · exact .refl
+theorem BetaReduce.cheapBetaReduce (hs : e.Safe) (hc : e.Closed) :
+    BetaReduce e e.cheapBetaReduce := by
+  simp [Expr.cheapBetaReduce]
+  split; · exact .refl
+  split; · exact .refl
+  let rec loop {e i fn args cont} (H : LambdaBodyN i e fn) (hi : i ≤ args.size) :
+    ∃ n fn', LambdaBodyN n e fn' ∧ n ≤ args.size ∧
+      Expr.cheapBetaReduce.loop args cont i fn = cont n fn' := by
+    unfold Expr.cheapBetaReduce.loop; split
+    · split
+      · exact loop (by simpa [Nat.add_comm] using H.add (.succ .zero)) ‹_›
+      · exact ⟨_, _, H, Nat.le_of_lt ‹_›, rfl⟩
+    · exact ⟨_, _, H, hi, rfl⟩
+  refine let ⟨i, fn, h1, h2, eq⟩ := loop .zero (Nat.zero_le _); eq ▸ ?_; clear eq
+  simp [Expr.getAppArgs_eq] at h2 ⊢
+  obtain ⟨l₁, l₂, rfl, eq⟩ : ∃ l₁ l₂, l₁.length = i ∧ e.getAppArgsRevList.reverse = l₁ ++ l₂ :=
+    ⟨_, _, List.length_take_of_le (by simp [h2]), (List.take_append_drop ..).symm⟩
+  have eqr := congrArg List.reverse eq; simp at eqr
+  have inst_reduce (l₂) {{r}} (hr : instantiateListUp fn (l₁.reverse ++ l₂) 0 = r) :
+    BetaReduce ((instantiateListUp e.getAppFn l₂ 0).mkAppRevList l₁.reverse) r := by
+    generalize e.getAppFn = e₀ at h1
+    have inst_lam {n ty body bi} (as j) :
+        instantiateListUp (.lam n ty body bi) as j =
+        .lam n (instantiateListUp ty as j) (instantiateListUp body as (j+1)) bi := by
+      induction as generalizing j <;> simp [instantiateListUp, Expr.instantiate1'.go, *]
+    subst r; clear h2 eq eqr
+    induction l₁ generalizing e₀ fn l₂ with
+    | nil => let .zero := h1; exact .refl
+    | cons a l ih =>
+      let .succ (body := body) h1 := h1
+      rw [inst_lam]
+      simp; refine .trans (.appRevList .beta) (ih _ (a::l₂) _ h1)
+  split <;> rename_i h3
+  · simp [Expr.hasLooseBVars, (h1.safe hs.getAppFn).looseBVarRange_eq] at h3
+    rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) rfl (by simp [← eq])]
+    rw [← e.mkAppRevList_getAppArgsRevList, eqr]; simp
+    exact .appRevList <| inst_reduce [] <| instantiateListUp_eq_self (by simp [h3])
+  split <;> [rename_i n; exact .refl]
+  have hc := h1.closed hc.getAppFn
+  simp [InScope] at hc; rw [if_pos hc]
+  rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) rfl (by simp [← eq])]
+  conv => lhs; rw [← e.mkAppRevList_getAppArgsRevList]
+  simp [eqr]
+  refine .appRevList <| inst_reduce [] ?_
+  rw [List.getElem?_append_left (by omega), Nat.sub_right_comm, ← List.getElem?_reverse hc]
+  suffices ∀ l₁ i, ∀ n < l₁.length,
+      instantiateListUp (Expr.bvar (i + n)) l₁ i = (l₁[n]?.getD default).liftLooseBVars' 0 i by
+    simpa [Expr.liftLooseBVars_zero] using this l₁.reverse 0 n (by simp [hc])
+  intro l₁ i n lt
+  induction l₁ generalizing n i with
+  | nil => cases lt
+  | cons a l ih =>
+    simp [instantiateListUp]
+    obtain _ | n := n
+    · rw [instantiateListUp_eq_self (by apply Nat.le_refl)]
+      simp [Expr.instantiate1'.go]
+    · simp [← Nat.add_assoc, Nat.add_right_comm _ _ 1] at lt ⊢
+      have := by simpa using @Expr.instantiate1'_go_liftLooseBVars (s := 0)
+      rw [ih (i+1) _ lt, this]
 
--- theorem TrExpr.cheapBetaReduce (H : TrExpr env Us Δ e e')
---     (henv : VEnv.WF env) (hΓ : VLCtx.WF env Us.length Δ)
---     (hΔ : Δ.NoBV) (hs : e.Safe) :
---     TrExpr env Us Δ e.cheapBetaReduce e' := by
---   simp [Expr.cheapBetaReduce]
---   split; · exact H
---   split; · exact H
---   let rec loop {e i fn args cont} (H : LambdaBodyN i e fn) (hi : i ≤ args.size) :
---     ∃ n fn', LambdaBodyN n e fn' ∧ n ≤ args.size ∧
---       Expr.cheapBetaReduce.loop args cont i fn = cont n fn' := by
---     unfold Expr.cheapBetaReduce.loop; split
---     · split
---       · exact loop (by simpa [Nat.add_comm] using H.add (.succ .zero)) ‹_›
---       · exact ⟨_, _, H, Nat.le_of_lt ‹_›, rfl⟩
---     · exact ⟨_, _, H, hi, rfl⟩
---   refine let ⟨i, fn, h1, h2, eq⟩ := loop .zero (Nat.zero_le _); eq ▸ ?_; clear eq
---   split <;> rename_i h3
---   · simp [Expr.hasLooseBVars, (h1.safe hs.getAppFn).looseBVarRange_eq] at h3
---     simp [Expr.getAppArgs_eq] at h2 ⊢
---     have ⟨l₁, l₂, len, eq⟩ : ∃ l₁ l₂, l₁.length = i ∧ e.getAppArgsRevList.reverse = l₁ ++ l₂ :=
---       ⟨_, _, List.length_take_of_le (by simp [h2]), (List.take_append_drop ..).symm⟩
---     rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) len (by simp [← eq])]
---     replace eq := congrArg List.reverse eq; simp at eq
---     let ⟨e'', H1, H2⟩ := H
---     suffices TrExpr env Us Δ (fn.mkAppRevList l₂.reverse) e'' from this.defeq henv hΓ H2
---     clear e' H H2; revert H1
---     rw [← e.mkAppRevList_getAppArgsRevList, eq]; simp
---     induction l₂.reverse generalizing e'' with (simp; intro H1)
---     | cons a l ih =>
---       let .app h1 h2 h3 h4 := H1
---       refine .app henv hΓ h1 h2 (ih _ h3) (h4.trExpr henv hΓ)
---     | nil => ?_
---     generalize e.getAppFn = e₀ at H1 h1
---     clear h2
---     induction h1 generalizing l₁ with
---     | zero => let [] := l₁; simp at H1; exact H1.trExpr henv hΓ
---     | succ _ ih =>
---       let a :: l₁ := l₁
---       simp [Expr.realLooseBVarRange] at ih len H1
---       done
---   split
---   · done
---   · exact H
+theorem TrExpr.beta (H : TrExpr env Us Δ e e')
+    (henv : VEnv.WF env) (hΓ : VLCtx.WF env Us.length Δ)
+    (H : BetaReduce e e₂) : TrExpr env Us Δ e₂ e' := by
+  induction H generalizing e' with
+  | refl => exact H
+  | trans _ _ ih1 ih2 => exact ih2 (ih1 H)
+  | app _ ih =>
+    let ⟨_, .app hf ha tf ta, _, df⟩ := H
+    have ⟨_, _, hf', ha'⟩ := df.app_inv' henv hΓ (.inl rfl)
+    exact ((ih ⟨_, tf, _, hf'⟩).app henv hΓ hf' ha' (ta.trExpr henv hΓ)).defeq henv hΓ ⟨_, df⟩
+  | beta =>
+    let ⟨_, .app hf ha tf ta, _, df⟩ := H
+    let .lam hA tA tb := tf
+    have ⟨⟨_, hA⟩, _, hb⟩ := hf.lam_inv henv hΓ
+    have ⟨⟨_, Ae⟩, _, be⟩ := (hf.uniqU henv hΓ (hA.lam hb)).forallE_inv henv hΓ
+    refine ⟨_, ?_, _, (hb.beta (Ae.defeq ha)).symm.trans_r henv hΓ df⟩
+    sorry

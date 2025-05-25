@@ -164,3 +164,21 @@ theorem mkAppRange_eq (h1 : args.toList = l₁ ++ l₂ ++ l₃)
 @[simp] def instantiateList : Expr → List Expr → Expr
   | e, [] => e
   | e, a :: as => instantiateList (e.instantiate1' a) as
+
+theorem instantiate1'_go_eq_self : e.realLooseBVarRange ≤ k → instantiate1'.go a e k = e := by
+  induction e generalizing k <;>
+    simp +contextual [*, realLooseBVarRange, instantiate1'.go, Nat.max_le, Nat.le_add_of_sub_le]
+  omega
+
+theorem instantiate1'_eq_self (H : e.realLooseBVarRange = 0) : instantiate1' e a = e :=
+  instantiate1'_go_eq_self (Nat.le_zero.2 H)
+
+theorem instantiate1'_go_liftLooseBVars :
+    instantiate1'.go a (liftLooseBVars' e s (d + 1)) (s + d) = e.liftLooseBVars' s d := by
+  induction e generalizing s d <;>
+    simp [*, instantiate1'.go, liftLooseBVars', Nat.add_right_comm _ _ 1]
+  rename_i i; split <;> simp [instantiate1'.go]; · omega
+  · rw [if_neg (by omega), if_neg (by omega)]; rfl
+
+theorem liftLooseBVars_zero : liftLooseBVars' e s 0 = e := by
+  induction e generalizing s <;> simp [*, liftLooseBVars']
