@@ -29,7 +29,7 @@ def cheapBetaReduce (e : Expr) : Expr := Id.run do
 @[implemented_by liftLooseBVars]
 def liftLooseBVars' (e : @& Expr) (s d : @& Nat) : Expr :=
   match e with
-  | e@(.bvar i) => if i < s then e else .bvar (i + d)
+  | .bvar i => .bvar (if i < s then i else i + d)
   | .mdata m e => .mdata m (liftLooseBVars' e s d)
   | .proj n i e => .proj n i (liftLooseBVars' e s d)
   | .app f a => .app (liftLooseBVars' f s d) (liftLooseBVars' a s d)

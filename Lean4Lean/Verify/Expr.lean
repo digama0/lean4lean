@@ -175,10 +175,22 @@ theorem instantiate1'_eq_self (H : e.realLooseBVarRange = 0) : instantiate1' e a
 
 theorem instantiate1'_go_liftLooseBVars :
     instantiate1'.go a (liftLooseBVars' e s (d + 1)) (s + d) = e.liftLooseBVars' s d := by
-  induction e generalizing s d <;>
+  induction e generalizing s <;>
     simp [*, instantiate1'.go, liftLooseBVars', Nat.add_right_comm _ _ 1]
-  rename_i i; split <;> simp [instantiate1'.go]; · omega
+  rename_i i; split; · simp; omega
   · rw [if_neg (by omega), if_neg (by omega)]; rfl
+
+theorem liftLooseBVars_eq_self : e.realLooseBVarRange ≤ s → liftLooseBVars' e s d = e := by
+  induction e generalizing s <;>
+    simp +contextual [*, realLooseBVarRange, liftLooseBVars', Nat.max_le, Nat.le_add_of_sub_le]
+  omega
 
 theorem liftLooseBVars_zero : liftLooseBVars' e s 0 = e := by
   induction e generalizing s <;> simp [*, liftLooseBVars']
+
+theorem liftLooseBVars_add {e : Expr} {n1 n2 k : Nat} :
+    liftLooseBVars' (liftLooseBVars' e k n1) k n2 = liftLooseBVars' e k (n1+n2) := by
+  induction e generalizing k with simp [liftLooseBVars', Nat.add_assoc, *]
+  | bvar i =>
+    split; · rfl
+    rw [if_neg (by omega), Nat.add_assoc]

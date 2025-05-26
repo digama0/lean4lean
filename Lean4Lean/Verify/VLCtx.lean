@@ -29,6 +29,10 @@ def VLocalDecl.liftN : VLocalDecl → Nat → Nat → VLocalDecl
   | .vlam A, n, k => .vlam (A.liftN n k)
   | .vlet A e, n, k => .vlet (A.liftN n k) (e.liftN n k)
 
+def VLocalDecl.inst : VLocalDecl → VExpr → (k : Nat := 0) → VLocalDecl
+  | .vlam A, e₀, k => .vlam (A.inst e₀ k)
+  | .vlet A e, e₀, k => .vlet (A.inst e₀ k) (e.inst e₀ k)
+
 def VLCtx := List (Option FVarId × VLocalDecl)
 
 namespace VLCtx
@@ -53,6 +57,14 @@ def find? : VLCtx → Nat ⊕ FVarId → Option (VExpr × VExpr)
     match next ofv v with
     | none => some (d.value, d.type)
     | some v => do let (e, A) ← find? Δ v; some (e.liftN d.depth, A.liftN d.depth)
+
+def liftVar (n k : Nat) : Nat ⊕ FVarId → Nat ⊕ FVarId
+  | .inl i => .inl (if i < k then i else i + n)
+  | .inr fv => .inr fv
+
+def varToExpr : Nat ⊕ FVarId → Expr
+  | .inl i => .bvar i
+  | .inr fv => .fvar fv
 
 def vlamName : VLCtx → Nat → Option (Option FVarId)
   | [], _ => none
