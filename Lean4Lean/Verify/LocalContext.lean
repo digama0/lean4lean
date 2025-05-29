@@ -175,10 +175,14 @@ theorem TrLCtx.fvars_eq (H : TrLCtx env Us lctx Δ) : lctx.fvars = Δ.fvars := b
   | nil => rfl
   | cons h1 _ _ _ _ ih => simp [h1, ← ih]
 
+theorem TrLCtx.find?_eq_find?_toList (H : TrLCtx env Us lctx Δ) :
+    lctx.find? fv = lctx.toList.find? (fv == ·.fvarId) := by
+  rw [LocalContext.find?, H.map_wf.find?_eq,
+    H.map_toList.lookup_eq H.map_wf.nodupKeys, List.map_fst_lookup]
+
 theorem TrLCtx.find?_isSome (H : TrLCtx env Us lctx Δ) :
     (lctx.find? fv).isSome = (Δ.find? (.inr fv)).isSome := by
-  rw [LocalContext.find?, H.map_wf.find?_eq, ← VLCtx.lookup_isSome,
-    H.map_toList.lookup_eq H.map_wf.nodupKeys, List.map_fst_lookup]
+  rw [H.find?_eq_find?_toList, ← VLCtx.lookup_isSome]
   have := H.forall₂; generalize lctx.toList = l at this ⊢; clear H
   induction this with
   | nil => rfl

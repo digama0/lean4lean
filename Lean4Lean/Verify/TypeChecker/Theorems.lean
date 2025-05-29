@@ -26,6 +26,10 @@ def MLCtx.lctx : MLCtx → LocalContext
   | .nil => 0
   | .vlam _ _ _ _ _ c => c.length + 1
 
+def MLCtx.decls : MLCtx → List LocalDecl
+  | .nil => {}
+  | .vlam v name ty _ bi c => .cdecl c.length v name ty bi .default :: c.decls
+
 @[simp] def MLCtx.fvarRevList (c : MLCtx) (n) (hn : n ≤ c.length) : List FVarId :=
   match n, c, hn with
   | 0, _, _ => []
@@ -39,12 +43,6 @@ termination_by structural n
   | n+1, .vlam _ _ _ _ _ c, h =>
       c.dropN n (Nat.le_of_succ_le_succ h)
 termination_by structural n
-
-@[simp] def MLCtx.findDecl? (c : MLCtx) (x : FVarId) : Option LocalDecl :=
-  match c with
-  | .nil => none
-  | .vlam v name ty _ bi c =>
-    if x == v then some (.cdecl c.length v name ty bi default) else c.findDecl? x
 
 def MLCtx.WF (env : VEnv) (Us : List Name) : MLCtx → Prop
   | .nil => True
@@ -279,8 +277,23 @@ theorem MLCtx.WF.fvarRevList_nodup {c : MLCtx} (wf : c.WF env Us)
     (n hn) : (c.fvarRevList n hn).Nodup :=
   c.fvarRevList_prefix.sublist.nodup wf.fvars_nodup
 
-theorem MLCtx.WF.find?_eq_findDecl? {c : MLCtx} (wf : c.WF env Us) :
-    c.lctx.find? x = c.findDecl? x := sorry
+theorem MLCtx.WF.decls_size {c : MLCtx} (wf : c.WF env Us) :
+    c.lctx.decls.size = c.length := by
+  rw [← wf.tr.decls_wf.toList'_length]
+  induction c with
+  | nil => rfl
+  | vlam _ _ _ _ _ _ ih => simp [lctx, LocalContext.mkLocalDecl, ih wf.1]
+
+theorem MLCtx.WF.toList_eq {c : MLCtx} (wf : c.WF env Us) :
+    c.lctx.toList = c.decls := by
+  simp [LocalContext.toList]
+  induction c with
+  | nil => rfl
+  | vlam _ _ _ _ _ _ ih => simp [lctx, LocalContext.mkLocalDecl, decls, ih wf.1, wf.1.decls_size]
+
+theorem MLCtx.WF.find?_eq {c : MLCtx} (wf : c.WF env Us) :
+    c.lctx.find? x = c.decls.find? (x == ·.fvarId) := by
+  simp [wf.tr.find?_eq_find?_toList, wf.toList_eq]
 
 theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
@@ -293,13 +306,13 @@ theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     | zero => simp [tr]
     | succ n ih =>
       let .vlam x name ty ty' bi c := c; simp
-      refine (List.foldl_congr fun _ _ h => ?_).trans <|
+      refine (List.foldl_congr fun _ y h => ?_).trans <|
         .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _)
       · refine LocalContext.mkBindingList1_congr ?_
-        rw [wf.find?_eq_findDecl?, wf.1.find?_eq_findDecl?, findDecl?, if_neg]
-        simp; rintro ⟨⟩
+        rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
+        simp [LocalDecl.fvarId]; rintro ⟨⟩
         have := wf.fvarRevList_nodup (n+1) hn; simp_all
-      · simp [LocalContext.mkBindingList1, wf.find?_eq_findDecl?, findDecl?]
+      · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
   · intro _ h
     exact wf.tr.find?_eq_some.2 ((MLCtx.fvarRevList_prefix ..).subset (List.mem_reverse.1 h))
   · exact List.nodup_reverse.2 (wf.fvarRevList_nodup ..)
