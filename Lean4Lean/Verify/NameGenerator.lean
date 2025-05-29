@@ -6,6 +6,12 @@ namespace Lean.NameGenerator
 def Reserves (ngen : NameGenerator) (fv : FVarId) : Prop :=
   ∀ i, fv = ⟨.num ngen.namePrefix i⟩ → i < ngen.idx
 
+theorem next_reserves_self {ngen : NameGenerator} :
+    ngen.next.Reserves ⟨ngen.curr⟩ := by rintro _ ⟨⟩; exact Nat.lt_succ_self _
+
+theorem not_reserves_self {ngen : NameGenerator} :
+    ¬ngen.Reserves ⟨ngen.curr⟩ := fun h => Nat.lt_irrefl _ (h _ rfl)
+
 protected inductive LE : NameGenerator → NameGenerator → Prop where
   | le : i ≤ j → NameGenerator.LE ⟨pfx, i⟩ ⟨pfx, j⟩
 

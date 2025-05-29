@@ -52,10 +52,10 @@ instance (priority := low) : MonadWithReaderOf LocalContext M where
   withReader f := withReader fun s => { s with lctx := f s.lctx }
 
 structure Methods where
-  isDefEqCore : Expr → Expr → M Bool
-  whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : M Expr
-  whnf (e : Expr) : M Expr
-  inferType (e : Expr) (inferOnly : Bool) : M Expr
+  protected isDefEqCore : Expr → Expr → M Bool
+  protected whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : M Expr
+  protected whnf (e : Expr) : M Expr
+  protected inferType (e : Expr) (inferOnly : Bool) : M Expr
 
 abbrev RecM := ReaderT Methods M
 

@@ -9,8 +9,6 @@ namespace Lean4Lean
 namespace TypeChecker
 open Lean
 
-def Methods.WF : Methods → Prop := sorry
-
 inductive MLCtx where
   | nil : MLCtx
   | vlam (id : FVarId) (name : Name) (ty : Expr) (ty' : VExpr) (bi : BinderInfo) :
@@ -143,6 +141,17 @@ theorem M.WF.le {c : VContext} {s : VState} {Q R} {x : M α}
   let ⟨_, a1, a2, a3, a4⟩ := h1 wf _ _ e
   ⟨_, a1, a2, a3, H _ _ a2 a4⟩
 
+structure Methods.WF (m : Methods) where
+  isDefEqCore : c.TrExpr e₁ e₁' → c.TrExpr e₂ e₂' →
+    M.WF c s (m.isDefEqCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂'
+  whnfCore : c.TrExpr e e' → M.WF c s (m.whnfCore e cheapRec cheapProj) fun e₁ _ => c.TrExpr e₁ e'
+  whnf : c.TrExpr e e' → M.WF c s (m.whnf e) fun e₁ _ => c.TrExpr e₁ e'
+  checkType : e.FVarsIn s.ngen.Reserves →
+    M.WF c s (m.inferType e false) fun ty _ => ∃ e' ty',
+      c.TrExpr e e' ∧ c.TrExpr ty ty' ∧ c.HasType e' ty'
+  inferType : c.TrExpr e e' → c.HasType e' ty' →
+    M.WF c s (m.inferType e true) fun ty _ => c.TrExpr ty ty'
+
 def RecM.WF (c : VContext) (s : VState) (x : RecM α) (Q : α → VState → Prop) : Prop :=
   ∀ m, m.WF → M.WF c s (x m) Q
 
@@ -163,8 +172,12 @@ theorem RecM.WF.le {c : VContext} {s : VState} {Q R} {x : RecM α}
     x.WF c s R := fun _ h => (h1 _ h).le H
 
 theorem mkFreshId.WF {c : VContext} {s : VState} :
-    M.WF c s mkFreshId fun a s' => s'.ngen.Reserves ⟨a⟩ ∧ ¬s.ngen.Reserves ⟨a⟩ :=
-  sorry
+    M.WF c s mkFreshId fun a s' => s'.ngen.Reserves ⟨a⟩ ∧ ¬s.ngen.Reserves ⟨a⟩ := by
+  rintro wf n s ⟨⟩
+  refine have le := .next; ⟨{ s with toState := _ }, rfl, le, ?_, ?_, ?_⟩
+  · exact { wf with ngen_wf _ h := le.reservesV (wf.ngen_wf _ h) }
+  · exact s.ngen.next_reserves_self
+  · exact s.ngen.not_reserves_self
 
 theorem getLCtx.WF {c : VContext} {s : VState} :
     M.WF c s getLCtx fun a s' => c.lctx' = a ∧ s = s' := by
@@ -293,14 +306,27 @@ theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
 
 namespace Inner
 
+theorem whnfCore.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
+    RecM.WF c s (whnfCore e cheapRec cheapProj) fun e₁ _ => c.TrExpr e₁ e' :=
+  fun _ wf => wf.whnfCore he
+
+theorem whnf.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
+    RecM.WF c s (whnf e) fun e₁ _ => c.TrExpr e₁ e' :=
+  fun _ wf => wf.whnf he
+
+theorem isDefEqCore.WF {c : VContext} {s : VState}
+    (he₁ : c.TrExpr e₁ e₁') (he₂ : c.TrExpr e₂ e₂') :
+    RecM.WF c s (isDefEqCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' :=
+  fun _ wf => wf.isDefEqCore he₁ he₂
+
 theorem inferType.WF {c : VContext} {s : VState} (he : c.TrExpr e e') (hty : c.HasType e' ty') :
     RecM.WF c s (inferType e true) fun ty _ => c.TrExpr ty ty' :=
-  sorry
+  fun _ wf => wf.inferType he hty
 
-theorem checkType.WF {c : VContext} {s : VState} :
+theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn s.ngen.Reserves) :
     RecM.WF c s (inferType e false) fun ty _ => ∃ e' ty',
       c.TrExpr e e' ∧ c.TrExpr ty ty' ∧ c.HasType e' ty' :=
-  sorry
+  fun _ wf => wf.checkType h1
 
 theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
     RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
@@ -320,7 +346,10 @@ theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
       c.TrExpr e₀ e' ∧ c.TrExpr ty ty' ∧ c.HasType e' ty') := by
   unfold inferLambda.loop; split <;> simp only [pure_bind]
   · rename_i name dom body bi
-    refine checkType.WF.bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
+    refine (checkType.WF ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
+    · simp [Expr.instantiateRev', Expr.instantiate', harr]
+      apply hr.1.1.instantiateList; simp
+      exact fun _ h => hr.2 _ (m.fvarRevList_prefix.subset h)
     refine (ensureSortCore.WF h2).bind fun _ _ le₂ ⟨u, h4, h5⟩ => ?_
     refine .stateWF fun wf => ?_
     have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h4
@@ -342,7 +371,10 @@ theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     case r => simp [FVarsIn]; exact fun _ h => hr.2 _ (m.fvarRevList_prefix.subset h)
     case a => rintro _ h rfl; exact h6 <| (le₁.trans le₂).reservesV h
     refine ih _ _ (.lam c.venv_wf mwf.1.tr.wf domty' h1 h7) (.lam domty h9)
-  · refine checkType.WF.bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
+  · refine (checkType.WF ?_).bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
+    · simp [Expr.instantiateRev', Expr.instantiate', harr]
+      apply hr.1.instantiateList; simp
+      exact fun _ h => hr.2 _ (m.fvarRevList_prefix.subset h)
     refine .stateWF fun wf => .getLCtx <| .pure ?_
     simp [Expr.instantiateRev', Expr.instantiate', harr] at h1
     have ⟨e₀', h1', h2'⟩ := ih _ _ h1 h3
