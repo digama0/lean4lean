@@ -245,6 +245,10 @@ theorem IsDefEq.defeq (h1 : IsDefEq env U Γ A B (.sort u))
 theorem IsDefEq.defeq' (h1 : IsDefEq env U Γ A B (.sort u))
     (h2 : HasType env U Γ e B) : HasType env U Γ e A := .defeq h1.symm h2
 
+theorem IsType.forallE : IsType env U Γ A → IsType env U (A::Γ) body →
+    IsType env U Γ (.forallE A body)
+  | ⟨_, h1⟩, ⟨_, h2⟩ => ⟨_, .forallE h1 h2⟩
+
 theorem IsDefEq.hasType {env : VEnv} (H : env.IsDefEq U Γ e1 e2 A) :
     env.HasType U Γ e1 A ∧ env.HasType U Γ e2 A := ⟨H.trans H.symm, H.symm.trans H⟩
 

@@ -315,7 +315,7 @@ def loopInd1 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α
     let tTy := mkAppN (mkAppN stats.indConsts[dIdx]! stats.params) indices
     withLocalDecl `t tTy.consumeTypeAnnotations .default fun major => do
     let lctx ← getLCtx
-    let motiveTy := lctx.mkForall indices <| lctx.mkForall #[major] <| .sort elimLevel
+    let motiveTy := lctx.mkForall' indices <| lctx.mkForall' #[major] <| .sort elimLevel
     let name := if indTypes.size > 1 then (`motive).appendIndexAfter (dIdx+1) else `motive
     withLocalDecl name motiveTy.consumeTypeAnnotations .default fun motive => do
     loopInd1 (dIdx + 1) (recInfos.push { motive, minors := #[], indices, major }) k
@@ -358,7 +358,7 @@ def loopU (i : Nat) (v : Array Expr) (k : Array Expr → M α) : M α := do
     let ui := u[i]
     let viTy ← loopUArgs ui fun uiTy xs => do
       let (itIdx, itIndices) := getIIndices stats uiTy
-      return (← getLCtx).mkForall xs <|
+      return (← getLCtx).mkForall' xs <|
         .app (mkAppN recInfos[itIdx]!.motive itIndices) (mkAppN ui xs)
     let vName := ((← getLCtx).get! ui.fvarId!).userName.appendAfter "_ih"
     withLocalDecl vName viTy.consumeTypeAnnotations .default fun vi => do
@@ -377,7 +377,7 @@ def loopCtors (recInfos : Array RecInfo)
     let motiveApp := Expr.app (mkAppN recInfos[itIdx]!.motive itIndices) introApp
     loopU stats u recInfos 0 #[] fun v => do
     let lctx ← getLCtx
-    let minorTy := lctx.mkForall bu <| lctx.mkForall v motiveApp
+    let minorTy := lctx.mkForall' bu <| lctx.mkForall' v motiveApp
     let minorName := ctor.name.replacePrefix indTypeName .anonymous
     withLocalDecl minorName minorTy.consumeTypeAnnotations .default fun minor => do
     let recInfos := recInfos.modify dIdx fun s => { s with minors := s.minors.push minor }
@@ -423,7 +423,7 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
             let (itIdx, itIndices) := getIIndices stats uiTy
             let val := .const (mkRecName indTypes[itIdx]!.name) lvls
             let val := mkAppN (mkAppN (mkAppN (mkAppN val stats.params) motives) minors) itIndices
-            return (← getLCtx).mkLambda xs <| val.app (mkAppN ui xs)
+            return (← getLCtx).mkLambda' xs <| val.app (mkAppN ui xs)
           loopU (i + 1) (v.push val) k
         else
           k v
@@ -433,8 +433,8 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
       let rule := {
         ctor := ctor.name
         nfields := bu.size
-        rhs := lctx.mkLambda stats.params <| lctx.mkLambda motives <|
-          lctx.mkLambda minors <| lctx.mkLambda bu <|
+        rhs := lctx.mkLambda' stats.params <| lctx.mkLambda' motives <|
+          lctx.mkLambda' minors <| lctx.mkLambda' bu <|
           mkAppN (mkAppN minors[minorIdx]! bu) v
       }
       return (rule, minorIdx + 1)
@@ -466,11 +466,11 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
     let indType := indTypes[dIdx]
     let info := recInfos[dIdx]!
     let ty :=
-      lctx.mkForall stats.params <|
-      lctx.mkForall motives <|
-      lctx.mkForall minors <|
-      lctx.mkForall info.indices <|
-      lctx.mkForall #[info.major] <|
+      lctx.mkForall' stats.params <|
+      lctx.mkForall' motives <|
+      lctx.mkForall' minors <|
+      lctx.mkForall' info.indices <|
+      lctx.mkForall' #[info.major] <|
       .app (mkAppN info.motive info.indices) info.major
     let rules ← mkRecRules indTypes elimLevel stats dIdx motives minors
     env := add env <| .recInfo {
@@ -541,7 +541,7 @@ def restoreNested (r : Result) (env' : Environment) (e : Expr)
     let .const I_c I_ls := I | unreachable!
     let c' := .const (c.replacePrefix auxI_name I_c) I_ls
     return mkAppRange (mkAppN c' I_args) r.nparams args.size args
-  return if pi then lctx.mkForall As e else lctx.mkLambda As e
+  return if pi then lctx.mkForall' As e else lctx.mkLambda' As e
 
 end Result
 
@@ -636,7 +636,7 @@ def replaceIfNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr
     let JAs := mkAppRange J 0 I_nparams args
     let auxJ_name ← mkUniqueName (`_nested ++ J_name)
     let auxJ_type := J_info.type.instantiateLevelParams J_info.levelParams I_lvls
-    let auxJ_type := lctx.mkForall As <| ← instantiateForallParams auxJ_type I_nparams args
+    let auxJ_type := lctx.mkForall' As <| ← instantiateForallParams auxJ_type I_nparams args
     let JAs' ← replaceParams params JAs As
     modify fun st => { st with nestedAux := st.nestedAux.push (JAs', auxJ_name) }
     if J_name == I_name then
@@ -648,7 +648,7 @@ def replaceIfNested (lctx : LocalContext) (params : Array Expr) (As : Array Expr
       let auxJ_ctor_name := J_ctor_name.replacePrefix J_name auxJ_name
       let auxJ_ctor_type := J_ctor_info.type.instantiateLevelParams J_ctor_info.levelParams I_lvls
       let auxJ_ctor_type ← instantiateForallParams auxJ_ctor_type I_nparams args
-      return { name := auxJ_ctor_name, type := lctx.mkForall As auxJ_ctor_type }
+      return { name := auxJ_ctor_name, type := lctx.mkForall' As auxJ_ctor_type }
     let newType := { name := auxJ_name, type := auxJ_type, ctors := auxJ_ctors }
     modify fun st => { st with newTypes := st.newTypes.push newType }
   assert! result.isSome
@@ -683,7 +683,7 @@ def run (nparams : Nat) (types : List InductiveType) : M Result := do
       let ctors ← indType.ctors.mapM fun ctor => do
         withParams ctor.type nparams fun lctx ctorType As => do
         assert! As.size == nparams
-        return { ctor with type := lctx.mkForall As (← replaceAllNested lctx params As ctorType) }
+        return { ctor with type := lctx.mkForall' As (← replaceAllNested lctx params As ctorType) }
       modify fun s => { s with newTypes := s.newTypes.set! i { indType with ctors } }
       loop (i+1) fuel
     else

@@ -89,6 +89,13 @@ theorem List.append_eq_append_of_length_le {a b c d : List α} (h : length a ≤
     Nat.add_le_add_iff_left, Nat.le_zero, length_eq_zero] at h
   subst h; exact ⟨[], by simp⟩
 
+@[simp] theorem List.nodup_reverse {l : List α} : Nodup (reverse l) ↔ Nodup l :=
+  pairwise_reverse.trans <| by simp only [Nodup, Ne, eq_comm]
+
+theorem List.foldl_congr
+    (H : ∀ a, ∀ x ∈ l, f a x = g a x) : foldl f a l = foldl g a l := by
+  induction l generalizing a <;> simp_all
+
 instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
   trans h1 h2 := by simp at *; exact h1.trans h2

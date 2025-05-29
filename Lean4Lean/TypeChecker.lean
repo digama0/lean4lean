@@ -45,6 +45,9 @@ instance [Monad m] : MonadNameGenerator (StateT State m) where
   getNGen := return (← get).ngen
   setNGen ngen := modify fun s => { s with ngen }
 
+instance : MonadLocalNameGenerator M where
+  withFreshId x := do x (← mkFreshId)
+
 instance (priority := low) : MonadWithReaderOf LocalContext M where
   withReader f := withReader fun s => { s with lctx := f s.lctx }
 
@@ -116,14 +119,13 @@ def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let d := dom.instantiateRev' fvars
     if !inferOnly then
       _ ← ensureSortCore (← inferType d inferOnly) d
-    let id := ⟨← mkFreshId⟩
-    withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
-      let fvars := fvars.push (.fvar id)
+    withLocalDecl name d bi fun fv => do
+      let fvars := fvars.push fv
       loop fvars body
   | e => do
     let r ← inferType (e.instantiateRev' fvars) inferOnly
     let r := r.cheapBetaReduce
-    return (← getLCtx).mkForall fvars r
+    return (← getLCtx).mkForall' fvars r
 
 def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
   loop fvars us : Expr → RecM Expr
@@ -131,9 +133,8 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
     let d := dom.instantiateRev' fvars
     let t1 ← ensureSortCore (← inferType d inferOnly) d
     let us := us.push t1.sortLevel!
-    let id := ⟨← mkFreshId⟩
-    withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
-      let fvars := fvars.push (.fvar id)
+    withLocalDecl name d bi fun fv => do
+      let fvars := fvars.push fv
       loop fvars us body
   | e => do
     let r ← inferType (e.instantiateRev' fvars) inferOnly
@@ -179,9 +180,8 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
   | .letE name type val body _ => do
     let type := type.instantiateRev' fvars
     let val := val.instantiateRev' fvars
-    let id := ⟨← mkFreshId⟩
-    withLCtx ((← getLCtx).mkLetDecl id name type val) do
-      let fvars := fvars.push (.fvar id)
+    withLetDecl name type val fun fv => do
+      let fvars := fvars.push fv
       let vals := vals.push val
       if !inferOnly then
         _ ← ensureSortCore (← inferType type inferOnly) type
@@ -205,7 +205,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
     for fvar in fvars, b in used do
       if b then
         usedFVars := usedFVars.push fvar
-    return (← getLCtx).mkForall fvars r
+    return (← getLCtx).mkForall' fvars r
 
 def isProp (e : Expr) : RecM Bool :=
   return (← whnf (← inferType e)) == .prop
@@ -456,9 +456,8 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
     else pure none
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev' subst)
-      let id := ⟨← mkFreshId⟩
-      withLCtx ((← getLCtx).mkLocalDecl id name sType bi) do
-        isDefEqLambda tBody sBody (subst.push (.fvar id))
+      withLocalDecl name sType bi fun fv => do
+        isDefEqLambda tBody sBody (subst.push fv)
     else
       isDefEqLambda tBody sBody (subst.push default)
   | t, s => isDefEq (t.instantiateRev' subst) (s.instantiateRev' subst)
@@ -474,9 +473,8 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
     else pure none
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev' subst)
-      let id := ⟨← mkFreshId⟩
-      withLCtx ((← getLCtx).mkLocalDecl id name sType bi) do
-        isDefEqForall tBody sBody (subst.push (.fvar id))
+      withLocalDecl name sType bi fun fv =>
+        isDefEqForall tBody sBody (subst.push fv)
     else
       isDefEqForall tBody sBody (subst.push default)
   | t, s => isDefEq (t.instantiateRev' subst) (s.instantiateRev' subst)
@@ -734,9 +732,8 @@ def etaExpand (e : Expr) : M Expr :=
   let rec loop fvars
   | .lam name dom body bi => do
     let d := dom.instantiateRev' fvars
-    let id := ⟨← mkFreshId⟩
-    withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
-      let fvars := fvars.push (.fvar id)
+    withLocalDecl name d bi fun fv => do
+      let fvars := fvars.push fv
       loop fvars body
   | it => do
     let itType ← whnf <| ← inferType <| it.instantiateRev' fvars
@@ -745,12 +742,10 @@ def etaExpand (e : Expr) : M Expr :=
     | 0, _ => throw .deepRecursion
     | fuel + 1, .forallE name dom body bi => do
       let d := dom.instantiateRev' fvars
-      let id := ⟨← mkFreshId⟩
-      withLCtx ((← getLCtx).mkLocalDecl id name d bi) do
-        let arg := .fvar id
+      withLocalDecl name d bi fun arg => do
         let fvars := fvars.push arg
         let args := args.push arg
         loop2 fvars args fuel <| ← whnf <| body.instantiate1 arg
-    | _, it => return (← getLCtx).mkLambda fvars (mkAppN it args)
+    | _, it => return (← getLCtx).mkLambda' fvars (mkAppN it args)
     loop2 fvars #[] 1000 itType
   loop #[] e

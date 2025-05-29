@@ -5,21 +5,31 @@ import Lean4Lean.Verify.VLCtx
 namespace Lean4Lean
 open Lean
 
-variable (fvars : FVarId → Prop) in
-def InScope : Expr → (k :_:= 0) → Prop
+def Closed : Expr → (k :_:= 0) → Prop
   | .bvar i, k => i < k
-  | .fvar fv, _ => fvars fv
-  | .sort .., _ | .const .., _ | .lit .., _ => True
-  | .app f a, k => InScope f k ∧ InScope a k
+  | .fvar _, _ | .sort .., _ | .const .., _ | .lit .., _ => True
+  | .app f a, k => Closed f k ∧ Closed a k
   | .lam _ d b _, k
-  | .forallE _ d b _, k => InScope d k ∧ InScope b (k+1)
-  | .letE _ d v b _, k => InScope d k ∧ InScope v k ∧ InScope b (k+1)
-  | .proj _ _ e, k | .mdata _ e, k => InScope e k
+  | .forallE _ d b _, k => Closed d k ∧ Closed b (k+1)
+  | .letE _ d v b _, k => Closed d k ∧ Closed v k ∧ Closed b (k+1)
+  | .proj _ _ e, k | .mdata _ e, k => Closed e k
   | .mvar .., _ => False
 
-nonrec abbrev _root_.Lean.Expr.InScope := @InScope
-abbrev Closed := @InScope (fun _ => True)
 nonrec abbrev _root_.Lean.Expr.Closed := @Closed
+
+variable (fvars : FVarId → Prop) in
+def FVarsIn : Expr → Prop
+  | .bvar _ => True
+  | .fvar fv => fvars fv
+  | .sort .. | .const .. | .lit .. => True
+  | .app f a => FVarsIn f ∧ FVarsIn a
+  | .lam _ d b _
+  | .forallE _ d b _ => FVarsIn d ∧ FVarsIn b
+  | .letE _ d v b _ => FVarsIn d ∧ FVarsIn v ∧ FVarsIn b
+  | .proj _ _ e | .mdata _ e => FVarsIn e
+  | .mvar .. => False
+
+nonrec abbrev _root_.Lean.Expr.FVarsIn := @FVarsIn
 
 def VLocalDecl.WF (env : VEnv) (U : Nat) (Γ : List VExpr) : VLocalDecl → Prop
   | .vlam type => env.IsType U Γ type
@@ -31,7 +41,7 @@ def VLCtx.WF : VLCtx → Prop
   | (ofv, d) :: (Δ : VLCtx) =>
     VLCtx.WF Δ ∧ (∀ fv, ofv = some fv → fv ∉ Δ.fvars) ∧ VLocalDecl.WF env U Δ.toCtx d
 
-def TrProj (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr) : VExpr → Prop := sorry
+def TrProj : ∀ (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr), VExpr → Prop := sorry
 
 variable (env : VEnv) (Us : List Name) in
 inductive TrExprS : VLCtx → Expr → VExpr → Prop
