@@ -11,37 +11,41 @@ open Lean
 
 inductive MLCtx where
   | nil : MLCtx
-  | vlam (id : FVarId) (name : Name) (ty : Expr) (ty' : VExpr) (bi : BinderInfo) :
-    MLCtx → MLCtx
+  | vlam (id : FVarId) (name : Name) (ty : Expr) (ty' : VExpr) (bi : BinderInfo) : MLCtx → MLCtx
+  | vlet (id : FVarId) (name : Name) (ty v : Expr) (ty' v' : VExpr) : MLCtx → MLCtx
 
 @[simp] def MLCtx.vlctx : MLCtx → VLCtx
   | .nil => []
   | .vlam id _ _ ty _ c => (some id, .vlam ty) :: c.vlctx
+  | .vlet id _ _ _ ty v c => (some id, .vlet ty v) :: c.vlctx
 
 def MLCtx.lctx : MLCtx → LocalContext
   | .nil => {}
   | .vlam id name ty _ bi c => c.lctx.mkLocalDecl id name ty bi
+  | .vlet id name ty val _ _ c => c.lctx.mkLetDecl id name ty val
 
 @[simp] def MLCtx.length : MLCtx → Nat
   | .nil => 0
-  | .vlam _ _ _ _ _ c => c.length + 1
+  | .vlam _ _ _ _ _ c
+  | .vlet _ _ _ _ _ _ c => c.length + 1
 
 def MLCtx.decls : MLCtx → List LocalDecl
   | .nil => {}
-  | .vlam v name ty _ bi c => .cdecl c.length v name ty bi .default :: c.decls
+  | .vlam x name ty _ bi c => .cdecl c.length x name ty bi .default :: c.decls
+  | .vlet x name ty v _ _ c => .ldecl c.length x name ty v false default :: c.decls
 
 @[simp] def MLCtx.fvarRevList (c : MLCtx) (n) (hn : n ≤ c.length) : List FVarId :=
   match n, c, hn with
   | 0, _, _ => []
-  | n+1, .vlam id _ _ _ _ c, h =>
-    id :: c.fvarRevList n (Nat.le_of_succ_le_succ h)
+  | n+1, .vlam id _ _ _ _ c, h
+  | n+1, .vlet id _ _ _ _ _ c, h => id :: c.fvarRevList n (Nat.le_of_succ_le_succ h)
 termination_by structural n
 
 @[simp] def MLCtx.dropN (c : MLCtx) (n) (hn : n ≤ c.length) : MLCtx :=
   match n, c, hn with
   | 0, c, _ => c
-  | n+1, .vlam _ _ _ _ _ c, h =>
-      c.dropN n (Nat.le_of_succ_le_succ h)
+  | n+1, .vlam _ _ _ _ _ c, h
+  | n+1, .vlet _ _ _ _ _ _ c, h => c.dropN n (Nat.le_of_succ_le_succ h)
 termination_by structural n
 
 def MLCtx.WF (env : VEnv) (Us : List Name) : MLCtx → Prop
@@ -50,10 +54,15 @@ def MLCtx.WF (env : VEnv) (Us : List Name) : MLCtx → Prop
     c.WF env Us ∧ c.lctx.find? fv = none ∧
     TrExpr env Us c.vlctx ty ty' ∧
     env.IsType Us.length c.vlctx.toCtx ty'
+  | .vlet fv _ ty v ty' v' c =>
+    c.WF env Us ∧ c.lctx.find? fv = none ∧
+    TrExpr env Us c.vlctx ty ty' ∧ TrExpr env Us c.vlctx v v' ∧
+    env.HasType Us.length c.vlctx.toCtx v' ty'
 
 theorem MLCtx.WF.tr : ∀ {c : MLCtx}, c.WF env Us → TrLCtx env Us c.lctx c.vlctx
   | .nil, _ => .nil
   | .vlam .., ⟨h1, h2, h3, h4⟩ => .mkLocalDecl h1.tr h2 h3 h4
+  | .vlet .., ⟨h1, h2, h3, h4, h5⟩ => .mkLetDecl h1.tr h2 h3 h4 h5
 
 theorem MLCtx.noBV (c : MLCtx) : c.vlctx.NoBV := by
   induction c <;> trivial
@@ -233,18 +242,48 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
   refine ⟨s', hs1, hs2, { wf with ngen_wf := ?_ }, hs4⟩
   have := wf'.ngen_wf; simp [VContext.withMLC] at this; exact this.2
 
+protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
+    {s : VState} {f : Expr → RecM α} {Q name ty ty'}
+    (hty : (c.withMLC m).TrExpr ty ty')
+    (hval : (c.withMLC m).TrExpr val val')
+    (hval' : (c.withMLC m).HasType val' ty')
+    (H : ∀ id cwf' s', s.LE s' →
+      s'.ngen.Reserves id →
+      ¬s.ngen.Reserves id →
+      WF (c.withMLC (.vlet id name ty val ty' val' m) (wf := cwf')) s' (f (.fvar id)) Q) :
+    (withLetDecl name ty val f).WF (c.withMLC m) s Q := by
+  simp [withLetDecl, withFreshId]
+  refine .stateWF fun wf => ?_
+  refine fun _ mwf => mkFreshId.WF.bind fun id s le ⟨h0, h1⟩ wf' a s' e => ?_
+  have h1' := wf.find?_eq_none h1
+  have cwf' : c.MLCWF (.vlet ⟨id⟩ name ty val ty' val' m) := ⟨cwf.1, h1', hty, hval, hval'⟩
+  have : VState.WF (c.withMLC (.vlet ⟨id⟩ name ty val ty' val' m)) s := {
+    ngen_wf := by simp [VContext.withMLC]; exact ⟨h0, wf'.ngen_wf⟩
+    trctx := wf.trctx.mkLetDecl h1' hty hval hval'
+  }
+  let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ le h0 h1 _ mwf this a s' e
+  refine ⟨s', hs1, hs2, { wf with ngen_wf := ?_ }, hs4⟩
+  have := wf'.ngen_wf; simp [VContext.withMLC] at this; exact this.2
+
 @[simp] def MLCtx.mkForall (c : MLCtx) (n) (hn : n ≤ c.length) (e : Expr) : Expr :=
   match n, c, hn, e with
   | 0, _, _, e => e
   | n+1, .vlam x name ty _ bi c, h, e =>
     c.mkForall n (Nat.le_of_succ_le_succ h) (.forallE name ty (.abstractFVar x e) bi)
+  | n+1, .vlet x name ty val _ _ c, h, e =>
+    c.mkForall n (Nat.le_of_succ_le_succ h) <|
+      let e' := Expr.abstractFVar x e
+      if e'.hasLooseBVar' 0 then
+        .letE name ty val e' false
+      else
+        e'.lowerLooseBVars' 1 1
 termination_by structural n
 
 @[simp] def MLCtx.mkForall' (c : MLCtx) (n) (hn : n ≤ c.length) (e : VExpr) : VExpr :=
   match n, c, hn, e with
   | 0, _, _, e => e
-  | n+1, .vlam _ _ _ ty _ c, h, e =>
-    c.mkForall' n (Nat.le_of_succ_le_succ h) (.forallE ty e)
+  | n+1, .vlam _ _ _ ty _ c, h, e => c.mkForall' n (Nat.le_of_succ_le_succ h) (.forallE ty e)
+  | n+1, .vlet _ _ _ _ _ _ c, h, e => c.mkForall' n (Nat.le_of_succ_le_succ h) e
 termination_by structural n
 
 variable! (henv : VEnv.WF env) in
@@ -256,22 +295,29 @@ theorem MLCtx.WF.mkForall_tr {c : MLCtx} (wf : c.WF env Us)
   induction n generalizing c e e' with
   | zero => exact tr
   | succ n ih =>
-    let .vlam x name ty ty' bi c := c
-    refine ih wf.1 ⟨?_, .forallE wf.2.2.2 tr.2⟩ _
-    exact .forallE henv wf.1.tr.wf wf.2.2.2 tr.2 wf.2.2.1 (.abstract .zero tr.1)
+    match c with
+    | .vlam x name ty ty' bi c =>
+      let ⟨h1, _, h3, h4⟩ := wf
+      refine ih h1 ⟨?_, .forallE h4 tr.2⟩ _
+      exact .forallE henv h1.tr.wf h4 tr.2 h3 (.abstract .zero tr.1)
+    | .vlet x name ty val ty' val' c =>
+      let ⟨h1, _, h3, h4, h5⟩ := wf
+      refine ih h1 ⟨?_, tr.2⟩ _; dsimp; split
+      · exact .letE henv h1.tr.wf h5 h3 h4 (.abstract .zero tr.1)
+      · rename_i h; simp at h
+        rw [Expr.lowerLooseBVars_eq_instantiate h (v := val)]
+        exact .inst_let henv h1.tr.wf h5 (.abstract .zero tr.1) h4
 
 theorem MLCtx.fvarRevList_prefix (c : MLCtx)
     {n hn} : c.fvarRevList n hn <+: c.vlctx.fvars := by
   induction n generalizing c with
   | zero => simp
-  | succ n ih =>
-    let .vlam x name ty ty' bi c := c
-    simp [ih]
+  | succ n ih => match c with | .vlam .. | .vlet .. => simp [ih]
 
 theorem MLCtx.WF.fvars_nodup : ∀ {c : MLCtx}, c.WF env Us → c.vlctx.fvars.Nodup
   | .nil, _ => .nil
-  | .vlam _ _ _ _ _ c, ⟨h1, h2, h3, h4⟩ => by
-    simp [h1.fvars_nodup, h1.tr.find?_eq_none.1 h2]
+  | .vlam _ _ _ _ _ c, ⟨h1, h2, _⟩
+  | .vlet _ _ _ _ _ _ c, ⟨h1, h2, _⟩ => by simp [h1.fvars_nodup, h1.tr.find?_eq_none.1 h2]
 
 theorem MLCtx.WF.fvarRevList_nodup {c : MLCtx} (wf : c.WF env Us)
     (n hn) : (c.fvarRevList n hn).Nodup :=
@@ -283,6 +329,7 @@ theorem MLCtx.WF.decls_size {c : MLCtx} (wf : c.WF env Us) :
   induction c with
   | nil => rfl
   | vlam _ _ _ _ _ _ ih => simp [lctx, LocalContext.mkLocalDecl, ih wf.1]
+  | vlet _ _ _ _ _ _ _ ih => simp [lctx, LocalContext.mkLetDecl, ih wf.1]
 
 theorem MLCtx.WF.toList_eq {c : MLCtx} (wf : c.WF env Us) :
     c.lctx.toList = c.decls := by
@@ -290,6 +337,7 @@ theorem MLCtx.WF.toList_eq {c : MLCtx} (wf : c.WF env Us) :
   induction c with
   | nil => rfl
   | vlam _ _ _ _ _ _ ih => simp [lctx, LocalContext.mkLocalDecl, decls, ih wf.1, wf.1.decls_size]
+  | vlet _ _ _ _ _ _ _ ih => simp [lctx, LocalContext.mkLetDecl, decls, ih wf.1, wf.1.decls_size]
 
 theorem MLCtx.WF.find?_eq {c : MLCtx} (wf : c.WF env Us) :
     c.lctx.find? x = c.decls.find? (x == ·.fvarId) := by
@@ -305,14 +353,16 @@ theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     induction n generalizing c e with
     | zero => simp [tr]
     | succ n ih =>
-      let .vlam x name ty ty' bi c := c; simp
-      refine (List.foldl_congr fun _ y h => ?_).trans <|
-        .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _)
-      · refine LocalContext.mkBindingList1_congr ?_
-        rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
-        simp [LocalDecl.fvarId]; rintro ⟨⟩
-        have := wf.fvarRevList_nodup (n+1) hn; simp_all
-      · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
+      match c with
+      | .vlam .. | .vlet .. =>
+        simp
+        refine (List.foldl_congr fun _ y h => ?_).trans <|
+          .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _)
+        · refine LocalContext.mkBindingList1_congr ?_
+          rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
+          simp [LocalDecl.fvarId]; rintro ⟨⟩
+          have := wf.fvarRevList_nodup (n+1) hn; simp_all
+        · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
   · intro _ h
     exact wf.tr.find?_eq_some.2 ((MLCtx.fvarRevList_prefix ..).subset (List.mem_reverse.1 h))
   · exact List.nodup_reverse.2 (wf.fvarRevList_nodup ..)

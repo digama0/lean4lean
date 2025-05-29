@@ -325,6 +325,11 @@ theorem abstractFVar_hasLooseBVar (a e k i) :
     split <;> simp [hasLooseBVar']
     split <;> omega
 
+theorem lowerLooseBVars_eq_instantiate (h : e.hasLooseBVar' k = false) :
+    e.lowerLooseBVars' (k + 1) 1 = instantiate1'.go v e k := by
+  induction e generalizing k with simp_all [hasLooseBVar', lowerLooseBVars', instantiate1'.go]
+  | bvar j => split <;> [rw [if_pos (by omega)]; rw [if_neg (by omega)]]
+
 theorem abstractFVar_lower {e : Expr} (h : e.hasLooseBVar' k₁ = false) (hk : k₁ ≤ k₂) :
     Expr.abstractFVar a (e.lowerLooseBVars' (k₁ + 1) 1) k₂ =
     (Expr.abstractFVar a e (k₂ + 1)).lowerLooseBVars' (k₁ + 1) 1 := by

@@ -70,7 +70,7 @@ inductive TrExprS : VLCtx → Expr → VExpr → Prop
     env.HasType Us.length Δ.toCtx val' ty' →
     TrExprS Δ ty ty' → TrExprS Δ val val' →
     TrExprS ((none, .vlet ty' val') :: Δ) body body' →
-    TrExprS Δ (.letE name ty val body bi) body'
+    TrExprS Δ (.letE name ty val body nd) body'
   | lit : TrExprS Δ l.toConstructor e → TrExprS Δ (.lit l) e
   | mdata : TrExprS Δ e e' → TrExprS Δ (.mdata d e) e'
   | proj : TrExprS Δ e e' → TrProj Δ.toCtx s i e' e'' → TrExprS Δ (.proj s i e) e''
