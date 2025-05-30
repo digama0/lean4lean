@@ -115,6 +115,10 @@ theorem VLocalDecl.WF.hasType : ∀ {d}, VLocalDecl.WF env U (VLCtx.toCtx Δ) d 
   | .vlam _, _ => .bvar .zero
   | .vlet .., hA => hA
 
+nonrec theorem VLocalDecl.WF.weakN (henv : env.Ordered) (W : Ctx.LiftN n k Γ Γ') :
+    ∀ {d}, WF env U Γ d → WF env U Γ' (d.liftN n k)
+  | .vlam _,  H | .vlet .., H => H.weakN henv W
+
 nonrec theorem VLocalDecl.WF.instN (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
     (h₀ : env.HasType U Γ₀ e₀ A₀) : ∀ {d}, WF env U Γ₁ d → WF env U Γ (d.inst e₀ k)
   | .vlam _,  H | .vlet .., H => H.instN henv W h₀
@@ -1224,3 +1228,21 @@ theorem TrExpr.uninstantiate
     (H : TrExpr env Us ((some v, d) :: Δ) (e.instantiate1' (.fvar v)) e')
     (sc : FVarsIn (· ≠ v) e) :
     TrExpr env Us ((none, d) :: Δ) e e' := H.uninstantiateN .zero sc
+
+theorem TrExprS.inst_fvar {Δ : VLCtx} (henv : Ordered env)
+    (hΔ : VLCtx.WF env Us.length ((some a, d) :: Δ))
+    (H : TrExprS env Us ((none, d) :: Δ) e e') :
+    TrExprS env Us ((some a, d) :: Δ) (e.instantiate1' (.fvar a)) e' := by
+  refine
+    have W := .skip_fvar a d .refl
+    have := H.weakFV henv (.cons_bvar _ W) ⟨hΔ, nofun, hΔ.2.2.weakN henv W.toCtx⟩
+    ?_
+  have hf := TrExprS.fvar (env := env) (Us := Us) (fv := a) (Δ := (some a, d) :: Δ) <| by
+    simp [VLCtx.find?, VLCtx.next]; exact ⟨rfl, rfl⟩
+  match d with
+  | .vlam A₀ =>
+    have := this.inst henv (.bvar .zero) (Δ := (some a, .vlam _) :: Δ) hf
+    rwa [VLocalDecl.depth, VExpr.instN_bvar0] at this
+  | .vlet A₀ e₀ =>
+    simp [VLocalDecl.depth, VLocalDecl.liftN] at this
+    exact this.inst_let henv hf

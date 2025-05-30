@@ -96,3 +96,28 @@ open private mkAppRangeAux from Lean.Expr in
 axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Expr) :
   mkAppRangeAux n args i e =
     if i < n then mkAppRangeAux n args (i + 1) (mkApp e (args.get! i)) else e
+
+namespace Expr
+
+def Safe : Expr → Prop
+  | .bvar i => i < 2^20 - 1
+  | .const ..
+  | .sort _ -- TODO: should this use Level.Safe?
+  | .fvar _
+  | .mvar _
+  | .lit _ => True
+  | .mdata _ e
+  | .proj _ _ e => e.Safe
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.Safe ∧ e2.Safe
+  | .letE _ e1 e2 e3 _ => e1.Safe ∧ e2.Safe ∧ e3.Safe
+
+/--
+Lean has some incorrect bound variable handling above 2^20. We use an axiom here
+to keep track of places where we are using the assumption that bound variables
+don't go too large.
+-/
+axiom safeSorry (e : Expr) : e.Safe
+
+end Expr
