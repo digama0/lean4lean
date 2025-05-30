@@ -142,6 +142,8 @@ theorem M.WF.bind {c : VContext} {s : VState} {x : M α} {f : α → M β} {Q R}
 theorem M.WF.pure {c : VContext} {s : VState} {Q} (H : Q a s) :
     (pure a : M α).WF c s Q := by rintro h _ _ ⟨⟩; exact ⟨_, rfl, .rfl, h, H⟩
 
+theorem M.WF.throw {c : VContext} {s : VState} {Q} : (throw e : M α).WF c s Q := nofun
+
 theorem M.WF.le {c : VContext} {s : VState} {Q R} {x : M α}
     (h1 : x.WF c s Q) (H : ∀ a s', s.LE s' → Q a s' → R a s') :
     x.WF c s R := fun wf _ _ e =>
@@ -174,6 +176,8 @@ theorem RecM.WF.bind {c : VContext} {s : VState} {x : RecM α} {f : α → RecM 
 theorem RecM.WF.pure {c : VContext} {s : VState} {Q} (H : Q a s) : (pure a : RecM α).WF c s Q :=
   fun _ _ => .pure H
 
+theorem RecM.WF.throw {c : VContext} {s : VState} {Q} : (throw e : RecM α).WF c s Q := nofun
+
 theorem RecM.WF.le {c : VContext} {s : VState} {Q R} {x : RecM α}
     (h1 : x.WF c s Q) (H : ∀ a s', s.LE s' → Q a s' → R a s') :
     x.WF c s R := fun _ h => (h1 _ h).le H
@@ -185,6 +189,14 @@ theorem mkFreshId.WF {c : VContext} {s : VState} :
   · exact { wf with ngen_wf _ h := le.reservesV (wf.ngen_wf _ h) }
   · exact s.ngen.next_reserves_self
   · exact s.ngen.not_reserves_self
+
+theorem getEnv.WF {c : VContext} {s : VState} :
+    M.WF c s getEnv fun a s' => c.env = a ∧ s = s' := by
+  rintro wf _ _ ⟨⟩; exact ⟨_, rfl, .rfl, wf, rfl, rfl⟩
+
+theorem RecM.WF.getEnv {c : VContext} {s : VState} {f : Environment → RecM α} {Q}
+    (H : WF c s (f c.env) Q) : (getEnv >>= f).WF c s Q :=
+  getEnv.WF.lift.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
 
 theorem getLCtx.WF {c : VContext} {s : VState} :
     M.WF c s getLCtx fun a s' => c.lctx' = a ∧ s = s' := by
@@ -472,8 +484,14 @@ theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn s.ngen.Reserves
 
 theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
     RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
-      ∃ u, c.IsDefEqU e' (.sort u) ∧ c.TrExpr e1 (.sort u) :=
-  sorry
+      ∃ u, c.IsDefEqU e' (.sort u) ∧ c.TrExpr e1 (.sort u) := by
+  simp [ensureSortCore]; split
+  · let .sort _ := e; let ⟨_, .sort _, h⟩ := he
+    exact .pure ⟨_, h.symm, he.defeq c.venv_wf c.mlctx_wf.tr.wf h.symm⟩
+  refine (whnf.WF he).bind fun e _ _ he => ?_; split
+  · let .sort _ := e; let ⟨_, .sort _, h⟩ := he
+    exact .pure ⟨_, h.symm, he.defeq c.venv_wf c.mlctx_wf.tr.wf h.symm⟩
+  exact .getEnv <| .getLCtx .throw
 
 theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)
