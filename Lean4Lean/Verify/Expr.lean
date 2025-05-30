@@ -2,7 +2,7 @@ import Lean4Lean.Std.Basic
 import Lean4Lean.Verify.Axioms
 import Lean4Lean.Expr
 import Lean4Lean.Instantiate
-import Lean
+import Std.Tactic.BVDecide
 
 namespace Lean
 namespace Expr

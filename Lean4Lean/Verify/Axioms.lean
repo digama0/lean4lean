@@ -121,3 +121,23 @@ don't go too large.
 axiom safeSorry (e : Expr) : e.Safe
 
 end Expr
+
+namespace Level
+
+def realDepth : Level → Nat
+  | .zero
+  | .param _
+  | .mvar _ => 0
+  | .succ u => u.realDepth + 1
+  | .max u v
+  | .imax u v => u.realDepth.max v.realDepth + 1
+
+def Safe (l : Level) : Prop := l.realDepth < 2 ^ 24
+
+/--
+Level expressions with depth higher than 2^24 currently have unsound behavior, see
+[zulip](https://leanprover.zulipchat.com/#narrow/channel/270676-lean4/topic/Soundness.20bug.3A.20hasLooseBVars.20is.20not.20conservative/near/521286338).
+-/
+axiom safeSorry (e : Level) : e.Safe
+
+end Level

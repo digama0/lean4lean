@@ -2,7 +2,28 @@ import Lean4Lean.Theory.Typing.UniqueTyping
 import Lean4Lean.Verify.TypeChecker.Basic
 import Lean4Lean.Verify.NameGenerator
 import Lean4Lean.Verify.Typing.Lemmas
+import Lean4Lean.Verify.Level
 import Lean4Lean.TypeChecker
+
+namespace Except
+
+def WF (x : Except ε α) (Q : α → Prop) : Prop := ∀ a, x = .ok a → Q a
+
+theorem WF.bind {x : Except ε α} {f : α → Except ε β} {Q R}
+    (h1 : x.WF Q)
+    (h2 : ∀ a, Q a → (f a).WF R) :
+    (x >>= f).WF R := by
+  intro b
+  simp [(· >>= ·), ReaderT.bind, StateT.bind, Except.bind]
+  split; · simp
+  exact h2 _ (h1 _ rfl) _
+
+theorem WF.pure {Q} (H : Q a) :
+    (pure a : Except ε α).WF Q := by rintro _ ⟨⟩; exact H
+
+theorem WF.throw {Q} : (throw e : Except ε α).WF Q := nofun
+
+end Except
 
 namespace Lean4Lean
 
@@ -484,14 +505,31 @@ theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn s.ngen.Reserves
 
 theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
     RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
-      ∃ u, c.IsDefEqU e' (.sort u) ∧ c.TrExpr e1 (.sort u) := by
+      (∃ u, e1 = .sort u) ∧ c.TrExpr e1 e' := by
   simp [ensureSortCore]; split
-  · let .sort _ := e; let ⟨_, .sort _, h⟩ := he
-    exact .pure ⟨_, h.symm, he.defeq c.venv_wf c.mlctx_wf.tr.wf h.symm⟩
+  · let .sort _ := e --; let ⟨_, .sort _, h⟩ := he
+    exact .pure ⟨⟨_, rfl⟩, he⟩
   refine (whnf.WF he).bind fun e _ _ he => ?_; split
-  · let .sort _ := e; let ⟨_, .sort _, h⟩ := he
-    exact .pure ⟨_, h.symm, he.defeq c.venv_wf c.mlctx_wf.tr.wf h.symm⟩
+  · let .sort _ := e
+    exact .pure ⟨⟨_, rfl⟩, he⟩
   exact .getEnv <| .getLCtx .throw
+
+theorem ensureForallCore.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
+    RecM.WF c s (ensureForallCore e e₀) fun e1 _ =>
+      (∃ name ty body bi, e1 = .forallE name ty body bi) ∧ c.TrExpr e1 e' := by
+  simp [ensureForallCore]; split
+  · let .forallE .. := e
+    exact .pure ⟨⟨_, _, _, _, rfl⟩, he⟩
+  refine (whnf.WF he).bind fun e _ _ he => ?_; split
+  · let .forallE .. := e
+    exact .pure ⟨⟨_, _, _, _, rfl⟩, he⟩
+  exact .getEnv <| .getLCtx .throw
+
+theorem checkLevel.WF {c : VContext} (H : l.realHasMVar = false) :
+    (checkLevel c.toContext l).WF fun _ => ∃ u', VLevel.ofLevel c.lparams l = some u' := by
+  simp [checkLevel]; split <;> [exact .throw; refine .pure ?_]
+  have := l.safeSorry -- FIXME
+  exact Level.getUndefParam_none this H (by rename_i h; simpa using h)
 
 theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)
@@ -508,9 +546,10 @@ theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     refine (checkType.WF ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
     · apply hr1.1.instantiateList; simp
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
-    refine (ensureSortCore.WF h2).bind fun _ _ le₂ ⟨u, h4, h5⟩ => ?_
+    refine (ensureSortCore.WF h2).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
+    obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort _, h5⟩ := h5
     refine .stateWF fun wf => ?_
-    have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h4
+    have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
     have domty' : (c.withMLC m).IsType dom' := ⟨_, domty⟩
     refine .withLocalDecl h1 domty' fun a mwf' s' le₃ res h6 => ?_
     have h6' := wf.find?_eq_none h6
