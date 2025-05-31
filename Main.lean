@@ -238,12 +238,13 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let (mod, region) ← readModuleData mFile
   let (_, s) ← importModulesCore mod.imports
     |>.run (s := { moduleNameSet := ({} : NameHashSet).insert module })
-  let env ← finalizeImport s #[{module}] {} 0 (leakEnv := false) (loadExts := false)
-  let env := env.setMainModule module
+  let env ← match Kernel.Environment.finalizeImport s #[{module}] module 0 with
+    | .ok env => pure env
+    | .error e => throw <| .userError <| ← (e.toMessageData {}).toString
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let env' ← replay { newConstants, verbose, compare } env.base
+  let env' ← replay { newConstants, verbose, compare } env
   (Environment.ofKernelEnv env').freeRegions
   region.free
 
@@ -251,7 +252,7 @@ unsafe def replayFromFresh (module : Name)
     (verbose := false) (compare := false) (decl : Option Name := none) : IO Unit := do
   Lean.withImportModules #[{module}] {} (trustLevel := 0) fun env => do
     let ctx := { newConstants := env.constants.map₁, verbose, compare }
-    discard <| replay ctx ((← mkEmptyEnvironment).setMainModule module).base decl
+    discard <| replay ctx (.empty module) decl
 
 /-- Read the name of the main module from the `lake-manifest`. -/
 -- This has been copied from `ImportGraph.getCurrentModule` in the
