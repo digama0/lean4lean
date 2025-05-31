@@ -212,6 +212,16 @@ def checkPostponedRecursors : M Unit := do
       if ! (info == info') then throw <| IO.userError s!"Invalid recursor {ctor}"
     | _, _ => throw <| IO.userError s!"No such recursor {ctor}"
 
+/--
+Check that at the end of (any) file, the quotient module is initialized by the end.
+(It will already be initialized at the beginning, unless this is the very first file,
+`Init.Core`, which is responsible for initializing it.)
+This is needed because it is an assumption in `finalizeImport`.
+-/
+def checkQuotInit : M Unit := do
+  unless (← get).env.quotInit do
+    throw <| IO.userError s!"initial import (Init.Core) didn't initialize quotient module"
+
 /-- "Replay" some constants into an `Environment`, sending them to the kernel for checking. -/
 def replay (ctx : Context) (env : Environment) (decl : Option Name := none) : IO Environment := do
   let mut remaining : NameSet := ∅
@@ -229,6 +239,7 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) : IO
           replayConstant n
       checkPostponedConstructors
       checkPostponedRecursors
+      checkQuotInit
   return s.env
 
 unsafe def replayFromImports (module : Name) (verbose := false) (compare := false) : IO Unit := do
