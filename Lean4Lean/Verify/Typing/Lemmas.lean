@@ -416,6 +416,12 @@ theorem TrExprS.weakFV (W : VLCtx.FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.le
   | mdata _ ih => exact .mdata (ih W hΔ')
   | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weakN W.toCtx)
 
+variable! (henv : WF env) in
+theorem TrExpr.weakFV (W : VLCtx.FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
+    (H : TrExpr env Us Δ e e') : TrExpr env Us Δ' e (e'.liftN n k) :=
+  let ⟨_, H1, H2⟩ := H
+  ⟨_, H1.weakFV henv W hΔ', H2.weakN henv W.toCtx⟩
+
 variable! (henv : Ordered env) in
 theorem TrExprS.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
     (H : TrExprS env Us Δ e e') : TrExprS env Us Δ' (e.liftLooseBVars' dk dn) (e'.liftN n k) := by

@@ -82,7 +82,7 @@ def MLCtx.WF (env : VEnv) (Us : List Name) : MLCtx → Prop
     env.HasType Us.length c.vlctx.toCtx v' ty'
 
 theorem MLCtx.WF.tr : ∀ {c : MLCtx}, c.WF env Us → TrLCtx env Us c.lctx c.vlctx
-  | .nil, _ => .nil
+  | .nil, _ => ⟨.nil, .nil⟩
   | .vlam .., ⟨h1, h2, h3, h4⟩ => .mkLocalDecl h1.tr h2 h3 h4
   | .vlet .., ⟨h1, h2, h3, h4, h5⟩ => .mkLetDecl h1.tr h2 h3 h4 h5
 
@@ -414,7 +414,7 @@ theorem MLCtx.WF.fvarRevList_nodup {c : MLCtx} (wf : c.WF env Us)
 
 theorem MLCtx.WF.decls_size {c : MLCtx} (wf : c.WF env Us) :
     c.lctx.decls.size = c.length := by
-  rw [← wf.tr.decls_wf.toList'_length]
+  rw [← wf.tr.1.decls_wf.toList'_length]
   induction c with
   | nil => rfl
   | vlam _ _ _ _ _ _ ih => simp [lctx, LocalContext.mkLocalDecl, ih wf.1]
@@ -430,7 +430,7 @@ theorem MLCtx.WF.toList_eq {c : MLCtx} (wf : c.WF env Us) :
 
 theorem MLCtx.WF.find?_eq {c : MLCtx} (wf : c.WF env Us) :
     c.lctx.find? x = c.decls.find? (x == ·.fvarId) := by
-  simp [wf.tr.find?_eq_find?_toList, wf.toList_eq]
+  simp [wf.tr.1.find?_eq_find?_toList, wf.toList_eq]
 
 theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
@@ -531,6 +531,17 @@ theorem checkLevel.WF {c : VContext} (H : l.realHasMVar = false) :
   simp [checkLevel]; split <;> [exact .throw; refine .pure ?_]
   have := l.safeSorry -- FIXME
   exact Level.getUndefParam_none this H (by rename_i h; simpa using h)
+
+theorem inferFVar.WF {c : VContext} :
+    (inferFVar c.toContext name).WF fun ty =>
+      ∃ e' ty', c.TrExpr (.fvar name) e' ∧ c.TrExpr ty ty' ∧ c.HasType e' ty' := by
+  simp [inferFVar, ← c.lctx_eq]; split <;> [refine .pure ?_; exact .throw]
+  rename_i decl h
+  rw [c.mlctx_wf.tr.1.find?_eq_find?_toList] at h
+  have := List.find?_some h; simp at this; subst this
+  let ⟨e', ty', h1, h2⟩ := c.mlctx_wf.tr.find?_of_mem c.venv_wf (List.mem_of_find?_eq_some h)
+  exact ⟨_, TrExprS.trExpr c.venv_wf c.mlctx_wf.tr.wf (.fvar h1), _, h2,
+    c.mlctx_wf.tr.wf.find?_wf c.venv_wf h1⟩
 
 theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)
