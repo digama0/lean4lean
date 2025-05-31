@@ -2,7 +2,8 @@ import Lean4Lean.Verify.LocalContext
 import Lean4Lean.Theory.Typing.EnvLemmas
 
 namespace Lean4Lean
-open Lean
+open Lean hiding Environment Exception
+open Kernel
 
 def isAsSafeAs : DefinitionSafety → ConstantInfo → Bool
   | .unsafe, _ => true
@@ -79,7 +80,7 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     TrEnv' C' Q env'
 
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
-  TrEnv' safety env.constants env.header.quotInit venv
+  TrEnv' safety env.constants env.quotInit venv
 
 theorem TrEnv'.WF (H : TrEnv' C Q env venv) : venv.WF := by
   induction H with

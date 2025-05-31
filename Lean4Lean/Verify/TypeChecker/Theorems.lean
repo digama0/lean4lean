@@ -28,7 +28,8 @@ end Except
 namespace Lean4Lean
 
 namespace TypeChecker
-open Lean
+open Lean hiding Environment Exception
+open Kernel
 
 inductive MLCtx where
   | nil : MLCtx
@@ -216,7 +217,7 @@ theorem getEnv.WF {c : VContext} {s : VState} :
   rintro wf _ _ ⟨⟩; exact ⟨_, rfl, .rfl, wf, rfl, rfl⟩
 
 theorem RecM.WF.getEnv {c : VContext} {s : VState} {f : Environment → RecM α} {Q}
-    (H : WF c s (f c.env) Q) : (getEnv >>= f).WF c s Q :=
+    (H : WF c s (f c.env) Q) : (liftM getEnv >>= f).WF c s Q :=
   getEnv.WF.lift.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
 
 theorem getLCtx.WF {c : VContext} {s : VState} :

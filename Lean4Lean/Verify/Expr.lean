@@ -91,9 +91,8 @@ theorem Safe.looseBVarRange_eq :
     simp [looseBVarRange, Expr.data, Expr.mkDataForLet, realLooseBVarRange]
     rw [mkData_looseBVarRange, ← h1.looseBVarRange_eq, ← h2.looseBVarRange_eq,
       ← h3.looseBVarRange_eq]; · rfl
-    exact Nat.max_le.2 ⟨
-      Nat.max_le.2 ⟨looseBVarRange_le, looseBVarRange_le⟩,
-      Nat.le_trans (Nat.sub_le ..) looseBVarRange_le⟩
+    exact Nat.max_le.2 ⟨looseBVarRange_le, Nat.max_le.2 ⟨looseBVarRange_le,
+      Nat.le_trans (Nat.sub_le ..) looseBVarRange_le⟩⟩
 
 theorem Safe.getAppFn {e} (h : Safe e) : Safe e.getAppFn := by
   unfold Expr.getAppFn; split
@@ -152,7 +151,7 @@ theorem mkAppRange_eq (h1 : args.toList = l₁ ++ l₂ ++ l₃)
       (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = n) :
       mkAppRangeAux n args i e = mkAppRevList e l₂.reverse := by
     rw [mkAppRangeAux.eq_def]; split
-    · simp [Array.get!, ← Array.getElem?_toList, h1]
+    · simp [Array.getElem!_eq_getD, ← Array.getElem?_toList, h1]
       obtain _ | ⟨a, l₂⟩ := l₂; · simp_all
       rw [List.getElem?_append_right (by simp [h2])]
       simp [h2]

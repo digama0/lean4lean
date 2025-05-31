@@ -39,8 +39,9 @@ where
 theorem mkBinding'_eq :
     mkBinding' isLambda lctx ⟨xs.map .fvar⟩ b = mkBindingList isLambda lctx xs b := by
   simp only [mkBinding', List.getElem_toArray, Expr.abstractRange',
-    Expr.abstract', List.extract_toArray, Nat.sub_zero, List.drop_zero]; dsimp only [Array.size]
-  simp only [← List.map_take, List.getElem_map]
+    Expr.abstract', ← Array.take_eq_extract, List.take_toArray, Nat.sub_zero, List.drop_zero,
+    ← List.map_take, List.getElem_map]
+  dsimp only [Array.size]
   simp only [List.getElem_eq_getElem?_get, Option.get_eq_getD (fallback := default)]
   change Nat.foldRev _ (fun i x =>
     mkBindingList1 isLambda lctx (xs.take i) (xs[i]?.getD default)) .. = mkBindingList.go ..
@@ -138,11 +139,11 @@ theorem TrLocalDecl.wf : TrLocalDecl env Us Δ d d' → d'.WF env Us.length Δ.t
 
 variable (env : VEnv) (Us : List Name) in
 inductive TrLCtx : LocalContext → VLCtx → Prop
-  | nil : TrLCtx ⟨.empty, .empty⟩ []
+  | nil : TrLCtx ⟨.empty, .empty, .empty⟩ []
   | cons :
     d.fvarId = fv → map.find? fv = none → d.index = arr.size →
-    TrLCtx ⟨map, arr⟩ Δ → TrLocalDecl env Us Δ d d' →
-    TrLCtx ⟨map.insert fv d, arr.push d⟩ ((some fv, d') :: Δ)
+    TrLCtx ⟨map, arr, fvmap⟩ Δ → TrLocalDecl env Us Δ d d' →
+    TrLCtx ⟨map.insert fv d, arr.push d, fvmap⟩ ((some fv, d') :: Δ)
 
 theorem TrLCtx.map_wf : TrLCtx env Us lctx Δ → lctx.fvarIdToDecl.WF
   | .nil => .empty

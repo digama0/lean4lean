@@ -7,7 +7,8 @@ import Lean4Lean.ForEachExprV
 import Lean4Lean.EquivManager
 
 namespace Lean4Lean
-open Lean
+open Lean hiding Environment Exception
+open Kernel
 
 abbrev InferCache := ExprMap Expr
 
@@ -28,15 +29,13 @@ structure TypeChecker.Context where
 
 namespace TypeChecker
 
-abbrev M := ReaderT Context <| StateT State <| Except KernelException
+abbrev M := ReaderT Context <| StateT State <| Except Exception
 
 def M.run (env : Environment) (safety : DefinitionSafety := .safe) (lctx : LocalContext := {})
-    (x : M α) : Except KernelException α :=
+    (x : M α) : Except Exception α :=
   x { env, safety, lctx } |>.run' {}
 
-instance : MonadEnv M where
-  getEnv := return (← read).env
-  modifyEnv _ := pure ()
+def getEnv : M Environment := return (← read).env
 
 instance : MonadLCtx M where
   getLCtx := return (← read).lctx
@@ -83,17 +82,17 @@ def ensureForallCore (e s : Expr) : RecM Expr := do
   if e.isForall then return e
   throw <| .funExpected (← getEnv) (← getLCtx) s
 
-def checkLevel (tc : Context) (l : Level) : Except KernelException Unit := do
+def checkLevel (tc : Context) (l : Level) : Except Exception Unit := do
   if let some n2 := l.getUndefParam tc.lparams then
     throw <| .other s!"invalid reference to undefined universe level parameter '{n2}'"
 
-def inferFVar (tc : Context) (name : FVarId) : Except KernelException Expr := do
+def inferFVar (tc : Context) (name : FVarId) : Except Exception Expr := do
   if let some decl := tc.lctx.find? name then
     return decl.type
   throw <| .other "unknown free variable"
 
 def inferConstant (tc : Context) (name : Name) (ls : List Level) (inferOnly : Bool) :
-    Except KernelException Expr := do
+    Except Exception Expr := do
   let e := Expr.const name ls
   let info ← tc.env.get name
   let ps := info.levelParams
@@ -198,7 +197,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
       | i+1 =>
         let used := if used[i]! then markUsed i fvars vals[i]! used else used
         loopUsed i used
-    let used := mkArray fvars.size false
+    let used := Array.replicate fvars.size false
     let used := markUsed fvars.size fvars r used
     let used := loopUsed fvars.size used
     let mut usedFVars := #[]
@@ -282,7 +281,7 @@ def whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
 
 def reduceRecursor (e : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
   let env ← getEnv
-  if env.header.quotInit then
+  if env.quotInit then
     if let some r ← quotReduceRec e whnf then
       return r
   let whnf' e := if cheapRec then whnfCore e cheapRec cheapProj else whnf e
@@ -378,7 +377,7 @@ def unfoldDefinition (env : Environment) (e : Expr) : Option Expr := do
   else
     unfoldDefinitionCore env e
 
-def reduceNative (_env : Environment) (e : Expr) : Except KernelException (Option Expr) := do
+def reduceNative (_env : Environment) (e : Expr) : Except Exception (Option Expr) := do
   let .app f (.const c _) := e | return none
   if f == .const ``reduceBool [] then
     throw <| .other s!"lean4lean does not support 'reduceBool {c}' reduction"
@@ -515,7 +514,7 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
   let env ← getEnv
   let .ctorInfo fInfo ← env.get f | return false
   unless s.getAppNumArgs == fInfo.numParams + fInfo.numFields do return false
-  unless isStructureLike env fInfo.induct do return false
+  unless env.isStructureLike fInfo.induct do return false
   unless ← isDefEq (← inferType t) (← inferType s) do return false
   let args := s.getAppArgs
   for h : i in [fInfo.numParams:args.size] do

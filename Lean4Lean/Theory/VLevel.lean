@@ -106,7 +106,7 @@ def ofLevel : Lean.Level → Option VLevel
   | .max l₁ l₂ => return .max (← ofLevel l₁) (← ofLevel l₂)
   | .imax l₁ l₂ => return .imax (← ofLevel l₁) (← ofLevel l₂)
   | .param n =>
-    let i := ls.indexOf n
+    let i := ls.idxOf n
     if i < ls.length then some (.param i) else none
   | .mvar _ => none
 

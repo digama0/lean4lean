@@ -1,6 +1,7 @@
 import Lean.Environment
 
-namespace Lean.Expr
+namespace Lean
+namespace Expr
 
 def prop : Expr := .sort .zero
 
@@ -81,7 +82,7 @@ partial def replaceM [Monad m] (f? : Expr → m (Option Expr)) (e : Expr) : m Ex
 def natZero : Expr := .const ``Nat.zero []
 def natSucc : Expr := .const ``Nat.succ []
 
-def isConstructorApp?' (env : Environment) (e : Expr) : Option Name := do
+def isConstructorApp?' (env : Kernel.Environment) (e : Expr) : Option Name := do
   let .const fn _ := e.getAppFn | none
   let .ctorInfo _ ← env.find? fn | none
   return fn

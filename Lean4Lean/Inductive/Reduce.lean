@@ -1,8 +1,10 @@
 import Lean.Structure
 import Lean4Lean.Expr
+import Lean4Lean.Environment.Basic
 
 namespace Lean4Lean
-open Lean
+open Lean hiding Environment
+open Kernel
 
 section
 variable [Monad m] (env : Environment)
@@ -42,7 +44,7 @@ def expandEtaStruct (eType e : Expr) : Expr :=
   pure result
 
 def toCtorWhenStruct (inductName : Name) (e : Expr) : m Expr := do
-  if !isStructureLike env inductName || (e.isConstructorApp?' env).isSome then
+  if !env.isStructureLike inductName || (e.isConstructorApp?' env).isSome then
     return e
   let eType ← whnf (← inferType e)
   if !eType.getAppFn.isConstOf inductName then return e

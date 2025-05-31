@@ -147,6 +147,6 @@ theorem getUndefParam_none {l : Level} (hl : l.Safe) (hmv : l.realHasMVar = fals
     have ⟨h, _, h1⟩ := ih1 hl.max.1 hmv.1 _ h
     exact ⟨h, fun _ => ⟨_, _, h1, _, h2, rfl⟩⟩
   | param =>
-    simp [getUndefParam.F, hl.hasParam_eq, Id, realHasParam, List.indexOf_lt_length_iff, *]
+    simp [getUndefParam.F, hl.hasParam_eq, Id, realHasParam, List.idxOf_lt_length_iff, *]
     split <;> simp [*]
   | _ => simp [*]

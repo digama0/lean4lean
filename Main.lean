@@ -52,7 +52,8 @@ end ConstantInfo
 
 end Lean
 
-open Lean
+open Lean hiding Environment Exception
+open Kernel
 
 structure Context where
   newConstants : Std.HashMap Name ConstantInfo
@@ -77,10 +78,10 @@ def isTodo (name : Name) : M Bool := do
   else
     return false
 
-/-- Use the current `Environment` to throw a `KernelException`. -/
-def throwKernelException (ex : KernelException) : M α := do
+/-- Use the current `Environment` to throw a `Kernel.Exception`. -/
+def throwKernelException (ex : Exception) : M α := do
     let ctx := { fileName := "", options := pp.match.set (pp.rawOnError.set {} true) false, fileMap := default }
-    let state := { env := (← get).env }
+    let state := { env := .ofKernelEnv (← get).env }
     Prod.fst <$> (Lean.Core.CoreM.toIO · ctx state) do Lean.throwKernelException ex
 
 def Lean.Declaration.name : Declaration → String
@@ -107,11 +108,11 @@ def addDecl (d : Declaration) : M Unit := do
         | .error ex => _root_.throwKernelException ex
         if (t2 - t1) > 2 * (t3 - t2) then
           println!
-            "{(← get).env.mainModule}:{d.name}: lean took {t3 - t2}, lean4lean took {t2 - t1}"
+            "{(← get).env.header.mainModule}:{d.name}: lean took {t3 - t2}, lean4lean took {t2 - t1}"
         else
-          println! "{(← get).env.mainModule}:{d.name}: lean4lean took {t2 - t1}"
+          println! "{(← get).env.header.mainModule}:{d.name}: lean4lean took {t2 - t1}"
       else
-        println! "{(← get).env.mainModule}:{d.name}: lean4lean took {t2 - t1}"
+        println! "{(← get).env.header.mainModule}:{d.name}: lean4lean took {t2 - t1}"
     modify fun s => { s with env := env }
   | .error ex =>
     throwKernelException ex
@@ -237,20 +238,20 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let (mod, region) ← readModuleData mFile
   let (_, s) ← importModulesCore mod.imports
     |>.run (s := { moduleNameSet := ({} : NameHashSet).insert module })
-  let env ← finalizeImport s #[{module}] {} 0
+  let env ← finalizeImport s #[{module}] {} 0 (leakEnv := false) (loadExts := false)
   let env := env.setMainModule module
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let env' ← replay { newConstants, verbose, compare } env
-  env'.freeRegions
+  let env' ← replay { newConstants, verbose, compare } env.base
+  (Environment.ofKernelEnv env').freeRegions
   region.free
 
 unsafe def replayFromFresh (module : Name)
     (verbose := false) (compare := false) (decl : Option Name := none) : IO Unit := do
-  Lean.withImportModules #[{module}] {} 0 fun env => do
+  Lean.withImportModules #[{module}] {} (trustLevel := 0) fun env => do
     let ctx := { newConstants := env.constants.map₁, verbose, compare }
-    discard <| replay ctx ((← mkEmptyEnvironment).setMainModule module) decl
+    discard <| replay ctx ((← mkEmptyEnvironment).setMainModule module).base decl
 
 /-- Read the name of the main module from the `lake-manifest`. -/
 -- This has been copied from `ImportGraph.getCurrentModule` in the

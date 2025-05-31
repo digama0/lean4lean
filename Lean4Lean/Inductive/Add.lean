@@ -1,10 +1,12 @@
+import Lean4Lean.Environment.Basic
 import Lean4Lean.TypeChecker
 import Lean4Lean.Stream
 
 namespace Lean4Lean
-open Lean
+open Lean hiding Environment Exception
+open Kernel
 
-open private add from Lean.Environment
+open private Lean.Kernel.Environment.add from Lean.Environment
 
 namespace AddInductive
 open TypeChecker
@@ -33,7 +35,7 @@ structure Context where
   safety : DefinitionSafety
   allowPrimitive : Bool
 
-abbrev M := ReaderT Context <| Except KernelException
+abbrev M := ReaderT Context <| Except Exception
 
 instance : MonadLocalNameGenerator M where
   withFreshId f c := f c.ngen.curr { c with ngen := c.ngen.next }
@@ -143,13 +145,13 @@ def declareInductiveTypes
     (levelParams : List Name) (numParams : Nat) (indTypes : Array InductiveType)
     (numNested : Nat) (isUnsafe : Bool) (env : Environment) : Environment :=
   let all := indTypes.map (·.name) |>.toList
-  let infos := indTypes.zipWith stats.nindices fun indType numIndices =>
+  let infos := indTypes.zipWith (bs := stats.nindices) fun indType numIndices =>
     .inductInfo { indType with
       levelParams, numParams, numIndices, all, numNested, isUnsafe
       ctors := indType.ctors.map (·.name)
       isRec := isRec indTypes stats.indConsts
       isReflexive := isReflexive indTypes stats.indConsts }
-  infos.foldl add env
+  infos.foldl (·.add) env
 
 def isValidIndAppIdx (stats : InductiveStats) (t : Expr) (i : Nat) : Bool :=
   t.withApp fun I args => Id.run do
@@ -240,7 +242,7 @@ def declareConstructors (stats : InductiveStats) (levelParams : List Name)
         | .forallE _ _ body _ => arity (i+1) body
         | _ => i
       let arity := arity 0 type
-      add env <| .ctorInfo {
+      env.add <| .ctorInfo {
         levelParams, type, cidx, isUnsafe
         name := ctor.name
         induct := indType.name
@@ -473,7 +475,7 @@ def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
       lctx.mkForall' #[info.major] <|
       .app (mkAppN info.motive info.indices) info.major
     let rules ← mkRecRules indTypes elimLevel stats dIdx motives minors
-    env := add env <| .recInfo {
+    env := env.add <| .recInfo {
       name := mkRecName indType.name
       levelParams := getRecLevelParams elimLevel lparams
       type := ty.inferImplicit 1000 false -- note: flag has reversed polarity from C++
@@ -553,7 +555,7 @@ structure State where
   nextIdx : Nat := 1
   deriving Inhabited
 
-abbrev M := ReaderT Environment <| StateT State <| Except KernelException
+abbrev M := ReaderT Environment <| StateT State <| Except Exception
 
 instance : MonadNameGenerator M where
   getNGen := return (← get).ngen
@@ -569,7 +571,7 @@ partial def mkUniqueName (n : Name) : M Name := fun env s =>
       pure (r, { s with nextIdx := i + 1 })
   loop s.nextIdx
 
-def illFormed : KernelException :=
+def illFormed : Exception :=
   .other "invalid nested inductive datatype, ill-formed declaration"
 
 def replaceParams (params : Array Expr) (e : Expr) (As : Array Expr) : M Expr := do
@@ -606,7 +608,7 @@ def isNestedInductiveApp? (e : Expr) : M (Option InductiveVal) := do
   return some ci
 
 def instantiateForallParams (e : Expr) (hi : Nat) (params : Array Expr) :
-    Except KernelException Expr := do
+    Except Exception Expr := do
   let mut e := e
   for _ in [:hi] do
     let .forallE _ _ body _ := e | throw illFormed
@@ -713,7 +715,7 @@ def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
 
 def Environment.addInductive (env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe allowPrimitive : Bool) :
-    Except KernelException Environment := do
+    Except Exception Environment := do
   let res ← ElimNestedInductive.run nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
@@ -733,14 +735,14 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
         res.restoreCtorName env' rule.ctor
       return { rule with ctor := newCtorName, rhs := newRhs }
     (← MonadState.get).checkName newRecName
-    modify (add · <| .recInfo { recInfo with
+    modify (·.add <| .recInfo { recInfo with
       name := newRecName, type := newRecType, all := allIndNames, rules := newRules })
   for indType in types do
     let some (.inductInfo ind) := env'.find? indType.name | unreachable!
-    modify (add · <| .inductInfo { ind with all := allIndNames })
+    modify (·.add <| .inductInfo { ind with all := allIndNames })
     for ctorName in ind.ctors do
       let some (.ctorInfo ctor) := env'.find? ctorName | unreachable!
       let newType := res.restoreNested env' ctor.type
-      modify (add · <| .ctorInfo { ctor with type := newType })
+      modify (·.add <| .ctorInfo { ctor with type := newType })
     processRec (mkRecName indType.name)
   recNames'.forM processRec

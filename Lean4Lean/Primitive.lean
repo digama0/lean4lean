@@ -1,10 +1,12 @@
 import Lean4Lean.TypeChecker
+import Lean4Lean.Environment.Basic
 
 namespace Lean4Lean
 namespace Environment
-open Lean TypeChecker
+open Lean hiding Environment Exception
+open Kernel TypeChecker
 
-open private add from Lean.Environment
+open private Lean.Kernel.Environment.add from Lean.Environment
 
 def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
@@ -101,11 +103,11 @@ def checkPrimitiveDef (env : Environment) (v : DefinitionVal) : M Bool := do
   return true
 
 def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams : Nat)
-    (types : List InductiveType) (isUnsafe : Bool) : Except KernelException Bool := do
+    (types : List InductiveType) (isUnsafe : Bool) : Except Exception Bool := do
   unless !isUnsafe && lparams.isEmpty && nparams == 0 do return false
   let [type] := types | return false
   unless type.type == .sort (.succ .zero) do return false
-  let fail {α} : Except KernelException α :=
+  let fail {α} : Except Exception α :=
     throw <| .other s!"invalid form for primitive inductive {type.name}"
   match type.name with
   | ``Bool =>

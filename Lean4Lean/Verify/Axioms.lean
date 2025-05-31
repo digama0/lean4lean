@@ -1,3 +1,4 @@
+import Batteries.Tactic.OpenPrivate
 import Lean4Lean.Std.Basic
 import Lean4Lean.Std.NodupKeys
 
@@ -95,7 +96,7 @@ end PersistentHashMap
 open private mkAppRangeAux from Lean.Expr in
 axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Expr) :
   mkAppRangeAux n args i e =
-    if i < n then mkAppRangeAux n args (i + 1) (mkApp e (args.get! i)) else e
+    if i < n then mkAppRangeAux n args (i + 1) (mkApp e args[i]!) else e
 
 namespace Expr
 

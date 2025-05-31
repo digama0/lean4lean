@@ -86,7 +86,7 @@ theorem List.append_eq_append_of_length_le {a b c d : List α} (h : length a ≤
   rw [append_eq_append_iff, or_iff_left_iff_imp]
   rintro ⟨c', rfl, rfl⟩
   rw [← Nat.add_zero c.length, length_append,
-    Nat.add_le_add_iff_left, Nat.le_zero, length_eq_zero] at h
+    Nat.add_le_add_iff_left, Nat.le_zero, length_eq_zero_iff] at h
   subst h; exact ⟨[], by simp⟩
 
 @[simp] theorem List.nodup_reverse {l : List α} : Nodup (reverse l) ↔ Nodup l :=
@@ -96,12 +96,12 @@ theorem List.foldl_congr
     (H : ∀ a, ∀ x ∈ l, f a x = g a x) : foldl f a l = foldl g a l := by
   induction l generalizing a <;> simp_all
 
-theorem List.indexOf_eq_length_iff [BEq α] [LawfulBEq α]
-    {a : α} {l : List α} : indexOf a l = length l ↔ a ∉ l := by
+theorem List.idxOf_eq_length_iff [BEq α] [LawfulBEq α]
+    {a : α} {l : List α} : idxOf a l = length l ↔ a ∉ l := by
   induction l with
-  | nil => exact iff_of_true rfl (not_mem_nil _)
+  | nil => exact iff_of_true rfl not_mem_nil
   | cons b l ih =>
-    simp only [length, mem_cons, indexOf_cons, eq_comm]
+    simp only [length, mem_cons, idxOf_cons, eq_comm]
     rw [cond_eq_if]
     split <;> rename_i h <;> simp at h
     · exact iff_of_false (by rintro ⟨⟩) fun H => H <| Or.inl h.symm
@@ -109,18 +109,18 @@ theorem List.indexOf_eq_length_iff [BEq α] [LawfulBEq α]
       rw [← ih]
       exact Nat.succ_inj'
 
-theorem List.indexOf_le_length [BEq α] [LawfulBEq α]
-    {a : α} {l : List α} : indexOf a l ≤ length l := by
+theorem List.idxOf_le_length [BEq α] [LawfulBEq α]
+    {a : α} {l : List α} : idxOf a l ≤ length l := by
   induction l with | nil => exact Nat.le_refl _ | cons b l ih => ?_
-  simp only [length, indexOf_cons, cond_eq_if, beq_iff_eq]
+  simp only [length, idxOf_cons, cond_eq_if, beq_iff_eq]
   by_cases h : b == a
   · rw [if_pos h]; exact Nat.zero_le _
   · rw [if_neg h]; exact Nat.succ_le_succ ih
 
-theorem List.indexOf_lt_length_iff [BEq α] [LawfulBEq α]
-    {a} {l : List α} : indexOf a l < length l ↔ a ∈ l :=
-  ⟨fun h => Decidable.byContradiction fun al => Nat.ne_of_lt h <| indexOf_eq_length_iff.2 al,
-   fun al => (Nat.lt_of_le_of_ne indexOf_le_length) fun h => indexOf_eq_length_iff.1 h al⟩
+theorem List.idxOf_lt_length_iff [BEq α] [LawfulBEq α]
+    {a} {l : List α} : idxOf a l < length l ↔ a ∈ l :=
+  ⟨fun h => Decidable.byContradiction fun al => Nat.ne_of_lt h <| idxOf_eq_length_iff.2 al,
+   fun al => (Nat.lt_of_le_of_ne idxOf_le_length) fun h => idxOf_eq_length_iff.1 h al⟩
 
 instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
