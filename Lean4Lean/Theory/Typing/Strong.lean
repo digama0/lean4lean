@@ -153,7 +153,7 @@ theorem IsDefEqStrong.mono
   | trans _ _ ih1 ih2 => exact .trans ih1 ih2
   | sortDF h1 h2 h3 => exact .sortDF h1 h2 h3
   | constDF h1 h2 h3 h4 h5 h6 _ _ _ _ ih1 ih2 ih3 ih4 =>
-    exact .constDF (henv.1 _ _ h1) h2 h3 h4 h5 h6 ih1 ih2 ih3 ih4
+    exact .constDF (henv.1 h1) h2 h3 h4 h5 h6 ih1 ih2 ih3 ih4
   | appDF h1 h2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 => exact .appDF h1 h2 ih1 ih2 ih3 ih4 ih5
   | lamDF h1 h2  _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 => exact .lamDF h1 h2 ih1 ih2 ih3 ih4 ih5
   | forallEDF h1 h2 _ _ _ ih1 ih2 ih3 => exact .forallEDF h1 h2 ih1 ih2 ih3
@@ -162,7 +162,7 @@ theorem IsDefEqStrong.mono
   | eta h1 h2 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 => exact .eta h1 h2 ih1 ih2 ih3 ih4 ih5
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 h4 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
-    exact .extra (henv.2 _ h1) h2 h3 h4 ih1 ih2 ih3 ih4 ih5
+    exact .extra (henv.2 h1) h2 h3 h4 ih1 ih2 ih3 ih4 ih5
 
 variable! (henv : Ordered env) in
 theorem IsDefEqStrong.weak0 (H : env.IsDefEqStrong U [] e1 e2 A) :

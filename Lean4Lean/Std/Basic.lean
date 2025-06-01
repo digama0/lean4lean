@@ -149,3 +149,19 @@ theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
 
 @[simp] theorem Option.forall_ne_some {o : Option α} : (∀ a, o ≠ some a) ↔ o = none := by
   cases o <;> simp
+
+@[simp] theorem Option.orElse_eq_none {a : Option α} {b : Unit → Option α} :
+    a.orElse b = none ↔ a = none ∧ b () = none := by
+  cases a <;> simp [Option.orElse]
+
+theorem List.length_option_mapM {l : List α} {f : α → Option β}
+    (h : l.mapM f = some l') : l.length = l'.length := by
+  induction l generalizing l' with simp_all
+  | cons _ _ ih => obtain ⟨_, h1, _, h2, rfl⟩ := h; rw [ih h2]; rfl
+
+theorem List.mem_option_mapM {l : List α} {f : α → Option β}
+    (h : l.mapM f = some l') : ∀ y ∈ l', ∃ x ∈ l, f x = some y := by
+  induction l generalizing l' with simp_all
+  | cons _ _ ih =>
+    obtain ⟨_, h1, _, h2, rfl⟩ := h; simp
+    exact ⟨.inl h1, fun _ h => .inr (ih h2 _ h)⟩

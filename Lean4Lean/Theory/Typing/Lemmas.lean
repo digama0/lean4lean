@@ -192,15 +192,13 @@ namespace VEnv
 
 theorem addConst_le {env env' : VEnv} (h : env.addConst n oci = some env') : env ≤ env' := by
   unfold addConst at h; split at h <;> cases h
-  refine ⟨fun n ci h => ?_, fun _ => id⟩
-  simp; rwa [if_neg]; rintro rfl; cases h.symm.trans ‹_ = none›
+  exact ⟨fun _ => by simp; split <;> simp_all, by simp [*]⟩
 
 theorem addConst_self {env env' : VEnv} (h : env.addConst n oci = some env') :
     env'.constants n = some oci := by
   unfold addConst at h; split at h <;> cases h; simp
 
-theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df :=
-  ⟨fun _ _ => id, fun df h => by simp [addDefEq, h]⟩
+theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df := ⟨id, .inr⟩
 
 theorem addDefEq_self {env : VEnv} : (env.addDefEq df).defeqs df := .inl rfl
 
@@ -212,8 +210,8 @@ def HasObjects (env : VEnv) : List VObject → Prop
 theorem HasObjects.mono {env env' : VEnv} (henv : env ≤ env') :
     ∀ {ls}, HasObjects env ls → HasObjects env' ls
   | [] => id
-  | .const .. :: _ => .imp (henv.1 _ _) (mono henv)
-  | .defeq .. :: _ => .imp (henv.2 _) (mono henv)
+  | .const .. :: _ => .imp henv.1 (mono henv)
+  | .defeq .. :: _ => .imp henv.2 (mono henv)
 
 theorem HasObjects.const {env env' : VEnv} (hls : env.HasObjects ls)
     (h : env.addConst n oci = some env') : env'.HasObjects (.const n oci :: ls) :=
@@ -269,7 +267,7 @@ def OnTypes (env : VEnv) (P : Nat → VExpr → VExpr → Prop) : Prop :=
 
 theorem OnTypes.mono (henv : env' ≤ env) (hP : ∀ {U e A}, P U e A → P' U e A)
     (H : OnTypes env P) : OnTypes env' P' :=
-  ⟨fun hci => (H.1 (henv.1 _ _ hci)).imp fun _ => hP, fun hdf => (H.2 (henv.2 _ hdf)).imp hP hP⟩
+  ⟨fun hci => (H.1 (henv.1 hci)).imp fun _ => hP, fun hdf => (H.2 (henv.2 hdf)).imp hP hP⟩
 
 theorem Ordered.induction (motive : VEnv → Nat → VExpr → VExpr → Prop)
     (mono : ∀ {env env' U e A}, env ≤ env' → motive env U e A → motive env' U e A)
@@ -380,7 +378,7 @@ variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem IsDefEq.mono (H : env.IsDefEq U Γ e1 e2 A) : env'.IsDefEq U Γ e1 e2 A := by
   induction H with
   | bvar h => exact .bvar h
-  | constDF h1 h2 h3 h4 h5 => exact .constDF (henv.1 _ _ h1) h2 h3 h4 h5
+  | constDF h1 h2 h3 h4 h5 => exact .constDF (henv.1 h1) h2 h3 h4 h5
   | sortDF h1 h2 h3 => exact .sortDF h1 h2 h3
   | symm _ ih => exact .symm ih
   | trans _ _ ih1 ih2 => exact .trans ih1 ih2
@@ -391,7 +389,7 @@ theorem IsDefEq.mono (H : env.IsDefEq U Γ e1 e2 A) : env'.IsDefEq U Γ e1 e2 A 
   | beta _ _ ih1 ih2 => exact .beta ih1 ih2
   | eta _ ih => exact .eta ih
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
-  | extra h1 h2 h3 => exact .extra (henv.2 _ h1) h2 h3
+  | extra h1 h2 h3 => exact .extra (henv.2 h1) h2 h3
 
 theorem HasType.mono {env env' : VEnv} (henv : env ≤ env') :
     env.HasType U Γ e A → env'.HasType U Γ e A := IsDefEq.mono henv
@@ -399,7 +397,15 @@ theorem HasType.mono {env env' : VEnv} (henv : env ≤ env') :
 theorem IsType.mono {env env' : VEnv} (henv : env ≤ env') : env.IsType U Γ A → env'.IsType U Γ A
   | ⟨u, h⟩ => ⟨u, h.mono henv⟩
 
+theorem IsDefEqU.mono {env env' : VEnv} (henv : env ≤ env') :
+    env.IsDefEqU U Γ e1 e2 → env'.IsDefEqU U Γ e1 e2
+  | ⟨u, h⟩ => ⟨u, h.mono henv⟩
+
 end VEnv
+
+theorem VExpr.WF.mono {env env' : VEnv} (henv : env ≤ env') {e : VExpr} :
+    e.WF env U Γ → e.WF env' U Γ
+  | ⟨u, h⟩ => ⟨u, h.mono henv⟩
 
 theorem VConstant.WF.mono {env env' : VEnv} (henv : env ≤ env') {ci : VConstant} :
     ci.WF env → ci.WF env'

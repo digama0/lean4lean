@@ -7,6 +7,9 @@ def NodupKeys (l : List (α × β)) : Prop := Nodup (l.map (·.1))
 theorem nodupKeys_iff_pairwise {l : List (α × β)} :
     NodupKeys l ↔ Pairwise (fun a b => a.1 ≠ b.1) l := pairwise_map
 
+theorem NodupKeys.filter {l : List (α × β)} (p : α × β → Bool)
+    (H : NodupKeys l) : NodupKeys (l.filter p) := pairwise_map.2 <| (pairwise_map.1 H).filter _
+
 @[simp] theorem nodupKeys_cons : NodupKeys (a::l) ↔ (∀ a' ∈ l, a.1 ≠ a'.1) ∧ NodupKeys l := by
   simp [nodupKeys_iff_pairwise]
 

@@ -50,45 +50,24 @@ noncomputable def Node.toList' : Node α β → List (α × β) :=
 noncomputable def toList' [BEq α] [Hashable α] (m : PersistentHashMap α β) :
     List (α × β) := m.root.toList'
 
-@[simp] theorem toList'_empty [BEq α] [Hashable α] :
-    (.empty : PersistentHashMap α β).toList' = [] := by
-  have this n : @Node.toList' α β (.entries ⟨.replicate n .null⟩) = [] := by
-    simp [Node.toList']
-    induction n <;> simp [*, List.replicate_succ]
-  apply this
-
 inductive WF [BEq α] [Hashable α] : PersistentHashMap α β → Prop where
   | empty : WF .empty
-  | insert : m.find? a = none → WF m → WF (m.insert a b)
+  | insert : WF m → WF (m.insert a b)
 
 /-- We can't prove this because `Lean.PersistentHashMap.insertAux` is opaque -/
 axiom WF.toList'_insert {α β} [BEq α] [Hashable α]
-    [PartialEquivBEq α] [Batteries.HashMap.LawfulHashable α]
+    [PartialEquivBEq α] [LawfulHashable α]
     {m : PersistentHashMap α β} (_ : WF m) (a : α) (b : β) :
-    m.toList'.lookup a = none → (m.insert a b).toList' ~ (a, b) :: m.toList'
+    (m.insert a b).toList' ~ (a, b) :: m.toList'.filter (¬a == ·.1)
 
 /-- We can't prove this because `Lean.PersistentHashMap.findAux` is opaque -/
 axiom WF.find?_eq {α β} [BEq α] [Hashable α]
-    [PartialEquivBEq α] [Batteries.HashMap.LawfulHashable α]
+    [PartialEquivBEq α] [LawfulHashable α]
     {m : PersistentHashMap α β} (_ : WF m) (a : α) : m.find? a = m.toList'.lookup a
 
 /-- We can't prove this because `Lean.PersistentHashMap.{findAux, containsAux}` are opaque -/
 axiom findAux_isSome {α β} [BEq α] {node : Node α β} (i : USize) (a : α) :
     containsAux node i a = (findAux node i a).isSome
-
-theorem find?_isSome {α β} [BEq α] [Hashable α]
-    (m : PersistentHashMap α β) (a : α) : m.contains a = (m.find? a).isSome := findAux_isSome ..
-
-theorem WF.nodupKeys [BEq α] [Hashable α]
-    [LawfulBEq α] [Batteries.HashMap.LawfulHashable α]
-    {m : PersistentHashMap α β} (h : WF m) : m.toList'.NodupKeys := by
-  induction h with
-  | empty => simp; exact .nil
-  | insert h1 h2 ih =>
-    rw [h2.find?_eq] at h1
-    refine (h2.toList'_insert _ _ h1).nodupKeys_iff.2 (List.nodupKeys_cons.2 ⟨?_, ih⟩)
-    rintro ⟨a, b⟩ h3 rfl
-    cases h1.symm.trans (ih.lookup_eq_some.2 h3)
 
 end PersistentHashMap
 

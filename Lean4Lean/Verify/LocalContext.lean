@@ -1,4 +1,4 @@
-import Lean4Lean.Verify.Axioms
+import Lean4Lean.Std.PersistentHashMap
 import Lean4Lean.Verify.Expr
 import Lean4Lean.Verify.Typing.Expr
 import Lean4Lean.Verify.Typing.Lemmas
@@ -126,7 +126,7 @@ inductive WF : LocalContext → Prop
 
 theorem WF.map_wf {lctx : LocalContext} : lctx.WF → lctx.fvarIdToDecl.WF
   | .nil => .empty
-  | .cons _ h1 _ h2 => .insert h1 h2.map_wf
+  | .cons _ _ _ h2 => .insert h2.map_wf
 
 theorem WF.decls_wf {lctx : LocalContext} : lctx.WF → lctx.decls.WF
   | .nil => .empty
@@ -139,8 +139,12 @@ theorem WF.map_toList : WF lctx →
   | .nil => by simp [LocalContext.toList]
   | .cons h1 h2 _ h4 => by
     subst h1; simp [LocalContext.toList]
-    exact h4.map_wf.toList'_insert _ _ (by rwa [h4.map_wf.find?_eq] at h2)
-      |>.trans (.cons _ h4.map_toList)
+    refine h4.map_wf.toList'_insert _ _ |>.trans (.cons _ ?_)
+    rw [List.filter_eq_self.2]; · exact h4.map_toList
+    simp; rintro _ b h rfl
+    have := (h4.map_wf.find?_eq _).symm.trans h2
+    simp [List.lookup_eq_none_iff] at this
+    exact this _ _ h rfl
 
 theorem WF.find?_eq_find?_toList (H : WF lctx) :
     lctx.find? fv = lctx.toList.find? (fv == ·.fvarId) := by
@@ -184,10 +188,10 @@ attribute [-simp] List.filterMap_reverse
 
 variable (env : VEnv) (Us : List Name) (Δ : VLCtx) in
 inductive TrLocalDecl : LocalDecl → VLocalDecl → Prop
-  | vlam : TrExpr env Us Δ ty ty' → env.IsType Us.length Δ.toCtx ty' →
+  | vlam : TrExprS env Us Δ ty ty' → env.IsType Us.length Δ.toCtx ty' →
     TrLocalDecl (.cdecl n fv name ty bi kind) (.vlam ty')
   | vlet :
-    TrExpr env Us Δ ty ty' → TrExpr env Us Δ val val' →
+    TrExprS env Us Δ ty ty' → TrExprS env Us Δ val val' →
     env.HasType Us.length Δ.toCtx val' ty' →
     TrLocalDecl (.ldecl n fv name ty val bi kind) (.vlet ty' val')
 
@@ -259,7 +263,7 @@ theorem TrLCtx.wf (H : TrLCtx env Us lctx Δ) : Δ.WF env Us.length := H.2.wf H.
 
 theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
     (nd : (ds.map (·.fvarId)).Nodup) (hm : decl ∈ ds) :
-    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧ TrExpr env Us Δ decl.type A := by
+    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧ TrExprS env Us Δ decl.type A := by
   have := H.wf nd
   match H with
   | .nil => cases hm
@@ -277,18 +281,18 @@ theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
 
 theorem TrLCtx.find?_of_mem (henv : env.WF) (H : TrLCtx env Us lctx Δ)
     (hm : decl ∈ lctx.toList) :
-    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧ TrExpr env Us Δ decl.type A :=
+    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧ TrExprS env Us Δ decl.type A :=
   H.2.find?_of_mem henv H.1.nodup hm
 
 theorem TrLCtx.mkLocalDecl
-    (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none) (h3 : TrExpr env Us Δ ty ty')
+    (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none) (h3 : TrExprS env Us Δ ty ty')
     (h4 : env.IsType Us.length Δ.toCtx ty') :
     TrLCtx env Us (lctx.mkLocalDecl fv name ty bi kind) ((some fv, .vlam ty') :: Δ) :=
   ⟨h1.1.mkLocalDecl h2, by simpa using .cons h1.2 (.vlam h3 h4)⟩
 
 theorem TrLCtx.mkLetDecl
     (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none)
-    (h3 : TrExpr env Us Δ ty ty') (h4 : TrExpr env Us Δ val val')
+    (h3 : TrExprS env Us Δ ty ty') (h4 : TrExprS env Us Δ val val')
     (h5 : env.HasType Us.length Δ.toCtx val' ty') :
     TrLCtx env Us (lctx.mkLetDecl fv name ty val bi kind) ((some fv, .vlet ty' val') :: Δ) :=
   ⟨h1.1.mkLetDecl h2, by simpa using .cons h1.2 (.vlet h3 h4 h5)⟩

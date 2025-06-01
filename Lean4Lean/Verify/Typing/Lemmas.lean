@@ -456,6 +456,25 @@ theorem TrProj.defeqDFC (henv : VEnv.WF env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ
     (he : env.IsDefEqU U Γ₁ e₁ e₂) (H : TrProj Γ₁ s i e₁ e') :
     ∃ e', TrProj Γ₂ s i e₂ e' := sorry
 
+variable! {env env' : VEnv} (henv : env ≤ env') in
+theorem TrExprS.mono (H : TrExprS env Us Δ e e') : TrExprS env' Us Δ e e' := by
+  induction H with
+  | bvar h1 => exact .bvar h1
+  | fvar h1 => exact .fvar h1
+  | sort h1 => exact .sort h1
+  | const h1 h2 h3 => exact .const (henv.1 h1) h2 h3
+  | app h1 h2 _ _ ih1 ih2 => exact .app (h1.mono henv) (h2.mono henv) ih1 ih2
+  | lam h1 _ _ ih1 ih2 => exact .lam (h1.mono henv) ih1 ih2
+  | forallE h1 h2 _ _ ih1 ih2 => exact .forallE (h1.mono henv) (h2.mono henv) ih1 ih2
+  | letE h1 _ _ _ ih1 ih2 ih3 => exact .letE (h1.mono henv) ih1 ih2 ih3
+  | lit _ ih => refine .lit ih
+  | mdata _ ih => exact .mdata ih
+  | proj _ h2 ih => exact .proj ih h2
+
+variable! {env env' : VEnv} (henv : env ≤ env') in
+theorem TrExpr.mono (H : TrExpr env Us Δ e e') : TrExpr env' Us Δ e e' :=
+  let ⟨_, H1, H2⟩ := H; ⟨_, H1.mono henv, H2.mono henv⟩
+
 variable! (env : VEnv) (U : Nat) in
 inductive VLCtx.IsDefEq : VLCtx → VLCtx → Prop
   | nil : VLCtx.IsDefEq [] []
