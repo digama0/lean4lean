@@ -68,37 +68,6 @@ theorem mkAppData_looseBVarRange :
     m.toUInt64.toBitVec
   bv_decide
 
-theorem Safe.looseBVarRange_eq :
-    ∀ {e}, Safe e → e.looseBVarRange = e.realLooseBVarRange
-  | .bvar i, e => by simp [looseBVarRange, data]; rw [mkData_looseBVarRange e]; rfl
-  | .const .., _
-  | .sort _, _
-  | .fvar _, _
-  | .mvar _, _
-  | .lit _, _ => mkData_looseBVarRange (Nat.zero_le _)
-  | .mdata _ e, h
-  | .proj _ _ e, h =>
-    (mkData_looseBVarRange looseBVarRange_le).trans <| h.looseBVarRange_eq (e := e)
-  | .app e1 e2, ⟨h1, h2⟩ => by
-    simp [looseBVarRange, Expr.data, mkAppData_looseBVarRange, UInt32.max_toNat,
-      realLooseBVarRange, ← h1.looseBVarRange_eq, ← h2.looseBVarRange_eq]
-  | .lam _ e1 e2 _, ⟨h1, h2⟩
-  | .forallE _ e1 e2 _, ⟨h1, h2⟩ => by
-    simp [looseBVarRange, Expr.data, Expr.mkDataForBinder, realLooseBVarRange]
-    rw [mkData_looseBVarRange, ← h1.looseBVarRange_eq, ← h2.looseBVarRange_eq]; · rfl
-    exact Nat.max_le.2 ⟨looseBVarRange_le, Nat.le_trans (Nat.sub_le ..) looseBVarRange_le⟩
-  | .letE _ e1 e2 e3 _, ⟨h1, h2, h3⟩ => by
-    simp [looseBVarRange, Expr.data, Expr.mkDataForLet, realLooseBVarRange]
-    rw [mkData_looseBVarRange, ← h1.looseBVarRange_eq, ← h2.looseBVarRange_eq,
-      ← h3.looseBVarRange_eq]; · rfl
-    exact Nat.max_le.2 ⟨looseBVarRange_le, Nat.max_le.2 ⟨looseBVarRange_le,
-      Nat.le_trans (Nat.sub_le ..) looseBVarRange_le⟩⟩
-
-theorem Safe.getAppFn {e} (h : Safe e) : Safe e.getAppFn := by
-  unfold Expr.getAppFn; split
-  · exact h.1.getAppFn
-  · exact h
-
 def getAppArgsRevList : Expr → List Expr
   | .app f a => a :: f.getAppArgsRevList
   | _ => []
@@ -160,9 +129,9 @@ theorem mkAppRange_eq (h1 : args.toList = l₁ ++ l₂ ++ l₃)
       have : l₂.length = 0 := by omega
       simp at this; simp [this]
 
-theorem liftLooseBVars_eq_self : e.realLooseBVarRange ≤ s → liftLooseBVars' e s d = e := by
+theorem liftLooseBVars_eq_self : e.looseBVarRange' ≤ s → liftLooseBVars' e s d = e := by
   induction e generalizing s <;>
-    simp +contextual [*, realLooseBVarRange, liftLooseBVars', Nat.max_le, Nat.le_add_of_sub_le]
+    simp +contextual [*, looseBVarRange', liftLooseBVars', Nat.max_le, Nat.le_add_of_sub_le]
   omega
 
 @[simp] theorem liftLooseBVars_zero : liftLooseBVars' e s 0 = e := by
@@ -197,58 +166,58 @@ theorem liftLooseBVars_comm (e : Expr) (n1 n2 k1 k2 : Nat) (h : k2 ≤ k1) :
     · have := mt (Nat.lt_of_lt_of_le · h) h'
       rw [if_neg (by omega), if_neg this, if_neg (by omega), Nat.add_right_comm]
 
-theorem instantiate1'_go_eq_self : e.realLooseBVarRange ≤ k → instantiate1'.go a e k = e := by
+theorem instantiate1'_eq_self : e.looseBVarRange' ≤ k → instantiate1' e a k = e := by
   induction e generalizing k <;>
-    simp +contextual [*, realLooseBVarRange, instantiate1'.go, Nat.max_le, Nat.le_add_of_sub_le]
+    simp +contextual [*, looseBVarRange', instantiate1', Nat.max_le, Nat.le_add_of_sub_le]
   omega
 
-theorem instantiate1'_eq_self (H : e.realLooseBVarRange = 0) : instantiate1' e a = e :=
-  instantiate1'_go_eq_self (Nat.le_zero.2 H)
+theorem instantiate1_eq_self (H : e.looseBVarRange' = 0) : instantiate1' e a = e := by
+  simpa using instantiate1'_eq_self (e := e) (Nat.le_zero.2 H)
 
-theorem instantiateList_eq_self (h : e.realLooseBVarRange = 0) : instantiateList e as = e := by
-  induction as <;> simp [instantiateList, instantiate1'_go_eq_self, *]
+theorem instantiateList_eq_self (h : e.looseBVarRange' = 0) : instantiateList e as = e := by
+  induction as <;> simp [instantiateList, instantiate1_eq_self, *]
 
-theorem instantiate1'_go_liftLooseBVars :
-    instantiate1'.go a (liftLooseBVars' e s (d + 1)) (s + d) = e.liftLooseBVars' s d := by
+theorem instantiate1'_liftLooseBVars :
+    instantiate1' (liftLooseBVars' e s (d + 1)) a (s + d) = e.liftLooseBVars' s d := by
   induction e generalizing s <;>
-    simp [*, instantiate1'.go, liftLooseBVars', Nat.add_right_comm _ _ 1]
+    simp [*, instantiate1', liftLooseBVars', Nat.add_right_comm _ _ 1]
   rename_i i; split; · simp; omega
   · rw [if_neg (by omega), if_neg (by omega)]; rfl
 
-theorem instantiate1'_go_liftLooseBVars_0 (e1 e2 : Expr) :
-    instantiate1'.go e2 (liftLooseBVars' e1 k 1) k = e1 :=
-  (instantiate1'_go_liftLooseBVars (d := 0)).trans liftLooseBVars_zero
+theorem instantiate1'_liftLooseBVars_0 (e1 e2 : Expr) :
+    instantiate1' (liftLooseBVars' e1 k 1) e2 k = e1 := by
+  simpa using (instantiate1'_liftLooseBVars (d := 0)).trans liftLooseBVars_zero
 
-theorem instantiate1'_instantiate1'_go (e1 e2 e3 j) :
-    instantiate1'.go e3 (instantiate1'.go e2 e1 (j+1)) j =
-    instantiate1'.go e2 (instantiate1'.go (e3.liftLooseBVars' 0 1) e1 j) j := by
-  induction e1 generalizing j with simp [liftLooseBVars', instantiate1'.go, *]
+theorem instantiate1'_instantiate1' (e1 e2 e3 j) :
+    instantiate1' (instantiate1' e1 e2 (j+1)) e3 j =
+    instantiate1' (instantiate1' e1 (e3.liftLooseBVars' 0 1) j) e2 j := by
+  induction e1 generalizing j with simp [liftLooseBVars', instantiate1', *]
   | bvar i => ?_
   | _ => rename_i IH; exact IH (j+1)
   split <;> rename_i h
   · split <;> rename_i h1
-    · simp [instantiate1'.go, h1]
+    · simp [instantiate1', h1]
     split <;> rename_i h1'
     · subst i
-      simp [instantiate1'.go]; rw [liftLooseBVars_comm (h := Nat.zero_le _)]
-      exact (instantiate1'_go_liftLooseBVars_0 ..).symm
+      simp [instantiate1']; rw [liftLooseBVars_comm (h := Nat.zero_le _)]
+      exact (instantiate1'_liftLooseBVars_0 ..).symm
     · have hj := Nat.lt_of_le_of_ne (Nat.not_lt.1 h1) (Ne.symm h1')
       let i+1 := i
-      simp [instantiate1'.go, h1, h1', Nat.lt_of_succ_lt_succ h]
+      simp [instantiate1', h1, h1', Nat.lt_of_succ_lt_succ h]
   split <;> rename_i h'
   · subst i
     rw [if_neg (by omega), if_neg (by omega)]
-    simp [instantiate1'.go]
+    simp [instantiate1']
     suffices liftLooseBVars' _ _ (j+1) = _ by
-      rw [this]; exact instantiate1'_go_liftLooseBVars_0 ..
+      rw [this]; exact instantiate1'_liftLooseBVars_0 ..
     exact (liftLooseBVars_liftLooseBVars (Nat.zero_le _) (Nat.le_refl _)).symm
   · have hk := Nat.lt_of_le_of_ne (Nat.not_lt.1 h) (Ne.symm h')
     let i+1 := i
     have hk := Nat.lt_of_add_lt_add_right hk
-    simp [instantiate1'.go, hk]
+    simp [instantiate1', hk]
     -- have := Nat.lt_of_le_of_lt (Nat.le_add_left ..) hk
     rw [if_neg (by omega), if_neg (by omega), if_neg (by omega), if_neg (by omega)]
-    simp [instantiate1'.go]
+    simp [instantiate1']
     rw [if_neg (Nat.lt_asymm hk), if_neg (Nat.ne_of_gt hk)]
 
 theorem instantiateList_append :
@@ -257,25 +226,29 @@ theorem instantiateList_append :
 
 theorem instantiateList_lam : instantiateList (.lam n ty body bi) as =
     .lam n (instantiateList ty as) (instantiateList body as 1) bi := by
-  induction as generalizing ty body <;> simp [instantiate1'.go, *]
+  induction as generalizing ty body <;> simp [instantiate1', *]
 
-theorem instantiateList_instantiate1_comm (h : a.realLooseBVarRange = 0) :
+theorem instantiateList_instantiate1_comm (h : a.looseBVarRange' = 0) :
     (instantiateList e as 1).instantiate1' a =
     instantiateList (e.instantiate1' a) as := by
-  induction as generalizing e <;> simp [instantiate1'.go, *]
-  congr 1; refine (instantiate1'_instantiate1'_go (j := 0) ..).trans ?_
-  rw [liftLooseBVars_eq_self (by simp [h])]; rfl
+  induction as generalizing e <;> simp [instantiate1', *]
+  congr 1; refine (instantiate1'_instantiate1' (j := 0) ..).trans ?_
+  rw [liftLooseBVars_eq_self (by simp [h])]
 
 theorem instantiateRev_push {e : Expr} {subst a} :
-    instantiateRev' e (subst.push a) = instantiateRev' (e.instantiate1' a) subst := by
-  let ⟨subst⟩ := subst; simp [instantiateRev', instantiate', instantiateList, instantiate1']
+    instantiateRev e (subst.push a) = instantiateRev (e.instantiate1' a) subst := by
+  let ⟨subst⟩ := subst; simp [instantiateList, instantiate1']
 
 theorem abstractList_eq_foldl {e : Expr} {as k} :
-    abstractList e as k = List.foldl (abstract1 · · k) e as := by
+    abstractList e as k = List.foldl (fun e a => abstract1 a e k) e as := by
   induction as generalizing e <;> simp_all
 
+@[simp] def abstractRevList : Expr → List FVarId → (k :_:= 0) → Expr
+  | e, [], _ => e
+  | e, a :: as, k => abstract1 a (abstractRevList e as k) k
+
 theorem abstractRevList_eq_foldr {e : Expr} {as k} :
-    abstractRevList e as k = List.foldr (fun a e => abstract1 e a k) e as := by
+    abstractRevList e as k = List.foldr (abstract1 · · k) e as := by
   induction as <;> simp_all
 
 theorem abstractList_reverse {e : Expr} {as k} :
@@ -290,33 +263,33 @@ theorem abstractList_append {e : Expr} {as k} :
     abstractList e (as ++ as') k = abstractList (abstractList e as k) as' k := by
   simp [abstractList_eq_foldl]
 
-theorem abstractFVar_comm {e : Expr} {k} (h : a ≠ b) :
-    abstractFVar a (abstractFVar b e k) k =
-    abstractFVar b (abstractFVar a e k) (k+1) := by
-  induction e generalizing k with simp_all [abstractFVar]
+theorem abstract1_comm {e : Expr} {k} (h : a ≠ b) :
+    abstract1 a (abstract1 b e k) k =
+    abstract1 b (abstract1 a e k) (k+1) := by
+  induction e generalizing k with simp_all [abstract1]
   | bvar => split <;> [rw [if_pos]; simp [*]] <;> omega
-  | fvar => split <;> split <;> simp_all [abstractFVar]
+  | fvar => split <;> split <;> simp_all [abstract1]
 
-theorem abstractFVar_abstractList {e : Expr} {as : List FVarId} {k} (H : a ∉ as) :
-    abstractFVar a (abstractList e (as.map .fvar) k) k =
-    abstractList (abstractFVar a e k) (as.map .fvar) (k+1) := by
-  induction as generalizing e <;> simp_all [abstract1, abstractFVar_comm]
+theorem abstract1_abstractList {e : Expr} {as : List FVarId} {k} (H : a ∉ as) :
+    abstract1 a (abstractList e as k) k =
+    abstractList (abstract1 a e k) as (k+1) := by
+  induction as generalizing e <;> simp_all [abstract1, abstract1_comm]
 
-theorem abstractFVar_abstractList' {e : Expr} {as : List FVarId} {k} (H : (a :: as).Nodup) :
-    abstractFVar a (abstractList e (as.map .fvar) k) (k + as.length) =
-    abstractList (abstractFVar a e k) (as.map .fvar) k := by
+theorem abstract1_abstractList' {e : Expr} {as : List FVarId} {k} (H : (a :: as).Nodup) :
+    abstract1 a (abstractList e as k) (k + as.length) =
+    abstractList (abstract1 a e k) as k := by
   induction as generalizing e a with
   | nil => simp
   | cons b as ih =>
     simp [abstract1] at *; simp [H] at ih
-    rw [← ih H.2.1, ← Nat.add_assoc, ← abstractFVar_comm (.symm H.1.1), ih H.1.2, ih H.2.1]
+    rw [← ih H.2.1, ← Nat.add_assoc, ← abstract1_comm (.symm H.1.1), ih H.1.2, ih H.2.1]
 
-theorem abstractFVar_hasLooseBVar (a e k i) :
-    (abstractFVar a e k).hasLooseBVar' (if i < k then i else i+1) =
+theorem abstract1_hasLooseBVar (a e k i) :
+    (abstract1 a e k).hasLooseBVar' (if i < k then i else i+1) =
     e.hasLooseBVar' i := by
   have (i k) : (if i < k then i else i + 1) + 1 = if i + 1 < k + 1 then i + 1 else i + 1 + 1 := by
     simp; split <;> rfl
-  induction e generalizing i k with simp only [hasLooseBVar', abstractFVar, *]
+  induction e generalizing i k with simp only [hasLooseBVar', abstract1, *]
   | bvar j =>
     by_cases h : j = i <;> simp [h]
     split <;> split <;> omega
@@ -325,14 +298,14 @@ theorem abstractFVar_hasLooseBVar (a e k i) :
     split <;> omega
 
 theorem lowerLooseBVars_eq_instantiate (h : e.hasLooseBVar' k = false) :
-    e.lowerLooseBVars' (k + 1) 1 = instantiate1'.go v e k := by
-  induction e generalizing k with simp_all [hasLooseBVar', lowerLooseBVars', instantiate1'.go]
+    e.lowerLooseBVars' (k + 1) 1 = instantiate1' e v k := by
+  induction e generalizing k with simp_all [hasLooseBVar', lowerLooseBVars', instantiate1']
   | bvar j => split <;> [rw [if_pos (by omega)]; rw [if_neg (by omega)]]
 
-theorem abstractFVar_lower {e : Expr} (h : e.hasLooseBVar' k₁ = false) (hk : k₁ ≤ k₂) :
-    Expr.abstractFVar a (e.lowerLooseBVars' (k₁ + 1) 1) k₂ =
-    (Expr.abstractFVar a e (k₂ + 1)).lowerLooseBVars' (k₁ + 1) 1 := by
-  induction e generalizing k₁ k₂ with simp_all [abstractFVar, lowerLooseBVars', hasLooseBVar']
+theorem abstract1_lower {e : Expr} (h : e.hasLooseBVar' k₁ = false) (hk : k₁ ≤ k₂) :
+    Expr.abstract1 a (e.lowerLooseBVars' (k₁ + 1) 1) k₂ =
+    (Expr.abstract1 a e (k₂ + 1)).lowerLooseBVars' (k₁ + 1) 1 := by
+  induction e generalizing k₁ k₂ with simp_all [abstract1, lowerLooseBVars', hasLooseBVar']
   | bvar i =>
     split <;> [skip; split]
     · rw [if_pos (c := i < k₂ + 1) (by omega), if_pos (by omega)]; simp [*]

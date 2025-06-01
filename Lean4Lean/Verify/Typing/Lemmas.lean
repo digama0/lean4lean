@@ -58,26 +58,26 @@ theorem FVarsIn.fvars_cons :
   FVarsIn.mono fun a h => by cases ofv <;> simp [h]
 
 theorem FVarsIn.abstract_instantiate1 (h : FVarsIn (· ≠ v) e) :
-    (Expr.instantiate1'.go (.fvar v) e k).abstractFVar v k = e := by
-  induction e generalizing k with simp_all [Expr.instantiate1'.go, Expr.abstractFVar, FVarsIn]
+    (Expr.instantiate1' e (.fvar v) k).abstract1 v k = e := by
+  induction e generalizing k with simp_all [Expr.instantiate1', Expr.abstract1, FVarsIn]
   | bvar i =>
     split <;> [skip; split]
-    · simp [Expr.abstractFVar, *]
-    · simp [Expr.abstractFVar, Expr.liftLooseBVars', *]
-    · obtain _|i := i <;> simp [Expr.abstractFVar] <;> omega
+    · simp [Expr.abstract1, *]
+    · simp [Expr.abstract1, Expr.liftLooseBVars', *]
+    · obtain _|i := i <;> simp [Expr.abstract1] <;> omega
   | fvar v' => exact Ne.symm h
 
 theorem FVarsIn.abstract_eq_self (h : FVarsIn (· ≠ v) e) (hc : Closed e k) :
-    e.abstractFVar v k = e := by
-  induction e generalizing k <;> simp_all [FVarsIn, Closed, Expr.abstractFVar, Expr.liftLooseBVars']
+    e.abstract1 v k = e := by
+  induction e generalizing k <;> simp_all [FVarsIn, Closed, Expr.abstract1, Expr.liftLooseBVars']
   exact Ne.symm h
 
 theorem FVarsIn.liftLooseBVars (h : FVarsIn P e) : FVarsIn P (Expr.liftLooseBVars' e s d) := by
   induction e generalizing s <;> simp_all [FVarsIn, Expr.liftLooseBVars']
 
 theorem FVarsIn.instantiate1_go (h1 : FVarsIn P e) (h2 : FVarsIn P a) :
-    FVarsIn P (Expr.instantiate1'.go a e k) := by
-  induction e generalizing k <;> simp_all [FVarsIn, Expr.instantiate1'.go]
+    FVarsIn P (Expr.instantiate1' e a k) := by
+  induction e generalizing k <;> simp_all [FVarsIn, Expr.instantiate1']
   (repeat' split) <;> simp [*, FVarsIn.liftLooseBVars, FVarsIn]
 
 theorem FVarsIn.instantiate1 (h1 : FVarsIn P e) (h2 : FVarsIn P a) :
@@ -87,9 +87,9 @@ theorem FVarsIn.instantiateList (h1 : FVarsIn P e) (h2 : ∀ a ∈ as, FVarsIn P
     FVarsIn P (Expr.instantiateList e as k) := by
   induction as generalizing e <;> simp_all [Expr.instantiateList, FVarsIn, FVarsIn.instantiate1_go]
 
-theorem FVarsIn.abstractFVar (h1 : FVarsIn P e) :
-    FVarsIn P (Expr.abstractFVar a e k) := by
-  induction e generalizing k <;> simp_all [FVarsIn, Expr.instantiate1'.go, Expr.abstractFVar]
+theorem FVarsIn.abstract1 (h1 : FVarsIn P e) :
+    FVarsIn P (Expr.abstract1 a e k) := by
+  induction e generalizing k <;> simp_all [FVarsIn, Expr.instantiate1', Expr.abstract1]
   split <;> simp [FVarsIn, *]
 
 theorem Closed.getAppFn {e} (h : Closed e) : Closed e.getAppFn := by
@@ -102,13 +102,13 @@ theorem Closed.getAppArgsRevList {e} (h : Closed e)
   revert a; unfold Expr.getAppArgsRevList; split <;> simp
   exact ⟨h.2, Closed.getAppArgsRevList h.1⟩
 
-theorem Closed.realLooseBVarRange_le : Closed e k → e.realLooseBVarRange ≤ k := by
+theorem Closed.looseBVarRange_le : Closed e k → e.looseBVarRange' ≤ k := by
   induction e generalizing k <;>
-    simp +contextual [*, Closed, Expr.realLooseBVarRange, Nat.max_le, Nat.sub_le_of_le_add]
+    simp +contextual [*, Closed, Expr.looseBVarRange', Nat.max_le, Nat.sub_le_of_le_add]
   exact id
 
-theorem Closed.realLooseBVarRange_zero (H : Closed e) : e.realLooseBVarRange = 0 := by
-  simpa using H.realLooseBVarRange_le
+theorem Closed.looseBVarRange_zero (H : Closed e) : e.looseBVarRange' = 0 := by
+  simpa using H.looseBVarRange_le
 
 theorem VLocalDecl.WF.hasType : ∀ {d}, VLocalDecl.WF env U (VLCtx.toCtx Δ) d →
     env.HasType U (VLCtx.toCtx ((ofv, d) :: Δ)) d.value d.type
@@ -440,7 +440,7 @@ theorem TrExprS.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
     exact .letE (h1.weakN henv W.toCtx) (ih1 W) (ih2 W) (ih3 (W.cons _))
   | lit _ ih =>
     refine .lit (Expr.liftLooseBVars_eq_self ?_ ▸ ih W :)
-    exact Closed.toConstructor.realLooseBVarRange_le
+    exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (h2.weakN W.toCtx)
 
@@ -866,10 +866,10 @@ theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
 
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀') in
 theorem TrExprS.instN_var (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : Δ₁.find? v = some (e', A)) :
-    TrExprS env Us Δ (Expr.instantiate1'.go e₀ (VLCtx.varToExpr v) dk) (e'.inst e₀' k) := by
+    TrExprS env Us Δ (Expr.instantiate1' (VLCtx.varToExpr v) e₀ dk) (e'.inst e₀' k) := by
   induction W generalizing v e' A with
   | zero =>
-    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1'.go, Expr.liftLooseBVars_zero]
+    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1', Expr.liftLooseBVars_zero]
     · cases H; simp [VLocalDecl.value, VExpr.inst]; exact h₀
     · simp [VLCtx.find?, VLCtx.next] at H
       obtain ⟨e, A, H, rfl, rfl⟩ := H
@@ -880,13 +880,13 @@ theorem TrExprS.instN_var (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : 
       simp [VLocalDecl.depth, VExpr.inst_liftN]
       exact .fvar H
   | @succ _ k _ _ d _ ih =>
-    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1'.go]
+    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1']
     · cases H
       cases d <;> exact .bvar <| by simp [VLocalDecl.value, VExpr.inst, VLocalDecl.depth]; rfl
     · simp [VLCtx.find?, VLCtx.next] at H
       obtain ⟨e, A, H, rfl, rfl⟩ := H
       have := ih H; revert this
-      simp [VLCtx.varToExpr, Expr.instantiate1'.go]; split <;> [skip; split]
+      simp [VLCtx.varToExpr, Expr.instantiate1']; split <;> [skip; split]
       · intro | .bvar h => ?_
         exact .bvar <| by
           simp [VLCtx.find?, VLCtx.next]
@@ -916,7 +916,7 @@ theorem TrProj.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀')
   (t₀ : env.HasType Us.length Δ₀.toCtx e₀' A₀) in
 theorem TrExprS.instN (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : TrExprS env Us Δ₁ e e') :
-    TrExprS env Us Δ (Expr.instantiate1'.go e₀ e dk) (e'.inst e₀' k) := by
+    TrExprS env Us Δ (Expr.instantiate1' e e₀ dk) (e'.inst e₀' k) := by
   induction H generalizing Δ dk k with
   | bvar h1 | fvar h1 => exact instN_var henv h₀ W h1
   | sort h1 => exact .sort h1
@@ -931,8 +931,8 @@ theorem TrExprS.instN (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : TrEx
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     exact .letE (h1.instN henv W.toCtx t₀) (ih1 W) (ih2 W) (ih3 (W.succ (d := .vlet ..)))
   | lit _ ih =>
-    refine .lit (Expr.instantiate1'_go_eq_self ?_ ▸ ih W :)
-    exact Closed.toConstructor.realLooseBVarRange_le
+    refine .lit (Expr.instantiate1'_eq_self ?_ ▸ ih W :)
+    exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (h2.instN W.toCtx)
 
@@ -946,10 +946,10 @@ theorem TrExprS.inst {Δ : VLCtx} (henv : Ordered env)
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀') in
 theorem TrExprS.instN_let_var (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ)
     (H : Δ₁.find? v = some (e', A)) :
-    TrExprS env Us Δ (Expr.instantiate1'.go e₀ (VLCtx.varToExpr v) dk) e' := by
+    TrExprS env Us Δ (Expr.instantiate1' (VLCtx.varToExpr v) e₀ dk) e' := by
   induction W generalizing v e' A with
   | zero =>
-    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1'.go, Expr.liftLooseBVars_zero]
+    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1', Expr.liftLooseBVars_zero]
     · cases H; simp [VLocalDecl.value, VExpr.inst]; exact h₀
     · simp [VLCtx.find?, VLCtx.next] at H
       obtain ⟨e, A, H, rfl, rfl⟩ := H
@@ -960,13 +960,13 @@ theorem TrExprS.instN_let_var (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ)
       simp [VLocalDecl.depth]
       exact .fvar H
   | @succ _ k _ _ d _ ih =>
-    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1'.go]
+    obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1']
     · cases H
       cases d <;> exact .bvar <| by simp [VLocalDecl.value, VExpr.inst, VLocalDecl.depth]; rfl
     · simp [VLCtx.find?, VLCtx.next] at H
       obtain ⟨e, A, H, rfl, rfl⟩ := H
       have := ih H; revert this
-      simp [VLCtx.varToExpr, Expr.instantiate1'.go]; split <;> [skip; split]
+      simp [VLCtx.varToExpr, Expr.instantiate1']; split <;> [skip; split]
       · intro | .bvar h => ?_
         exact .bvar <| by
           simp [VLCtx.find?, VLCtx.next]
@@ -991,7 +991,7 @@ theorem TrExprS.instN_let_var (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ)
 
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀') in
 theorem TrExprS.instN_let (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : TrExprS env Us Δ₁ e e') :
-    TrExprS env Us Δ (Expr.instantiate1'.go e₀ e dk) e' := by
+    TrExprS env Us Δ (Expr.instantiate1' e e₀ dk) e' := by
   induction H generalizing Δ dk k with
   | bvar h1 | fvar h1 => exact instN_let_var henv h₀ W h1
   | sort h1 => exact .sort h1
@@ -1006,8 +1006,8 @@ theorem TrExprS.instN_let (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ) (H 
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     exact .letE (W.toCtx ▸ h1) (ih1 W) (ih2 W) (ih3 (W.succ (d := .vlet ..)))
   | lit _ ih =>
-    refine .lit (Expr.instantiate1'_go_eq_self ?_ ▸ ih W :)
-    exact Closed.toConstructor.realLooseBVarRange_le
+    refine .lit (Expr.instantiate1'_eq_self ?_ ▸ ih W :)
+    exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (W.toCtx ▸ h2)
 
@@ -1032,7 +1032,7 @@ theorem TrExpr.inst_let (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
   ⟨_, .inst_let henv s1' s2, _, h1'.symm.trans_l henv hΔ h1⟩
 
 theorem TrExprS.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H : TrExprS env Us Δ₁ e e') :
-    TrExprS env Us Δ (e.abstractFVar v₀ dk) e' := by
+    TrExprS env Us Δ (e.abstract1 v₀ dk) e' := by
   induction H generalizing dk k Δ with
   | bvar h1 =>
     exact .bvar <| (W.find? (by nofun)).trans <| by
@@ -1040,12 +1040,12 @@ theorem TrExprS.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H :
   | @fvar _ _ _ fv h1 =>
     if h : fv = v₀ then
       rw [h, W.find?_self] at h1; cases h1
-      rw [Expr.abstractFVar, if_pos (by simp [h])]
+      rw [Expr.abstract1, if_pos (by simp [h])]
       exact .bvar <| (W.find? (by nofun)).trans (by simpa using W.find?_self)
     else
       have := W.find? (v := .inr fv) (by rintro ⟨⟩; trivial)
       simp at this
-      rw [Expr.abstractFVar, if_neg]
+      rw [Expr.abstract1, if_neg]
       · exact .fvar (this.trans h1)
       · simp; rintro rfl; trivial
   | sort h1 => exact .sort h1
@@ -1062,7 +1062,7 @@ theorem TrExprS.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H :
   | proj _ h2 ih => exact .proj (ih W) (W.toCtx ▸ h2)
 
 theorem TrExpr.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H : TrExpr env Us Δ₁ e e') :
-    TrExpr env Us Δ (e.abstractFVar v₀ dk) e' :=
+    TrExpr env Us Δ (e.abstract1 v₀ dk) e' :=
   let ⟨_, s, h⟩ := H; ⟨_, s.abstract W, W.toCtx ▸ h⟩
 
 def VLocalDecl.OnVars (P : Nat → Prop) : VLocalDecl → Prop
@@ -1114,11 +1114,6 @@ inductive LambdaBodyN : Nat → Expr → Expr → Prop
   | zero : LambdaBodyN 0 e e
   | succ : LambdaBodyN n body e → LambdaBodyN (n+1) (.lam i ty body bi) e
 
-theorem LambdaBodyN.safe (H : LambdaBodyN n e1 e2) : e1.Safe → e2.Safe := by
-  induction H with
-  | zero => exact id
-  | succ _ ih => exact fun h => ih h.2
-
 theorem LambdaBodyN.closed (H : LambdaBodyN n e1 e2) : e1.Closed k → e2.Closed (k + n) := by
   induction H generalizing k with
   | zero => exact id
@@ -1142,8 +1137,7 @@ theorem BetaReduce.appRevList (H : BetaReduce f f') :
   | nil => exact H
   | cons _ _ ih => exact .app ih
 
-theorem BetaReduce.cheapBetaReduce (hs : e.Safe) (hc : e.Closed) :
-    BetaReduce e e.cheapBetaReduce := by
+theorem BetaReduce.cheapBetaReduce (hc : e.Closed) : BetaReduce e e.cheapBetaReduce := by
   simp [Expr.cheapBetaReduce]
   split; · exact .refl
   split; · exact .refl
@@ -1171,13 +1165,13 @@ theorem BetaReduce.cheapBetaReduce (hs : e.Safe) (hc : e.Closed) :
       let .succ (body := body) h1 := h1
       rw [Expr.instantiateList_lam]
       simp at h ⊢; refine .trans (.appRevList .beta) ?_
-      rw [Expr.instantiateList_instantiate1_comm h.1.realLooseBVarRange_zero]
+      rw [Expr.instantiateList_instantiate1_comm h.1.looseBVarRange_zero]
       exact ih _ h.2 (a::l₂) _ h1
   have hl₁ : ∀ x ∈ l₁, x.Closed := by
     have := eqr ▸ hc.getAppArgsRevList; simp [or_imp, forall_and] at this
     exact this.2
   unfold Expr.cheapBetaReduce.cont; split <;> rename_i h3
-  · simp [Expr.hasLooseBVars, (h1.safe hs.getAppFn).looseBVarRange_eq] at h3
+  · simp [Expr.hasLooseBVars] at h3
     rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) rfl (by simp [← eq])]
     rw [← e.mkAppRevList_getAppArgsRevList, eqr]; simp
     refine .appRevList <| inst_reduce hl₁ [] <| Expr.instantiateList_eq_self (by simp [h3])
@@ -1197,8 +1191,8 @@ theorem BetaReduce.cheapBetaReduce (hs : e.Safe) (hc : e.Closed) :
   | nil => cases lt
   | cons a l ih =>
     simp at hl₁
-    obtain _ | n := n <;> simp [Expr.instantiate1'.go]
-    · exact Expr.instantiateList_eq_self hl₁.1.realLooseBVarRange_zero
+    obtain _ | n := n <;> simp [Expr.instantiate1']
+    · exact Expr.instantiateList_eq_self hl₁.1.looseBVarRange_zero
     · exact ih hl₁.2 _ (Nat.lt_of_succ_lt_succ lt)
 
 theorem TrExpr.beta (H : TrExpr env Us Δ e e')
@@ -1226,12 +1220,12 @@ theorem TrExpr.beta (H : TrExpr env Us Δ e e')
 
 theorem TrExpr.cheapBetaReduce (H : TrExpr env Us Δ e e')
     (henv : VEnv.WF env) (hΓ : VLCtx.WF env Us.length Δ)
-    (hs : e.Safe) (noBV : Δ.NoBV) : TrExpr env Us Δ e.cheapBetaReduce e' :=
-  H.beta henv hΓ <| .cheapBetaReduce hs <| noBV ▸ H.closed.mono (by simp)
+    (noBV : Δ.NoBV) : TrExpr env Us Δ e.cheapBetaReduce e' :=
+  H.beta henv hΓ <| .cheapBetaReduce <| noBV ▸ H.closed.mono (by simp)
 
 theorem TrExprS.uninstantiateN
     (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ)
-    (H : TrExprS env Us Δ₁ (Expr.instantiate1'.go (.fvar v₀) e dk) e')
+    (H : TrExprS env Us Δ₁ (Expr.instantiate1' e (.fvar v₀) dk) e')
     (sc : FVarsIn (· ≠ v₀) e) :
     TrExprS env Us Δ e e' := by
   have := H.abstract W
@@ -1239,7 +1233,7 @@ theorem TrExprS.uninstantiateN
 
 theorem TrExpr.uninstantiateN
     (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ)
-    (H : TrExpr env Us Δ₁ (Expr.instantiate1'.go (.fvar v₀) e dk) e')
+    (H : TrExpr env Us Δ₁ (Expr.instantiate1' e (.fvar v₀) dk) e')
     (sc : FVarsIn (· ≠ v₀) e) :
     TrExpr env Us Δ e e' :=
   let ⟨_, s, h⟩ := H; ⟨_, s.uninstantiateN W sc, W.toCtx ▸ h⟩

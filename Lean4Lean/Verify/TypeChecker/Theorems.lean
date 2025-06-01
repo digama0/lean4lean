@@ -324,10 +324,10 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
   match n, c, hn, e with
   | 0, _, _, e => e
   | n+1, .vlam x name ty _ bi c, h, e =>
-    c.mkForall n (Nat.le_of_succ_le_succ h) (.forallE name ty (.abstractFVar x e) bi)
+    c.mkForall n (Nat.le_of_succ_le_succ h) (.forallE name ty (.abstract1 x e) bi)
   | n+1, .vlet x name ty val _ _ c, h, e =>
     c.mkForall n (Nat.le_of_succ_le_succ h) <|
-      let e' := Expr.abstractFVar x e
+      let e' := Expr.abstract1 x e
       if e'.hasLooseBVar' 0 then
         .letE name ty val e' false
       else
@@ -345,10 +345,10 @@ termination_by structural n
   match n, c, hn, e with
   | 0, _, _, e => e
   | n+1, .vlam x name ty _ bi c, h, e =>
-    c.mkLambda n (Nat.le_of_succ_le_succ h) (.lam name ty (.abstractFVar x e) bi)
+    c.mkLambda n (Nat.le_of_succ_le_succ h) (.lam name ty (.abstract1 x e) bi)
   | n+1, .vlet x name ty val _ _ c, h, e =>
     c.mkLambda n (Nat.le_of_succ_le_succ h) <|
-      let e' := Expr.abstractFVar x e
+      let e' := Expr.abstract1 x e
       if e'.hasLooseBVar' 0 then
         .letE name ty val e' false
       else
@@ -490,9 +490,9 @@ theorem MLCtx.WF.find?_eq {c : MLCtx} (wf : c.WF env Us) :
 
 theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
-    c.lctx.mkForall' arr e = c.mkForall n hn e := by
+    c.lctx.mkForall arr e = c.mkForall n hn e := by
   have := congrArg (Array.mk ·.reverse) harr; simp at this
-  rw [LocalContext.mkForall', this, ← List.map_reverse, LocalContext.mkBinding'_eq,
+  rw [LocalContext.mkForall, this, ← List.map_reverse, LocalContext.mkBinding_eq,
     LocalContext.mkBindingList_eq_fold, List.foldr_reverse]
   · clear harr this
     induction n generalizing c e with
@@ -514,9 +514,9 @@ theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
 
 theorem MLCtx.WF.mkLambda_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
-    c.lctx.mkLambda' arr e = c.mkLambda n hn e := by
+    c.lctx.mkLambda arr e = c.mkLambda n hn e := by
   have := congrArg (Array.mk ·.reverse) harr; simp at this
-  rw [LocalContext.mkLambda', this, ← List.map_reverse, LocalContext.mkBinding'_eq,
+  rw [LocalContext.mkLambda, this, ← List.map_reverse, LocalContext.mkBinding_eq,
     LocalContext.mkBindingList_eq_fold, List.foldr_reverse]
   · clear harr this
     induction n generalizing c e with
@@ -648,7 +648,7 @@ theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     (inferLambda.loop false arr e).WF (c.withMLC m) s (fun ty _ =>
       ∃ e', c.TrExprS e₀ e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty') := by
   unfold inferLambda.loop
-  simp [Expr.instantiateRev', Expr.instantiate', harr, -bind_pure_comp]; split
+  simp [harr, -bind_pure_comp]; split
   · rename_i name dom body bi
     refine (checkType.WF ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
     · apply hr1.1.instantiateList; simp
@@ -665,7 +665,7 @@ theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     refine checkLambda.loop.WF (Nat.succ_le_succ hn)
       (by simp [hdrop]) (by simp [harr]) ?_ (this.reserves hr1).2 ?_ --?_
     · simp [he₀]; congr 1
-      simp [Expr.instantiateRev', Expr.instantiate', harr, Expr.instantiateList_lam]
+      simp [harr, Expr.instantiateList_lam]
       conv => enter [2,2]; exact (Expr.instantiateList_instantiate1_comm (by trivial)).symm
       refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
       · simp [FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
@@ -676,9 +676,8 @@ theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     · apply hr1.instantiateList; simp
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
     refine .stateWF fun wf => .getLCtx <| .pure ?_
-    have := ty.safeSorry -- FIXME
     have ⟨_, h2, e2⟩ := h2.trExpr c.venv_wf.ordered wf.trctx.wf
-      |>.cheapBetaReduce c.venv_wf wf.trctx.wf this m.noBV
+      |>.cheapBetaReduce c.venv_wf wf.trctx.wf m.noBV
     have h3 := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx e2.symm
     let ⟨h1', h2'⟩ := mwf.1.mkLambda_trS c.venv_wf h1 h3 n hn
     have h3' := (mwf.1.mkForall_trS c.venv_wf h2 (h3.isType c.venv_wf mwf.1.tr.wf.toCtx) n hn).1
@@ -702,7 +701,7 @@ theorem inferLambda.loop.WF {c : VContext}
     (inferLambda.loop true arr e).WF (c.withMLC m) s (fun ty₀ _ =>
       c.TrExpr ty₀ (m.mkForall' n hn ty')) := by
   unfold inferLambda.loop
-  simp [Expr.instantiateRev', Expr.instantiate', harr, -bind_pure_comp]; split
+  simp [harr, -bind_pure_comp]; split
   · rename_i name dom body bi
     refine .stateWF fun wf => ?_
     simp [Expr.instantiateList_lam] at h1
@@ -726,8 +725,7 @@ theorem inferLambda.loop.WF {c : VContext}
   · refine (inferType.WF h1 h2).bind fun ty _ _ hty => ?_
     refine .stateWF fun wf => .getLCtx <| .pure ?_
     let ⟨h1', h2'⟩ := mwf.1.mkLambda_trS c.venv_wf h1 h2 n hn
-    have := ty.safeSorry -- FIXME
-    have hty := hty.cheapBetaReduce c.venv_wf wf.trctx.wf this m.noBV
+    have hty := hty.cheapBetaReduce c.venv_wf wf.trctx.wf m.noBV
     have h3' := (mwf.1.mkForall_tr c.venv_wf hty (h2.isType c.venv_wf mwf.1.tr.wf) n hn).1
     simp [hdrop] at h1' h2' h3'
     exact mwf.1.mkForall_eq _ _ harr ▸ h3'

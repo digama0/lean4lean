@@ -115,28 +115,28 @@ def inferType (e : Expr) (inferOnly := true) : RecM Expr := fun m => m.inferType
 def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
   loop fvars : Expr → RecM Expr
   | .lam name dom body bi => do
-    let d := dom.instantiateRev' fvars
+    let d := dom.instantiateRev fvars
     if !inferOnly then
       _ ← ensureSortCore (← inferType d inferOnly) d
     withLocalDecl name d bi fun fv => do
       let fvars := fvars.push fv
       loop fvars body
   | e => do
-    let r ← inferType (e.instantiateRev' fvars) inferOnly
+    let r ← inferType (e.instantiateRev fvars) inferOnly
     let r := r.cheapBetaReduce
-    return (← getLCtx).mkForall' fvars r
+    return (← getLCtx).mkForall fvars r
 
 def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
   loop fvars us : Expr → RecM Expr
   | .forallE name dom body bi => do
-    let d := dom.instantiateRev' fvars
+    let d := dom.instantiateRev fvars
     let t1 ← ensureSortCore (← inferType d inferOnly) d
     let us := us.push t1.sortLevel!
     withLocalDecl name d bi fun fv => do
       let fvars := fvars.push fv
       loop fvars us body
   | e => do
-    let r ← inferType (e.instantiateRev' fvars) inferOnly
+    let r ← inferType (e.instantiateRev fvars) inferOnly
     let s ← ensureSortCore r e
     return .sort <| us.foldr mkLevelIMax' s.sortLevel!
 
@@ -157,10 +157,10 @@ def inferApp (e : Expr) : RecM Expr := do
     | .forallE _ _ body _ =>
       fType := body
     | _ =>
-      fType := fType.instantiateRevRange' j i args
+      fType := fType.instantiateRevRange j i args
       fType := (← ensureForallCore fType e).bindingBody!
       j := i
-  return fType.instantiateRevRange' j args.size args
+  return fType.instantiateRevRange j args.size args
 
 def markUsed (n : Nat) (fvars : Array Expr) (b : Expr) (used : Array Bool) : Array Bool := Id.run do
   if !b.hasFVar then return used
@@ -177,8 +177,8 @@ def markUsed (n : Nat) (fvars : Array Expr) (b : Expr) (used : Array Bool) : Arr
 def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
   loop fvars vals : Expr → RecM Expr
   | .letE name type val body _ => do
-    let type := type.instantiateRev' fvars
-    let val := val.instantiateRev' fvars
+    let type := type.instantiateRev fvars
+    let val := val.instantiateRev fvars
     withLetDecl name type val fun fv => do
       let fvars := fvars.push fv
       let vals := vals.push val
@@ -189,7 +189,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
           throw <| .letTypeMismatch (← getEnv) (← getLCtx) name valType type
       loop fvars vals body
   | e => do
-    let r ← inferType (e.instantiateRev' fvars) inferOnly
+    let r ← inferType (e.instantiateRev fvars) inferOnly
     let r := r.cheapBetaReduce
     let rec loopUsed i (used : Array Bool) :=
       match i with
@@ -204,7 +204,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
     for fvar in fvars, b in used do
       if b then
         usedFVars := usedFVars.push fvar
-    return (← getLCtx).mkForall' fvars r
+    return (← getLCtx).mkForall fvars r
 
 def isProp (e : Expr) : RecM Bool :=
   return (← whnf (← inferType e)) == .prop
@@ -448,35 +448,35 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
   | .lam _ tDom tBody _, .lam name sDom sBody bi => do
     let sType ← if tDom != sDom then
-      let sType := sDom.instantiateRev' subst
-      let tType := tDom.instantiateRev' subst
+      let sType := sDom.instantiateRev subst
+      let tType := tDom.instantiateRev subst
       if !(← isDefEq tType sType) then return false
       pure (some sType)
     else pure none
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
-      let sType := sType.getD (sDom.instantiateRev' subst)
+      let sType := sType.getD (sDom.instantiateRev subst)
       withLocalDecl name sType bi fun fv => do
         isDefEqLambda tBody sBody (subst.push fv)
     else
       isDefEqLambda tBody sBody (subst.push default)
-  | t, s => isDefEq (t.instantiateRev' subst) (s.instantiateRev' subst)
+  | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
 def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
   | .forallE _ tDom tBody _, .forallE name sDom sBody bi => do
     let sType ← if tDom != sDom then
-      let sType := sDom.instantiateRev' subst
-      let tType := tDom.instantiateRev' subst
+      let sType := sDom.instantiateRev subst
+      let tType := tDom.instantiateRev subst
       if !(← isDefEq tType sType) then return false
       pure (some sType)
     else pure none
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
-      let sType := sType.getD (sDom.instantiateRev' subst)
+      let sType := sType.getD (sDom.instantiateRev subst)
       withLocalDecl name sType bi fun fv =>
         isDefEqForall tBody sBody (subst.push fv)
     else
       isDefEqForall tBody sBody (subst.push default)
-  | t, s => isDefEq (t.instantiateRev' subst) (s.instantiateRev' subst)
+  | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
 def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
   if ← modifyGet fun (.mk a1 a2 a3 a4 a5 a6 (eqvManager := m)) =>
@@ -730,21 +730,21 @@ def ensureType (e : Expr) : M Expr := do ensureSort (← inferType e) e
 def etaExpand (e : Expr) : M Expr :=
   let rec loop fvars
   | .lam name dom body bi => do
-    let d := dom.instantiateRev' fvars
+    let d := dom.instantiateRev fvars
     withLocalDecl name d bi fun fv => do
       let fvars := fvars.push fv
       loop fvars body
   | it => do
-    let itType ← whnf <| ← inferType <| it.instantiateRev' fvars
+    let itType ← whnf <| ← inferType <| it.instantiateRev fvars
     if !itType.isForall then return e
     let rec loop2 fvars args
     | 0, _ => throw .deepRecursion
     | fuel + 1, .forallE name dom body bi => do
-      let d := dom.instantiateRev' fvars
+      let d := dom.instantiateRev fvars
       withLocalDecl name d bi fun arg => do
         let fvars := fvars.push arg
         let args := args.push arg
         loop2 fvars args fuel <| ← whnf <| body.instantiate1 arg
-    | _, it => return (← getLCtx).mkLambda' fvars (mkAppN it args)
+    | _, it => return (← getLCtx).mkLambda fvars (mkAppN it args)
     loop2 fvars #[] 1000 itType
   loop #[] e

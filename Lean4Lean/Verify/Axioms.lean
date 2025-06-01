@@ -79,26 +79,181 @@ axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Exp
 
 namespace Expr
 
-def Safe : Expr → Prop
-  | .bvar i => i < 2^20 - 1
+def hasFVar' : Expr → Bool
+  | .fvar _ => true
   | .const ..
-  | .sort _ -- TODO: should this use Level.Safe?
-  | .fvar _
+  | .bvar _
+  | .sort _
   | .mvar _
-  | .lit _ => True
-  | .mdata _ e
-  | .proj _ _ e => e.Safe
+  | .lit _ => false
+  | .mdata _ e => e.hasFVar'
+  | .proj _ _ e => e.hasFVar'
   | .app e1 e2
   | .lam _ e1 e2 _
-  | .forallE _ e1 e2 _ => e1.Safe ∧ e2.Safe
-  | .letE _ e1 e2 e3 _ => e1.Safe ∧ e2.Safe ∧ e3.Safe
+  | .forallE _ e1 e2 _ => e1.hasFVar' || e2.hasFVar'
+  | .letE _ t v b _ => t.hasFVar' || v.hasFVar' || b.hasFVar'
 
-/--
-Lean has some incorrect bound variable handling above 2^20. We use an axiom here
-to keep track of places where we are using the assumption that bound variables
-don't go too large.
--/
-axiom safeSorry (e : Expr) : e.Safe
+/-- This is currently false, see bug lean4#8554 -/
+axiom hasFVar_eq (e : Expr) : e.hasFVar = e.hasFVar'
+
+def hasMVar' : Expr → Bool
+  | .mvar _ => true
+  | .const ..
+  | .bvar _
+  | .sort _
+  | .fvar _
+  | .lit _ => false
+  | .mdata _ e => e.hasMVar'
+  | .proj _ _ e => e.hasMVar'
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.hasMVar' || e2.hasMVar'
+  | .letE _ t v b _ => t.hasMVar' || v.hasMVar' || b.hasMVar'
+
+/-- This is currently false, see bug lean4#8554 -/
+axiom hasMVar_eq (e : Expr) : e.hasMVar = e.hasMVar'
+
+def looseBVarRange' : Expr → Nat
+  | .bvar i => i + 1
+  | .const ..
+  | .sort _
+  | .fvar _
+  | .mvar _
+  | .lit _ => 0
+  | .mdata _ e
+  | .proj _ _ e => e.looseBVarRange'
+  | .app e1 e2 => max e1.looseBVarRange' e2.looseBVarRange'
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => max e1.looseBVarRange' (e2.looseBVarRange' - 1)
+  | .letE _ e1 e2 e3 _ => max (max e1.looseBVarRange' e2.looseBVarRange') (e3.looseBVarRange' - 1)
+
+/-- This is currently false, see bug lean4#8554 -/
+@[simp] axiom looseBVarRange_eq (e : Expr) : e.looseBVarRange = e.looseBVarRange'
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom replace_eq (e : Expr) (f) : e.replace f = e.replaceNoCache f
+
+def liftLooseBVars' (e : @& Expr) (s d : @& Nat) : Expr :=
+  match e with
+  | .bvar i => .bvar (if i < s then i else i + d)
+  | .mdata m e => .mdata m (liftLooseBVars' e s d)
+  | .proj n i e => .proj n i (liftLooseBVars' e s d)
+  | .app f a => .app (liftLooseBVars' f s d) (liftLooseBVars' a s d)
+  | .lam n t b bi => .lam n (liftLooseBVars' t s d) (liftLooseBVars' b (s+1) d) bi
+  | .forallE n t b bi => .forallE n (liftLooseBVars' t s d) (liftLooseBVars' b (s+1) d) bi
+  | .letE n t v b bi =>
+    .letE n (liftLooseBVars' t s d) (liftLooseBVars' v s d) (liftLooseBVars' b (s+1) d) bi
+  | e@(.const ..)
+  | e@(.sort _)
+  | e@(.fvar _)
+  | e@(.mvar _)
+  | e@(.lit _) => e
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom liftLooseBVars_eq (e : Expr) (s d) : e.liftLooseBVars s d = e.liftLooseBVars' s d
+
+def lowerLooseBVars' (e : @& Expr) (s d : @& Nat) : Expr :=
+  if s < d then e else
+  match e with
+  | .bvar i => .bvar (if i < s then i else i - d)
+  | .mdata m e => .mdata m (lowerLooseBVars' e s d)
+  | .proj n i e => .proj n i (lowerLooseBVars' e s d)
+  | .app f a => .app (lowerLooseBVars' f s d) (lowerLooseBVars' a s d)
+  | .lam n t b bi => .lam n (lowerLooseBVars' t s d) (lowerLooseBVars' b (s+1) d) bi
+  | .forallE n t b bi => .forallE n (lowerLooseBVars' t s d) (lowerLooseBVars' b (s+1) d) bi
+  | .letE n t v b bi =>
+    .letE n (lowerLooseBVars' t s d) (lowerLooseBVars' v s d) (lowerLooseBVars' b (s+1) d) bi
+  | e@(.const ..)
+  | e@(.sort _)
+  | e@(.fvar _)
+  | e@(.mvar _)
+  | e@(.lit _) => e
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom lowerLooseBVars_eq (e : Expr) (s d) : e.lowerLooseBVars s d = e.lowerLooseBVars' s d
+
+def instantiate1' (e : Expr) (subst : Expr) (d := 0) : Expr :=
+  match e with
+  | .bvar i => if i < d then e else if i = d then subst.liftLooseBVars' 0 d else .bvar (i - 1)
+  | .mdata m e => .mdata m (instantiate1' e subst d)
+  | .proj s i e => .proj s i (instantiate1' e subst d)
+  | .app f a => .app (instantiate1' f subst d) (instantiate1' a subst d)
+  | .lam n t b bi => .lam n (instantiate1' t subst d) (instantiate1' b subst (d+1)) bi
+  | .forallE n t b bi => .forallE n (instantiate1' t subst d) (instantiate1' b subst (d+1)) bi
+  | .letE n t v b bi =>
+    .letE n (instantiate1' t subst d) (instantiate1' v subst d) (instantiate1' b subst (d+1)) bi
+  | .const ..
+  | .sort _
+  | .fvar _
+  | .mvar _
+  | .lit _ => e
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom instantiate1_eq (e : Expr) (subst) : e.instantiate1 subst = e.instantiate1' subst
+
+@[simp] def instantiateList : Expr → List Expr → (k :_:= 0) → Expr
+  | e, [], _ => e
+  | e, a :: as, k => instantiateList (instantiate1' e a k) as k
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom instantiate_eq (e : Expr) (subst) :
+    e.instantiate subst = e.instantiateList subst.toList
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom instantiateRev_eq (e : Expr) (subst) :
+    e.instantiateRev subst = e.instantiate subst.reverse
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom instantiateRange_eq (e : Expr) (subst) :
+    e.instantiateRange start stop subst = e.instantiate (subst.extract start stop)
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom instantiateRevRange_eq (e : Expr) (subst) :
+    e.instantiateRevRange start stop subst = e.instantiateRev (subst.extract start stop)
+
+def abstract1 (v : FVarId) : Expr → (k :_:= 0) → Expr
+  | .bvar i, d => .bvar (if i < d then i else i + 1)
+  | e@(.fvar v'), d => if v == v' then .bvar d else e
+  | .mdata m e, d => .mdata m (abstract1 v e d)
+  | .proj s i e, d => .proj s i (abstract1 v e d)
+  | .app f a, d => .app (abstract1 v f d) (abstract1 v a d)
+  | .lam n t b bi, d => .lam n (abstract1 v t d) (abstract1 v b (d+1)) bi
+  | .forallE n t b bi, d => .forallE n (abstract1 v t d) (abstract1 v b (d+1)) bi
+  | .letE n t val b bi, d =>
+    .letE n (abstract1 v t d) (abstract1 v val d) (abstract1 v b (d+1)) bi
+  | e@(.const ..), _
+  | e@(.sort _), _
+  | e@(.mvar _), _
+  | e@(.lit _), _ => e
+
+@[simp] def abstractList : Expr → List FVarId → (k :_:= 0) → Expr
+  | e, [], _ => e
+  | e, a :: as, k => abstractList (abstract1 a e k) as k
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom abstract_eq (e : Expr) (xs : List FVarId) :
+    e.abstract ⟨xs.map .fvar⟩ = e.abstractList xs
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom abstractRange_eq (e : Expr) (n : Nat) (xs : Array Expr) :
+    e.abstractRange n xs = e.abstract (xs.extract 0 n)
+
+def hasLooseBVar' : (e : @& Expr) → (bvarIdx : @& Nat) → Bool
+  | .bvar i, d => i = d
+  | .mdata _ e, d
+  | .proj _ _ e, d => hasLooseBVar' e d
+  | .app f a, d => hasLooseBVar' f d || hasLooseBVar' a d
+  | .lam _ t b _, d
+  | .forallE _ t b _, d => hasLooseBVar' t d || hasLooseBVar' b (d+1)
+  | .letE _ t v b _, d => hasLooseBVar' t d || hasLooseBVar' v d || hasLooseBVar' b (d+1)
+  | .const .., _
+  | .sort _, _
+  | .fvar _, _
+  | .mvar _, _
+  | .lit _, _ => false
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom hasLooseBVar_eq (e : Expr) (n : Nat) : e.hasLooseBVar n = e.hasLooseBVar' n
 
 end Expr
 
