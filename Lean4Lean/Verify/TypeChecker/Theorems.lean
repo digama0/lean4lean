@@ -185,6 +185,11 @@ theorem M.WF.bind {c : VContext} {s : VState} {x : M α} {f : α → M β} {Q R}
 theorem M.WF.pure {c : VContext} {s : VState} {Q} (H : Q a s) :
     (pure a : M α).WF c s Q := by rintro h _ _ ⟨⟩; exact ⟨_, rfl, .rfl, h, H⟩
 
+theorem M.WF.map {c : VContext} {s : VState} {x : M α} {f : α → β} {Q R}
+    (h1 : x.WF c s Q) (h2 : ∀ a s', s.LE s' → Q a s' → R (f a) s') : (f <$> x).WF c s R := by
+  rw [map_eq_pure_bind]
+  exact h1.bind fun _ _ le h => .pure (h2 _ _ le h)
+
 theorem M.WF.throw {c : VContext} {s : VState} {Q} : (throw e : M α).WF c s Q := nofun
 
 theorem M.WF.le {c : VContext} {s : VState} {Q R} {x : M α}
@@ -217,6 +222,11 @@ theorem RecM.WF.bind {c : VContext} {s : VState} {x : RecM α} {f : α → RecM 
 
 theorem RecM.WF.pure {c : VContext} {s : VState} {Q} (H : Q a s) : (pure a : RecM α).WF c s Q :=
   fun _ _ => .pure H
+
+theorem RecM.WF.map {c : VContext} {s : VState} {x : RecM α} {f : α → β} {Q R}
+    (h1 : x.WF c s Q) (h2 : ∀ a s', s.LE s' → Q a s' → R (f a) s') : (f <$> x).WF c s R := by
+  rw [map_eq_pure_bind]
+  exact h1.bind fun _ _ le h => .pure (h2 _ _ le h)
 
 theorem RecM.WF.throw {c : VContext} {s : VState} {Q} : (throw e : RecM α).WF c s Q := nofun
 
@@ -822,3 +832,17 @@ theorem checkForall.WF
   .stateWF fun wf =>
   (c.withMLC_self ▸ checkForall.loop.WF (Nat.zero_le _)
     rfl rfl rfl rfl h1 wf.ngen_wf .nil .nil rfl) hinf
+
+theorem addEquiv.WF {c : VContext} {s : VState} :
+    RecM.WF c s (modify fun st => { st with eqvManager := st.eqvManager.addEquiv e₁ e₂ })
+      fun _ _ => True := by
+  rintro _ mwf wf _ _ ⟨⟩
+  exact ⟨{ s with toState := _ }, rfl, NameGenerator.LE.rfl, { wf with }, trivial⟩
+
+theorem isDefEq.WF {c : VContext} {s : VState}
+    (he₁ : c.TrExpr e₁ e₁') (he₂ : c.TrExpr e₂ e₂') :
+    RecM.WF c s (isDefEq e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
+  refine (isDefEqCore.WF he₁ he₂).bind fun b _ _ hb => ?_
+  simp; split
+  · exact addEquiv.WF.map fun _ _ _ _ => hb
+  · exact .pure hb
