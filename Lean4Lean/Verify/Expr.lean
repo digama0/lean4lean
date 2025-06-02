@@ -245,6 +245,10 @@ theorem instantiateList_lam : instantiateList (.lam n ty body bi) as =
     .lam n (instantiateList ty as) (instantiateList body as 1) bi := by
   induction as generalizing ty body <;> simp [instantiate1', *]
 
+theorem instantiateList_forallE : instantiateList (.forallE n ty body bi) as =
+    .forallE n (instantiateList ty as) (instantiateList body as 1) bi := by
+  induction as generalizing ty body <;> simp [instantiate1', *]
+
 theorem instantiateList_instantiate1_comm (h : a.looseBVarRange' = 0) :
     (instantiateList e as 1).instantiate1' a =
     instantiateList (e.instantiate1' a) as := by

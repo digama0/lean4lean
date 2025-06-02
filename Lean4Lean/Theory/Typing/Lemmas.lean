@@ -235,7 +235,7 @@ theorem HasType.app (h1 : HasType env U Γ f (.forallE A B)) (h2 : HasType env U
     HasType env U Γ (.app f a) (B.inst a) := .appDF h1 h2
 theorem HasType.lam (h1 : HasType env U Γ A (.sort u)) (h2 : HasType env U (A::Γ) body B) :
     HasType env U Γ (.lam A body) (.forallE A B) := .lamDF h1 h2
-theorem IsDefEq.forallE
+theorem HasType.forallE
     (h1 : HasType env U Γ A (.sort u)) (h2 : HasType env U (A::Γ) body (.sort v)) :
     HasType env U Γ (.forallE A body) (.sort (.imax u v)) := .forallEDF h1 h2
 theorem IsDefEq.defeq (h1 : IsDefEq env U Γ A B (.sort u))
@@ -726,7 +726,7 @@ theorem HasType.forallE_inv (henv : Ordered env) (H : env.HasType U Γ (A.forall
     env.IsType U Γ A ∧ env.IsType U (A::Γ) B := by
   refine H.forallE_inv' henv ?_ (.inl rfl)
   exact henv.induction
-    (fun env U e _ => ∀ A B, e = forallE A B → IsType env U [] A ∧ IsType env U [A] B)
+    (fun env U e _ => ∀ A B, e = .forallE A B → IsType env U [] A ∧ IsType env U [A] B)
     (fun le H A B eq => (H A B eq).imp (.mono le) (.mono le))
     (fun henv IH H A B eq => H.forallE_inv' henv IH (.inl eq))
 

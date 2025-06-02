@@ -37,7 +37,7 @@ theorem IsDefEq.const'
 syntax "type_tac" : tactic -- TODO: write an actual tactic
 macro_rules | `(tactic| type_tac) => `(tactic|
   first
-  | refine IsDefEq.forallE (u := ?_) (v := ?_) ?_ ?_ <;> [skip; skip; type_tac; type_tac]
+  | refine HasType.forallE (u := ?_) (v := ?_) ?_ ?_ <;> [skip; skip; type_tac; type_tac]
   | refine IsDefEq.sort ?_; decide
   | refine IsDefEq.bvar ?_; lookup_tac
   | refine IsDefEq.app' (A := ?_) (B := ?_) ?_ ?_ ?_ <;> [skip; skip; type_tac; type_tac; exact rfl]

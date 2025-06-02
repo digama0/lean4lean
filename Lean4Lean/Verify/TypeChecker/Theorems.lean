@@ -198,11 +198,10 @@ structure Methods.WF (m : Methods) where
     M.WF c s (m.isDefEqCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂'
   whnfCore : c.TrExpr e e' → M.WF c s (m.whnfCore e cheapRec cheapProj) fun e₁ _ => c.TrExpr e₁ e'
   whnf : c.TrExpr e e' → M.WF c s (m.whnf e) fun e₁ _ => c.TrExpr e₁ e'
-  checkType : e.FVarsIn s.ngen.Reserves →
-    M.WF c s (m.inferType e false) fun ty _ => ∃ e' ty',
+  inferType : e.FVarsIn s.ngen.Reserves →
+    (inferOnly = true → ∃ e', c.TrExprS e e') →
+    M.WF c s (m.inferType e inferOnly) fun ty _ => ∃ e' ty',
       c.TrExprS e e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty'
-  inferType : c.TrExprS e e' → c.HasType e' ty' →
-    M.WF c s (m.inferType e true) fun ty _ => c.TrExpr ty ty'
 
 def RecM.WF (c : VContext) (s : VState) (x : RecM α) (Q : α → VState → Prop) : Prop :=
   ∀ m, m.WF → M.WF c s (x m) Q
@@ -384,6 +383,25 @@ theorem MLCtx.WF.mkForall_trS {c : MLCtx} (wf : c.WF env Us)
         rw [Expr.lowerLooseBVars_eq_instantiate h (v := val)]
         exact .inst_let henv (.abstract .zero H1) h4
 
+theorem mkForall_hasType {c : MLCtx}
+    (hus : us.Forall₂ (VLevel.ofLevel Us · = some ·) us')
+    (hΔ : c.vlctx.SortList env Us.length us')
+    (hu : VLevel.ofLevel Us u = some u')
+    (H2 : env.HasType Us.length c.vlctx.toCtx e' (.sort u')) (n hn)
+    (hus : us.length = n) :
+    ∃ u₀', VLevel.ofLevel Us (List.foldl (fun x y => mkLevelIMax' y x) u us) = some u₀' ∧
+    env.HasType Us.length (c.dropN n hn).vlctx.toCtx (c.mkForall' n hn e') (.sort u₀') := by
+  subst hus
+  induction hus generalizing c e' u u' with
+  | nil => exact ⟨_, hu, H2⟩
+  | cons h _ ih =>
+    match c, hΔ with
+    | .vlam x name ty ty' bi c, .cons hΔ hu₁ =>
+      have ⟨_, h5, h6⟩ := ofLevel_mkLevelIMax' h hu
+      refine ih hΔ h5 ?_ (Nat.le_of_succ_le_succ hn)
+      refine .defeq (.sortDF ?_ (.of_ofLevel h5) h6.symm) (hu₁.forallE H2)
+      exact ⟨.of_ofLevel h, .of_ofLevel hu⟩
+
 theorem MLCtx.WF.mkForall'_congr {c : MLCtx} (wf : c.WF env Us)
     (H : env.IsDefEq Us.length c.vlctx.toCtx e₁ e₂ (.sort u)) (n hn) :
     ∃ u, env.IsDefEq Us.length (c.dropN n hn).vlctx.toCtx
@@ -551,14 +569,24 @@ theorem isDefEqCore.WF {c : VContext} {s : VState}
     RecM.WF c s (isDefEqCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' :=
   fun _ wf => wf.isDefEqCore he₁ he₂
 
+theorem inferType.WF' {c : VContext} {s : VState} (h1 : e.FVarsIn s.ngen.Reserves)
+    (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
+    RecM.WF c s (inferType e inferOnly) fun ty _ => ∃ e' ty',
+      c.TrExprS e e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty' :=
+  fun _ wf => wf.inferType h1 hinf
+
 theorem inferType.WF {c : VContext} {s : VState} (he : c.TrExprS e e') (hty : c.HasType e' ty') :
-    RecM.WF c s (inferType e true) fun ty _ => c.TrExpr ty ty' :=
-  fun _ wf => wf.inferType he hty
+    RecM.WF c s (inferType e true) fun ty _ => c.TrExpr ty ty' := by
+  refine .stateWF fun wf => ?_
+  refine (inferType.WF' (he.fvarsIn.mono wf.ngen_wf) fun _ => ⟨_, he⟩).le
+    fun _ _ _ ⟨_, _, h1, h2, h3⟩ => ?_
+  have := h1.uniq c.venv_wf (.refl c.venv_wf c.mlctx_wf.tr.wf) he
+  have := h3.defeqU_l c.venv_wf c.mlctx_wf.tr.wf this
+  exact ⟨_, h2, this.uniqU c.venv_wf c.mlctx_wf.tr.wf hty⟩
 
 theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn s.ngen.Reserves) :
     RecM.WF c s (inferType e false) fun ty _ => ∃ e' ty',
-      c.TrExprS e e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty' :=
-  fun _ wf => wf.checkType h1
+      c.TrExprS e e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty' := inferType.WF' h1 nofun
 
 theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
     RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
@@ -602,93 +630,111 @@ theorem envGet.WF {c : VContext} :
     (c.env.get name).WF fun ci => c.env.find? name = some ci := by
   simp [Environment.get]; split <;> [refine .pure ‹_›; exact .throw]
 
-theorem checkConstant.WF {c : VContext}
-    (H : ∀ l ∈ ls, l.hasMVar' = false) :
-    (inferConstant c.toContext name ls false).WF fun ty =>
+theorem inferConstant.WF {c : VContext}
+    (H : ∀ l ∈ ls, l.hasMVar' = false)
+    (hinf : inferOnly = true → ∃ e', c.TrExprS (.const name ls) e') :
+    (inferConstant c.toContext name ls inferOnly).WF fun ty =>
       ∃ e' ty', c.TrExprS (.const name ls) e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty' := by
-  simp [inferConstant]; refine envGet.WF.bind fun ci eq => ?_
+  simp [inferConstant]; refine envGet.WF.bind fun ci eq1 => ?_
   have : (ls.foldlM (fun b a => checkLevel c.toContext a) PUnit.unit).WF (fun _ =>
       ∃ ls', ls.Forall₂ (VLevel.ofLevel c.lparams · = some ·) ls') := by
+    clear hinf
     induction ls with
     | nil => exact .pure ⟨_, .nil⟩
     | cons l ls ih =>
       simp at H
       refine (checkLevel.WF H.1).bind fun ⟨⟩ ⟨_, h1⟩ => ?_
       exact (ih H.2).le fun _ ⟨_, h2⟩ => ⟨_, .cons h1 h2⟩
-  split <;> [skip; exact .throw]
-  split <;> [exact .throw; skip]
-  generalize eq1 : _ <$> (_ : Except Exception _) = F
-  generalize eq2 : (fun ty : Expr => _) = P
-  suffices ci.isPartial = false ∨ (c.safety == .safe) = false → F.WF P by
-    split <;> [skip; exact this (.inl (ConstantInfo.isPartial.eq_2 _ ‹_›))]
-    split <;> [exact .throw; skip]
-    rename_i h; simp [ConstantInfo.isPartial, Decidable.imp_iff_not_or] at h
-    exact this h
-  subst eq1 eq2; rename_i h1 h2; intro h3
-  refine this.map fun _ ⟨_, H⟩ => ?_
-  have ⟨_, h4, _, h5, h6⟩ := c.trenv.find? eq <| by
-    revert h2 h3
-    cases c.safety <;> simp [isAsSafeAs] <;> cases ci.isUnsafe <;> simp +decide
-  have eq := h1.symm.trans h5
-  have H' := List.mapM_eq_some.2 H
-  have s1 := h6.instL c.venv_wf (Δ := []) trivial H' (h5.trans eq.symm)
-  have s1 := s1.weakFV c.venv_wf (.from_nil c.mlctx.noBV) c.mlctx_wf.tr.wf
-  rw [(c.venv_wf.ordered.closedC h4).instL.liftN_eq (Nat.le_refl _)] at s1
-  have ⟨_, s1, s2⟩ := s1
-  refine ⟨_, .const h4 H' eq, _, s1, .defeqU_r c.venv_wf c.mlctx_wf.tr.wf s2.symm ?_⟩
-  exact .const h4 (.of_mapM_ofLevel H') (H.length_eq.symm.trans eq)
+  split <;> [rename_i h1; exact .throw]
+  have main {e'} (he : c.TrExprS (.const name ls) e') : ∃ e', c.TrExprS (.const name ls) e' ∧
+      ∃ x, c.TrExprS (ci.instantiateTypeLevelParams ls) x ∧ c.HasType e' x := by
+    refine ⟨_, he, ?_⟩; let .const h4 H' eq := he
+    have ⟨_, h5, h6⟩ := c.trenv.find?_uniq eq1 h4
+    have H := List.mapM_eq_some.1 H'
+    have s1 := h6.instL c.venv_wf (Δ := []) trivial H' (h5.trans eq.symm)
+    have s1 := s1.weakFV c.venv_wf (.from_nil c.mlctx.noBV) c.mlctx_wf.tr.wf
+    rw [(c.venv_wf.ordered.closedC h4).instL.liftN_eq (Nat.le_refl _)] at s1
+    have ⟨_, s1, s2⟩ := s1
+    refine ⟨_, s1, .defeqU_r c.venv_wf c.mlctx_wf.tr.wf s2.symm ?_⟩
+    exact .const h4 (.of_mapM_ofLevel H') (H.length_eq.symm.trans eq)
+  split
+  · split <;> [exact .throw; rename_i h2]
+    generalize eq1 : _ <$> (_ : Except Exception _) = F
+    generalize eq2 : (fun ty : Expr => _) = P
+    suffices ci.isPartial = false ∨ (c.safety == .safe) = false → F.WF P by
+      split <;> [skip; exact this (.inl (ConstantInfo.isPartial.eq_2 _ ‹_›))]
+      split <;> [exact .throw; skip]
+      rename_i h; simp [ConstantInfo.isPartial, Decidable.imp_iff_not_or] at h
+      exact this h
+    subst eq1 eq2; intro h3
+    refine this.map fun _ ⟨_, H⟩ => ?_
+    have ⟨_, h4, _, h5, h6⟩ := c.trenv.find? eq1 <| by
+      revert h2 h3
+      cases c.safety <;> simp [isAsSafeAs] <;> cases ci.isUnsafe <;> simp +decide
+    have eq := h1.symm.trans h5
+    exact main (.const h4 (List.mapM_eq_some.2 H) eq)
+  · simp_all; let ⟨_, h⟩ := hinf; refine .pure (main h)
 
-theorem inferConstant.WF {c : VContext}
-    (he : c.TrExprS (.const name ls) e') (hty : c.HasType e' ty') :
-    (inferConstant c.toContext name ls true).WF fun ty => c.TrExpr ty ty' := by
-  simp [inferConstant]; refine envGet.WF.bind fun ci eq1 => ?_
-  split <;> [refine .pure ?_; exact .throw]
-  rename_i h1; let .const h4 H' eq := he
-  have ⟨_, h5, h6⟩ := c.trenv.find?_uniq eq1 h4
-  have H := List.mapM_eq_some.1 H'
-  have s1 := h6.instL c.venv_wf (Δ := []) trivial H' (h5.trans eq.symm)
-  have s1 := s1.weakFV c.venv_wf (.from_nil c.mlctx.noBV) c.mlctx_wf.tr.wf
-  rw [(c.venv_wf.ordered.closedC h4).instL.liftN_eq (Nat.le_refl _)] at s1
-  refine s1.defeq c.venv_wf c.mlctx_wf.tr.wf ?_
-  exact VEnv.IsDefEq.const h4 (.of_mapM_ofLevel H') (H.length_eq.symm.trans eq)
-    |>.uniqU c.venv_wf c.mlctx_wf.tr.wf hty
-
-theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
+theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)
     (hdrop : m.dropN n hn = c.mlctx)
     (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
-    (he₀ : e₀ = m.mkLambda n hn (e.instantiateList ((m.fvarRevList n hn).map .fvar)))
+    (he₀ : e₀ = m.mkLambda n hn ei)
+    (hei : e.instantiateList ((m.fvarRevList n hn).map .fvar) = ei)
     (hr1 : e.FVarsIn s.ngen.Reserves)
-    (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v) :
-    (inferLambda.loop false arr e).WF (c.withMLC m) s (fun ty _ =>
+    (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
+    (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
+    (inferLambda.loop inferOnly arr e).WF (c.withMLC m) s (fun ty _ =>
       ∃ e', c.TrExprS e₀ e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty') := by
   unfold inferLambda.loop
+  generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
   simp [harr, -bind_pure_comp]; split
   · rename_i name dom body bi
-    refine (checkType.WF ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
-    · apply hr1.1.instantiateList; simp
-      exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
-    refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
-    obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort _, h5⟩ := h5
-    refine .stateWF fun wf => ?_
-    have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
-    have domty' : (c.withMLC m).IsType dom' := ⟨_, domty⟩
-    refine .withLocalDecl h1 domty' fun a mwf' s' le₃ res h6 => ?_
-    have h6' := wf.find?_eq_none h6
-    refine .stateWF fun wf' => ?_
-    have := le₁.trans le₂ |>.trans le₃
-    refine checkLambda.loop.WF (Nat.succ_le_succ hn)
-      (by simp [hdrop]) (by simp [harr]) ?_ (this.reserves hr1).2 ?_ --?_
-    · simp [he₀]; congr 1
-      simp [harr, Expr.instantiateList_lam]
-      conv => enter [2,2]; exact (Expr.instantiateList_instantiate1_comm (by trivial)).symm
-      refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
-      · simp [FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
-      · rintro _ h rfl; exact h6 <| (le₁.trans le₂).reservesV h
-    · simp [or_imp, forall_and, FVarsIn]
-      exact ⟨res, fun _ h => this.reservesV (hr2 _ h)⟩
-  · refine (checkType.WF ?_).bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
-    · apply hr1.instantiateList; simp
+    generalize eqF : withLocalDecl (m := RecM) _ _ _ _ = F
+    generalize eqP : (fun ty x => ∃ _, _) = P
+    rw [Expr.instantiateList_lam] at hei; subst ei
+    have main {s₁} (le₁ : s.LE s₁) {dom'}
+        (domty : (c.withMLC m).venv.IsType (c.withMLC m).lparams.length (c.withMLC m).vlctx.toCtx dom')
+        (hdom : (c.withMLC m).TrExprS (dom.instantiateList fvs) dom')
+        (hbody : inferOnly = true → ∃ body',
+          TrExprS c.venv c.lparams ((none, VLocalDecl.vlam dom') :: m.vlctx)
+            (body.instantiateList fvs 1) body') :
+        F.WF (c.withMLC m) s₁ P := by
+      refine .stateWF fun wf => ?_
+      have hdom' := hdom.trExpr c.venv_wf mwf.1.tr.wf
+      subst eqF eqP
+      refine .withLocalDecl hdom domty fun a mwf' s' le₂ res h6 => ?_
+      have h6' := wf.find?_eq_none h6
+      refine .stateWF fun wf' => ?_
+      have := le₁.trans le₂
+      have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
+      refine inferLambda.loop.WF (Nat.succ_le_succ hn) (by simp [hdrop])
+        (by simp [← eqfvs, harr]) ?_ (by simp [← eqfvs]; rfl) (this.reserves hr1).2 ?_ ?_
+      · rw [he₀, eqfvs, ← eq]; simp; congr 2
+        refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
+        · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+        · rintro _ h rfl; exact h6 <| le₁.reservesV h
+      · simp [or_imp, forall_and, FVarsIn]
+        exact ⟨res, fun _ h => this.reservesV (hr2 _ h)⟩
+      · intro h; let ⟨_, hbody⟩ := hbody h
+        exact eqfvs.symm ▸ eq ▸ ⟨_, hbody.inst_fvar c.venv_wf.ordered mwf'.1.tr.wf⟩
+    split
+    · subst inferOnly
+      refine (checkType.WF ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
+      · apply hr1.1.instantiateList; simp [← eqfvs]
+        exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+      refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
+      obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort _, h5⟩ := h5
+      refine .stateWF fun wf => ?_
+      have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
+      have domty' : (c.withMLC m).IsType dom' := ⟨_, domty⟩
+      exact main (le₁.trans le₂) domty' h1 nofun
+    · simp_all; let ⟨_, h1⟩ := hinf
+      have .lam (ty' := dom') (body' := body') domty hdom hbody := h1
+      exact main .rfl domty hdom _ hbody
+  · subst ei
+    refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
+    · apply hr1.instantiateList; simp [← eqfvs]
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
     refine .stateWF fun wf => .getLCtx <| .pure ?_
     have ⟨_, h2, e2⟩ := h2.trExpr c.venv_wf.ordered wf.trctx.wf
@@ -697,56 +743,82 @@ theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     let ⟨h1', h2'⟩ := mwf.1.mkLambda_trS c.venv_wf h1 h3 n hn
     have h3' := (mwf.1.mkForall_trS c.venv_wf h2 (h3.isType c.venv_wf mwf.1.tr.wf.toCtx) n hn).1
     simp [hdrop] at h1' h2' h3'
-    exact ⟨_, he₀ ▸ h1', _, mwf.1.mkForall_eq _ _ harr ▸ h3', h2'⟩
+    exact ⟨_, he₀ ▸ h1', _, mwf.1.mkForall_eq _ _ (eqfvs ▸ harr) ▸ h3', h2'⟩
 
-theorem checkLambda.WF
-    (h1 : e.FVarsIn s.ngen.Reserves) :
-    (inferLambda e false).WF c s (fun ty _ => ∃ e',
+theorem inferLambda.WF
+    (h1 : e.FVarsIn s.ngen.Reserves)
+    (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
+    (inferLambda e inferOnly).WF c s (fun ty _ => ∃ e',
       c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty') :=
   .stateWF fun wf =>
-  c.withMLC_self ▸ checkLambda.loop.WF (Nat.zero_le _) rfl rfl rfl h1 wf.ngen_wf
+  (c.withMLC_self ▸ inferLambda.loop.WF (Nat.zero_le _) rfl rfl rfl rfl h1 wf.ngen_wf) hinf
 
-theorem inferLambda.loop.WF {c : VContext}
+theorem checkForall.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)
     (hdrop : m.dropN n hn = c.mlctx)
     (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
-    (hr : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
-    (h1 : (c.withMLC m).TrExprS (e.instantiateList ((m.fvarRevList n hn).map .fvar)) e')
-    (h2 : (c.withMLC m).HasType e' ty') :
-    (inferLambda.loop true arr e).WF (c.withMLC m) s (fun ty₀ _ =>
-      c.TrExpr ty₀ (m.mkForall' n hn ty')) := by
-  unfold inferLambda.loop
+    (he₀ : e₀ = m.mkForall n hn ei)
+    (hei : e.instantiateList ((m.fvarRevList n hn).map .fvar) = ei)
+    (hr1 : e.FVarsIn s.ngen.Reserves)
+    (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
+    (hus : us.toList.reverse.Forall₂ (VLevel.ofLevel c.lparams · = some ·) us')
+    (hΔ : m.vlctx.SortList c.venv c.lparams.length us')
+    (hlen : us'.length = n)
+    (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
+    (inferForall.loop inferOnly arr us e).WF (c.withMLC m) s (fun ty _ =>
+      ∃ e', c.TrExprS e₀ e' ∧ ∃ u, c.TrExprS ty (.sort u) ∧ c.HasType e' (.sort u)) := by
+  unfold inferForall.loop
+  generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
   simp [harr, -bind_pure_comp]; split
   · rename_i name dom body bi
+    rw [Expr.instantiateList_forallE] at hei; subst ei
+    refine (inferType.WF' ?_ ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
+    · apply hr1.1.instantiateList; simp [← eqfvs]
+      exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+    · intro h; let ⟨_, .forallE _ _ h _⟩ := hinf h; exact ⟨_, h⟩
+    refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
+    obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort h4, h5⟩ := h5
     refine .stateWF fun wf => ?_
-    simp [Expr.instantiateList_lam] at h1
-    have .lam (ty' := dom') (body' := body') ⟨_, domty'⟩ hdom hbody := h1
-    have hdom' := hdom.trExpr c.venv_wf mwf.1.tr.wf
-    refine .withLocalDecl hdom ⟨_, domty'⟩ fun a mwf' s' le res h6 => ?_
+    have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
+    have domty' : (c.withMLC m).IsType dom' := ⟨_, domty⟩
+    refine .withLocalDecl h1 domty' fun a mwf' s' le₃ res h6 => ?_
     have h6' := wf.find?_eq_none h6
     refine .stateWF fun wf' => ?_
-    have hbody₂ := hbody.inst_fvar c.venv_wf mwf'.1.tr.wf
-    have ⟨ty₂, hty₂⟩ := hbody₂.wf c.venv_wf mwf'.1.tr.wf
-    rw [Expr.instantiateList_instantiate1_comm (by trivial)] at hbody₂
-    -- have := h2.defeqU_l c.venv_wf mwf.1.tr.wf.toCtx he'.symm
-    refine (inferLambda.loop.WF (Nat.succ_le_succ hn)
-      (by simp [hdrop]) (by simp [harr]) ?_ ?_ hty₂).le fun a s' le H => ?_
-    · simpa using ⟨res, fun _ h => le.reservesV (hr _ h)⟩
-    · exact hbody₂
-    simp at H
-    have ⟨_, h⟩ := (domty'.lam hty₂).uniq c.venv_wf mwf.1.tr.wf.toCtx h2
-    have ⟨_, h⟩ := mwf.1.mkForall'_congr h n hn; simp [hdrop] at h
-    exact H.defeq c.venv_wf c.mlctx_wf.tr.wf ⟨_, h⟩
-  · refine (inferType.WF h1 h2).bind fun ty _ _ hty => ?_
-    refine .stateWF fun wf => .getLCtx <| .pure ?_
-    let ⟨h1', h2'⟩ := mwf.1.mkLambda_trS c.venv_wf h1 h2 n hn
-    have hty := hty.cheapBetaReduce c.venv_wf wf.trctx.wf m.noBV
-    have h3' := (mwf.1.mkForall_tr c.venv_wf hty (h2.isType c.venv_wf mwf.1.tr.wf) n hn).1
-    simp [hdrop] at h1' h2' h3'
-    exact mwf.1.mkForall_eq _ _ harr ▸ h3'
+    have := le₁.trans le₂ |>.trans le₃
+    have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
+    refine checkForall.loop.WF (Nat.succ_le_succ hn) (by simp [hdrop])
+      (by simp [eqfvs, harr]) ?_ (by simp [eqfvs]; rfl) (this.reserves hr1).2 ?_
+      (by simpa using ⟨h4, hus⟩) (.cons hΔ domty) (by simp [hlen]) ?_
+    · simp [he₀, ← eq]; congr 2
+      refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
+      · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+      · rintro _ h rfl; exact h6 <| (le₁.trans le₂).reservesV h
+    · simp [or_imp, forall_and, FVarsIn]
+      exact ⟨res, fun _ h => this.reservesV (hr2 _ h)⟩
+    · intro h; let ⟨_, .forallE (body' := body') _ _ hdom₁ hbody₁⟩ := hinf h
+      refine have hΔ := .refl c.venv_wf mwf.1.tr.wf; have H := hdom₁.uniq c.venv_wf hΔ h1; ?_
+      have H := H.of_r c.venv_wf mwf.1.tr.wf.toCtx domty
+      have ⟨_, hbody₂⟩ := hbody₁.defeqDFC c.venv_wf <| .cons hΔ (ofv := none) nofun (.vlam H)
+      exact eq ▸ ⟨_, hbody₂.inst_fvar c.venv_wf.ordered mwf'.1.tr.wf⟩
+  · subst ei; refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
+    · apply hr1.instantiateList; simp [← eqfvs]
+      exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+    refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
+    obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort (u' := u') h4, h5⟩ := h5
+    refine .stateWF fun wf => .pure ?_
+    obtain ⟨us, rfl⟩ : ∃ l, ⟨List.reverse l⟩ = us := ⟨us.toList.reverse, by simp⟩
+    simp [Expr.sortLevel!] at hus ⊢
+    have h3 := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
+    let ⟨h1', h2'⟩ := mwf.1.mkForall_trS c.venv_wf h1 ⟨_, h3⟩ n hn
+    have ⟨_, h3', h4'⟩ := mkForall_hasType hus hΔ h4 h3 n hn (hus.length_eq.trans hlen)
+    simp [hdrop] at h1' h2' h4'
+    exact ⟨_, he₀ ▸ h1', _, .sort h3', h4'⟩
 
-theorem inferLambda.WF
-    (h1 : c.TrExprS e e') (h2 : c.HasType e' ty') :
-    (inferLambda e true).WF c s (fun ty _ => c.TrExpr ty ty') :=
+theorem checkForall.WF
+    (h1 : e.FVarsIn s.ngen.Reserves)
+    (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
+    (inferForall e inferOnly).WF c s (fun ty _ =>
+      ∃ e', c.TrExprS e e' ∧ ∃ u, c.TrExprS ty (.sort u) ∧ c.HasType e' (.sort u)) :=
   .stateWF fun wf =>
-  c.withMLC_self ▸ inferLambda.loop.WF (Nat.zero_le _) rfl rfl wf.ngen_wf h1 h2
+  (c.withMLC_self ▸ checkForall.loop.WF (Nat.zero_le _)
+    rfl rfl rfl rfl h1 wf.ngen_wf .nil .nil rfl) hinf

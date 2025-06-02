@@ -421,6 +421,12 @@ theorem find?_instL : find? Δ v = some (e, A) →
     · rintro e A h rfl rfl
       exact ⟨_, _, ih h, by cases d.2 <;> simp [VLocalDecl.instL, VLocalDecl.depth]⟩
 
+variable (env : VEnv) (U) in
+inductive SortList : VLCtx → List VLevel → Prop
+  | nil : SortList Δ []
+  | cons : SortList Δ ls → env.HasType U Δ.toCtx A (.sort u) →
+    SortList ((some fv, .vlam A) :: Δ) (u :: ls)
+
 end VLCtx
 
 theorem TrProj.weakN (W : Ctx.LiftN n k Γ Γ')
@@ -646,7 +652,7 @@ theorem TrExprS.wf (H : TrExprS env Us Δ e e') : VExpr.WF env Us.length Δ.toCt
     have ⟨_, h1'⟩ := h1
     have ⟨_, h2'⟩ := ih2 ⟨hΔ, nofun, h1⟩
     refine ⟨_, h1'.lam h2'⟩
-  | forallE h1 h2 => have ⟨_, h1'⟩ := h1; have ⟨_, h2'⟩ := h2; exact ⟨_, .forallE h1' h2'⟩
+  | forallE h1 h2 => have ⟨_, h1'⟩ := h1; have ⟨_, h2'⟩ := h2; exact ⟨_, h1'.forallE h2'⟩
   | letE h1 _ _ _ _ _ ih3 => exact ih3 ⟨hΔ, nofun, h1⟩
   | lit _ ih | mdata _ ih => exact ih hΔ
   | proj _ h2 ih => exact h2.wf (ih hΔ)
