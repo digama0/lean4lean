@@ -6,6 +6,8 @@ import Std.Tactic.BVDecide
 namespace Lean.Level
 open Lean4Lean
 
+attribute [simp] mkLevelSucc mkLevelMax mkLevelIMax updateSucc! updateMax! updateIMax!
+
 -- variable (ls : List Name) in
 -- def _root_.Lean4Lean.VLevel.toLevel : VLevel → Level
 --   | .zero => .zero
@@ -19,22 +21,14 @@ open Lean4Lean
 -- theorem toLevel_inj {ls : List Name} (d : ls.Nodup)
 --     {l₁ l₂ : VLevel} (eq : l₁.toLevel ls = l₂.toLevel ls) : l₁ = l₂ := sorry
 
-def realHasParam : Level → Bool
-  | .param .. => true
-  | .zero | .mvar .. => false
-  | .succ l => l.realHasParam
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.realHasParam || l₂.realHasParam
+@[simp] def getOffset' : Level → Nat
+  | succ u => getOffset' u + 1
+  | _      => 0
 
-def realHasMVar : Level → Bool
-  | .mvar .. => true
-  | .zero | .param .. => false
-  | .succ l => l.realHasMVar
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.realHasMVar || l₂.realHasMVar
-
-theorem Safe.succ : Safe (.succ u) → Safe u := by simp [Safe, realDepth]; omega
-theorem Safe.max : Safe (.max u v) → Safe u ∧ Safe v := by
-  simp [Safe, realDepth, Nat.max_eq_max, Nat.max_lt]; omega
-theorem Safe.imax : Safe (.imax u v) → Safe u ∧ Safe v := Safe.max
+@[simp] theorem getOffset_eq (u : Level) : u.getOffset = u.getOffset' := go _ 0 where
+  go (u : Level) (i) : u.getOffsetAux i = u.getOffset' + i := by
+    unfold getOffsetAux getOffset'; split <;> simp
+    rw [go]; simp [Nat.add_right_comm, Nat.add_assoc]
 
 theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := by
   rw [mkData, if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
@@ -83,30 +77,10 @@ theorem mkData_hasMVar (H : d < 2 ^ 24) : (mkData h d hmv hp).hasMVar = hmv := b
   rw [show L = hmv.toUInt64.toBitVec by bv_decide]
   cases hmv <;> decide
 
-theorem Safe.depth_eq {l : Level} (hl : l.Safe) : l.depth = l.realDepth := by
-  simp [Safe] at hl
-  have {n a} : n + 1 < a → n < a := by omega
-  induction l <;> (try specialize this hl) <;>
-    simp_all [depth, data, mkData_depth, realDepth, Nat.max_lt]
-
-theorem Safe.hasParam_eq {l : Level} (hl : l.Safe) : l.hasParam = l.realHasParam := by
-  have depth_eq := @Safe.depth_eq; simp [Safe, depth] at depth_eq
-  simp [Safe] at hl
-  have {n a} : n + 1 < a → n < a := by omega
-  induction l <;> (try specialize this hl) <;>
-    simp_all [hasParam, data, mkData_hasParam, realHasParam, realDepth, Nat.max_lt]
-
-theorem Safe.hasMVar_eq {l : Level} (hl : l.Safe) : l.hasMVar = l.realHasMVar := by
-  have depth_eq := @Safe.depth_eq; simp [Safe, depth] at depth_eq
-  simp [Safe] at hl
-  have {n a} : n + 1 < a → n < a := by omega
-  induction l <;> (try specialize this hl) <;>
-    simp_all [hasMVar, data, mkData_hasMVar, realHasMVar, realDepth, Nat.max_lt]
-
-theorem ofLevel_of_not_realHasParam (Us) {l : Level}
-    (hl : l.realHasParam = false) (hmv : l.realHasMVar = false) :
+theorem ofLevel_of_not_hasParam (Us) {l : Level}
+    (hl : l.hasParam' = false) (hmv : l.hasMVar' = false) :
     ∃ u', VLevel.ofLevel Us l = some u' := by
-  induction l <;> simp_all [realHasParam, realHasMVar, VLevel.ofLevel, exists_comm]
+  induction l <;> simp_all [hasParam', hasMVar', VLevel.ofLevel, exists_comm]
 
 def getUndefParam.F (ps : List Name) (l : Level) : StateT (Option Name) Id Bool := do
   if !l.hasParam || (← get).isSome then
@@ -116,11 +90,11 @@ def getUndefParam.F (ps : List Name) (l : Level) : StateT (Option Name) Id Bool 
       set (some n)
   return true
 
-theorem getUndefParam_none {l : Level} (hl : l.Safe) (hmv : l.realHasMVar = false) :
+theorem getUndefParam_none {l : Level} (hmv : l.hasMVar' = false) :
     l.getUndefParam Us = none → ∃ u', VLevel.ofLevel Us l = some u' := by
   suffices ∀ s, ((l.forEach (getUndefParam.F Us)).run s).snd = none → s = none ∧ _ from
     (this _ · |>.2)
-  have {l} (hl : l.Safe) (hmv : l.realHasMVar = false)
+  have {l} (hmv : l.hasMVar' = false)
       {g} (H : ∀ {s'}, (g.run s').snd = none → s' = none ∧
        ((getUndefParam.F Us l).run none = (true, none) → ∃ u', VLevel.ofLevel Us l = some u')) (s) :
       ((do if (!(← getUndefParam.F Us l)) = true then pure PUnit.unit else g).run s).snd = none →
@@ -129,7 +103,7 @@ theorem getUndefParam_none {l : Level} (hl : l.Safe) (hmv : l.realHasMVar = fals
     · simp; revert h
       simp [getUndefParam.F]; split <;> [simp; split <;> [split <;> simp; simp]]
       rintro rfl; simp at *
-      exact ofLevel_of_not_realHasParam Us (hl.hasParam_eq.symm.trans ‹_›) hmv
+      exact ofLevel_of_not_hasParam Us ‹_› hmv
     · refine fun h' => let ⟨h1, h2⟩ := H h'; have := ?_; ⟨this, h2 ?_⟩
       · revert h h1
         simp [getUndefParam.F]; split <;> [simp; split <;> [split <;> simp; simp]]
@@ -137,16 +111,42 @@ theorem getUndefParam_none {l : Level} (hl : l.Safe) (hmv : l.realHasMVar = fals
         cases (getUndefParam.F Us l).run none; simp; rintro rfl rfl; rfl
   have lt {n a} : n + 1 < a → n < a := by omega
   induction l with (
-    refine this hl hmv fun h => ?_; clear this
-    simp [realHasMVar, VLevel.ofLevel, *] at *)
+    refine this hmv fun h => ?_; clear this
+    simp [hasMVar', VLevel.ofLevel, *] at *)
   | succ _ ih =>
-    have ⟨h, _, h1⟩ := ih hl.succ hmv _ h
+    have ⟨h, _, h1⟩ := ih hmv _ h
     exact ⟨h, fun _ => ⟨_, _, h1, rfl⟩⟩
   | max _ _ ih1 ih2 | imax _ _ ih1 ih2 =>
-    have ⟨h, _, h2⟩ := ih2 hl.max.2 hmv.2 _ h
-    have ⟨h, _, h1⟩ := ih1 hl.max.1 hmv.1 _ h
+    have ⟨h, _, h2⟩ := ih2 hmv.2 _ h
+    have ⟨h, _, h1⟩ := ih1 hmv.1 _ h
     exact ⟨h, fun _ => ⟨_, _, h1, _, h2, rfl⟩⟩
   | param =>
-    simp [getUndefParam.F, hl.hasParam_eq, Id, realHasParam, List.idxOf_lt_length_iff, *]
+    simp [getUndefParam.F, Id, hasParam', List.idxOf_lt_length_iff, *]
     split <;> simp [*]
   | _ => simp [*]
+
+variable (s : Name → Level) in
+def substParams' (red : Bool) : Level → Level
+  | .zero       => .zero
+  | .succ v     => .succ (substParams' (v.hasParam ∧ red) v)
+  | .max v₁ v₂  =>
+    let red := (v₁.hasParam ∨ v₂.hasParam) ∧ red
+    (if red then mkLevelMax' else .max) (substParams' red v₁) (substParams' red v₂)
+  | .imax v₁ v₂ =>
+    let red := (v₁.hasParam ∨ v₂.hasParam) ∧ red
+    (if red then mkLevelIMax' else .imax) (substParams' red v₁) (substParams' red v₂)
+  | .param n => s n
+  | u => u
+
+theorem substParams_eq_self {u : Level} (h : u.hasParam' = false) :
+    substParams' s red u = u := by
+  induction u generalizing red <;> simp_all [substParams', hasParam']
+
+@[simp] theorem substParams_eq (u : Level) (s : Name → Option Level) :
+    substParams u s = substParams' (fun x => (s x).getD (.param x)) true u := by
+  unfold substParams
+  induction u <;> simp [substParams.go, substParams', hasParam', ← Bool.or_eq_true] <;>
+    split <;> simp [*, substParams_eq_self] <;> simp_all [substParams_eq_self]
+
+theorem substParams_id {u : Level} :
+    substParams' .param false u = u := by induction u <;> simp_all [substParams', hasParam']

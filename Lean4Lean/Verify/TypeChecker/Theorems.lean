@@ -582,11 +582,10 @@ theorem ensureForallCore.WF {c : VContext} {s : VState} (he : c.TrExpr e e') :
     exact .pure ⟨⟨_, _, _, _, rfl⟩, he⟩
   exact .getEnv <| .getLCtx .throw
 
-theorem checkLevel.WF {c : VContext} (H : l.realHasMVar = false) :
+theorem checkLevel.WF {c : VContext} (H : l.hasMVar' = false) :
     (checkLevel c.toContext l).WF fun _ => ∃ u', VLevel.ofLevel c.lparams l = some u' := by
   simp [checkLevel]; split <;> [exact .throw; refine .pure ?_]
-  have := l.safeSorry -- FIXME
-  exact Level.getUndefParam_none this H (by rename_i h; simpa using h)
+  exact Level.getUndefParam_none H (by rename_i h; simpa using h)
 
 theorem inferFVar.WF {c : VContext} :
     (inferFVar c.toContext name).WF fun ty =>
@@ -604,19 +603,18 @@ theorem envGet.WF {c : VContext} :
   simp [Environment.get]; split <;> [refine .pure ‹_›; exact .throw]
 
 theorem checkConstant.WF {c : VContext}
-    (H : ∀ l ∈ ls, l.realHasMVar = false) :
+    (H : ∀ l ∈ ls, l.hasMVar' = false) :
     (inferConstant c.toContext name ls false).WF fun ty =>
       ∃ e' ty', c.TrExprS (.const name ls) e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty' := by
   simp [inferConstant]; refine envGet.WF.bind fun ci eq => ?_
   have : (ls.foldlM (fun b a => checkLevel c.toContext a) PUnit.unit).WF (fun _ =>
-      ∃ ls', List.mapM (VLevel.ofLevel c.lparams) ls = some ls') := by
+      ∃ ls', ls.Forall₂ (VLevel.ofLevel c.lparams · = some ·) ls') := by
     induction ls with
-    | nil => exact .pure ⟨_, rfl⟩
+    | nil => exact .pure ⟨_, .nil⟩
     | cons l ls ih =>
       simp at H
       refine (checkLevel.WF H.1).bind fun ⟨⟩ ⟨_, h1⟩ => ?_
-      refine (ih H.2).le fun _ ⟨_, h2⟩ => ?_
-      simp [h1, h2]
+      exact (ih H.2).le fun _ ⟨_, h2⟩ => ⟨_, .cons h1 h2⟩
   split <;> [skip; exact .throw]
   split <;> [exact .throw; skip]
   generalize eq1 : _ <$> (_ : Except Exception _) = F
@@ -632,11 +630,14 @@ theorem checkConstant.WF {c : VContext}
     revert h2 h3
     cases c.safety <;> simp [isAsSafeAs] <;> cases ci.isUnsafe <;> simp +decide
   have eq := h1.symm.trans h5
-  refine ⟨_, .const h4 H eq, _, ?_, .const h4 ?_ ((List.length_option_mapM H).symm.trans eq)⟩
-  · sorry
-  · intro _ h
-    have ⟨_, h1, h2⟩ := List.mem_option_mapM H _ h
-    exact VLevel.WF.of_ofLevel h2
+  have H' := List.mapM_eq_some.2 H
+  refine ⟨_, .const h4 H' eq, ?_⟩
+  have s1 := h6.instL c.venv_wf (Δ := []) trivial H' (h5.trans eq.symm)
+  have s1 := s1.weakFV c.venv_wf (.from_nil c.mlctx.noBV) c.mlctx_wf.tr.wf
+  rw [(c.venv_wf.ordered.closedC h4).instL.liftN_eq (Nat.le_refl _)] at s1
+  have ⟨_, s1, s2⟩ := s1
+  refine ⟨_, s1, .defeqU_r c.venv_wf c.mlctx_wf.tr.wf s2.symm ?_⟩
+  exact .const h4 (.of_mapM_ofLevel H') (H.length_eq.symm.trans eq)
 
 theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)

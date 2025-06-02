@@ -1,11 +1,28 @@
 import Lean4Lean.Std.Basic
 import Lean4Lean.Verify.Axioms
+import Lean4Lean.Verify.Level
 import Lean4Lean.Expr
 import Lean4Lean.Instantiate
+import Batteries.Data.String.Lemmas
 import Std.Tactic.BVDecide
 
 namespace Lean
+
+open Expr in
+theorem Literal.toConstructor_hasLevelParam :
+    (Literal.toConstructor l).hasLevelParam' = false := by
+  cases l with simp [Literal.toConstructor]
+  | natVal n => cases n <;> simp [natLitToConstructor, hasLevelParam', natZero, natSucc]
+  | strVal s =>
+    let ⟨l⟩ := s
+    simp [strLitToConstructor, hasLevelParam', String.foldr_eq]
+    induction l <;> simp_all [hasLevelParam', Level.hasParam']
+
 namespace Expr
+
+attribute [simp] mkConst mkBVar mkSort mkFVar mkMVar mkMData mkProj mkApp mkLambda mkForall mkLet
+  updateApp! updateFVar! updateConst! updateSort! updateMData! updateProj!
+  updateForall! updateForallE! updateLambda! updateLambdaE! updateLet!
 
 theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
     (mkData h br d fv ev lv lp).looseBVarRange.toNat = br := by
@@ -314,3 +331,64 @@ theorem abstract1_lower {e : Expr} (h : e.hasLooseBVar' k₁ = false) (hk : k₁
   | fvar b =>
     split <;> simp [lowerLooseBVars']
     rw [if_neg (by omega)]
+
+variable (red : Bool) (s : Name → Level) in
+def instantiateLevelParamsCore' : Expr → Expr
+  | .const c ls => .const c (ls.map (·.substParams' s red))
+  | .sort u => .sort (u.substParams' s red)
+  | .mdata m e => .mdata m (instantiateLevelParamsCore' e)
+  | .proj n i e => .proj n i (instantiateLevelParamsCore' e)
+  | .app f a => .app (instantiateLevelParamsCore' f) (instantiateLevelParamsCore' a)
+  | .lam n t b bi => .lam n (instantiateLevelParamsCore' t) (instantiateLevelParamsCore' b) bi
+  | .forallE n t b bi =>
+    .forallE n (instantiateLevelParamsCore' t) (instantiateLevelParamsCore' b) bi
+  | .letE n t v b bi => .letE n (instantiateLevelParamsCore' t)
+      (instantiateLevelParamsCore' v) (instantiateLevelParamsCore' b) bi
+  | e@(.bvar _)
+  | e@(.fvar _)
+  | e@(.mvar _)
+  | e@(.lit _) => e
+
+theorem instantiateLevelParamsCore_eq_self (h : e.hasLevelParam' = false) :
+    instantiateLevelParamsCore' red s e = e := by
+  induction e <;> simp_all [instantiateLevelParamsCore', hasLevelParam', Level.substParams_eq_self]
+  exact List.map_id''' _ fun _ h' => Level.substParams_eq_self (h _ h')
+
+theorem instantiateLevelParamsCore_id {e : Expr} :
+    instantiateLevelParamsCore' false .param e = e := by
+  induction e <;> simp_all [instantiateLevelParamsCore', Level.substParams_id]
+
+theorem instantiateLevelParamsCore_eq :
+    instantiateLevelParamsCore s e =
+    instantiateLevelParamsCore' true (fun x => (s x).getD (.param x)) e := by
+  simp [instantiateLevelParamsCore]
+  have (e) (H : e.hasLevelParam' = true →
+        replaceNoCache (instantiateLevelParamsCore.replaceFn s) e =
+        instantiateLevelParamsCore' true (fun x => (s x).getD (Level.param x)) e) :
+      replaceNoCache (instantiateLevelParamsCore.replaceFn s) e =
+      instantiateLevelParamsCore' true (fun x => (s x).getD (Level.param x)) e := by
+    cases eq : e.hasLevelParam' <;> [skip; exact H eq]
+    rw [instantiateLevelParamsCore_eq_self eq]
+    suffices ∀ f, f e = some e → replaceNoCache f e = e by
+      apply this; simp [instantiateLevelParamsCore.replaceFn, eq]
+    intro f eq; cases e <;> simp only [replaceNoCache, eq]
+  induction e <;> (
+    refine this _ fun h => ?_
+    simp only [replaceNoCache]
+    rw [instantiateLevelParamsCore.replaceFn.eq_def]
+    simp [h]; clear this h
+    simp_all [instantiateLevelParamsCore'])
+
+open private getParamSubst from Lean.Util.InstantiateLevelParams in
+theorem instantiateLevelParams_eq {e ps ls} :
+    instantiateLevelParams e ps ls =
+    instantiateLevelParamsCore' (!ps.isEmpty && !ls.isEmpty)
+      (fun x => ((ps.idxOf? x).bind (ls[·]?)).getD (.param x)) e := by
+  simp only [instantiateLevelParams]; rw [← Bool.not_or];
+  cases eq : ps.isEmpty || ls.isEmpty <;> simp
+  · clear eq
+    simp [instantiateLevelParamsCore_eq, List.idxOf?]; congr; ext n; congr
+    induction ps generalizing ls <;> cases ls <;> simp [getParamSubst]
+    split <;> simp [*]; cases List.findIdx? .. <;> simp
+  · refine instantiateLevelParamsCore_id.symm.trans ?_; congr; ext n
+    cases ps <;> simp_all

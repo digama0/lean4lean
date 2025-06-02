@@ -313,6 +313,10 @@ theorem IsDefEqCtx.isType : IsDefEqCtx env U [] Γ₁ Γ₂ → OnCtx Γ₁ (env
   | .zero => ⟨⟩
   | .succ h1 h2 => ⟨h1.isType, _, h2.hasType.1⟩
 
+theorem IsDefEqCtx.refl : ∀ {Γ}, OnCtx Γ (env.IsType U) → IsDefEqCtx env U [] Γ Γ
+  | [], _ => .zero
+  | _::_, ⟨h1, _, h2⟩ => .succ (.refl h1) h2
+
 variable! (henv : OnTypes env fun _ e A => e.ClosedN ∧ A.ClosedN) in
 theorem IsDefEq.closedN' (H : env.IsDefEq U Γ e1 e2 A) (hΓ : CtxClosed Γ) :
     e1.ClosedN Γ.length ∧ e2.ClosedN Γ.length ∧ A.ClosedN Γ.length := by
@@ -575,6 +579,10 @@ theorem HasType.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.HasTyp
 
 theorem IsType.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.IsType U Γ A) :
     env.IsType U' (Γ.map (VExpr.instL ls)) (A.instL ls) := let ⟨_, h⟩ := H; ⟨_, h.instL hls⟩
+
+theorem IsDefEqU.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.IsDefEqU U Γ e1 e2) :
+    env.IsDefEqU U' (Γ.map (VExpr.instL ls)) (e1.instL ls) (e2.instL ls) :=
+  let ⟨_, h⟩ := H; ⟨_, h.instL hls⟩
 
 variable! (henv : Ordered env) (h₀ : env.HasType U Γ₀ e₀ A₀) in
 theorem IsDefEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : env.IsDefEq U Γ₁ e1 e2 A) :

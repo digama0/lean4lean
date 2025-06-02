@@ -123,6 +123,10 @@ nonrec theorem VLocalDecl.WF.instN (henv : env.Ordered) (W : Ctx.InstN Γ₀ e�
     (h₀ : env.HasType U Γ₀ e₀ A₀) : ∀ {d}, WF env U Γ₁ d → WF env U Γ (d.inst e₀ k)
   | .vlam _,  H | .vlet .., H => H.instN henv W h₀
 
+nonrec theorem VLocalDecl.WF.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') :
+    ∀ {d}, WF env ls.length Γ d → WF env U' (Γ.map (·.instL ls)) (d.instL ls)
+  | .vlam _,  H | .vlet .., H => H.instL hls
+
 theorem VLocalDecl.is_liftN {Δ : VLCtx} :
     ∀ {d}, Ctx.LiftN (VLocalDecl.depth d) 0 Δ.toCtx (VLCtx.toCtx ((ofv, d) :: Δ))
   | .vlam _ => .one
@@ -191,6 +195,11 @@ protected theorem FVLift.toCtx (W : FVLift Δ Δ' dk n k) : Ctx.LiftN n k Δ.toC
     match d with
     | .vlet .. => exact ih
     | .vlam A => exact .succ ih
+
+theorem FVLift.from_nil : ∀ {Δ : VLCtx}, Δ.NoBV → FVLift [] Δ 0 Δ.toCtx.length 0
+  | [], _ => .refl
+  | (some _, .vlam _) :: _, H => .skip_fvar _ _ (.from_nil H)
+  | (some _, .vlet _ _) :: _, H => .skip_fvar _ _ (.from_nil H)
 
 variable! (henv : VEnv.WF env) in
 theorem FVLift.wf (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U := by
@@ -386,6 +395,31 @@ protected theorem Abstract.find? (W : Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (h
       by_cases h : i = dk <;> simp +contextual [h]
       obtain _|i := i <;> [omega; simp]
     · simp [ih h]
+
+theorem instL_eq_map (Δ : VLCtx) : Δ.instL ls = Δ.map (fun (ofv, d) => (ofv, d.instL ls)) := by
+  induction Δ <;> simp [instL, *]
+
+@[simp] theorem instL_toCtx (Δ : VLCtx) : (Δ.instL ls).toCtx = Δ.toCtx.map (·.instL ls) := by
+  induction Δ with
+  | nil => rfl
+  | cons head => obtain ⟨_, _|_⟩ := head <;> rw [instL, VLocalDecl.instL] <;> simp [toCtx, *]
+
+variable! (hls : ∀ l ∈ (ls : List _), VLevel.WF U l) in
+protected theorem WF.instL : ∀ {Δ}, VLCtx.WF env ls.length Δ →
+    VLCtx.WF env U (Δ.instL ls)
+  | [], _ => ⟨⟩
+  | (_, d) :: Δ, ⟨h1, h2, h3⟩ =>
+    ⟨h1.instL, by simpa [instL_eq_map, fvars] using h2, by simpa using h3.instL hls⟩
+
+theorem find?_instL : find? Δ v = some (e, A) →
+    find? (Δ.instL ls) v = some (e.instL ls, A.instL ls) := by
+  induction Δ generalizing v e A with
+  | nil => nofun
+  | cons d Δ ih =>
+    simp [find?, instL]; split <;> simp
+    · rintro rfl rfl; cases d.2 <;> exact ⟨rfl, by simp [VLocalDecl.instL, VLocalDecl.type]⟩
+    · rintro e A h rfl rfl
+      exact ⟨_, _, ih h, by cases d.2 <;> simp [VLocalDecl.instL, VLocalDecl.depth]⟩
 
 end VLCtx
 
@@ -606,9 +640,7 @@ theorem TrExprS.wf (H : TrExprS env Us Δ e e') : VExpr.WF env Us.length Δ.toCt
   | bvar h1 | fvar h1 => exact ⟨_, hΔ.find?_wf henv h1⟩
   | sort h1 => exact ⟨_, .sort (.of_ofLevel h1)⟩
   | const h1 h2 h3 =>
-    simp [List.mapM_eq_some] at h2
-    refine ⟨_, .const h1 (fun l hl => ?_) (h2.length_eq.symm.trans h3)⟩
-    have ⟨_, _, h⟩ := h2.forall_exists_r _ hl; exact .of_ofLevel h
+    exact ⟨_, .const h1 (.of_mapM_ofLevel h2) ((List.mapM_eq_some.1 h2).length_eq.symm.trans h3)⟩
   | app h1 h2 => exact ⟨_, h1.app h2⟩
   | lam h1 _ _ _ ih2 =>
     have ⟨_, h1'⟩ := h1
@@ -787,6 +819,19 @@ theorem TrExpr.letE (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
   let ⟨_, s4'⟩ := s4.defeqDFC henv hΔΔ
   let ⟨_, h4'⟩ := s4.uniq henv hΔΔ s4'
   ⟨_, .letE h1' s2 s3 s4', _, h4'.symm.trans_l henv hΔ h4⟩
+
+theorem TrExpr.lit (h : TrExpr env Us Δ l.toConstructor e') : TrExpr env Us Δ (.lit l) e' :=
+  let ⟨_, s2, h2⟩ := h; ⟨_, .lit s2, h2⟩
+
+theorem TrExpr.mdata (h : TrExpr env Us Δ e e') : TrExpr env Us Δ (.mdata d e) e' :=
+  let ⟨_, s2, h2⟩ := h; ⟨_, .mdata s2, h2⟩
+
+theorem TrExpr.proj {env Us Δ e e' s i e''} (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
+    (H : TrExpr env Us Δ e e') (H2 : TrProj Δ.toCtx s i e' e'') :
+    TrExpr env Us Δ (.proj s i e) e'' :=
+  let ⟨_, s2, h2⟩ := H
+  have ⟨_, H2'⟩ := H2.defeqDFC henv (.refl hΔ) h2.symm
+  ⟨_, .proj s2 H2', H2'.uniq henv (.refl hΔ) H2 h2⟩
 
 theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
     (W : VLCtx.FVLift Δ Δ₂ dk n k) (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂)
@@ -1030,6 +1075,247 @@ theorem TrExpr.inst_let (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
   let ⟨_, s1'⟩ := s1.defeqDFC henv hΔΔ
   let ⟨_, h1'⟩ := s1.uniq henv hΔΔ s1'
   ⟨_, .inst_let henv s1' s2, _, h1'.symm.trans_l henv hΔ h1⟩
+
+theorem ofLevel_mkLevelMax'
+    (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :
+    ∃ w, VLevel.ofLevel Us (mkLevelMax' u v) = some w ∧ w ≈ .max u' v' := by
+  let subsumes (u v : Level) : Bool :=
+    if v.isExplicit && u.getOffset ≥ v.getOffset then true
+    else match u with
+      | Level.max u₁ u₂ => v == u₁ || v == u₂
+      | _ => false
+  let mkLevelMaxCore (u v : Level) :=
+    if u == v then u
+    else if u.isZero then v
+    else if v.isZero then u
+    else if subsumes u v then u
+    else if subsumes v u then v
+    else if u.getLevelOffset == v.getLevelOffset then
+      if u.getOffset ≥ v.getOffset then u else v
+    else
+      .max u v
+  change ∃ w, VLevel.ofLevel Us (mkLevelMaxCore u v) = some w ∧ w ≈ .max u' v'
+  have le {u v u' v'} (h : subsumes u v)
+      (hu : VLevel.ofLevel Us u = some u')
+      (hv : VLevel.ofLevel Us v = some v') : v'.LE u' := by
+    simp [subsumes] at h
+    obtain ⟨h1, h2⟩ | h := h
+    · clear subsumes mkLevelMaxCore
+      induction v generalizing u u' v' with simp [Level.getOffsetAux, VLevel.ofLevel] at hv h2 ⊢
+      | zero => subst v'; exact VLevel.zero_le
+      | succ _ ih =>
+        obtain ⟨_, hv, rfl⟩ := hv
+        generalize eq : u.getOffset' = n at h2
+        unfold Level.getOffset' at eq; split at eq <;> subst eq <;> [skip; cases h2]
+        simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
+        simp [Level.isExplicit] at h1
+        exact VLevel.succ_le_succ (ih hu hv h1.2 (Nat.le_of_succ_le_succ h2))
+      | _ => cases h1
+    · split at h <;> [skip; cases h]
+      simp [VLevel.ofLevel] at hu; obtain ⟨_, hu1, _, hu2, rfl⟩ := hu
+      simp at h; obtain rfl | rfl := h
+      · cases hv.symm.trans hu1
+        exact VLevel.le_max_left
+      · cases hv.symm.trans hu2
+        exact VLevel.le_max_right
+  simp only [mkLevelMaxCore]; split
+  · simp_all; exact VLevel.max_self.symm
+  split
+  · let .zero := u; simp [VLevel.ofLevel] at h1; subst u'
+    exact ⟨_, h2, VLevel.zero_le.max_eq_right.symm⟩
+  split
+  · let .zero := v; simp [VLevel.ofLevel] at h2; subst v'
+    exact ⟨_, h1, VLevel.zero_le.max_eq_left.symm⟩
+  split
+  · exact ⟨_, h1, (le ‹_› h1 h2).max_eq_left.symm⟩
+  split
+  · exact ⟨_, h2, (le ‹_› h2 h1).max_eq_right.symm⟩
+  split
+  · rename_i h
+    simp at h ⊢
+    let rec lem1 {v : Level} {u' v'}
+        (hu : VLevel.ofLevel Us v.getLevelOffset = some u')
+        (hv : VLevel.ofLevel Us v = some v') : u'.LE v' := by
+      unfold Level.getLevelOffset at hu; split at hu
+      · simp [VLevel.ofLevel] at hv; obtain ⟨_, hv, rfl⟩ := hv
+        exact VLevel.le_trans (lem1 hu hv) VLevel.le_succ
+      · cases hu.symm.trans hv; exact VLevel.le_refl _
+    let rec lem2 {u v : Level} {u' v'}
+        (h1 : u.getLevelOffset = v.getLevelOffset)
+        (h2 : u.getOffset' ≤ v.getOffset')
+        (hu : VLevel.ofLevel Us u = some u')
+        (hv : VLevel.ofLevel Us v = some v') : u'.LE v' := by
+      revert h1 h2; unfold Level.getLevelOffset Level.getOffset'
+      split <;> simp <;> split <;> (try simp)
+      · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
+        simp [VLevel.ofLevel] at hv; obtain ⟨_, hv, rfl⟩ := hv
+        exact (VLevel.succ_le_succ <| lem2 · · hu hv)
+      · rintro rfl; exact lem1 (v := .succ _) hu hv
+      · rintro rfl; cases hu.symm.trans hv; exact VLevel.le_refl _
+    split <;> rename_i h3
+    · exact ⟨_, h1, (lem2 h.symm h3 h2 h1).max_eq_left.symm⟩
+    · exact ⟨_, h2, (lem2 h (Nat.le_of_not_le h3) h1 h2).max_eq_right.symm⟩
+  simp [VLevel.ofLevel]; exact ⟨_, ⟨_, h1, _, h2, rfl⟩, rfl⟩
+
+theorem ofLevel_isNeverZero (h : VLevel.ofLevel Us u = some u') (H : u.isNeverZero) :
+    u'.IsNeverZero := by
+  induction u generalizing u' with simp [Level.isNeverZero, VLevel.ofLevel] at H h <;> intro ls
+  | succ =>
+    obtain ⟨_, h1, rfl⟩ := h
+    exact Nat.succ_ne_zero _
+  | max _ _ ih1 ih2 =>
+    obtain ⟨_, h1, _, h2, rfl⟩ := h
+    intro h
+    rw [VLevel.eval, ← Nat.le_zero, Nat.max_le] at h; simp at h
+    exact H.elim (ih1 h1 · _ h.1) (ih2 h2 · _ h.2)
+  | imax _ _ ih1 ih2 =>
+    obtain ⟨_, h1, _, h2, rfl⟩ := h
+    have := ih2 h2 H ls
+    simp [VLevel.eval, Nat.imax, this]
+    exact Nat.ne_of_gt (Nat.le_trans (Nat.pos_of_ne_zero this) (Nat.le_max_right ..))
+
+theorem ofLevel_mkLevelIMax'
+    (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :
+    ∃ w, VLevel.ofLevel Us (mkLevelIMax' u v) = some w ∧ w ≈ .imax u' v' := by
+  let mkLevelIMaxCore (u v : Level) :=
+    if v.isNeverZero then mkLevelMax' u v
+    else if v.isZero then v
+    else if u.isZero then v
+    else if u == v then u
+    else .imax u v
+  change ∃ w, VLevel.ofLevel Us (mkLevelIMaxCore u v) = some w ∧ w ≈ .imax u' v'
+  simp only [mkLevelIMaxCore]; split
+  · have ⟨_, a1, a2⟩ := ofLevel_mkLevelMax' h1 h2
+    exact ⟨_, a1, .trans a2 (ofLevel_isNeverZero h2 ‹_›).imax_eq_max.symm⟩
+  split
+  · let .zero := v; simp [VLevel.ofLevel] at h2; subst v'
+    exact ⟨.zero, rfl, rfl⟩
+  split
+  · let .zero := u; simp [VLevel.ofLevel] at h1; subst u'
+    exact ⟨_, h2, VLevel.zero_imax.symm⟩
+  split
+  · simp_all; exact VLevel.imax_self.symm
+  simp [VLevel.ofLevel]; exact ⟨_, ⟨_, h1, _, h2, rfl⟩, rfl⟩
+
+variable! {ls : List VLevel} (hls : ∀ l ∈ ls, l.WF U') in
+theorem TrProj.instL (H : TrProj Γ s i e e') :
+    TrProj (Γ.map (VExpr.instL ls)) s i (e.instL ls) (e'.instL ls) := sorry
+
+section
+
+variable (henv : VEnv.WF env) {Us ps : List Name} {ls : List Level} {ls' : List VLevel}
+  (hΔ : VLCtx.WF env ls'.length Δ)
+  (Hls : ls.mapM (VLevel.ofLevel Us) = some ls')
+  (eq : ps.length = ls.length)
+
+include Hls eq
+
+section
+variable (eqF : (fun x => ((List.idxOf? x ps).bind fun x => ls[x]?).getD (Level.param x)) = F)
+include eqF
+
+attribute [-simp] Bool.forall_bool in
+theorem substParams_wf (red) (H : VLevel.ofLevel ps u = some u') :
+    ∃ u₁, VLevel.ofLevel Us (u.substParams' F red) = some u₁ ∧ u₁ ≈ u'.inst ls' := by
+  induction u generalizing u' red with simp_all [VLevel.ofLevel, Level.substParams']
+  | zero => subst u'; rfl
+  | succ _ ih =>
+    obtain ⟨_, H, rfl⟩ := H
+    exact let ⟨_, h1, h2⟩ := ih _ H; ⟨_, ⟨_, h1, rfl⟩, VLevel.succ_congr h2⟩
+  | max _ _ ih1 ih2 =>
+    obtain ⟨_, H1, _, H2, rfl⟩ := H
+    generalize (_ && _) = red'
+    let ⟨_, a1, a2⟩ := ih1 (red := red') H1
+    let ⟨_, b1, b2⟩ := ih2 (red := red') H2
+    split
+    · have ⟨w, c1, c2⟩ := ofLevel_mkLevelMax' a1 b1
+      exact ⟨_, c1, .trans c2 <| VLevel.max_congr a2 b2⟩
+    · simp [VLevel.ofLevel]
+      exact ⟨_, ⟨_, a1, _, b1, rfl⟩, VLevel.max_congr a2 b2⟩
+  | imax _ _ ih1 ih2 =>
+    obtain ⟨_, H1, _, H2, rfl⟩ := H
+    generalize (_ && _) = red'
+    let ⟨_, a1, a2⟩ := ih1 (red := red') H1
+    let ⟨_, b1, b2⟩ := ih2 (red := red') H2
+    split
+    · have ⟨w, c1, c2⟩ := ofLevel_mkLevelIMax' a1 b1
+      exact ⟨_, c1, .trans c2 <| VLevel.imax_congr a2 b2⟩
+    · simp [VLevel.ofLevel]
+      exact ⟨_, ⟨_, a1, _, b1, rfl⟩, VLevel.imax_congr a2 b2⟩
+  | param x =>
+    obtain ⟨H, rfl⟩ := H; subst eqF; simp
+    have := List.idxOf_eq_idxOf? x ps; revert this
+    split <;> simp [*, Nat.ne_of_lt, VLevel.inst]; rintro rfl; clear ‹_› eq
+    generalize List.idxOf x ps = n at *
+    rw [List.mapM_eq_some] at Hls
+    induction Hls generalizing n with
+    | nil => cases H
+    | cons Hl _ ih =>
+      obtain _|n := n <;> simp
+      · exact ⟨_, Hl, rfl⟩
+      · exact ih _ (Nat.lt_of_succ_lt_succ H)
+
+theorem substParams_wf_list (red) {us us' : List _} (H : us.mapM (VLevel.ofLevel ps) = some us') :
+    ∃ us₁, (us.map (Level.substParams' F red)).mapM (VLevel.ofLevel Us) = some us₁ ∧
+      List.Forall₂ (· ≈ ·) us₁ (us'.map (·.inst ls')) := by
+  induction us generalizing us' with simp_all
+  | cons u us ih =>
+    obtain ⟨_, H1, _, H2, rfl⟩ := H
+    have ⟨_, h1, h2⟩ := ih H2
+    have ⟨_, h3, h4⟩ := substParams_wf Hls eq eqF red H1
+    refine ⟨_, ⟨_, h3, _, h1, rfl⟩, .cons h4 h2⟩
+
+end
+
+include henv hΔ
+
+theorem TrExprS.instL (H : TrExprS env ps Δ e e') :
+    TrExpr env Us (Δ.instL ls') (e.instantiateLevelParams ps ls) (e'.instL ls') := by
+  simp [Expr.instantiateLevelParams_eq]
+  generalize (_ && _) = red, eqF : (fun x : Name => _) = F
+  have Hls' := VLevel.WF.of_mapM_ofLevel Hls
+  have eq' := eq.trans (List.mapM_eq_some.1 Hls).length_eq
+  induction H with
+  | bvar h1 => exact (bvar (VLCtx.find?_instL h1)).trExpr henv (hΔ.instL Hls')
+  | fvar h1 => exact (fvar (VLCtx.find?_instL h1)).trExpr henv (hΔ.instL Hls')
+  | sort h1 =>
+    simp [Expr.instantiateLevelParamsCore']
+    have ⟨_, a1, a2⟩ := substParams_wf Hls eq eqF red h1
+    exact ⟨_, .sort a1, _, .sortDF (.of_ofLevel a1) (.inst Hls') a2⟩
+  | const h1 h2 h3 =>
+    have ⟨_, a1, a2⟩ := substParams_wf_list Hls eq eqF red h2
+    refine ⟨_, .const h1 a1 (by simp [h3]), _, .constDF h1 (.of_mapM_ofLevel a1) ?_ ?_ a2⟩
+    · simp; exact fun _ _ => .inst Hls'
+    · simp [← (List.mapM_eq_some.1 a1).length_eq, h3]
+  | app h1 h2 _ _ ih1 ih2 =>
+    exact .app henv (hΔ.instL Hls')
+      (VLCtx.instL_toCtx _ ▸ h1.instL Hls')
+      (VLCtx.instL_toCtx _ ▸ h2.instL Hls') (ih1 hΔ) (ih2 hΔ)
+  | lam h1 h2 _ ih1 ih2 =>
+    exact .lam henv (hΔ.instL Hls')
+      (VLCtx.instL_toCtx _ ▸ h1.instL Hls') (ih1 hΔ) (ih2 ⟨hΔ, nofun, eq' ▸ h1⟩)
+  | forallE h1 h2 _ _ ih1 ih2 =>
+    exact .forallE henv (hΔ.instL Hls')
+      (VLCtx.instL_toCtx _ ▸ h1.instL Hls')
+      (VLCtx.instL_toCtx _ ▸ h2.instL Hls') (ih1 hΔ) (ih2 ⟨hΔ, nofun, eq' ▸ h1⟩)
+  | letE h1 _ _ _ ih1 ih2 ih3 =>
+    exact .letE henv (hΔ.instL Hls')
+      (VLCtx.instL_toCtx _ ▸ h1.instL Hls') (ih1 hΔ) (ih2 hΔ) (ih3 ⟨hΔ, nofun, eq' ▸ h1⟩)
+  | lit _ ih =>
+    refine .lit (Expr.instantiateLevelParamsCore_eq_self ?_ ▸ ih hΔ :)
+    exact Literal.toConstructor_hasLevelParam
+  | mdata _ ih => exact .mdata (ih hΔ)
+  | proj _ h2 ih =>
+    exact .proj henv (hΔ.instL Hls') (ih hΔ)
+      (VLCtx.instL_toCtx _ ▸ h2.instL Hls')
+
+theorem TrExpr.instL (H : TrExpr env ps Δ e e') :
+    TrExpr env Us (Δ.instL ls') (e.instantiateLevelParams ps ls) (e'.instL ls') :=
+  let ⟨_, s1, h1⟩ := H
+  have Hls' := .of_mapM_ofLevel Hls
+  (s1.instL henv hΔ Hls eq).defeq henv (hΔ.instL Hls') (VLCtx.instL_toCtx _ ▸ h1.instL Hls')
+
+end
 
 theorem TrExprS.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H : TrExprS env Us Δ₁ e e') :
     TrExprS env Us Δ (e.abstract1 v₀ dk) e' := by

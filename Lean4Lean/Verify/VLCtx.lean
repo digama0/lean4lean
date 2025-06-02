@@ -33,6 +33,10 @@ def VLocalDecl.inst : VLocalDecl → VExpr → (k : Nat := 0) → VLocalDecl
   | .vlam A, e₀, k => .vlam (A.inst e₀ k)
   | .vlet A e, e₀, k => .vlet (A.inst e₀ k) (e.inst e₀ k)
 
+def VLocalDecl.instL : VLocalDecl → List VLevel → VLocalDecl
+  | .vlam A, ls => .vlam (A.instL ls)
+  | .vlet A e, ls => .vlet (A.instL ls) (e.instL ls)
+
 def VLCtx := List (Option FVarId × VLocalDecl)
 
 namespace VLCtx
@@ -82,6 +86,11 @@ def toCtx : VLCtx → List VExpr
   | [] => []
   | (_, .vlam ty) :: Δ => ty :: VLCtx.toCtx Δ
   | (_, .vlet _ _) :: Δ => VLCtx.toCtx Δ
+
+def instL (Δ : VLCtx) (ls : List VLevel) : VLCtx :=
+  match Δ with
+  | [] => []
+  | (ofv, d) :: Δ => (ofv, d.instL ls) :: instL Δ ls
 
 theorem lookup_isSome : ∀ {Δ : VLCtx}, (Δ.lookup (some fv)).isSome = (Δ.find? (.inr fv)).isSome
   | [] => rfl

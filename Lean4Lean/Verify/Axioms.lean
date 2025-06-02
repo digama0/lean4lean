@@ -96,22 +96,56 @@ def hasFVar' : Expr → Bool
 /-- This is currently false, see bug lean4#8554 -/
 axiom hasFVar_eq (e : Expr) : e.hasFVar = e.hasFVar'
 
-def hasMVar' : Expr → Bool
+def hasExprMVar' : Expr → Bool
   | .mvar _ => true
   | .const ..
   | .bvar _
   | .sort _
   | .fvar _
   | .lit _ => false
-  | .mdata _ e => e.hasMVar'
-  | .proj _ _ e => e.hasMVar'
+  | .mdata _ e => e.hasExprMVar'
+  | .proj _ _ e => e.hasExprMVar'
   | .app e1 e2
   | .lam _ e1 e2 _
-  | .forallE _ e1 e2 _ => e1.hasMVar' || e2.hasMVar'
-  | .letE _ t v b _ => t.hasMVar' || v.hasMVar' || b.hasMVar'
+  | .forallE _ e1 e2 _ => e1.hasExprMVar' || e2.hasExprMVar'
+  | .letE _ t v b _ => t.hasExprMVar' || v.hasExprMVar' || b.hasExprMVar'
 
 /-- This is currently false, see bug lean4#8554 -/
-axiom hasMVar_eq (e : Expr) : e.hasMVar = e.hasMVar'
+@[simp] axiom hasExprMVar_eq (e : Expr) : e.hasExprMVar = e.hasExprMVar'
+
+def hasLevelMVar' : Expr → Bool
+  | .const _ ls => ls.any (·.hasMVar)
+  | .sort u => u.hasMVar
+  | .bvar _
+  | .fvar _
+  | .mvar _
+  | .lit _ => false
+  | .mdata _ e => e.hasLevelMVar'
+  | .proj _ _ e => e.hasLevelMVar'
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.hasLevelMVar' || e2.hasLevelMVar'
+  | .letE _ t v b _ => t.hasLevelMVar' || v.hasLevelMVar' || b.hasLevelMVar'
+
+/-- This is currently false, see bug lean4#8554 -/
+@[simp] axiom hasLevelMVar_eq (e : Expr) : e.hasLevelMVar = e.hasLevelMVar'
+
+def hasLevelParam' : Expr → Bool
+  | .const _ ls => ls.any (·.hasParam)
+  | .sort u => u.hasParam
+  | .bvar _
+  | .fvar _
+  | .mvar _
+  | .lit _ => false
+  | .mdata _ e => e.hasLevelParam'
+  | .proj _ _ e => e.hasLevelParam'
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.hasLevelParam' || e2.hasLevelParam'
+  | .letE _ t v b _ => t.hasLevelParam' || v.hasLevelParam' || b.hasLevelParam'
+
+/-- This is currently false, see bug lean4#8554 -/
+@[simp] axiom hasLevelParam_eq (e : Expr) : e.hasLevelParam = e.hasLevelParam'
 
 def looseBVarRange' : Expr → Nat
   | .bvar i => i + 1
@@ -259,20 +293,25 @@ end Expr
 
 namespace Level
 
-def realDepth : Level → Nat
-  | .zero
-  | .param _
-  | .mvar _ => 0
-  | .succ u => u.realDepth + 1
-  | .max u v
-  | .imax u v => u.realDepth.max v.realDepth + 1
+def hasParam' : Level → Bool
+  | .param .. => true
+  | .zero | .mvar .. => false
+  | .succ l => l.hasParam'
+  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasParam' || l₂.hasParam'
 
-def Safe (l : Level) : Prop := l.realDepth < 2 ^ 24
+/-- This is currently false, see bug lean4#8554 -/
+@[simp] axiom hasParam_eq (l : Level) : l.hasParam = l.hasParam'
 
-/--
-Level expressions with depth higher than 2^24 currently have unsound behavior, see
-[zulip](https://leanprover.zulipchat.com/#narrow/channel/270676-lean4/topic/Soundness.20bug.3A.20hasLooseBVars.20is.20not.20conservative/near/521286338).
--/
-axiom safeSorry (e : Level) : e.Safe
+def hasMVar' : Level → Bool
+  | .mvar .. => true
+  | .zero | .param .. => false
+  | .succ l => l.hasMVar'
+  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasMVar' || l₂.hasMVar'
+
+/-- This is currently false, see bug lean4#8554 -/
+@[simp] axiom hasMVar_eq (l : Level) : l.hasMVar = l.hasMVar'
+
+/-- This is because the `BEq` instance is implemented in C++ -/
+@[instance] axiom instLawfulBEqLevel : LawfulBEq Level
 
 end Level
