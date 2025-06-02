@@ -631,13 +631,27 @@ theorem checkConstant.WF {c : VContext}
     cases c.safety <;> simp [isAsSafeAs] <;> cases ci.isUnsafe <;> simp +decide
   have eq := h1.symm.trans h5
   have H' := List.mapM_eq_some.2 H
-  refine ⟨_, .const h4 H' eq, ?_⟩
   have s1 := h6.instL c.venv_wf (Δ := []) trivial H' (h5.trans eq.symm)
   have s1 := s1.weakFV c.venv_wf (.from_nil c.mlctx.noBV) c.mlctx_wf.tr.wf
   rw [(c.venv_wf.ordered.closedC h4).instL.liftN_eq (Nat.le_refl _)] at s1
   have ⟨_, s1, s2⟩ := s1
-  refine ⟨_, s1, .defeqU_r c.venv_wf c.mlctx_wf.tr.wf s2.symm ?_⟩
+  refine ⟨_, .const h4 H' eq, _, s1, .defeqU_r c.venv_wf c.mlctx_wf.tr.wf s2.symm ?_⟩
   exact .const h4 (.of_mapM_ofLevel H') (H.length_eq.symm.trans eq)
+
+theorem inferConstant.WF {c : VContext}
+    (he : c.TrExprS (.const name ls) e') (hty : c.HasType e' ty') :
+    (inferConstant c.toContext name ls true).WF fun ty => c.TrExpr ty ty' := by
+  simp [inferConstant]; refine envGet.WF.bind fun ci eq1 => ?_
+  split <;> [refine .pure ?_; exact .throw]
+  rename_i h1; let .const h4 H' eq := he
+  have ⟨_, h5, h6⟩ := c.trenv.find?_uniq eq1 h4
+  have H := List.mapM_eq_some.1 H'
+  have s1 := h6.instL c.venv_wf (Δ := []) trivial H' (h5.trans eq.symm)
+  have s1 := s1.weakFV c.venv_wf (.from_nil c.mlctx.noBV) c.mlctx_wf.tr.wf
+  rw [(c.venv_wf.ordered.closedC h4).instL.liftN_eq (Nat.le_refl _)] at s1
+  refine s1.defeq c.venv_wf c.mlctx_wf.tr.wf ?_
+  exact VEnv.IsDefEq.const h4 (.of_mapM_ofLevel H') (H.length_eq.symm.trans eq)
+    |>.uniqU c.venv_wf c.mlctx_wf.tr.wf hty
 
 theorem checkLambda.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)

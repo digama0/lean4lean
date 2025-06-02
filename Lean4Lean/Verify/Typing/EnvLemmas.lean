@@ -93,19 +93,28 @@ theorem Aligned.find? (H : Aligned safety C venv)
     · let ⟨_, h1, h2⟩ := ih h; exact ⟨_, this.constants h1, h2.mono this⟩
   | defeq h1 ih => let ⟨_, h1, h2⟩ := ih h; exact ⟨_, h1, h2.mono VEnv.addDefEq_le⟩
 
+theorem Aligned.find?_uniq (H : Aligned safety C venv)
+    (h : C.find? name = some ci) (hs : venv.constants name = some (some ci')) :
+    TrConstant safety venv ci ci' := by
+  induction H with
+  | empty => simp [SMap.find?] at h
+  | const h1 h2 h3 ih =>
+    have := VEnv.addConst_le h3
+    simp [VEnv.addConst] at h3; split at h3 <;> cases h3
+    simp [h1.map_wf.find?_insert] at h hs; revert h hs; split
+    · rintro ⟨⟩ ⟨⟩; rename_i n _ _ _; subst n
+      let .const h2 := h2; exact h2.mono this
+    · intro hs h; exact (ih h hs).mono this
+  | defeq h1 ih => exact (ih h hs).mono VEnv.addDefEq_le
+
 end
-
-theorem TrEnv'.find? (H : TrEnv' safety C Q venv)
-    (h : C.find? name = some ci) (hs : isAsSafeAs safety ci) :
-    ∃ ci', venv.constants name = some (some ci') ∧ TrConstant safety venv ci ci' :=
-  H.aligned.find? h hs
-
-theorem TrEnv'.find?' (H : TrEnv' safety C Q venv)
-    (h : C.find?' name = some ci) (hs : isAsSafeAs safety ci) :
-    ∃ ci', venv.constants name = some (some ci') ∧ TrConstant safety venv ci ci' :=
-  H.find? (H.map_wf.find?'_eq_find? _ ▸ h) hs
 
 theorem TrEnv.find? (H : TrEnv safety env venv)
     (h : env.find? name = some ci) (hs : isAsSafeAs safety ci) :
     ∃ ci', venv.constants name = some (some ci') ∧ TrConstant safety venv ci ci' :=
-  H.find?' h hs
+  H.aligned.find? (H.map_wf.find?'_eq_find? _ ▸ h) hs
+
+theorem TrEnv.find?_uniq (H : TrEnv safety env venv)
+    (h : env.find? name = some ci) (hs : venv.constants name = some (some ci')) :
+    TrConstant safety venv ci ci' :=
+  H.aligned.find?_uniq (H.map_wf.find?'_eq_find? _ ▸ h) hs
