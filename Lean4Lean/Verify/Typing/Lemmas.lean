@@ -102,6 +102,10 @@ theorem Closed.getAppArgsRevList {e} (h : Closed e)
   revert a; unfold Expr.getAppArgsRevList; split <;> simp
   exact ⟨h.2, Closed.getAppArgsRevList h.1⟩
 
+theorem Closed.getAppArgsList {e} (h : Closed e)
+    {{a}} (ha : a ∈ e.getAppArgsList) : Closed a :=
+  h.getAppArgsRevList (by simpa [← Expr.getAppArgsList_reverse])
+
 theorem Closed.looseBVarRange_le : Closed e k → e.looseBVarRange' ≤ k := by
   induction e generalizing k <;>
     simp +contextual [*, Closed, Expr.looseBVarRange', Nat.max_le, Nat.sub_le_of_le_add]
@@ -994,6 +998,21 @@ theorem TrExprS.inst {Δ : VLCtx} (henv : Ordered env)
     TrExprS env Us Δ (e.instantiate1' e₀) (e'.inst e₀') :=
   h₀.instN henv t₀ .zero H
 
+theorem TrExpr.inst (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
+    (t₀ : env.HasType Us.length Δ.toCtx e₀' A₀)
+    (H : TrExpr env Us ((none, .vlam A₀) :: Δ) e e')
+    (h₀ : TrExpr env Us Δ e₀ e₀') :
+    TrExpr env Us Δ (e.instantiate1' e₀) (e'.inst e₀') :=
+  have ⟨_, h0⟩ := t₀.isType henv hΔ
+  have ⟨_, s1, _, h1⟩ := H
+  have ⟨_, s2, h2⟩ := h₀
+  have h2' := h2.symm.of_l henv hΔ t₀
+  have hΔΔ := VLCtx.IsDefEq.cons (.refl henv hΔ) (ofv := none) nofun (.vlam h0)
+  let ⟨_, s1'⟩ := s1.defeqDFC henv hΔΔ
+  let ⟨_, h1'⟩ := s1.uniq henv hΔΔ s1'
+  ⟨_, .inst henv h2'.hasType.2 s1' s2, _,
+    .instDF henv hΔ (h1'.symm.trans_l henv hΔΔ.wf.toCtx h1) h2'.symm⟩
+
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀') in
 theorem TrExprS.instN_let_var (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ)
     (H : Δ₁.find? v = some (e', A)) :
@@ -1429,6 +1448,12 @@ theorem BetaReduce.appRevList (H : BetaReduce f f') :
   | nil => exact H
   | cons _ _ ih => exact .app ih
 
+theorem BetaReduce.appList (H : BetaReduce f f') :
+    BetaReduce (f.mkAppList es) (f'.mkAppList es) := by
+  induction es generalizing f f' with
+  | nil => exact H
+  | cons _ _ ih => exact ih (.app H)
+
 theorem BetaReduce.cheapBetaReduce (hc : e.Closed) : BetaReduce e e.cheapBetaReduce := by
   simp [Expr.cheapBetaReduce]
   split; · exact .refl
@@ -1443,12 +1468,12 @@ theorem BetaReduce.cheapBetaReduce (hc : e.Closed) : BetaReduce e e.cheapBetaRed
     · exact ⟨_, _, H, hi, rfl⟩
   refine let ⟨i, fn, h1, h2, eq⟩ := loop .zero (Nat.zero_le _); eq ▸ ?_; clear eq
   simp [Expr.getAppArgs_eq] at h2 ⊢
-  obtain ⟨l₁, l₂, rfl, eq⟩ : ∃ l₁ l₂, l₁.length = i ∧ e.getAppArgsRevList.reverse = l₁ ++ l₂ :=
+  obtain ⟨l₁, l₂, rfl, eq⟩ : ∃ l₁ l₂, l₁.length = i ∧ e.getAppArgsList = l₁ ++ l₂ :=
     ⟨_, _, List.length_take_of_le (by simp [h2]), (List.take_append_drop ..).symm⟩
   have eqr := congrArg List.reverse eq; simp at eqr
   have inst_reduce (h : ∀ x ∈ l₁, x.Closed) (l₂)
       {{r}} (hr : fn.instantiateList (l₁.reverse ++ l₂) = r) :
-      BetaReduce ((e.getAppFn.instantiateList l₂).mkAppRevList l₁.reverse) r := by
+      BetaReduce ((e.getAppFn.instantiateList l₂).mkAppList l₁) r := by
     generalize e.getAppFn = e₀ at h1
     subst r; clear h2 eq eqr
     induction l₁ generalizing e₀ fn l₂ with
@@ -1456,24 +1481,24 @@ theorem BetaReduce.cheapBetaReduce (hc : e.Closed) : BetaReduce e e.cheapBetaRed
     | cons a l ih =>
       let .succ (body := body) h1 := h1
       rw [Expr.instantiateList_lam]
-      simp at h ⊢; refine .trans (.appRevList .beta) ?_
+      simp at h ⊢; refine .trans (.appList .beta) ?_
       rw [Expr.instantiateList_instantiate1_comm h.1.looseBVarRange_zero]
       exact ih _ h.2 (a::l₂) _ h1
   have hl₁ : ∀ x ∈ l₁, x.Closed := by
-    have := eqr ▸ hc.getAppArgsRevList; simp [or_imp, forall_and] at this
-    exact this.2
+    have := eqr ▸ hc.getAppArgsList; simp [or_imp, forall_and] at this
+    exact this.1
   unfold Expr.cheapBetaReduce.cont; split <;> rename_i h3
   · simp [Expr.hasLooseBVars] at h3
     rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) rfl (by simp [← eq])]
-    rw [← e.mkAppRevList_getAppArgsRevList, eqr]; simp
-    refine .appRevList <| inst_reduce hl₁ [] <| Expr.instantiateList_eq_self (by simp [h3])
+    rw [← e.mkAppList_getAppArgsList, eqr]; simp
+    refine .appList <| inst_reduce hl₁ [] <| Expr.instantiateList_eq_self (by simp [h3])
   split <;> [rename_i n; exact .refl]
   have hc := h1.closed hc.getAppFn
   simp [Closed] at hc; rw [if_pos hc]
   rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) rfl (by simp [← eq])]
-  conv => lhs; rw [← e.mkAppRevList_getAppArgsRevList]
+  conv => lhs; rw [← e.mkAppList_getAppArgsList]
   simp [eqr]
-  refine .appRevList <| inst_reduce hl₁ [] ?_
+  refine .appList <| inst_reduce hl₁ [] ?_
   rw [List.getElem?_append_left (by omega), Nat.sub_right_comm, ← List.getElem?_reverse hc]
   suffices ∀ l₁, (∀ x ∈ l₁, x.Closed) → ∀ n < l₁.length,
       (Expr.bvar n).instantiateList l₁ = l₁[n]?.getD default by

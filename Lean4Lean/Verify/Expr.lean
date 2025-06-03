@@ -85,9 +85,21 @@ theorem mkAppData_looseBVarRange :
     m.toUInt64.toBitVec
   bv_decide
 
+def getAppArgsList : Expr → (r : List Expr := []) → List Expr
+  | .app f a, r => f.getAppArgsList (a :: r)
+  | _, r => r
+
 def getAppArgsRevList : Expr → List Expr
   | .app f a => a :: f.getAppArgsRevList
   | _ => []
+
+theorem getAppArgsRevList_reverse : (getAppArgsRevList e).reverse = getAppArgsList e := by
+  let rec loop {e r} : getAppArgsList e r = (getAppArgsRevList e).reverse ++ r := by
+    unfold getAppArgsList getAppArgsRevList; split <;> simp; exact loop
+  simp [loop]
+
+theorem getAppArgsList_reverse : (getAppArgsList e).reverse = getAppArgsRevList e := by
+  rw [← getAppArgsRevList_reverse]; simp
 
 open private getAppNumArgsAux getAppArgsAux mkAppRangeAux from Lean.Expr
 
@@ -97,7 +109,7 @@ theorem getAppNumArgs_eq : getAppNumArgs e = (getAppArgsRevList e).length := by
     rw [loop]; omega
   rw [getAppNumArgs, loop]; rfl
 
-theorem getAppArgs_toList : (getAppArgs e).toList = (getAppArgsRevList e).reverse := by
+theorem getAppArgs_toList_rev : (getAppArgs e).toList = (getAppArgsRevList e).reverse := by
   let rec loop {e l₁ l₂ args} (h1 : args.toList = l₁ ++ l₂) :
       l₁.length = (getAppArgsRevList e).length →
       (getAppArgsAux e args ((getAppArgsRevList e).length - 1)).toList =
@@ -111,8 +123,31 @@ theorem getAppArgs_toList : (getAppArgs e).toList = (getAppArgsRevList e).revers
   simp [getAppArgs, getAppNumArgs_eq]
   exact (loop (List.append_nil _).symm (by simp)).trans (by simp)
 
-theorem getAppArgs_eq : getAppArgs e = (getAppArgsRevList e).reverse.toArray := by
+theorem getAppArgs_toList : (getAppArgs e).toList = getAppArgsList e := by
+  rw [getAppArgs_toList_rev, getAppArgsRevList_reverse]
+
+theorem getAppArgs_eq_rev : getAppArgs e = (getAppArgsRevList e).reverse.toArray := by
+  simp [← getAppArgs_toList_rev]
+
+theorem getAppArgs_eq : getAppArgs e = (getAppArgsList e).toArray := by
   simp [← getAppArgs_toList]
+
+@[simp] theorem withApp_eq {e : Expr} : e.withApp f = f e.getAppFn e.getAppArgs := loop where
+  loop {e arr n} : withAppAux f e arr n = f e.getAppFn (getAppArgsAux e arr n) := by
+    unfold withAppAux getAppArgsAux; split
+    · exact loop
+    · simp [getAppFn]
+
+@[simp] def mkAppList : Expr → List Expr → Expr
+  | e, [] => e
+  | e, a :: as => mkAppList (.app e a) as
+
+theorem mkAppList_eq_foldl : mkAppList e es = es.foldl .app e := by
+  induction es generalizing e <;> simp [mkAppList, *]
+
+@[simp] theorem mkAppList_append :
+    mkAppList e (es₁ ++ es₂) = mkAppList (mkAppList e es₁) es₂ := by
+  simp [mkAppList_eq_foldl]
 
 @[simp] def mkAppRevList : Expr → List Expr → Expr
   | e, [] => e
@@ -125,26 +160,41 @@ theorem mkAppRevList_eq_foldr : mkAppRevList e es = es.foldr (fun a e => .app e 
     mkAppRevList e (es₁ ++ es₂) = mkAppRevList (mkAppRevList e es₂) es₁ := by
   simp [mkAppRevList_eq_foldr]
 
+theorem mkAppList_reverse : mkAppList e es.reverse = mkAppRevList e es := by
+  simp [mkAppList_eq_foldl, mkAppRevList_eq_foldr]
+
+theorem mkAppRevList_reverse : mkAppRevList e es.reverse = mkAppList e es := by
+  simp [mkAppList_eq_foldl, mkAppRevList_eq_foldr]
+
 theorem mkAppRevList_getAppArgsRevList (e) :
     mkAppRevList e.getAppFn (getAppArgsRevList e) = e := by
   unfold getAppFn getAppArgsRevList; split <;> simp
   congr 1; exact mkAppRevList_getAppArgsRevList _
 
+theorem mkAppList_getAppArgsList (e) :
+    mkAppList e.getAppFn (getAppArgsList e) = e := by
+  rw [← mkAppRevList_reverse, getAppArgsList_reverse, mkAppRevList_getAppArgsRevList]
+
 theorem mkAppRange_eq (h1 : args.toList = l₁ ++ l₂ ++ l₃)
     (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
-    mkAppRange e i j args = mkAppRevList e l₂.reverse := loop h1 h2 h3 where
+    mkAppRange e i j args = mkAppList e l₂ := loop h1 h2 h3 where
   loop {n i e l₁ l₂} (h1 : args.toList = l₁ ++ l₂ ++ l₃)
       (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = n) :
-      mkAppRangeAux n args i e = mkAppRevList e l₂.reverse := by
+      mkAppRangeAux n args i e = mkAppList e l₂ := by
     rw [mkAppRangeAux.eq_def]; split
     · simp [Array.getElem!_eq_getD, ← Array.getElem?_toList, h1]
       obtain _ | ⟨a, l₂⟩ := l₂; · simp_all
       rw [List.getElem?_append_right (by simp [h2])]
       simp [h2]
-      rw [loop (l₁ := l₁ ++ [a]) (l₂ := l₂)] <;> simp [h1, h2, h3, mkApp]
+      rw [loop (l₁ := l₁ ++ [a]) (l₂ := l₂)] <;> simp [h1, h2, h3]
     · simp at h3
       have : l₂.length = 0 := by omega
-      simp at this; simp [this]
+      simp_all
+
+theorem mkAppRange_eq_rev (h1 : args.toList = l₁ ++ l₂ ++ l₃)
+    (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
+    mkAppRange e i j args = mkAppRevList e l₂.reverse := by
+  simp [mkAppRange_eq h1 h2 h3, mkAppRevList_reverse]
 
 theorem liftLooseBVars_eq_self : e.looseBVarRange' ≤ s → liftLooseBVars' e s d = e := by
   induction e generalizing s <;>
@@ -237,9 +287,33 @@ theorem instantiate1'_instantiate1' (e1 e2 e3 j) :
     simp [instantiate1']
     rw [if_neg (Nat.lt_asymm hk), if_neg (Nat.ne_of_gt hk)]
 
+@[simp] def instantiateRevList (e : Expr) : List Expr → (k :_:= 0) → Expr
+  | [], _ => e
+  | a :: as, k => instantiate1' (instantiateRevList e as k) a k
+
+theorem instantiateList_eq_foldl :
+    instantiateList e as k = as.foldl (instantiate1' · · k) e := by
+  induction as generalizing e <;> simp [*]
+
+theorem instantiateRevList_eq_foldr :
+    instantiateRevList e as k = as.foldr (fun a e => instantiate1' e a k) e := by
+  induction as <;> simp [*]
+
 theorem instantiateList_append :
     instantiateList e (es₁ ++ es₂) k = instantiateList (instantiateList e es₁ k) es₂ k := by
-  induction es₁ generalizing e <;> simp [*]
+  simp [instantiateList_eq_foldl]
+
+theorem instantiateRevList_append :
+    instantiateRevList e (es₁ ++ es₂) k = instantiateRevList (instantiateRevList e es₂ k) es₁ k := by
+  simp [instantiateRevList_eq_foldr]
+
+theorem instantiateList_reverse :
+    instantiateList e as.reverse k = instantiateRevList e as k := by
+  simp [instantiateList_eq_foldl, instantiateRevList_eq_foldr]
+
+theorem instantiateRevList_reverse :
+    instantiateRevList e as.reverse k = instantiateList e as k := by
+  simp [instantiateList_eq_foldl, instantiateRevList_eq_foldr]
 
 theorem instantiateList_lam : instantiateList (.lam n ty body bi) as =
     .lam n (instantiateList ty as) (instantiateList body as 1) bi := by

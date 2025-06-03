@@ -149,18 +149,18 @@ def isDefEq (t s : Expr) : RecM Bool := do
   pure r
 
 def inferApp (e : Expr) : RecM Expr := do
-  e.withApp fun f args => do
-  let mut fType ← inferType f
-  let mut j := 0
-  for i in [:args.size] do
-    match fType with
-    | .forallE _ _ body _ =>
-      fType := body
-    | _ =>
-      fType := fType.instantiateRevRange j i args
-      fType := (← ensureForallCore fType e).bindingBody!
-      j := i
-  return fType.instantiateRevRange j args.size args
+  e.withApp fun f args =>
+  let rec loop fType j i : RecM Expr :=
+    if i < args.size then
+      match fType with
+      | .forallE _ _ body _ => loop body j (i+1)
+      | _ => do
+        let fType := fType.instantiateRevRange j i args
+        let fType := (← ensureForallCore fType e).bindingBody!
+        loop fType i (i+1)
+    else
+      return fType.instantiateRevRange j args.size args
+  do loop (← inferType f) 0 0
 
 def markUsed (n : Nat) (fvars : Array Expr) (b : Expr) (used : Array Bool) : Array Bool := Id.run do
   if !b.hasFVar then return used

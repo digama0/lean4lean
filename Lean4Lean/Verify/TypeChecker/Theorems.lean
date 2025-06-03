@@ -585,14 +585,19 @@ theorem inferType.WF' {c : VContext} {s : VState} (h1 : e.FVarsIn s.ngen.Reserve
       c.TrExprS e e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty' :=
   fun _ wf => wf.inferType h1 hinf
 
-theorem inferType.WF {c : VContext} {s : VState} (he : c.TrExprS e e') (hty : c.HasType e' ty') :
-    RecM.WF c s (inferType e true) fun ty _ => c.TrExpr ty ty' := by
+theorem inferType.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+    RecM.WF c s (inferType e true) fun ty _ => ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' := by
   refine .stateWF fun wf => ?_
   refine (inferType.WF' (he.fvarsIn.mono wf.ngen_wf) fun _ => ⟨_, he⟩).le
-    fun _ _ _ ⟨_, _, h1, h2, h3⟩ => ?_
+    fun _ _ _ ⟨_, _, h1, h2, h3⟩ => ⟨_, h2, ?_⟩
   have := h1.uniq c.venv_wf (.refl c.venv_wf c.mlctx_wf.tr.wf) he
-  have := h3.defeqU_l c.venv_wf c.mlctx_wf.tr.wf this
-  exact ⟨_, h2, this.uniqU c.venv_wf c.mlctx_wf.tr.wf hty⟩
+  exact h3.defeqU_l c.venv_wf c.mlctx_wf.tr.wf this
+
+theorem inferType.WF_uniq {c : VContext} {s : VState}
+    (he : c.TrExprS e e') (hty : c.HasType e' ty') :
+    RecM.WF c s (inferType e true) fun ty _ => c.TrExpr ty ty' :=
+  (inferType.WF he).le fun _ _ _ ⟨_, h1, h2⟩ =>
+  ⟨_, h1, h2.uniqU c.venv_wf c.mlctx_wf.tr.wf hty⟩
 
 theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn s.ngen.Reserves) :
     RecM.WF c s (inferType e false) fun ty _ => ∃ e' ty',
@@ -846,3 +851,81 @@ theorem isDefEq.WF {c : VContext} {s : VState}
   simp; split
   · exact addEquiv.WF.map fun _ _ _ _ => hb
   · exact .pure hb
+
+variable (env : VEnv) (Us : List Name) (Δ : VLCtx) in
+inductive AppStack : Expr → VExpr → List Expr → Prop where
+  | head : TrExprS env Us Δ f f' → AppStack f f' []
+  | app :
+    env.HasType Us.length Δ.toCtx f' (.forallE A B) →
+    env.HasType Us.length Δ.toCtx a' A →
+    TrExprS env Us Δ f f' →
+    TrExprS env Us Δ a a' →
+    AppStack (.app f a) (.app f' a') as →
+    AppStack f f' (a :: as)
+
+theorem AppStack.build_rev {e : Expr} :
+    ∀ {as}, TrExprS env Us Δ (e.mkAppRevList as) e' →
+      AppStack env Us Δ (e.mkAppRevList as) e' as' →
+      ∃ e', AppStack env Us Δ e e' (as.reverseAux as')
+  | [], _, H2 => ⟨_, H2⟩
+  | _ :: as, .app h1 h2 h3 h4, H2 =>
+    AppStack.build_rev (as := as) h3 (.app h1 h2 h3 h4 H2)
+
+theorem AppStack.build {e : Expr} :
+    ∀ {as}, TrExprS env Us Δ (e.mkAppList as) e' → ∃ e', AppStack env Us Δ e e' as := by
+  intro as H
+  rw [← Expr.mkAppRevList_reverse] at H
+  simpa using AppStack.build_rev H (.head H)
+
+theorem AppStack.tr : AppStack env Us Δ e e' as → TrExprS env Us Δ e e'
+  | .head H | .app _ _ H _ _ => H
+
+theorem inferApp.loop.WF {c : VContext} {s : VState}
+    {ll lm lr : List _}
+    (stk : AppStack c.venv c.lparams c.vlctx (.mkAppRevList e lm) e' lr)
+    (hfty : c.TrExpr (fType.instantiateList lm) fty') (hety : c.HasType e' fty')
+    (hargs : args = ll ++ lm.reverse ++ lr)
+    (hj : j = ll.length) (hi : i = ll.length + lm.length) :
+    RecM.WF c s
+      (inferApp.loop e₀ ⟨args⟩ fType j i)
+      fun ty _ => ∃ e₁', c.TrExprS (e.mkAppRevList lm |>.mkAppList lr) e₁' ∧
+        ∃ ty', c.TrExprS ty ty' ∧ c.HasType e₁' ty' := by
+  subst i j; rw [inferApp.loop.eq_def]
+  simp [hargs, Expr.instantiateList_reverse]
+  have henv := c.venv_wf; have hΔ := c.mlctx_wf.tr.wf
+  cases lr with simp
+  | cons a lr =>
+    let .app hf' ha' hf ha stk := stk
+    have uf := hf'.uniqU henv hΔ hety
+    split
+    · rw [Expr.instantiateList_forallE] at hfty
+      let ⟨_, .forallE _ _ hty hbody, h3⟩ := hfty
+      have ⟨⟨_, uA⟩, _, uB⟩ := h3.trans henv hΔ uf.symm |>.forallE_inv henv hΔ
+      refine inferApp.loop.WF (lm := a::lm) stk ?_ (.app hf' ha') (by simp) rfl rfl
+      have ha0 := c.mlctx.noBV ▸ ha.closed
+      simp [← Expr.instantiateList_instantiate1_comm ha0.looseBVarRange_zero]
+      exact .inst henv hΔ (ha'.defeqU_r henv hΔ ⟨_, uA.symm⟩) ⟨_, hbody, _, uB⟩ (ha.trExpr henv hΔ)
+    · simp [Nat.add_sub_cancel_left, Expr.instantiateRevList_reverse]
+      refine (ensureForallCore.WF hfty).bind fun _ _ _ ⟨h1, _, h2, h3⟩ => ?_
+      obtain ⟨name, ty, body, bi, rfl⟩ := h1; simp [Expr.bindingBody!]
+      let .forallE _ _ hty hbody := h2
+      have ⟨⟨_, uA⟩, _, uB⟩ := h3.trans henv hΔ uf.symm |>.forallE_inv henv hΔ
+      refine inferApp.loop.WF (ll := ll ++ lm.reverse) (lm := [a]) stk ?_
+        (.app hf' ha') (by simp) (by simp) (by simp)
+      exact .inst henv hΔ (ha'.defeqU_r henv hΔ ⟨_, uA.symm⟩) ⟨_, hbody, _, uB⟩ (ha.trExpr henv hΔ)
+  | nil =>
+    rw [Nat.add_sub_cancel_left, ← List.length_reverse, List.take_length,
+      Expr.instantiateRevList_reverse]
+    have ⟨_, hfty, h2⟩ := hfty
+    exact .pure ⟨_, stk.tr, _, hfty, hety.defeqU_r henv hΔ h2.symm⟩
+
+theorem inferApp.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+    RecM.WF c s (inferApp e) fun ty _ => ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' := by
+  rw [inferApp, Expr.withApp_eq, Expr.getAppArgs_eq]
+  have ⟨_, he'⟩ := AppStack.build (e.mkAppList_getAppArgsList ▸ he)
+  refine (inferType.WF he'.tr).bind fun ty _ _ ⟨ty', hty', ety⟩ => ?_
+  have henv := c.venv_wf; have hΔ := c.mlctx_wf.tr.wf
+  refine (inferApp.loop.WF (ll := []) (lm := []) he'
+    (hty'.trExpr henv hΔ) ety rfl rfl rfl).le fun _ _ _ ⟨_, h1, _, h2, h3⟩ => ?_
+  have := (e.mkAppList_getAppArgsList ▸ h1).uniq henv (.refl henv hΔ) he
+  exact ⟨_, h2, h3.defeqU_l henv hΔ this⟩
