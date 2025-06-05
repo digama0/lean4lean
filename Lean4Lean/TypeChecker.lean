@@ -204,7 +204,7 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
     for fvar in fvars, b in used do
       if b then
         usedFVars := usedFVars.push fvar
-    return (← getLCtx).mkForall fvars r
+    return (← getLCtx).mkForall usedFVars r
 
 def isProp (e : Expr) : RecM Bool :=
   return (← whnf (← inferType e)) == .prop
