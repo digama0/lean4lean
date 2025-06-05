@@ -56,7 +56,8 @@ def checkName (env : Environment) (n : Name)
     if primitives.contains n then
       throw <| .other s!"unexpected use of primitive name {n}"
 
-open private equivInfo Kernel.Environment.mk from Lean.Environment
+open private subsumesInfo Kernel.Environment.mk moduleNames moduleNameMap parts
+  from Lean.Environment
 
 def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
   Kernel.Environment.mk
@@ -68,38 +69,50 @@ def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
     (header := { mainModule, trustLevel })
     (extensions := #[])
 
+def throwAlreadyImported (s : ImportState) (const2ModIdx : Std.HashMap Name ModuleIdx)
+    (modIdx : Nat) (cname : Name) : Except Exception α := do
+  let modName := (moduleNames s)[modIdx]!
+  let constModName := (moduleNames s)[const2ModIdx[cname]!.toNat]!
+  throw <| .other
+    s!"import {modName} failed, environment already contains '{cname}' from {constModName}"
+
 def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name)
     (trustLevel : UInt32 := 0) : Except Exception Environment := do
-  let numConsts := s.moduleData.foldl (init := 0) fun numConsts mod =>
-    numConsts + mod.constants.size + mod.extraConstNames.size
-  let mut const2ModIdx : Std.HashMap Name ModuleIdx := Std.HashMap.emptyWithCapacity (capacity := numConsts)
-  let mut constantMap : Std.HashMap Name ConstantInfo := Std.HashMap.emptyWithCapacity (capacity := numConsts)
-  for h : modIdx in [0:s.moduleData.size] do
-    let mod := s.moduleData[modIdx]
-    for cname in mod.constNames, cinfo in mod.constants do
-      match constantMap.getThenInsertIfNew? cname cinfo with
+  let modules := (moduleNames s).filterMap ((moduleNameMap s)[·]?)
+  let moduleData ← modules.mapM fun mod => do
+    let some data := mod.mainModule? |
+      throw <| .other s!"missing data file for module {mod.module}"
+    return data
+  let numPrivateConsts := moduleData.foldl (init := 0) fun numPrivateConsts data => Id.run do
+    numPrivateConsts + data.constants.size + data.extraConstNames.size
+  let mut const2ModIdx := .emptyWithCapacity (capacity := numPrivateConsts)
+  let mut privateConstantMap := .emptyWithCapacity (capacity := numPrivateConsts)
+  for h : modIdx in [0:moduleData.size] do
+    let data := moduleData[modIdx]
+    for cname in data.constNames, cinfo in data.constants do
+      match privateConstantMap.getThenInsertIfNew? cname cinfo with
       | (cinfoPrev?, constantMap') =>
-        constantMap := constantMap'
+        privateConstantMap := constantMap'
         if let some cinfoPrev := cinfoPrev? then
           -- Recall that the map has not been modified when `cinfoPrev? = some _`.
-          unless equivInfo cinfoPrev cinfo do
-            let modName := s.moduleNames[modIdx]!
-            let constModName := s.moduleNames[const2ModIdx[cname]!.toNat]!
-            throw <| .other s!"import {modName} failed, environment already contains '{cname}' from {constModName}"
+          if subsumesInfo cinfo cinfoPrev then
+            privateConstantMap := privateConstantMap.insert cname cinfo
+          else if !subsumesInfo cinfoPrev cinfo then
+            throwAlreadyImported s const2ModIdx modIdx cname
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
-    for cname in mod.extraConstNames do
+    for cname in data.extraConstNames do
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
-  let constants : ConstMap := SMap.fromHashMap constantMap false
+
   return Kernel.Environment.mk
     (const2ModIdx := const2ModIdx)
-    (constants := constants)
-    (quotInit := !imports.isEmpty) -- We assume `core.lean` initializes quotient module
+    (constants := SMap.fromHashMap privateConstantMap false)
+    (quotInit := !imports.isEmpty) -- We assume `Init.Prelude` initializes quotient module
     (diagnostics := {})
     (extraConstNames := {})
     (extensions := #[])
     (header := {
       trustLevel, imports, mainModule
-      regions      := s.regions
-      moduleNames  := s.moduleNames
-      moduleData   := s.moduleData
+      regions      := modules.flatMap (parts · |>.map (·.2))
+      moduleNames  := moduleNames s
+      moduleData
     })

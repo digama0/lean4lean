@@ -10,7 +10,7 @@ theorem with_addConst {P : Prop} {env env' : VEnv} {cis : List VObject}
       env1.HasObjects (.const n (some ci) :: cis) → f env1 = some env' → P)
     (hcis : env.HasObjects cis)
     (H : (env.addConst n (some ci) >>= f) = some env') : P := by
-  let ⟨env1, h1, henv1⟩ := Option.bind_eq_some.1 H
+  let ⟨env1, h1, henv1⟩ := Option.bind_eq_some_iff.1 H
   refine IH (.const henv (by rintro _ ⟨⟩; exact hci hcis) h1) (hcis.const h1) henv1
 
 theorem Lookup.zero' (eq : A.lift = ty') :

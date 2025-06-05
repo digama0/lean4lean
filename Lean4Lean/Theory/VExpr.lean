@@ -232,7 +232,7 @@ theorem liftN_instVar_hi (i : Nat) (e2 : VExpr) (n k j : Nat) :
     · simp [liftN, liftVar_lt hi]
     · have := Nat.lt_add_left n hk
       rw [if_neg (Nat.lt_asymm this), if_neg (Nat.ne_of_gt this)]
-      simp [liftN]; rw [liftVar_le (Nat.not_lt.1 hi)]; rfl
+      simp [liftN]; rw [liftVar_le (Nat.not_lt.1 hi)]
 
 @[simp] theorem instL_instVar : (instVar i e k).instL ls = instVar i (e.instL ls) k := by
   simp [instVar]; split <;> [skip; split] <;> simp [instL, instL_liftN]

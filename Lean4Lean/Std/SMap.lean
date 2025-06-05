@@ -47,7 +47,7 @@ theorem WF.toList'_insert {α β} [BEq α] [LawfulBEq α] [Hashable α] [LawfulH
     rintro ⟨a', b⟩ h
     refine Decidable.by_contra fun h2 => ?_
     simp at h2
-    have := Std.HashMap.get?_eq_some_iff_exists_beq_and_mem_toList.2 ⟨_, h2, h⟩
+    have := Std.HashMap.getElem?_eq_some_iff_exists_beq_and_mem_toList.2 ⟨_, h2, h⟩
     exact ‹¬_› (Std.HashMap.mem_of_getElem? this)
   · refine .append_right (l₂ := _::_) _ ?_
     refine (List.filter_eq_self.2 ?_ ▸ wf.map₂.toList'_insert .. :)

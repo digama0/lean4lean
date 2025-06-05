@@ -223,7 +223,7 @@ theorem HasObjects.defeq {env : VEnv} (hls : env.HasObjects ls) :
 theorem HasObjects.bind_const {env env' : VEnv} (hls : env.HasObjects ls)
     (h : env.addConst n oci >>= f = some env') :
     ∃ env1, env1.HasObjects (.const n oci :: ls) ∧ f env1 = some env' :=
-  let ⟨env1, h1, henv1⟩ := Option.bind_eq_some.1 h; ⟨env1, hls.const h1, henv1⟩
+  let ⟨env1, h1, henv1⟩ := Option.bind_eq_some_iff.1 h; ⟨env1, hls.const h1, henv1⟩
 
 theorem IsDefEq.sort (h : l.WF U) : HasType env U Γ (.sort l) (.sort (.succ l)) :=
   .sortDF h h rfl

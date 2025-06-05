@@ -914,8 +914,7 @@ theorem inferApp.loop.WF {c : VContext} {s : VState}
         (.app hf' ha') (by simp) (by simp) (by simp)
       exact .inst henv hΔ (ha'.defeqU_r henv hΔ ⟨_, uA.symm⟩) ⟨_, hbody, _, uB⟩ (ha.trExpr henv hΔ)
   | nil =>
-    rw [Nat.add_sub_cancel_left, ← List.length_reverse, List.take_length,
-      Expr.instantiateRevList_reverse]
+    rw [← List.length_reverse, List.take_length, Expr.instantiateRevList_reverse]
     have ⟨_, hfty, h2⟩ := hfty
     exact .pure ⟨_, stk.tr, _, hfty, hety.defeqU_r henv hΔ h2.symm⟩
 

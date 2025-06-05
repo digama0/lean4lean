@@ -107,7 +107,7 @@ theorem List.idxOf_eq_length_iff [BEq α] [LawfulBEq α]
     · exact iff_of_false (by rintro ⟨⟩) fun H => H <| Or.inl h.symm
     · simp only [Ne.symm h, false_or]
       rw [← ih]
-      exact Nat.succ_inj'
+      exact Nat.succ_inj
 
 theorem List.idxOf_le_length [BEq α] [LawfulBEq α]
     {a : α} {l : List α} : idxOf a l ≤ length l := by
@@ -126,12 +126,9 @@ instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
   trans h1 h2 := by simp at *; exact h1.trans h2
 
-instance [BEq α] [LawfulBEq α] [Hashable α] : Batteries.HashMap.LawfulHashable α where
-  hash_eq h := by simp at *; subst h; rfl
-
 instance : LawfulBEq Lean.FVarId where
   eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Lean.Name) h; rfl
-  rfl := LawfulBEq.rfl (α := Lean.Name)
+  rfl := BEq.rfl (α := Lean.Name)
 
 theorem beq_comm [BEq α] [PartialEquivBEq α] (a b : α) : (a == b) = (b == a) :=
   Bool.eq_iff_iff.2 ⟨PartialEquivBEq.symm, PartialEquivBEq.symm⟩
@@ -141,8 +138,8 @@ theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
   induction l generalizing l' with
   | nil => simp only [mapM_nil, pure, Option.some.injEq, forall₂_nil_left_iff, @eq_comm _ l']
   | cons x l ih =>
-    simp [mapM_cons, Bind.bind, pure, Option.bind_eq_some, Option.some.injEq, forall₂_cons_left_iff,
-      @eq_comm _ l', exists_and_left, ih]
+    simp [mapM_cons, Bind.bind, pure, Option.bind_eq_some_iff, Option.some.injEq,
+      forall₂_cons_left_iff, @eq_comm _ l', exists_and_left, ih]
 
 @[simp] theorem Option.bind_eq_none'' {o : Option α} {f : α → Option β} :
     o.bind f = none ↔ ∀ a, o = some a → f a = none := by cases o <;> simp

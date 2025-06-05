@@ -36,21 +36,21 @@ theorem insertEntry_perm_filter [BEq α] [PartialEquivBEq α]
 
 end Const
 
-theorem containsKey_map [BEq α] (l : List ((_ : α) × β)) :
-    Const.containsKey k (l.map (fun x => (x.1, x.2))) = containsKey k l := by
-  induction l <;> simp [containsKey, Const.containsKey, *]
+theorem Const.containsKey_map [BEq α] (l : List ((_ : α) × β)) :
+    Const.containsKey k (l.map (fun x => (x.1, x.2))) = List.containsKey k l := by
+  induction l <;> simp [List.containsKey, Const.containsKey, *]
 
-theorem replaceEntry_map [BEq α] (l : List ((_ : α) × β)) :
+theorem Const.replaceEntry_map [BEq α] (l : List ((_ : α) × β)) :
     Const.replaceEntry k v (l.map (fun x => (x.1, x.2))) =
-    (replaceEntry k v l).map (fun x => (x.1, x.2)) := by
-  induction l <;> simp [replaceEntry, Const.replaceEntry, *]
+    (List.replaceEntry k v l).map (fun x => (x.1, x.2)) := by
+  induction l <;> simp [List.replaceEntry, Const.replaceEntry, *]
   cases _ == k <;> simp
 
-theorem insertEntry_map [BEq α] (l : List ((_ : α) × β)) :
+theorem Const.insertEntry_map [BEq α] (l : List ((_ : α) × β)) :
     Const.insertEntry k v (l.map (fun x => (x.1, x.2))) =
-    (insertEntry k v l).map (fun x => (x.1, x.2)) := by
-  simp [insertEntry, Const.insertEntry, containsKey_map, replaceEntry_map]
-  cases containsKey k l <;> simp
+    (List.insertEntry k v l).map (fun x => (x.1, x.2)) := by
+  simp [List.insertEntry, Const.insertEntry, Const.containsKey_map, Const.replaceEntry_map]
+  cases List.containsKey k l <;> simp
 
 end Std.Internal.List
 
@@ -66,7 +66,7 @@ theorem insert_perm_insertEntry (m : DHashMap α β) (a b) :
 
 theorem Const.insert_perm_insertEntry (m : DHashMap α fun _ => β) (a b) :
     (Const.toList (insert m a b)).Perm (Const.insertEntry a b (Const.toList m)) := by
-  simp [Const.toList, Const.toList_eq_toListModel_map, insertEntry_map]
+  simp [Const.toList, Const.toList_eq_toListModel_map, Const.insertEntry_map]
   exact (toListModel_insert (WF.out m.2)).map _
 
 end Std.DHashMap
@@ -84,7 +84,7 @@ theorem insert_toList [EquivBEq α] (m : HashMap α β) :
 theorem getElem?_eq_lookup_toList [LawfulBEq α] (m : HashMap α β) (a : α) :
     m[a]? = m.toList.lookup a := by
   apply Option.ext fun b => ?_
-  simp; rw [← mem_toList_iff_getElem?_eq_some]
+  rw [← mem_toList_iff_getElem?_eq_some]
   have := distinct_keys_toList (m := m); revert this
   induction m.toList <;> intro H <;> simp_all [List.lookup]
   split <;> simp_all [Prod.ext_iff]

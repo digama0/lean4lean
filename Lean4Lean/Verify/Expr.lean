@@ -467,6 +467,6 @@ theorem instantiateLevelParams_eq {e ps ls} :
   · clear eq
     simp [instantiateLevelParamsCore_eq, List.idxOf?]; congr; ext n; congr
     induction ps generalizing ls <;> cases ls <;> simp [getParamSubst]
-    split <;> simp [*]; cases List.findIdx? .. <;> simp
+    split <;> simp [*, List.findIdx?_cons]; cases List.findIdx? .. <;> simp
   · refine instantiateLevelParamsCore_id.symm.trans ?_; congr; ext n
     cases ps <;> simp_all

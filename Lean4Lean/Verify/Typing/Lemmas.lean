@@ -1195,9 +1195,7 @@ theorem ofLevel_isNeverZero (h : VLevel.ofLevel Us u = some u') (H : u.isNeverZe
     exact H.elim (ih1 h1 · _ h.1) (ih2 h2 · _ h.2)
   | imax _ _ ih1 ih2 =>
     obtain ⟨_, h1, _, h2, rfl⟩ := h
-    have := ih2 h2 H ls
-    simp [VLevel.eval, Nat.imax, this]
-    exact Nat.ne_of_gt (Nat.le_trans (Nat.pos_of_ne_zero this) (Nat.le_max_right ..))
+    simp [VLevel.eval, Nat.imax, ih2 h2 H ls]
 
 theorem ofLevel_mkLevelIMax'
     (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :

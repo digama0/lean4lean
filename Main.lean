@@ -242,13 +242,17 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) : IO
       checkQuotInit
   return s.env
 
+open private ImportedModule.mk from Lean.Environment in
 unsafe def replayFromImports (module : Name) (verbose := false) (compare := false) : IO Unit := do
   let mFile ← findOLean module
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
   let (mod, region) ← readModuleData mFile
   let (_, s) ← importModulesCore mod.imports
-    |>.run (s := { moduleNameSet := ({} : NameHashSet).insert module })
+    |>.run (s := {
+      moduleNameMap := ({} : Std.HashMap ..).insert module
+        (ImportedModule.mk module (parts := #[(mod, region)]))
+      moduleNames := #[module] })
   let env ← match Kernel.Environment.finalizeImport s #[{module}] module 0 with
     | .ok env => pure env
     | .error e => throw <| .userError <| ← (e.toMessageData {}).toString
