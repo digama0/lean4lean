@@ -24,6 +24,33 @@ attribute [simp] mkConst mkBVar mkSort mkFVar mkMVar mkMData mkProj mkApp mkLamb
   updateApp! updateFVar! updateConst! updateSort! updateMData! updateProj!
   updateForall! updateForallE! updateLambda! updateLambdaE! updateLet!
 
+inductive DisjointList (n : Nat) : Nat → Type where
+  | nil : DisjointList n k
+  | cons (a k') (b : BitVec n) : b.toNat < 2 ^ a → k + a ≤ k' →
+    DisjointList n k → DisjointList n k'
+
+def DisjointList.toNat (n : Nat) : DisjointList n k → Nat
+  | .nil => 0
+  | .cons _ _ b _ _ h3 => h3.toNat + b.toNat <<< k
+
+def DisjointList.toBitVec {n : Nat} : DisjointList n k → BitVec n
+  | .nil => 0#n
+  | .cons _ _ b _ _ h3 => h3.toBitVec + b <<< k
+
+def DisjointList.drop {k' k} {n : Nat} (δ) (H : k' + δ = k) :
+    DisjointList n k → DisjointList n k'
+  | .nil => .nil
+  | .cons a k₁ b h1 h2 h3 => by
+
+    done
+
+
+theorem DisjointList.cons_shift_le {n : Nat} {k' b h1 h2 h3}
+    (H : a ≤ k)
+    : (DisjointList.cons k' b h1 h2 h3).toBitVec >>> a = h3.toBitVec >>> a :=
+  | .nil => 0#n
+  | .cons _ _ b _ _ h3 => h3.toBitVec + b <<< k
+
 theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
     (mkData h br d fv ev lv lp).looseBVarRange.toNat = br := by
   rw [mkData, if_pos H]; dsimp only [Data.looseBVarRange, -Nat.reducePow]
@@ -31,7 +58,7 @@ theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
   refine .trans ?_ this; congr 2
   refine UInt64.eq_of_toBitVec_eq ?_
   have : br.toUInt64.toNat = br := by simp; omega
-  have : br.toUInt64.toBitVec ≤ 0xfffff#64 := (this ▸ H :)
+  have : br.toUInt64.toBitVec ≤ 0xfffff#64 := (this ▸ H :) -- :( big number
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 :=
     show h.toUInt32.toNat ≤ 2^32-1 by simp; omega
   have : (if d > 255 then 255 else d.toUInt8).toUInt64.toBitVec ≤ 0xff#64 :=
@@ -40,13 +67,40 @@ theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
   have := hb fv; have := hb ev; have := hb lv; have := hb lp
   change
     (h.toUInt32.toUInt64.toBitVec +
-      (if d > 255 then 255 else d.toUInt8).toUInt64.toBitVec <<< 32#64 +
-      fv.toUInt64.toBitVec <<< 40#64 +
-      ev.toUInt64.toBitVec <<< 41#64 +
-      lv.toUInt64.toBitVec <<< 42#64 +
-      lp.toUInt64.toBitVec <<< 43#64 +
-      br.toUInt64.toBitVec <<< 44#64) >>> 44#64 =
+      (if d > 255 then 255 else d.toUInt8).toUInt64.toBitVec <<< 32 +
+      fv.toUInt64.toBitVec <<< 40 +
+      ev.toUInt64.toBitVec <<< 41 +
+      lv.toUInt64.toBitVec <<< 42 +
+      lp.toUInt64.toBitVec <<< 43 +
+      br.toUInt64.toBitVec <<< 44) >>> 44 =
     br.toUInt64.toBitVec
+  conv => enter [1,1,1,1,1,1,1,1]; exact (BitVec.zero_add _).symm
+  have :=
+    DisjointList.toBitVec (
+      .cons _ _ _ <|
+      .cons _ _ _ <|
+      .cons _ _ _ <|
+      .cons _ _ _ <|
+      .cons _ _ _ <|
+      .nil
+      -- h.toUInt32.toUInt64.toBitVec +
+      -- (if d > 255 then 255 else d.toUInt8).toUInt64.toBitVec <<< 32 +
+      -- fv.toUInt64.toBitVec <<< 40 +
+      -- ev.toUInt64.toBitVec <<< 41 +
+      -- lv.toUInt64.toBitVec <<< 42 +
+      -- lp.toUInt64.toBitVec <<< 43 +
+      -- br.toUInt64.toBitVec <<< 44
+      ) >>> 44 =
+    br.toUInt64.toBitVec
+  -- change
+  --   (h.toUInt32.toUInt64.toBitVec +
+  --     (if d > 255 then 255 else d.toUInt8).toUInt64.toBitVec <<< 32#64 +
+  --     fv.toUInt64.toBitVec <<< 40#64 +
+  --     ev.toUInt64.toBitVec <<< 41#64 +
+  --     lv.toUInt64.toBitVec <<< 42#64 +
+  --     lp.toUInt64.toBitVec <<< 43#64 +
+  --     br.toUInt64.toBitVec <<< 44#64) >>> 44#64 =
+  --   br.toUInt64.toBitVec
   generalize h.toUInt32.toUInt64.toBitVec = h at *
   generalize (if d > 255 then 255 else d.toUInt8).toUInt64.toBitVec = d at *
   generalize fv.toUInt64.toBitVec = fv at *
