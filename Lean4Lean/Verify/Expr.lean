@@ -47,6 +47,48 @@ theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
       lp.toUInt64.toBitVec <<< 43#64 +
       br.toUInt64.toBitVec <<< 44#64) >>> 44#64 =
     br.toUInt64.toBitVec
+  generalize h.toUInt32.toUInt64.toBitVec = h at *
+  generalize (if d > 255 then 255 else d.toUInt8).toUInt64.toBitVec = d at *
+  generalize fv.toUInt64.toBitVec = fv at *
+  generalize ev.toUInt64.toBitVec = ev at *
+  generalize lp.toUInt64.toBitVec = lp at *
+  generalize lv.toUInt64.toBitVec = lv at *
+  generalize br.toUInt64.toBitVec = br at *
+  simp
+  have hh : ∀ i, h.getLsbD i = true → i < 32 := sorry
+  have hd : ∀ i, d.getLsbD i = true → i < 8 := sorry
+  have hfv : ∀ i, fv.getLsbD i = true → i < 1 := sorry
+  have hev : ∀ i, ev.getLsbD i = true → i < 1 := sorry
+  have hlp : ∀ i, lp.getLsbD i = true → i < 1 := sorry
+  have hlv : ∀ i, lv.getLsbD i = true → i < 1 := sorry
+  have hbr : ∀ i, br.getLsbD i = true → i < 20 := sorry
+  rw [BitVec.add_eq_or_of_and_eq_zero h]
+  repeat rw [BitVec.add_eq_or_of_and_eq_zero (_ ||| _)]
+  · ext i hi
+    simp +singlePass only [← Decidable.not_imp_not] at hh hd hfv hev hlp hlv hbr
+    simp at hh hd hfv hev hlp hlv hbr
+    apply Bool.eq_iff_iff.2
+    simp [← BitVec.getLsbD_eq_getElem]
+    simp [hd (44 + i - 32) (by omega), hfv (44 + i - 40) (by omega),
+      hev (44 + i - 41) (by omega), hlp (44 + i - 43) (by omega),
+      hlv (44 + i - 42) (by omega), hh (44 + i) (by omega)]
+    by_cases h : i ≥ 20; · simp [hbr _ h]
+    omega
+  · done
+  · done
+  · done
+  · done
+  · ext i hi; simp [← BitVec.getLsbD_eq_getElem]
+    cases h.getLsbD i <;> simp [hh]
+    cases eq : d.getLsbD (i - 32); · simp [hd]
+    have := hd _ eq
+    omega
+
+    -- cases fv.getLsbD (i - 40) <;> simp [hfv]
+    omega
+  · ext i hi; simp [← BitVec.getLsbD_eq_getElem]
+    if h' : i ≥ 32 then simp [hh _ h'] else omega
+    done
   bv_decide
 
 theorem Data.looseBVarRange_le : (Data.looseBVarRange d).toNat ≤ 2^20 - 1 := by
