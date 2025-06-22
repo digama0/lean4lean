@@ -273,12 +273,8 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
   let (mod, region) ← readModuleData mFile
-  let (_, s) ← importModulesCore mod.imports
-    |>.run (s := {
-      moduleNameMap := ({} : Std.HashMap ..).insert module
-        (ImportedModule.mk module (parts := #[(mod, region)]))
-      moduleNames := #[module] })
-  let env ← match Kernel.Environment.finalizeImport s #[{module}] module 0 with
+  let (_, s) ← (importModulesCore mod.imports).run
+  let env ← match Kernel.Environment.finalizeImport s mod.imports module 0 with
     | .ok env => pure env
     | .error e => throw <| .userError <| ← (e.toMessageData {}).toString
   let mut newConstants := {}
@@ -323,6 +319,7 @@ but this can only be used on a single file.
 -/
 unsafe def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
+  searchPathRef.modify (.pwFilter (· ≠ ·)) -- FIXME: why does the search path have dupes
   let (flags, args) := args.partition fun s => s.startsWith "-"
   let verbose := "-v" ∈ flags || "--verbose" ∈ flags
   let fresh : Bool := "--fresh" ∈ flags
