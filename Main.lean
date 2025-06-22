@@ -66,6 +66,7 @@ structure State where
   pending : NameSet := {}
   postponedConstructors : NameSet := {}
   postponedRecursors : NameSet := {}
+  numAdded : Nat := 0
 
 abbrev M := ReaderT Context <| StateRefT State IO
 
@@ -138,7 +139,7 @@ def addDecl (d : Declaration) : M Unit := do
           println! "{(← get).env.header.mainModule}:{d.name}: lean4lean took {t2 - t1}"
       else
         println! "{(← get).env.header.mainModule}:{d.name}: lean4lean took {t2 - t1}"
-    modify fun s => { s with env }
+    modify fun s => { s with env, numAdded := s.numAdded + 1 }
   | .error ex =>
     throwKernelException ex
 
@@ -248,7 +249,8 @@ def checkQuotInit : M Unit := do
     throw <| IO.userError s!"initial import (Init.Core) didn't initialize quotient module"
 
 /-- "Replay" some constants into an `Environment`, sending them to the kernel for checking. -/
-def replay (ctx : Context) (env : Environment) (decl : Option Name := none) : IO Environment := do
+def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
+    IO (Nat × Environment) := do
   let mut remaining : NameSet := ∅
   for (n, ci) in ctx.newConstants.toList do
     -- We skip unsafe constants, and also partial constants.
@@ -265,10 +267,10 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) : IO
       checkPostponedConstructors
       checkPostponedRecursors
       checkQuotInit
-  return s.env
+  return (s.numAdded, s.env)
 
 open private ImportedModule.mk from Lean.Environment in
-unsafe def replayFromImports (module : Name) (verbose := false) (compare := false) : IO Unit := do
+unsafe def replayFromImports (module : Name) (verbose := false) (compare := false) : IO Nat := do
   let mFile ← findOLean module
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
@@ -280,15 +282,16 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let env' ← replay { newConstants, verbose, compare } env
+  let (n, env') ← replay { newConstants, verbose, compare } env
   (Environment.ofKernelEnv env').freeRegions
   region.free
+  pure n
 
 unsafe def replayFromFresh (module : Name)
-    (verbose := false) (compare := false) (decl : Option Name := none) : IO Unit := do
+    (verbose := false) (compare := false) (decl : Option Name := none) : IO Nat := do
   Lean.withImportModules #[{module}] {} (trustLevel := 0) fun env => do
     let ctx := { newConstants := env.constants.map₁, verbose, compare }
-    discard <| replay ctx (.empty module) decl
+    Prod.fst <$> replay ctx (.empty module) decl
 
 /-- Read the name of the main module from the `lake-manifest`. -/
 -- This has been copied from `ImportGraph.getCurrentModule` in the
@@ -344,12 +347,13 @@ unsafe def main (args : List String) : IO UInt32 := do
           found := true
     if not found then
       throw <| IO.userError s!"Could not find any oleans for: {target}"
+  let mut n := 0
   if fresh then
     if targetModules.size != 1 then
       throw <| IO.userError "--fresh flag is only valid when specifying a single module"
     for m in targetModules do
       if verbose then IO.println s!"replaying {m} with --fresh"
-      replayFromFresh m verbose compare
+      n := n + (← replayFromFresh m verbose compare)
   else
     let mut tasks := #[]
     for m in targetModules do
@@ -357,8 +361,11 @@ unsafe def main (args : List String) : IO UInt32 := do
     let mut err := false
     for (m, t) in tasks do
       if verbose then IO.println s!"replaying {m}"
-      if let .error e := t.get then
+      match t.get with
+      | .error e =>
         IO.eprintln s!"lean4lean found a problem in {m}:\n{e.toString}"
         err := true
+      | .ok n' => n := n + n'
     if err then return 1
+  println! "checked {n} declarations"
   return 0
