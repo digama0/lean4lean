@@ -78,11 +78,36 @@ def isTodo (name : Name) : M Bool := do
   else
     return false
 
+def Lean.Kernel.Exception.mapEnvM [Monad m]
+    (ex : Exception) (f : Environment → m Environment) : m Exception := do
+  match ex with
+  | unknownConstant env c => return .unknownConstant (← f env) c
+  | alreadyDeclared env c => return .alreadyDeclared (← f env) c
+  | declTypeMismatch env d t => return .declTypeMismatch env d t
+  | declHasMVars env c e => return declHasMVars (← f env) c e
+  | declHasFVars env c e => return declHasFVars (← f env) c e
+  | funExpected env lctx e => return funExpected (← f env) lctx e
+  | typeExpected env lctx e => return typeExpected (← f env) lctx e
+  | letTypeMismatch  env lctx n t1 t2 => return letTypeMismatch (← f env) lctx n t1 t2
+  | exprTypeMismatch env lctx e t => return exprTypeMismatch (← f env) lctx e t
+  | appTypeMismatch  env lctx e fn arg => return appTypeMismatch (← f env) lctx e fn arg
+  | invalidProj env lctx e => return invalidProj (← f env) lctx e
+  | thmTypeIsNotProp env c t => return thmTypeIsNotProp (← f env) c t
+  | other _
+  | deterministicTimeout
+  | excessiveMemory
+  | deepRecursion
+  | interrupted => return ex
+
+open private ensureExtensionsArraySize from Lean.Environment in
 /-- Use the current `Environment` to throw a `Kernel.Exception`. -/
 def throwKernelException (ex : Exception) : M α := do
-    let ctx := { fileName := "", options := pp.match.set (pp.rawOnError.set {} true) false, fileMap := default }
-    let state := { env := .ofKernelEnv (← get).env }
-    Prod.fst <$> (Lean.Core.CoreM.toIO · ctx state) do Lean.throwKernelException ex
+  let options := pp.match.set (pp.rawOnError.set {} true) false
+  let f env := ensureExtensionsArraySize <| .ofKernelEnv env
+  let env ← f (← get).env
+  let ex ← ex.mapEnvM fun env => return (← f env).toKernelEnv
+  Prod.fst <$> (Lean.Core.CoreM.toIO · { fileName := "", options, fileMap := default } { env }) do
+    Lean.throwKernelException ex
 
 def Lean.Declaration.name : Declaration → String
   | .axiomDecl d => s!"axiomDecl {d.name}"
@@ -113,7 +138,7 @@ def addDecl (d : Declaration) : M Unit := do
           println! "{(← get).env.header.mainModule}:{d.name}: lean4lean took {t2 - t1}"
       else
         println! "{(← get).env.header.mainModule}:{d.name}: lean4lean took {t2 - t1}"
-    modify fun s => { s with env := env }
+    modify fun s => { s with env }
   | .error ex =>
     throwKernelException ex
 
