@@ -322,7 +322,6 @@ but this can only be used on a single file.
 -/
 unsafe def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
-  searchPathRef.modify (.pwFilter (· ≠ ·)) -- FIXME: why does the search path have dupes
   let (flags, args) := args.partition fun s => s.startsWith "-"
   let verbose := "-v" ∈ flags || "--verbose" ∈ flags
   let fresh : Bool := "--fresh" ∈ flags
@@ -336,21 +335,22 @@ unsafe def main (args : List String) : IO UInt32 := do
         throw <| IO.userError s!"Could not resolve module: {arg}"
       else
         pure mod
-  let mut targetModules := #[]
+  let mut targetModules := []
   let sp ← searchPathRef.get
   for target in targets do
     let mut found := false
     for path in (← SearchPath.findAllWithExt sp "olean") do
       if let some m := (← searchModuleNameOfFileName path sp) then
         if target.isPrefixOf m then
-          targetModules := targetModules.push m
+          targetModules := targetModules.insert m
           found := true
     if not found then
       throw <| IO.userError s!"Could not find any oleans for: {target}"
   let mut n := 0
   if fresh then
-    if targetModules.size != 1 then
-      throw <| IO.userError "--fresh flag is only valid when specifying a single module"
+    if targetModules.length != 1 then
+      throw <| IO.userError s!"--fresh flag is only valid when specifying a single module:\n\
+        {targetModules}"
     for m in targetModules do
       if verbose then IO.println s!"replaying {m} with --fresh"
       n := n + (← replayFromFresh m verbose compare)
