@@ -36,6 +36,8 @@ def primitives : NameSet := .ofList [
   ``Nat, ``Nat.zero, ``Nat.succ,
   ``Nat.add, ``Nat.pred, ``Nat.sub, ``Nat.mul, ``Nat.pow,
   ``Nat.gcd, ``Nat.mod, ``Nat.div, ``Nat.beq, ``Nat.ble,
+  ``Nat.bitwise, ``Nat.land, ``Nat.lor, ``Nat.xor,
+  ``Nat.shiftLeft, ``Nat.shiftRight,
   ``String, ``String.mk]
 
 /--

@@ -717,6 +717,8 @@ def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 
 def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
+def checkType (e : Expr) : M Expr := (Inner.inferType e (inferOnly := false)).run
+
 def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
 
 def isProp (t : Expr) : M Bool := (Inner.isProp t).run
