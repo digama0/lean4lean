@@ -10,29 +10,6 @@ open private Lean.Kernel.Environment.add from Lean.Environment
 
 def lam0 (ty e) := Expr.lam `_ ty e default
 
-def unfoldWellFounded (e : Expr) (args : List Expr) (eq_def : Name) (fail : ∀ {α}, M α) : M Expr :=
-  match args with
-  | ty :: xs =>
-    withLocalDecl `n ty .default fun n => do
-    let rhs ← unfoldWellFounded (.app e n) xs eq_def fail
-    return (← getLCtx).mkLambda #[n] rhs
-  | [] =>
-    e.withApp fun e args => do
-    let .const _ us := e | fail
-    let .app _ rhs ← checkType (mkAppN (.const eq_def us) args) | fail
-    let .app e1 wfn ← whnf e | fail
-    e1.withApp fun accRec args => do
-    let #[α,r,_,_,n] := args | fail
-    let .const ``Acc.rec [_, u] := accRec | fail
-    let .app wf _ := wfn | fail
-    let L := lam0 α <| lam0 (mkApp2 r (.bvar 0) n) (mkApp wf (.bvar 1))
-    let wfn' := mkApp4 (.const ``Acc.intro [u]) α r n L
-    let p ← inferType wfn
-    unless ← isProp p do fail
-    unless ← isDefEq p (← checkType wfn') do fail
-    unless ← isDefEq (e1.app wfn') rhs do fail
-    pure rhs
-
 deriving instance ToExpr for LevelMVarId
 deriving instance ToExpr for Level
 deriving instance ToExpr for MVarId
@@ -70,57 +47,56 @@ def Reflection.defn₂ : Reflection where
       (fun h => isFalse (H.2 h)) (fun h => isTrue (H.1 h)) rfl)
 
 def Reflection.check (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
-  unless ← isDefEq (← checkType r.type) (.arrow .prop (.arrow (.const ``Bool []) .prop)) do fail
+  unless ← isDefEq (← checkType r.type) q(Prop → Bool → Prop) do fail
+
+inductive ConditionImpl where
+  | bool
+  | reflectNatNat (asBool : Expr) (reflect : Reflection) (proof : Expr)
 
 structure Condition where
   prop : Expr
   dec : Expr
-  asBool : Expr
-  reflect : Reflection
-  proof : Expr
+  impl : ConditionImpl
 
-def Condition.le : Condition where
+def Condition.natLE : Condition where
   prop := q(@LE.le Nat _)
   dec := q(Nat.decLe)
-  asBool := q(Nat.ble)
-  reflect := .defn₁
-  proof := q(fun n m => And.intro (@Nat.le_of_ble_eq_true n m) (@Nat.not_le_of_not_ble_eq_true n m))
+  impl := .reflectNatNat
+    (asBool := q(Nat.ble))
+    (reflect := .defn₁)
+    (proof := q(fun n m =>
+      And.intro (@Nat.le_of_ble_eq_true n m) (@Nat.not_le_of_not_ble_eq_true n m)))
 
-def Condition.eq : Condition where
+def Condition.natEq : Condition where
   prop := q(@Eq Nat)
   dec := q(Nat.decEq)
-  asBool := q(Nat.beq)
-  reflect := .defn₂
-  proof := q(fun n m => And.intro (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m))
+  impl := .reflectNatNat
+    (asBool := q(Nat.beq))
+    (reflect := .defn₂)
+    (proof := q(fun n m => And.intro (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m)))
 
-def Condition.check (cond : Condition) (fail : ∀ {α}, M α) : M Unit := do
-  cond.reflect.check fail
-  let y := .bvar 0; let x := .bvar 1
-  let e := lam0 q(Nat) <| lam0 q(Nat) <| mkApp3 cond.reflect.toDec
-    (mkApp2 cond.prop x y) (mkApp2 cond.asBool x y) (mkApp2 cond.proof x y)
-  _ ← checkType e
-  _ ← checkType cond.dec
-  unless ← isDefEq (← inferType cond.prop) q(Nat → Nat → Prop) do fail
-  unless ← isDefEq (← inferType cond.asBool) q(Nat → Nat → Bool) do fail
-  unless ← isProp (← inferType cond.proof) do fail
-  unless ← isDefEq e cond.dec do fail
+def Condition.bool : Condition where
+  prop := q(fun x : Bool => x = true)
+  dec := q(fun x => Bool.decEq x true)
+  impl := .bool
 
-def Reflection.natITE (r : Reflection) : Expr :=
+def Reflection.ite (r : Reflection) : Expr :=
   lam0 q(Prop) <| lam0 q(Bool) <| lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
-    mkApp2 q(@ite Nat) (.bvar 2) (mkApp3 r.toDec (.bvar 2) (.bvar 1) (.bvar 0))
+    lam0 q(Type) <| mkApp3 q(@_root_.ite.{1}) (.bvar 0) (.bvar 3)
+      (mkApp3 r.toDec (.bvar 3) (.bvar 2) (.bvar 1))
 
 def Reflection.natDITE (r : Reflection) : Expr :=
   lam0 q(Prop) <| lam0 q(Bool) <| lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
     mkApp2 q(@dite Nat) (.bvar 2) (mkApp3 r.toDec (.bvar 2) (.bvar 1) (.bvar 0))
 
-def Reflection.checkNatITE (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
-  unless ← isDefEq (← checkType r.natITE) (.arrow q(Prop) <| .arrow q(Bool) <|
-    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) q(Nat → Nat → Nat)) do fail
+def Reflection.checkITE (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
+  unless ← isDefEq (← checkType r.ite) (.arrow q(Prop) <| .arrow q(Bool) <|
+    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) q(∀ α : Type, α → α → α)) do fail
   withLocalDecl `p q(Prop) .default fun p => do
   withLocalDecl `H (mkApp2 r.type p q(true)) .default fun H => do
-    unless ← isDefEq (mkApp3 r.natITE p q(true) H) q(fun a _ : Nat => a) do fail
+    unless ← isDefEq (mkApp3 r.ite p q(true) H) q(fun α : Type => fun a _ : α => a) do fail
   withLocalDecl `H (mkApp2 r.type p q(false)) .default fun H => do
-    unless ← isDefEq (mkApp3 r.natITE p q(false) H) q(fun _ a : Nat => a) do fail
+    unless ← isDefEq (mkApp3 r.ite p q(false) H) q(fun α : Type => fun _ a : α => a) do fail
 
 def Reflection.checkNatDITE (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
   unless ← isDefEq (← checkType q(Not)) q(Prop → Prop) do fail
@@ -140,13 +116,61 @@ def Reflection.checkNatDITE (r : Reflection) (fail : ∀ {α}, M α) : M Unit :=
   withLocalDecl `H (mkApp2 r.type p q(false)) .default fun H => do
     unless ← isDefEq (mkApp5 r.natDITE p q(false) H a b) (mkApp b (mkApp2 r.ofFalse p H)) do fail
 
-protected def Condition.ite (cond : Condition) (a b t e : Expr) : Expr :=
-  mkApp4 q(@ite Nat) (mkApp2 cond.prop a b) (mkApp2 cond.dec a b) t e
+def Condition.check (cond : Condition) (fail : ∀ {α}, M α)
+    (ite := false) (dite := false) : M Unit := do
+  _ ← checkType cond.dec
+  match cond.impl with
+  | .reflectNatNat asBool reflect proof =>
+    unless ← isDefEq (← inferType cond.prop) q(Nat → Nat → Prop) do fail
+    reflect.check fail
+    if ite then reflect.checkITE fail
+    if dite then reflect.checkNatDITE fail
+    let y := .bvar 0; let x := .bvar 1
+    let e := lam0 q(Nat) <| lam0 q(Nat) <| mkApp3 reflect.toDec
+      (mkApp2 cond.prop x y) (mkApp2 asBool x y) (mkApp2 proof x y)
+    _ ← checkType e
+    unless ← isDefEq (← inferType asBool) q(Nat → Nat → Bool) do fail
+    unless ← isProp (← inferType proof) do fail
+    unless ← isDefEq e cond.dec do fail
+  | .bool =>
+    unless ← isDefEq (← inferType cond.prop) q(Bool → Prop) do fail
+    let b := .bvar 0
+    if ite then
+      let natITE := lam0 q(Bool) <|
+        mkApp2 q(@_root_.ite Nat) (mkApp cond.prop b) (mkApp cond.dec b)
+      unless ← isDefEq (← checkType natITE) q(Bool → Nat → Nat → Nat) do fail
+      unless ← isDefEq (mkApp natITE q(true)) q(fun a _ : Nat => a) do fail
+      unless ← isDefEq (mkApp natITE q(false)) q(fun _ a : Nat => a) do fail
+    if dite then throw <| .other "unsupported"
 
-protected def Condition.dite (cond : Condition) (a b t e : Expr) : Expr :=
-  mkApp4 q(@dite Nat) (mkApp2 cond.prop a b) (mkApp2 cond.dec a b)
-    (lam0 (mkApp2 cond.prop a b) t)
-    (lam0 (mkApp q(Not) (mkApp2 cond.prop a b)) e)
+protected def Condition.ite (cond : Condition) (α : Expr) (args : Array Expr) (t e : Expr) : Expr :=
+  mkApp5 q(@ite.{1}) α (mkAppN cond.prop args) (mkAppN cond.dec args) t e
+
+protected def Condition.dite (cond : Condition) (args: Array Expr) (t e : Expr) : Expr :=
+  mkApp4 q(@dite Nat) (mkAppN cond.prop args) (mkAppN cond.dec args)
+    (lam0 (mkAppN cond.prop args) t)
+    (lam0 (mkApp q(Not) (mkAppN cond.prop args)) e)
+
+protected def Condition.decide (cond : Condition) (args : Array Expr) : Expr :=
+  cond.ite q(Bool) args q(true) q(false)
+
+def unfoldWellFounded (e : Expr) (fvs : Array Expr) (eq_def : Expr) (fail : ∀ {α}, M α) : M Expr := do
+  let .app (.app _ lhs) rhs := eq_def.getForallBody.instantiateRev fvs | fail
+  let orig := lhs.getAppFn
+  let rhs := rhs.replace fun e' => if e' == orig then some e else none
+  let .app e1 wfn ← whnf (mkAppN e fvs) | fail
+  e1.withApp fun accRec args => do
+  let #[α,r,_,_,n] := args | fail
+  let .const ``Acc.rec [_, u] := accRec | fail
+  let .app wf _ := wfn | fail
+  let L := lam0 α <| lam0 (mkApp2 r (.bvar 0) n) (mkApp wf (.bvar 1))
+  let wfn' := mkApp4 (.const ``Acc.intro [u]) α r n L
+  let p ← inferType wfn
+  unless ← isProp p do fail
+  unless ← isDefEq p (← checkType wfn') do fail
+  _ ← checkType rhs
+  unless ← isDefEq (e1.app wfn') rhs do fail
+  return (← getLCtx).mkLambda fvs rhs
 
 def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
@@ -160,8 +184,8 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
   let mul := mkApp2 q(Nat.mul)
   let mod := mkApp2 q(Nat.mod)
   let div := mkApp2 q(Nat.div)
-  let gcd := mkApp2 q(Nat.gcd)
-  let two := succ (succ zero)
+  let one := succ zero
+  let two := succ one
   let defeq1 a b := isDefEq (.arrow q(Nat) a) (.arrow q(Nat) b)
   let defeq2 a b := defeq1 (.arrow q(Nat) a) (.arrow q(Nat) b)
   let x := .bvar 0
@@ -203,7 +227,7 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     -- pow : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
     let pow := mkApp2 v.value
-    unless ← defeq1 (pow x zero) (succ zero) do fail
+    unless ← defeq1 (pow x zero) one do fail
     unless ← defeq2 (pow y (succ x)) (mul (pow y x) y) do fail
   | ``Nat.mod =>
     unless env.contains ``Nat.sub && env.contains ``Bool && v.levelParams.isEmpty do fail
@@ -216,19 +240,18 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← isDefEq (← checkType q(Nat.modCore.go))
       q(∀ n, Nat.succ Nat.zero ≤ n → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
     let go := mkApp5 q(Nat.modCore.go)
-    let c := Condition.le; c.check fail
-    c.reflect.checkNatITE fail; c.reflect.checkNatDITE fail
+    let c := Condition.natLE; c.check fail (ite := true) (dite := true)
     withLocalDecl `x q(Nat) .default fun x => do
     withLocalDecl `y q(Nat) .default fun y => do
     let sx := succ x
-    let e := c.ite y sx (c.dite (succ zero) y
+    let e := c.ite q(Nat) #[y, sx] (c.dite #[one, y]
       (go y (.bvar 0) (succ sx) sx (mkApp q(Nat.lt_succ_self) sx)) sx) sx
     _ ← checkType e
     unless ← isDefEq (mod sx y) e do fail
-    withLocalDecl `hy (le (succ zero) y) .default fun hy => do
+    withLocalDecl `hy (le one y) .default fun hy => do
     withLocalDecl `fuel q(Nat) .default fun fuel => do
     withLocalDecl `h (le (succ x) (succ fuel)) .default fun h => do
-    let e := c.dite y x (go y hy fuel (sub x y)
+    let e := c.dite #[y, x] (go y hy fuel (sub x y)
       (mkApp6 q(@Nat.div_rec_fuel_lemma) x y fuel hy (.bvar 0) h)) x
     _ ← checkType e
     unless ← isDefEq (go y hy (succ fuel) x h) e do fail
@@ -237,7 +260,7 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     -- div : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
     let div := mkApp2 v.value
-    let c := Condition.le; c.check fail; c.reflect.checkNatDITE fail
+    let c := Condition.natLE; c.check fail (dite := true)
     unless ← isDefEq (← checkType q(@LE.le Nat _)) q(Nat → Nat → Prop) do fail
     let le := mkApp2 q(@LE.le Nat _)
     unless ← isDefEq (← checkType q(Nat.div.go))
@@ -245,13 +268,13 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     let go := mkApp5 q(Nat.div.go)
     withLocalDecl `x q(Nat) .default fun x => do
     withLocalDecl `y q(Nat) .default fun y => do
-    let e := c.dite (succ zero) y (go y (.bvar 0) (succ x) x (mkApp q(Nat.lt_succ_self) x)) zero
+    let e := c.dite #[one, y] (go y (.bvar 0) (succ x) x (mkApp q(Nat.lt_succ_self) x)) zero
     _ ← checkType e
     unless ← isDefEq (div x y) e do fail
-    withLocalDecl `hy (le (succ zero) y) .default fun hy => do
+    withLocalDecl `hy (le one y) .default fun hy => do
     withLocalDecl `fuel q(Nat) .default fun fuel => do
     withLocalDecl `h (le (succ x) (succ fuel)) .default fun h => do
-    let e := c.dite y x (succ (go y hy fuel (sub x y)
+    let e := c.dite #[y, x] (succ (go y hy fuel (sub x y)
       (mkApp6 q(@Nat.div_rec_fuel_lemma) x y fuel hy (.bvar 0) h))) zero
     _ ← checkType e
     unless ← isDefEq (go y hy (succ fuel) x h) e do fail
@@ -259,10 +282,13 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    let gcd' ← unfoldWellFounded (.const ``Nat.gcd []) [q(Nat), q(Nat)] ``Nat.gcd.eq_def fail
+    withLocalDecl `n q(Nat) .default fun n => do
+    withLocalDecl `m q(Nat) .default fun m => do
+    let gcd' ← unfoldWellFounded v.value #[n, m] q(type_of% Nat.gcd.eq_def) fail
     let gcd' := mkApp2 gcd'
-    unless ← defeq1 (gcd' zero x) x do fail
-    unless ← defeq2 (gcd' (succ y) x) (gcd (mod x (succ y)) (succ y)) do fail
+    let gcd := mkApp2 v.value
+    unless ← isDefEq (gcd' zero m) m do fail
+    unless ← isDefEq (gcd' (succ n) m) (gcd (mod m (succ n)) (succ n)) do fail
   | ``Nat.beq =>
     unless env.contains ``Nat && env.contains ``Bool && v.levelParams.isEmpty do fail
     -- beq : Nat → Nat → Bool
@@ -285,7 +311,24 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless env.contains ``Nat && env.contains ``Bool && v.levelParams.isEmpty do fail
     -- bitwise : Nat → Nat → Nat
     unless ← isDefEq v.type q((Bool → Bool → Bool) → Nat → Nat → Nat) do fail
-    return true -- TODO
+    withLocalDecl `f q(Bool → Bool → Bool) .default fun f => do
+    withLocalDecl `n q(Nat) .default fun n => do
+    withLocalDecl `m q(Nat) .default fun m => do
+    let bitwise' ← unfoldWellFounded v.value #[f, n, m] q(type_of% Nat.bitwise.eq_def) fail
+    let bitwise := mkApp3 v.value
+    let c := Condition.natEq; c.check fail (ite := true)
+    let bc := Condition.bool; bc.check fail (ite := true)
+    let e :=
+      c.ite q(Nat) #[n, zero] (bc.ite q(Nat) #[mkApp2 f q(false) q(true)] m zero) <|
+      c.ite q(Nat) #[m, zero] (bc.ite q(Nat) #[mkApp2 f q(true) q(false)] n zero) <|
+      let n' := div n two
+      let m' := div m two
+      let b₁ := c.decide #[mod n two, one]
+      let b₂ := c.decide #[mod m two, one]
+      let r := bitwise f n' m'
+      bc.ite q(Nat) #[mkApp2 f b₁ b₂] (add (add r r) one) (add r r)
+    _ ← checkType e
+    unless ← isDefEq (mkApp3 bitwise' f n m) e do fail
   | ``Nat.land =>
     unless env.contains ``Nat.bitwise && env.contains ``and && v.levelParams.isEmpty do fail
     -- land : Nat → Nat → Nat
@@ -351,24 +394,21 @@ def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams :
     M.run env (safety := .safe) (lctx := {}) do
       -- We need the following definitions for `strLitToConstructor` to work:
       -- Nat : Type (this is primitive so checking for existence suffices)
-      let nat := .const ``Nat []
       unless env.contains ``Nat do fail
       -- Char : Type
-      let char := .const ``Char []
-      _ ← ensureType char
+      _ ← ensureType q(Char)
       -- List Char : Type
-      let listchar := mkApp (.const ``List [.zero]) char
+      let listchar := q(List Char)
       _ ← ensureType listchar
       -- @List.nil.{0} Char : List Char
-      let listNil := .app (.const ``List.nil [.zero]) char
-      unless ← isDefEq (← check listNil []) listchar do fail
+      let listNil := q(List.nil (α := Char))
+      unless ← isDefEq (← checkType listNil) q(List Char) do fail
       -- @List.cons.{0} Char : List Char
-      let listCons := .app (.const ``List.cons [.zero]) char
-      unless ← isDefEq (← check listCons [])
-        (.arrow char (.arrow listchar listchar)) do fail
+      let listCons := q(List.cons (α := Char))
+      unless ← isDefEq (← checkType listCons) q(Char → List Char → List Char) do fail
       -- String.mk : List Char → String (already checked)
       -- @Char.ofNat : Nat → Char
-      let charOfNat := .const ``Char.ofNat []
-      unless ← isDefEq (← check charOfNat []) (.arrow nat char) do fail
+      let charOfNat := q(Char.ofNat)
+      unless ← isDefEq (← checkType charOfNat) q(Nat → Char) do fail
   | _ => return false
   return true
