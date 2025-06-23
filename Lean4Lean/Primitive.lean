@@ -206,7 +206,7 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← defeq1 (pow x zero) (succ zero) do fail
     unless ← defeq2 (pow y (succ x)) (mul (pow y x) y) do fail
   | ``Nat.mod =>
-    unless env.contains ``Nat.sub && v.levelParams.isEmpty do fail
+    unless env.contains ``Nat.sub && env.contains ``Bool && v.levelParams.isEmpty do fail
     -- mod : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
     let mod := mkApp2 v.value
@@ -233,10 +233,28 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     _ ← checkType e
     unless ← isDefEq (go y hy (succ fuel) x h) e do fail
   | ``Nat.div =>
-    unless env.contains ``Nat.sub && v.levelParams.isEmpty do fail
+    unless env.contains ``Nat.sub && env.contains ``Bool && v.levelParams.isEmpty do fail
     -- div : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    return true -- TODO
+    let div := mkApp2 v.value
+    let c := Condition.le; c.check fail; c.reflect.checkNatDITE fail
+    unless ← isDefEq (← checkType q(@LE.le Nat _)) q(Nat → Nat → Prop) do fail
+    let le := mkApp2 q(@LE.le Nat _)
+    unless ← isDefEq (← checkType q(Nat.div.go))
+      q(∀ y, Nat.succ Nat.zero ≤ y → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
+    let go := mkApp5 q(Nat.div.go)
+    withLocalDecl `x q(Nat) .default fun x => do
+    withLocalDecl `y q(Nat) .default fun y => do
+    let e := c.dite (succ zero) y (go y (.bvar 0) (succ x) x (mkApp q(Nat.lt_succ_self) x)) zero
+    _ ← checkType e
+    unless ← isDefEq (div x y) e do fail
+    withLocalDecl `hy (le (succ zero) y) .default fun hy => do
+    withLocalDecl `fuel q(Nat) .default fun fuel => do
+    withLocalDecl `h (le (succ x) (succ fuel)) .default fun h => do
+    let e := c.dite y x (succ (go y hy fuel (sub x y)
+      (mkApp6 q(@Nat.div_rec_fuel_lemma) x y fuel hy (.bvar 0) h))) zero
+    _ ← checkType e
+    unless ← isDefEq (go y hy (succ fuel) x h) e do fail
   | ``Nat.gcd =>
     unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
