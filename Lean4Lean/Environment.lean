@@ -41,7 +41,7 @@ def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
   else
     if check then
       M.run env (safety := .safe) (lctx := {}) do
-        checkConstantVal env v.toConstantVal (← checkPrimitiveDef env v)
+        checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
         checkNoMVarNoFVar env v.name v.value
         let valType ← TypeChecker.check v.value v.levelParams
         if !(← isDefEq valType v.type) then
