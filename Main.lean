@@ -100,13 +100,15 @@ def Lean.Kernel.Exception.mapEnvM [Monad m]
   | deepRecursion
   | interrupted => return ex
 
-open private ensureExtensionsArraySize from Lean.Environment in
 /-- Use the current `Environment` to throw a `Kernel.Exception`. -/
 def throwKernelException (ex : Exception) : M α := do
   let options := pp.match.set (pp.rawOnError.set {} true) false
-  let f env := ensureExtensionsArraySize <| .ofKernelEnv env
-  let env ← f (← get).env
-  let ex ← ex.mapEnvM fun env => return (← f env).toKernelEnv
+  -- Note: because the environment we are using has no extension state,
+  -- we cannot safely use it with lean functions like the pretty printer.
+  -- Here we instead create a fresh environment, which is good enough to get
+  -- basic pretty printing working.
+  let env ← mkEmptyEnvironment
+  let ex ← ex.mapEnvM fun _ => return env.toKernelEnv
   Prod.fst <$> (Lean.Core.CoreM.toIO · { fileName := "", options, fileMap := default } { env }) do
     Lean.throwKernelException ex
 
@@ -289,7 +291,7 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
 
 unsafe def replayFromFresh (module : Name)
     (verbose := false) (compare := false) (decl : Option Name := none) : IO Nat := do
-  Lean.withImportModules #[{module}] {} (trustLevel := 0) fun env => do
+  Lean.withImportModules #[] {} (trustLevel := 0) fun env => do
     let ctx := { newConstants := env.constants.map₁, verbose, compare }
     Prod.fst <$> replay ctx (.empty module) decl
 
