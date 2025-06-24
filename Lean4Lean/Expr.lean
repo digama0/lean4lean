@@ -7,6 +7,8 @@ def prop : Expr := .sort .zero
 
 def arrow (d b : Expr) : Expr := .forallE `a d b .default
 
+def lam0 (ty e : Expr) : Expr := .lam `_ ty e default
+
 namespace ReplaceImpl
 
 unsafe abbrev ReplaceT := StateT (PtrMap Expr Expr)

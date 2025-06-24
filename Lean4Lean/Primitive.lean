@@ -6,10 +6,6 @@ namespace Environment
 open Lean hiding Environment Exception
 open Kernel TypeChecker
 
-open private Lean.Kernel.Environment.add from Lean.Environment
-
-def lam0 (ty e) := Expr.lam `_ ty e default
-
 deriving instance ToExpr for LevelMVarId
 deriving instance ToExpr for Level
 deriving instance ToExpr for MVarId
@@ -81,12 +77,12 @@ def Condition.bool : Condition where
   impl := .bool
 
 def Reflection.ite (r : Reflection) : Expr :=
-  lam0 q(Prop) <| lam0 q(Bool) <| lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
-    lam0 q(Type) <| mkApp3 q(@_root_.ite.{1}) (.bvar 0) (.bvar 3)
+  .lam0 q(Prop) <| .lam0 q(Bool) <| .lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
+    .lam0 q(Type) <| mkApp3 q(@_root_.ite.{1}) (.bvar 0) (.bvar 3)
       (mkApp3 r.toDec (.bvar 3) (.bvar 2) (.bvar 1))
 
 def Reflection.natDITE (r : Reflection) : Expr :=
-  lam0 q(Prop) <| lam0 q(Bool) <| lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
+  .lam0 q(Prop) <| .lam0 q(Bool) <| .lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
     mkApp2 q(@dite Nat) (.bvar 2) (mkApp3 r.toDec (.bvar 2) (.bvar 1) (.bvar 0))
 
 def Reflection.checkITE (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
@@ -126,7 +122,7 @@ def Condition.check (cond : Condition) (fail : ∀ {α}, M α)
     if ite then reflect.checkITE fail
     if dite then reflect.checkNatDITE fail
     let y := .bvar 0; let x := .bvar 1
-    let e := lam0 q(Nat) <| lam0 q(Nat) <| mkApp3 reflect.toDec
+    let e := .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3 reflect.toDec
       (mkApp2 cond.prop x y) (mkApp2 asBool x y) (mkApp2 proof x y)
     _ ← checkType e
     unless ← isDefEq (← inferType asBool) q(Nat → Nat → Bool) do fail
@@ -136,7 +132,7 @@ def Condition.check (cond : Condition) (fail : ∀ {α}, M α)
     unless ← isDefEq (← inferType cond.prop) q(Bool → Prop) do fail
     let b := .bvar 0
     if ite then
-      let natITE := lam0 q(Bool) <|
+      let natITE := .lam0 q(Bool) <|
         mkApp2 q(@_root_.ite Nat) (mkApp cond.prop b) (mkApp cond.dec b)
       unless ← isDefEq (← checkType natITE) q(Bool → Nat → Nat → Nat) do fail
       unless ← isDefEq (mkApp natITE q(true)) q(fun a _ : Nat => a) do fail
@@ -148,8 +144,8 @@ protected def Condition.ite (cond : Condition) (α : Expr) (args : Array Expr) (
 
 protected def Condition.dite (cond : Condition) (args: Array Expr) (t e : Expr) : Expr :=
   mkApp4 q(@dite Nat) (mkAppN cond.prop args) (mkAppN cond.dec args)
-    (lam0 (mkAppN cond.prop args) t)
-    (lam0 (mkApp q(Not) (mkAppN cond.prop args)) e)
+    (.lam0 (mkAppN cond.prop args) t)
+    (.lam0 (mkApp q(Not) (mkAppN cond.prop args)) e)
 
 protected def Condition.decide (cond : Condition) (args : Array Expr) : Expr :=
   cond.ite q(Bool) args q(true) q(false)
@@ -163,7 +159,7 @@ def unfoldWellFounded (e : Expr) (fvs : Array Expr) (eq_def : Expr) (fail : ∀ 
   let #[α,r,_,_,n] := args | fail
   let .const ``Acc.rec [_, u] := accRec | fail
   let .app wf _ := wfn | fail
-  let L := lam0 α <| lam0 (mkApp2 r (.bvar 0) n) (mkApp wf (.bvar 1))
+  let L := .lam0 α <| .lam0 (mkApp2 r (.bvar 0) n) (mkApp wf (.bvar 1))
   let wfn' := mkApp4 (.const ``Acc.intro [u]) α r n L
   let p ← inferType wfn
   unless ← isProp p do fail

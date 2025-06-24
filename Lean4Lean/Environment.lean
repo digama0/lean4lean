@@ -42,7 +42,6 @@ def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
     if check then
       M.run env (safety := .safe) (lctx := {}) do
         checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
-        checkNoMVarNoFVar env v.name v.value
         let valType ← TypeChecker.check v.value v.levelParams
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env (.defnDecl v) valType
@@ -56,7 +55,6 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
       if !(← isProp v.type) then
         throw <| .thmTypeIsNotProp env v.name v.type
       checkConstantVal env v.toConstantVal
-      checkNoMVarNoFVar env v.name v.value
       let valType ← TypeChecker.check v.value v.levelParams
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.thmDecl v) valType
