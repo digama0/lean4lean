@@ -31,7 +31,7 @@ After `lake build lean4lean`, the executable will be in `.lake/build/bin/lean4le
 
 If you run this as is (with no additional arguments), it will check every olean in the `lean4lean` package itself, which is probably not what you want. To check a different Lean package you should navigate the directory of the target project, then use `lake env path/to/lean4lean/.lake/build/bin/lean4lean <args>` to run `lean4lean` in the context of the target project. The command line arguments are:
 
-> `lean4lean [--fresh] [--verbose] [--compare] [MOD]`
+> `lean4lean [--fresh] [-v|--verbose] [--compare] [MOD]`
 
 * `MOD`: an optional lean module name, like `Lean4Lean.Verify`. If provided, the specified module will be checked (single-threaded); otherwise, all modules on the Lean search path will be checked (multithreaded).
 * `--fresh`: Only valid when a `MOD` is provided. In this mode, the module and all its imports will be rebuilt from scratch, checking all dependencies of the module. The behavior without the flag is to only check the module itself, assuming all imports are correct.
@@ -48,7 +48,7 @@ If you run this as is (with no additional arguments), it will check every olean 
     * `Add.lean`: constructing inductive recursors
     * `Reduce.lean`: inductive iota rules
   * `Quot.lean`: quotient types handling
-  * `UnionFind.lean`: a union-find data structure
+  * `Primitive.lean`: checking correctness of built-ins
   * `Std`: stuff that should exist upstream
   * `Theory`: lean metatheory
     * `VLevel.lean`: level expressions
@@ -70,12 +70,16 @@ If you run this as is (with no additional arguments), it will check every olean 
       * `Env.lean`: typing for environments
   * `Verify`: relation between the metatheory and the kernel
     * `Axioms.lean`: theorems about upstream opaques that shouldn't be opaque
-    * `UnionFind.lean`: proof of correctness of union-find
+    * `Expr.lean`: correctness of basics on `Expr`
+    * `Level.lean`: correctness of basics on `Level`
     * `VLCtx.lean`: a "translation context" suitable for translating expressions
     * `LocalContext.lean`: properties of lean's `LocalContext` type
     * `NameGenerator.lean`: properties of the fresh name generator
     * `Typing`
       * `Expr.lean`: translating expressions (`TrExpr` is here)
       * `Lemmas.lean`: properties of `TrExpr`
+      * `EnvLemmas.lean`: properties of `TrEnv`
       * `ConditionallyTyped.lean`: properties of expressions in caches that may be out of scope
     * `Environment.lean`: translating environments
+    * `TypeChecker`
+      * `Theorems.lean`: theorems about the top-level functions (endpoint file)

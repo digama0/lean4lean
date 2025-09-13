@@ -153,26 +153,28 @@ theorem VState.WF.find?_eq_none {id}
 def VState.LE (s₁ s₂ : VState) : Prop :=
   s₁.ngen ≤ s₂.ngen
 
-theorem VState.LE.rfl {s : VState} : s.LE s := NameGenerator.LE.rfl
+instance : LE VState := ⟨VState.LE⟩
 
-theorem VState.LE.trans {s₁ s₂ s₃ : VState} (h₁ : s₁.LE s₂) (h₂ : s₂.LE s₃) : s₁.LE s₃ :=
+theorem VState.LE.rfl {s : VState} : s ≤ s := NameGenerator.LE.rfl
+
+theorem VState.LE.trans {s₁ s₂ s₃ : VState} (h₁ : s₁ ≤ s₂) (h₂ : s₂ ≤ s₃) : s₁ ≤ s₃ :=
   NameGenerator.LE.trans h₁ h₂
 
-theorem VState.LE.reservesV {s₁ s₂ : VState} (h : s₁.LE s₂) {{fv}} :
+theorem VState.LE.reservesV {s₁ s₂ : VState} (h : s₁ ≤ s₂) {{fv}} :
     s₁.ngen.Reserves fv → s₂.ngen.Reserves fv :=
   (·.mono h)
 
-theorem VState.LE.reserves {s₁ s₂ : VState} (h : s₁.LE s₂) {{e}} :
+theorem VState.LE.reserves {s₁ s₂ : VState} (h : s₁ ≤ s₂) {{e}} :
     FVarsIn s₁.ngen.Reserves e → FVarsIn s₂.ngen.Reserves e :=
   (·.mono h.reservesV)
 
 def M.WF (c : VContext) (vs : VState) (x : M α) (Q : α → VState → Prop) : Prop :=
   vs.WF c → ∀ a s', x c.toContext vs.toState = .ok (a, s') →
-    ∃ vs', vs'.toState = s' ∧ vs.LE vs' ∧ vs'.WF c ∧ Q a vs'
+    ∃ vs', vs'.toState = s' ∧ vs ≤ vs' ∧ vs'.WF c ∧ Q a vs'
 
 theorem M.WF.bind {c : VContext} {s : VState} {x : M α} {f : α → M β} {Q R}
     (h1 : x.WF c s Q)
-    (h2 : ∀ a s', s.LE s' → Q a s' → (f a).WF c s' R) :
+    (h2 : ∀ a s', s ≤ s' → Q a s' → (f a).WF c s' R) :
     (x >>= f).WF c s R := by
   intro wf₁ a vs₁
   simp [(· >>= ·), ReaderT.bind, StateT.bind, Except.bind]
@@ -186,26 +188,26 @@ theorem M.WF.pure {c : VContext} {s : VState} {Q} (H : Q a s) :
     (pure a : M α).WF c s Q := by rintro h _ _ ⟨⟩; exact ⟨_, rfl, .rfl, h, H⟩
 
 theorem M.WF.map {c : VContext} {s : VState} {x : M α} {f : α → β} {Q R}
-    (h1 : x.WF c s Q) (h2 : ∀ a s', s.LE s' → Q a s' → R (f a) s') : (f <$> x).WF c s R := by
+    (h1 : x.WF c s Q) (h2 : ∀ a s', s ≤ s' → Q a s' → R (f a) s') : (f <$> x).WF c s R := by
   rw [map_eq_pure_bind]
   exact h1.bind fun _ _ le h => .pure (h2 _ _ le h)
 
 theorem M.WF.throw {c : VContext} {s : VState} {Q} : (throw e : M α).WF c s Q := nofun
 
 theorem M.WF.le {c : VContext} {s : VState} {Q R} {x : M α}
-    (h1 : x.WF c s Q) (H : ∀ a s', s.LE s' → Q a s' → R a s') :
+    (h1 : x.WF c s Q) (H : ∀ a s', s ≤ s' → Q a s' → R a s') :
     x.WF c s R := fun wf _ _ e =>
   let ⟨_, a1, a2, a3, a4⟩ := h1 wf _ _ e
   ⟨_, a1, a2, a3, H _ _ a2 a4⟩
 
 structure Methods.WF (m : Methods) where
   isDefEqCore : c.TrExpr e₁ e₁' → c.TrExpr e₂ e₂' →
-    M.WF c s (m.isDefEqCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂'
-  whnfCore : c.TrExpr e e' → M.WF c s (m.whnfCore e cheapRec cheapProj) fun e₁ _ => c.TrExpr e₁ e'
-  whnf : c.TrExpr e e' → M.WF c s (m.whnf e) fun e₁ _ => c.TrExpr e₁ e'
+    (m.isDefEqCore e₁ e₂).WF c s fun b _ => b → c.IsDefEqU e₁' e₂'
+  whnfCore : c.TrExpr e e' → (m.whnfCore e cheapRec cheapProj).WF c s fun e₁ _ => c.TrExpr e₁ e'
+  whnf : c.TrExpr e e' → (m.whnf e).WF c s fun e₁ _ => c.TrExpr e₁ e'
   inferType : e.FVarsIn s.ngen.Reserves →
     (inferOnly = true → ∃ e', c.TrExprS e e') →
-    M.WF c s (m.inferType e inferOnly) fun ty _ => ∃ e' ty',
+    (m.inferType e inferOnly).WF c s fun ty _ => ∃ e' ty',
       c.TrExprS e e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty'
 
 def RecM.WF (c : VContext) (s : VState) (x : RecM α) (Q : α → VState → Prop) : Prop :=
@@ -217,21 +219,21 @@ theorem M.WF.lift {c : VContext} {s : VState} {x : M α} {Q} (h : x.WF c s Q) :
 instance : Coe (M.WF c s x Q) (RecM.WF c s x Q) := ⟨M.WF.lift⟩
 
 theorem RecM.WF.bind {c : VContext} {s : VState} {x : RecM α} {f : α → RecM β} {Q R}
-    (h1 : x.WF c s Q) (h2 : ∀ a s', s.LE s' → Q a s' → (f a).WF c s' R) : (x >>= f).WF c s R :=
+    (h1 : x.WF c s Q) (h2 : ∀ a s', s ≤ s' → Q a s' → (f a).WF c s' R) : (x >>= f).WF c s R :=
   fun _ h => M.WF.bind (h1 _ h) (fun _ _ h1' h2' => h2 _ _ h1' h2' _ h)
 
 theorem RecM.WF.pure {c : VContext} {s : VState} {Q} (H : Q a s) : (pure a : RecM α).WF c s Q :=
   fun _ _ => .pure H
 
 theorem RecM.WF.map {c : VContext} {s : VState} {x : RecM α} {f : α → β} {Q R}
-    (h1 : x.WF c s Q) (h2 : ∀ a s', s.LE s' → Q a s' → R (f a) s') : (f <$> x).WF c s R := by
+    (h1 : x.WF c s Q) (h2 : ∀ a s', s ≤ s' → Q a s' → R (f a) s') : (f <$> x).WF c s R := by
   rw [map_eq_pure_bind]
   exact h1.bind fun _ _ le h => .pure (h2 _ _ le h)
 
 theorem RecM.WF.throw {c : VContext} {s : VState} {Q} : (throw e : RecM α).WF c s Q := nofun
 
 theorem RecM.WF.le {c : VContext} {s : VState} {Q R} {x : RecM α}
-    (h1 : x.WF c s Q) (H : ∀ a s', s.LE s' → Q a s' → R a s') :
+    (h1 : x.WF c s Q) (H : ∀ a s', s ≤ s' → Q a s' → R a s') :
     x.WF c s R := fun _ h => (h1 _ h).le H
 
 theorem mkFreshId.WF {c : VContext} {s : VState} :
@@ -288,7 +290,7 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
     {s : VState} {f : Expr → RecM α} {Q name ty ty' bi}
     (hty : (c.withMLC m).TrExprS ty ty')
     (hty' : (c.withMLC m).IsType ty')
-    (H : ∀ id cwf' s', s.LE s' →
+    (H : ∀ id cwf' s', s ≤ s' →
       s'.ngen.Reserves id →
       ¬s.ngen.Reserves id →
       WF (c.withMLC (.vlam id name ty ty' bi m) (wf := cwf')) s' (f (.fvar id)) Q) :
@@ -311,7 +313,7 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
     (hty : (c.withMLC m).TrExprS ty ty')
     (hval : (c.withMLC m).TrExprS val val')
     (hval' : (c.withMLC m).HasType val' ty')
-    (H : ∀ id cwf' s', s.LE s' →
+    (H : ∀ id cwf' s', s ≤ s' →
       s'.ngen.Reserves id →
       ¬s.ngen.Reserves id →
       WF (c.withMLC (.vlet id name ty val ty' val' m) (wf := cwf')) s' (f (.fvar id)) Q) :
@@ -708,7 +710,7 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
     generalize eqF : withLocalDecl (m := RecM) _ _ _ _ = F
     generalize eqP : (fun ty x => ∃ _, _) = P
     rw [Expr.instantiateList_lam] at hei; subst ei
-    have main {s₁} (le₁ : s.LE s₁) {dom'}
+    have main {s₁} (le₁ : s ≤ s₁) {dom'}
         (domty : (c.withMLC m).venv.IsType (c.withMLC m).lparams.length (c.withMLC m).vlctx.toCtx dom')
         (hdom : (c.withMLC m).TrExprS (dom.instantiateList fvs) dom')
         (hbody : inferOnly = true → ∃ body',
@@ -842,7 +844,7 @@ theorem addEquiv.WF {c : VContext} {s : VState} :
     RecM.WF c s (modify fun st => { st with eqvManager := st.eqvManager.addEquiv e₁ e₂ })
       fun _ _ => True := by
   rintro _ mwf wf _ _ ⟨⟩
-  exact ⟨{ s with toState := _ }, rfl, NameGenerator.LE.rfl, { wf with }, trivial⟩
+  exact ⟨{ s with toState := _ }, rfl, .rfl, { wf with }, trivial⟩
 
 theorem isDefEq.WF {c : VContext} {s : VState}
     (he₁ : c.TrExpr e₁ e₁') (he₂ : c.TrExpr e₂ e₂') :
