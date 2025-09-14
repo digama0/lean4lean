@@ -25,6 +25,7 @@ structure TypeChecker.Context where
   env : Environment
   lctx : LocalContext := {}
   safety : DefinitionSafety := .safe
+  eagerReduce := false
   lparams : List Name := []
 
 namespace TypeChecker
@@ -267,8 +268,12 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
         let fType ← ensureForallCore (← inferType' f inferOnly) e
         let aType ← inferType' a inferOnly
         let dType := fType.bindingDomain!
-        if !(← isDefEq dType aType) then
-          throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType aType
+        let ok ← if a.isAppOfArity ``eagerReduce 2 then
+          withTheReader Context (fun s => {s with eagerReduce := true}) <|
+            isDefEq dType aType
+        else
+          isDefEq dType aType
+        if !ok then throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType aType
         pure <| fType.bindingBody!.instantiate1 a
     | .letE .. => inferLet e inferOnly
   modify fun s => cond inferOnly
@@ -628,7 +633,7 @@ def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := loop tn sn 1000 
   | fuel+1 => do
     let r ← isDefEqOffset tn sn
     if r != .undef then return .bool (r == .true)
-    if !tn.hasFVar && !sn.hasFVar then
+    if !tn.hasFVar && !sn.hasFVar || (← readThe Context).eagerReduce then
       if let some tn' ← reduceNat tn then
         return .bool (← isDefEqCore tn' sn)
       else if let some sn' ← reduceNat sn then
@@ -666,7 +671,7 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   let r ← quickIsDefEq t s (useHash := true)
   if r != .undef then return r == .true
 
-  if !t.hasFVar && s.isConstOf ``true then
+  if (!t.hasFVar || (← readThe Context).eagerReduce) && s.isConstOf ``true then
     if (← whnf t).isConstOf ``true then return true
 
   let tn ← whnfCore t (cheapProj := true)

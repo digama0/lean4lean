@@ -76,7 +76,7 @@ theorem ParRed.instN (W : Ctx.InstN Γ₀ a1 A₀ k Γ₁ Γ)
     dsimp [inst]
     induction W generalizing i with
     | zero =>
-      cases i with simp [inst_lift]
+      cases i with simp
       | zero => exact H₀
       | succ h => exact .rfl
     | succ _ ih =>

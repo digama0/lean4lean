@@ -46,7 +46,7 @@ partial def ofExpr : Expr → (k :_:= 0) → MetaM VExpr
   | e@(.proj ..), _ => throwError "invalid expression {e}"
   | e@(.mvar ..), _ => throwError "expression contains metavariables {e}"
   | .fvar e, k => do
-    if let some i := fvarToIdx.find? e then return .bvar (i+k)
+    if let some i := fvarToIdx.get? e then return .bvar (i+k)
     let lctx ← getLCtx
     let some e := (do (← lctx.find? e).value?) | throwError "undeclared free var {Expr.fvar e}"
     ofExpr e

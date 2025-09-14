@@ -32,11 +32,11 @@ theorem WF.find?_insert {s : PersistentHashMap α β} (h : s.WF) :
     (s.insert k v).find? x = if k == x then some v else s.find? x := by
   rw [h.insert.find?_eq, h.find?_eq, BEq.comm,
     (h.toList'_insert ..).lookup_eq h.insert.nodupKeys, List.lookup]
-  cases eq : x == k <;> simp [eq]
+  cases eq : x == k <;> simp
   induction s.toList' with
   | nil => rfl
   | cons kv l ih =>
     simp [List.filter]; split <;> simp [List.lookup, *]
     split <;> [skip; rfl]
     rename_i h1 _ h2
-    simp at h1; simp [h1] at h2; simp [h1, h2] at eq
+    simp at h1 h2; simp [h1, h2] at eq

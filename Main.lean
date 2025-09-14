@@ -24,13 +24,6 @@ def importsOf (env : Environment) (n : Name) : Array Import :=
 
 end Environment
 
-namespace NameSet
-
-def ofList (names : List Name) : NameSet :=
-  names.foldl (fun s n => s.insert n) {}
-
-end NameSet
-
 /-- Like `Expr.getUsedConstants`, but produce a `NameSet`. -/
 def Expr.getUsedConstants' (e : Expr) : NameSet :=
   e.foldConsts {} fun c cs => cs.insert c

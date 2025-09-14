@@ -31,7 +31,7 @@ attribute [simp] mkLevelSucc mkLevelMax mkLevelIMax updateSucc! updateMax! updat
     rw [go]; simp [Nat.add_right_comm, Nat.add_assoc]
 
 theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := by
-  rw [mkData, if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
+  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
   have : d.toUInt64.toUInt32.toNat = d := by simp; omega
   refine .trans ?_ this; congr 2
   rw [← UInt64.toBitVec_inj]
@@ -48,7 +48,7 @@ theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := b
   bv_decide
 
 theorem mkData_hasParam (H : d < 2 ^ 24) : (mkData h d hmv hp).hasParam = hp := by
-  rw [mkData, if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
+  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
   simp [Data.hasParam, (· == ·), ← UInt64.toBitVec_inj]
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
   have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
@@ -63,7 +63,7 @@ theorem mkData_hasParam (H : d < 2 ^ 24) : (mkData h d hmv hp).hasParam = hp := 
   cases hp <;> decide
 
 theorem mkData_hasMVar (H : d < 2 ^ 24) : (mkData h d hmv hp).hasMVar = hmv := by
-  rw [mkData, if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
+  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
   simp [Data.hasMVar, (· == ·), ← UInt64.toBitVec_inj]
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
   have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
@@ -92,12 +92,14 @@ def getUndefParam.F (ps : List Name) (l : Level) : StateT (Option Name) Id Bool 
 
 theorem getUndefParam_none {l : Level} (hmv : l.hasMVar' = false) :
     l.getUndefParam Us = none → ∃ u', VLevel.ofLevel Us l = some u' := by
-  suffices ∀ s, ((l.forEach (getUndefParam.F Us)).run s).snd = none → s = none ∧ _ from
+  suffices ∀ s, ((l.forEach (getUndefParam.F Us)).run s).run.snd = none → s = none ∧ _ from
     (this _ · |>.2)
   have {l} (hmv : l.hasMVar' = false)
-      {g} (H : ∀ {s'}, (g.run s').snd = none → s' = none ∧
-       ((getUndefParam.F Us l).run none = (true, none) → ∃ u', VLevel.ofLevel Us l = some u')) (s) :
-      ((do if (!(← getUndefParam.F Us l)) = true then pure PUnit.unit else g).run s).snd = none →
+      {g} (H : ∀ {s'}, (g.run s').run.snd = none → s' = none ∧
+        (((getUndefParam.F Us l).run none).run = (true, none) →
+          ∃ u', VLevel.ofLevel Us l = some u')) (s) :
+      ((do if (!(← getUndefParam.F Us l)) = true then pure PUnit.unit else g)
+        |>.run s).run.snd = none →
       s = none ∧ ∃ u', VLevel.ofLevel Us l = some u' := by
     simp; split <;> rename_i h
     · simp; revert h
@@ -121,7 +123,7 @@ theorem getUndefParam_none {l : Level} (hmv : l.hasMVar' = false) :
     have ⟨h, _, h1⟩ := ih1 hmv.1 _ h
     exact ⟨h, fun _ => ⟨_, _, h1, _, h2, rfl⟩⟩
   | param =>
-    simp [getUndefParam.F, Id, hasParam', List.idxOf_lt_length_iff, *]
+    simp [getUndefParam.F, hasParam', List.idxOf_lt_length_iff, *]
     split <;> simp [*]
   | _ => simp [*]
 
@@ -142,6 +144,7 @@ theorem substParams_eq_self {u : Level} (h : u.hasParam' = false) :
     substParams' s red u = u := by
   induction u generalizing red <;> simp_all [substParams', hasParam']
 
+open private substParams.go from Lean.Level in
 @[simp] theorem substParams_eq (u : Level) (s : Name → Option Level) :
     substParams u s = substParams' (fun x => (s x).getD (.param x)) true u := by
   unfold substParams
@@ -149,4 +152,4 @@ theorem substParams_eq_self {u : Level} (h : u.hasParam' = false) :
     split <;> simp [*, substParams_eq_self] <;> simp_all [substParams_eq_self]
 
 theorem substParams_id {u : Level} :
-    substParams' .param false u = u := by induction u <;> simp_all [substParams', hasParam']
+    substParams' .param false u = u := by induction u <;> simp_all [substParams']

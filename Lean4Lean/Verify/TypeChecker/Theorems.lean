@@ -16,7 +16,7 @@ theorem WF.bind {x : Except ε α} {f : α → Except ε β} {Q R}
     (h2 : ∀ a, Q a → (f a).WF R) :
     (x >>= f).WF R := by
   intro b
-  simp [(· >>= ·), ReaderT.bind, StateT.bind, Except.bind]
+  simp [(· >>= ·), Except.bind]
   split; · simp
   exact h2 _ (h1 _ rfl) _
 
@@ -526,7 +526,7 @@ theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     LocalContext.mkBindingList_eq_fold, List.foldr_reverse]
   · clear harr this
     induction n generalizing c e with
-    | zero => simp [tr]
+    | zero => simp
     | succ n ih =>
       match c with
       | .vlam .. | .vlet .. =>
@@ -550,7 +550,7 @@ theorem MLCtx.WF.mkLambda_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     LocalContext.mkBindingList_eq_fold, List.foldr_reverse]
   · clear harr this
     induction n generalizing c e with
-    | zero => simp [tr]
+    | zero => simp
     | succ n ih =>
       match c with
       | .vlam .. | .vlet .. =>
@@ -681,7 +681,7 @@ theorem inferConstant.WF {c : VContext}
     suffices ci.isPartial = false ∨ (c.safety == .safe) = false → F.WF P by
       split <;> [skip; exact this (.inl (ConstantInfo.isPartial.eq_2 _ ‹_›))]
       split <;> [exact .throw; skip]
-      rename_i h; simp [ConstantInfo.isPartial, Decidable.imp_iff_not_or] at h
+      rename_i h; simp [Decidable.imp_iff_not_or] at h
       exact this h
     subst eq1 eq2; intro h3
     refine this.map fun _ ⟨_, H⟩ => ?_
@@ -726,12 +726,12 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
       have := le₁.trans le₂
       have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
       refine inferLambda.loop.WF (Nat.succ_le_succ hn) (by simp [hdrop])
-        (by simp [← eqfvs, harr]) ?_ (by simp [← eqfvs]; rfl) (this.reserves hr1).2 ?_ ?_
+        (by simp [← eqfvs, harr]) ?_ (by simp; rfl) (this.reserves hr1).2 ?_ ?_
       · rw [he₀, eqfvs, ← eq]; simp; congr 2
         refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
         · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
         · rintro _ h rfl; exact h6 <| le₁.reservesV h
-      · simp [or_imp, forall_and, FVarsIn]
+      · simp [or_imp, forall_and]
         exact ⟨res, fun _ h => this.reservesV (hr2 _ h)⟩
       · intro h; let ⟨_, hbody⟩ := hbody h
         exact eqfvs.symm ▸ eq ▸ ⟨_, hbody.inst_fvar c.venv_wf.ordered mwf'.1.tr.wf⟩
@@ -810,7 +810,7 @@ theorem checkForall.loop.WF {c : VContext} {e₀ : Expr}
       refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
       · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
       · rintro _ h rfl; exact h6 <| (le₁.trans le₂).reservesV h
-    · simp [or_imp, forall_and, FVarsIn]
+    · simp [or_imp, forall_and]
       exact ⟨res, fun _ h => this.reservesV (hr2 _ h)⟩
     · intro h; let ⟨_, .forallE (body' := body') _ _ hdom₁ hbody₁⟩ := hinf h
       refine have hΔ := .refl c.venv_wf mwf.1.tr.wf; have H := hdom₁.uniq c.venv_wf hΔ h1; ?_

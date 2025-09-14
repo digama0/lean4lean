@@ -561,7 +561,7 @@ theorem IsDefEq.instL (H : env.IsDefEq U Γ e1 e2 A) :
     exact .sortDF (VLevel.WF.inst hls) (VLevel.WF.inst hls) (VLevel.inst_congr_l h3)
   | @constDF _ _ ls₁ ls₂ _ h1 h2 h3 h4 h5 =>
     simp [VExpr.instL, VExpr.instL_instL]
-    exact .constDF h1 (by simp [h2, VLevel.WF.inst hls]) (by simp [h3, VLevel.WF.inst hls])
+    exact .constDF h1 (by simp [VLevel.WF.inst hls]) (by simp [VLevel.WF.inst hls])
       (by simp [h4]) (by simpa using h5.imp fun _ _ => VLevel.inst_congr_l)
   | appDF _ _ ih1 ih2 => exact VExpr.instL_instN ▸ .appDF ih1 ih2
   | lamDF _ _ ih1 ih2 => exact .lamDF ih1 ih2
@@ -571,8 +571,8 @@ theorem IsDefEq.instL (H : env.IsDefEq U Γ e1 e2 A) :
   | eta _ ih => simpa [VExpr.instL] using .eta ih
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 =>
-    simp [VExpr.instL, VExpr.instL_instL]
-    exact .extra h1 (by simp [h2, VLevel.WF.inst hls]) (by simp [h3])
+    simp [VExpr.instL_instL]
+    exact .extra h1 (by simp [VLevel.WF.inst hls]) (by simp [h3])
 
 theorem HasType.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.HasType U Γ e A) :
     env.HasType U' (Γ.map (VExpr.instL ls)) (e.instL ls) (A.instL ls) := IsDefEq.instL hls H

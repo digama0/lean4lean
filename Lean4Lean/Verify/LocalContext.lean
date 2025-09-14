@@ -40,7 +40,7 @@ where
 theorem mkBinding_eq :
     mkBinding isLambda lctx ⟨xs.map .fvar⟩ b = mkBindingList isLambda lctx xs b := by
   simp only [mkBinding, List.getElem_toArray, Expr.abstractRange_eq, Expr.hasLooseBVar_eq,
-    Expr.abstract_eq, ← Array.take_eq_extract, List.take_toArray, Nat.sub_zero, List.drop_zero,
+    Expr.abstract_eq, ← Array.take_eq_extract, List.take_toArray, Bool.and_false,
     ← List.map_take, List.getElem_map, Expr.lowerLooseBVars_eq]
   dsimp only [Array.size]
   simp only [List.getElem_eq_getElem?_get, Option.get_eq_getD (fallback := default)]
@@ -60,7 +60,7 @@ theorem mkBindingList1_abstract {xs : List FVarId}
     (hx : lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
     (mkBindingList1 isLambda lctx xs x b).abstract1 a xs.length =
     mkBindingList1 isLambda lctx (a :: xs) x (b.abstract1 a (xs.length + 1)) := by
-  have (e) := Nat.zero_add _ ▸ Expr.abstract1_abstractList' (k := 0) (e := e) nd
+  have (e:_) := Nat.zero_add _ ▸ Expr.abstract1_abstractList' (k := 0) (e := e) nd
   simp [mkBindingList1, hx]; cases decl with simp
   | cdecl _ _ _ ty => split <;> simp [Expr.abstract1, Expr.abstract1, this]
   | ldecl =>
@@ -83,7 +83,7 @@ theorem mkBindingList_core_cons {xs : List FVarId} {b : Expr}
   | cons c xs ih =>
     simp at hx nd ih
     let ⟨decl, eq⟩ := hx.1
-    simp [← List.map_reverse, mkBindingList.go]
+    simp [mkBindingList.go]
     rw [← xs.length_reverse, ← mkBindingList1_abstract eq (by simp [*])]
     simp [ih hx.2 nd.1.2 nd.2.2]
 
@@ -93,7 +93,7 @@ theorem mkBindingList_cons
     (hx : ∀ x ∈ xs, ∃ decl, lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
     mkBindingList isLambda lctx (a :: xs) b =
     mkBindingList1 isLambda lctx [] a ((mkBindingList isLambda lctx xs b).abstract1 a) := by
-  simp [Expr.abstractList_append, Expr.abstract1, mkBindingList]
+  simp [mkBindingList]
   rw [← Expr.abstract1_abstractList' nd]
   rw [Nat.zero_add, mkBindingList_core_cons hx nd]
 
@@ -213,14 +213,14 @@ theorem TrLCtx'.noBV : TrLCtx' env Us ds Δ → Δ.NoBV
 
 theorem TrLCtx'.forall₂ :
     TrLCtx' env Us ds Δ → ds.Forall₂ Δ (R := fun d d' => d'.1 = some d.fvarId)
-  | .nil => by simp [LocalContext.toList]
-  | .cons h _ => by simp [LocalContext.toList]; exact h.forall₂
+  | .nil => by simp
+  | .cons h _ => by simp; exact h.forall₂
 
 theorem TrLCtx'.fvars_eq (H : TrLCtx' env Us ds Δ) : ds.map (·.fvarId) = Δ.fvars := by
   simp [VLCtx.fvars]
   induction H with
   | nil => rfl
-  | cons h1 _ ih => simp [h1, ← ih]
+  | cons h1 _ ih => simp [← ih]
 
 theorem TrLCtx.fvars_eq (H : TrLCtx env Us lctx Δ) : lctx.fvars = Δ.fvars :=
   H.2.fvars_eq

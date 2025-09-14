@@ -180,7 +180,7 @@ theorem IsDefEqStrong.instL (H : env.IsDefEqStrong U Γ e1 e2 A) :
   | constDF h1 h2 h3 h4 h5 _ _ _ _ _ ih1 ih2 ih3 ih4 =>
     simp [VExpr.instL, VExpr.instL_instL] at ih1 ih2 ih3 ih4 ⊢
     exact .constDF h1
-      (by simp [h2, VLevel.WF.inst hls]) (by simp [h3, VLevel.WF.inst hls]) (by simp [h4])
+      (by simp [VLevel.WF.inst hls]) (by simp [VLevel.WF.inst hls]) (by simp [h4])
       (by simpa using h5.imp fun _ _ => VLevel.inst_congr_l) (.inst hls) ih1 ih2 ih3 ih4
   | symm _ ih => exact .symm ih
   | trans _ _ ih1 ih2 => exact .trans ih1 ih2
@@ -205,7 +205,7 @@ theorem IsDefEqStrong.instL (H : env.IsDefEqStrong U Γ e1 e2 A) :
     exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 _ _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
     simp [VExpr.instL, VExpr.instL_instL] at ih1 ih2 ih3 ih4 ih5 ⊢
-    exact .extra h1 (by simp [h2, VLevel.WF.inst hls]) (by simp [h3])
+    exact .extra h1 (by simp [VLevel.WF.inst hls]) (by simp [h3])
       (.inst hls) ih1 ih2 ih3 ih4 ih5
 
 def CtxStrong (env : VEnv) (U Γ) :=

@@ -1,3 +1,4 @@
+import Batteries.Data.List.Basic
 import Lean4Lean.Environment.Basic
 import Lean4Lean.TypeChecker
 import Lean4Lean.Stream
@@ -726,7 +727,7 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
   let (recNames', recNameMap') := mkAuxRecNameMap env' types
   (·.2) <$> StateT.run (s := env) do
   let processRec recName := do
-    let newRecName := recNameMap'.findD recName recName
+    let newRecName := recNameMap'.getD recName recName
     let some (.recInfo recInfo) := env'.find? recName | unreachable!
     let newRecType := res.restoreNested env' recInfo.type recNameMap'
     let newRules ← recInfo.rules.mapM fun rule => do

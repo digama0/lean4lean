@@ -29,7 +29,7 @@ unsafe def replaceUnsafeT [Monad m] (f? : Expr → m (Option Expr)) (e : Expr) :
       | Expr.forallE _ d b _   => cacheT e <| e.updateForallE! (← visit d) (← visit b)
       | Expr.lam _ d b _       => cacheT e <| e.updateLambdaE! (← visit d) (← visit b)
       | Expr.mdata _ b         => cacheT e <| e.updateMData! (← visit b)
-      | Expr.letE _ t v b _    => cacheT e <| e.updateLet! (← visit t) (← visit v) (← visit b)
+      | Expr.letE _ t v b nd   => cacheT e <| e.updateLet! (← visit t) (← visit v) (← visit b) nd
       | Expr.app f a           => cacheT e <| e.updateApp! (← visit f) (← visit a)
       | Expr.proj _ _ b        => cacheT e <| e.updateProj! (← visit b)
       | e                      => pure e
@@ -55,8 +55,9 @@ def replaceNoCacheT [Monad m] (f? : Expr → m (Option Expr)) (e : Expr) : m Exp
       return e.updateLambdaE! (← replaceNoCacheT f? d) (← replaceNoCacheT f? b)
     | .mdata _ b =>
       return e.updateMData! (← replaceNoCacheT f? b)
-    | .letE _ t v b _ =>
-      return e.updateLet! (← replaceNoCacheT f? t) (← replaceNoCacheT f? v) (← replaceNoCacheT f? b)
+    | .letE _ t v b nd =>
+      return e.updateLet!
+        (← replaceNoCacheT f? t) (← replaceNoCacheT f? v) (← replaceNoCacheT f? b) nd
     | .app f a =>
       return e.updateApp! (← replaceNoCacheT f? f) (← replaceNoCacheT f? a)
     | .proj _ _ b =>

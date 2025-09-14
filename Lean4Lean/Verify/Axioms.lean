@@ -77,7 +77,90 @@ axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Exp
   mkAppRangeAux n args i e =
     if i < n then mkAppRangeAux n args (i + 1) (mkApp e args[i]!) else e
 
+namespace Level
+
+def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
+  if depth > Nat.pow 2 24 - 1 then panic! "universe level depth is too big"
+  else
+    h.toUInt32.toUInt64 +
+    hasMVar.toUInt64.shiftLeft 32 +
+    hasParam.toUInt64.shiftLeft 33 +
+    depth.toUInt64.shiftLeft 40
+
+/-- This exists only for the bit-twiddling proofs, it shouldn't appear
+in the main results, which use the functions below instead -/
+axiom mkData_eq : @mkData = @mkData'
+
+def hasParam' : Level → Bool
+  | .param .. => true
+  | .zero | .mvar .. => false
+  | .succ l => l.hasParam'
+  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasParam' || l₂.hasParam'
+
+/-- This is currently false, see bug lean4#8554 -/
+@[simp] axiom hasParam_eq (l : Level) : l.hasParam = l.hasParam'
+
+def hasMVar' : Level → Bool
+  | .mvar .. => true
+  | .zero | .param .. => false
+  | .succ l => l.hasMVar'
+  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasMVar' || l₂.hasMVar'
+
+/-- This is currently false, see bug lean4#8554 -/
+@[simp] axiom hasMVar_eq (l : Level) : l.hasMVar = l.hasMVar'
+
+/-- This is because the `BEq` instance is implemented in C++ -/
+@[instance] axiom instLawfulBEqLevel : LawfulBEq Level
+
+@[inline] private def mkIMaxCore (u v : Level) (elseK : Unit → Level) : Level :=
+  if v.isNeverZero then mkLevelMax' u v
+  else if v.isZero then v
+  else if u.isZero || u matches .succ .zero then v
+  else if u == v then u
+  else elseK ()
+
+open private mkLevelIMaxCore from Lean.Level in
+/-- Workaround for https://github.com/leanprover/lean4/pull/7631#issuecomment-3289800246 -/
+@[simp] axiom mkLevelIMaxCore_eq (e : Expr) (n : Nat) : mkLevelIMaxCore = mkIMaxCore
+
+end Level
+
 namespace Expr
+
+def mkData'
+    (h : UInt64) (looseBVarRange : Nat := 0) (approxDepth : UInt32 := 0)
+    (hasFVar hasExprMVar hasLevelMVar hasLevelParam : Bool := false)
+    : Expr.Data :=
+  let approxDepth : UInt8 := if approxDepth > 255 then 255 else approxDepth.toUInt8
+  assert! (looseBVarRange ≤ Nat.pow 2 20 - 1)
+  h.toUInt32.toUInt64 +
+  approxDepth.toUInt64.shiftLeft 32 +
+  hasFVar.toUInt64.shiftLeft 40 +
+  hasExprMVar.toUInt64.shiftLeft 41 +
+  hasLevelMVar.toUInt64.shiftLeft 42 +
+  hasLevelParam.toUInt64.shiftLeft 43 +
+  looseBVarRange.toUInt64.shiftLeft 44
+
+/-- This exists only for the bit-twiddling proofs, it shouldn't appear
+in the main results, which use the functions below instead -/
+axiom mkData_eq : @mkData = @mkData'
+
+@[inline] def mkAppData' (fData : Data) (aData : Data) : Data :=
+  let depth          := max fData.approxDepth.toUInt16 aData.approxDepth.toUInt16 + 1
+  let approxDepth    := if depth > 255 then 255 else depth.toUInt8
+  let looseBVarRange := max fData.looseBVarRange aData.looseBVarRange
+  let hash           := mixHash fData aData
+  let fData : UInt64 := fData
+  let aData : UInt64 := aData
+  assert! looseBVarRange ≤ (Nat.pow 2 20 - 1).toUInt32
+  (fData ||| aData) &&& (15 : UInt64) <<< (40 : UInt64) |||
+  hash.toUInt32.toUInt64 |||
+  approxDepth.toUInt64 <<< (32 : UInt64) |||
+  looseBVarRange.toUInt64 <<< (44 : UInt64)
+
+/-- This exists only for the bit-twiddling proofs, it shouldn't appear
+in the main results, which use the functions below instead -/
+axiom mkAppData_eq : @mkAppData = @mkAppData'
 
 def hasFVar' : Expr → Bool
   | .fvar _ => true
@@ -290,28 +373,3 @@ def hasLooseBVar' : (e : @& Expr) → (bvarIdx : @& Nat) → Bool
 @[simp] axiom hasLooseBVar_eq (e : Expr) (n : Nat) : e.hasLooseBVar n = e.hasLooseBVar' n
 
 end Expr
-
-namespace Level
-
-def hasParam' : Level → Bool
-  | .param .. => true
-  | .zero | .mvar .. => false
-  | .succ l => l.hasParam'
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasParam' || l₂.hasParam'
-
-/-- This is currently false, see bug lean4#8554 -/
-@[simp] axiom hasParam_eq (l : Level) : l.hasParam = l.hasParam'
-
-def hasMVar' : Level → Bool
-  | .mvar .. => true
-  | .zero | .param .. => false
-  | .succ l => l.hasMVar'
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasMVar' || l₂.hasMVar'
-
-/-- This is currently false, see bug lean4#8554 -/
-@[simp] axiom hasMVar_eq (l : Level) : l.hasMVar = l.hasMVar'
-
-/-- This is because the `BEq` instance is implemented in C++ -/
-@[instance] axiom instLawfulBEqLevel : LawfulBEq Level
-
-end Level

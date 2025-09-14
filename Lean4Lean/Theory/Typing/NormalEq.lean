@@ -439,7 +439,7 @@ theorem NormalEq.instN_r (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : Typing.
     have ⟨ty, h⟩ := TY.bvar_inv H; clear H
     induction W generalizing i ty with
     | zero =>
-      cases h with simp [inst_lift]
+      cases h with simp
       | zero => exact H'
       | succ h => exact .refl (TY.bvar h)
     | succ _ ih =>

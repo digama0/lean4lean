@@ -58,18 +58,18 @@ def checkName (env : Environment) (n : Name)
     if primitives.contains n then
       throw <| .other s!"unexpected use of primitive name {n}"
 
-open private subsumesInfo Kernel.Environment.mk moduleNames moduleNameMap parts
+open private subsumesInfo Kernel.Environment.mk moduleNames moduleNameMap parts toEffectiveImport
   from Lean.Environment
 
 def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
   Kernel.Environment.mk
-    (const2ModIdx := {})
     (constants := {})
     (quotInit := false)
     (diagnostics := {})
-    (extraConstNames := {})
-    (header := { mainModule, trustLevel })
+    (const2ModIdx := {})
     (extensions := #[])
+    (irBaseExts := #[])
+    (header := { mainModule, trustLevel })
 
 def throwAlreadyImported (s : ImportState) (const2ModIdx : Std.HashMap Name ModuleIdx)
     (modIdx : Nat) (cname : Name) : Except Exception α := do
@@ -106,15 +106,14 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
 
   return Kernel.Environment.mk
-    (const2ModIdx := const2ModIdx)
     (constants := SMap.fromHashMap privateConstantMap false)
     (quotInit := !imports.isEmpty) -- We assume `Init.Prelude` initializes quotient module
     (diagnostics := {})
-    (extraConstNames := {})
+    (const2ModIdx := const2ModIdx)
     (extensions := #[])
+    (irBaseExts := #[])
     (header := {
-      trustLevel, imports, mainModule
-      regions      := modules.flatMap (parts · |>.map (·.2))
-      moduleNames  := moduleNames s
-      moduleData
+      trustLevel, imports, moduleData, mainModule, isModule := false
+      regions := modules.flatMap (parts · |>.map (·.2))
+      modules := modules.map toEffectiveImport
     })

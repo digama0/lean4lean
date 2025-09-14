@@ -69,7 +69,7 @@ theorem FVarsIn.abstract_instantiate1 (h : FVarsIn (· ≠ v) e) :
 
 theorem FVarsIn.abstract_eq_self (h : FVarsIn (· ≠ v) e) (hc : Closed e k) :
     e.abstract1 v k = e := by
-  induction e generalizing k <;> simp_all [FVarsIn, Closed, Expr.abstract1, Expr.liftLooseBVars']
+  induction e generalizing k <;> simp_all [FVarsIn, Closed, Expr.abstract1]
   exact Ne.symm h
 
 theorem FVarsIn.liftLooseBVars (h : FVarsIn P e) : FVarsIn P (Expr.liftLooseBVars' e s d) := by
@@ -85,11 +85,11 @@ theorem FVarsIn.instantiate1 (h1 : FVarsIn P e) (h2 : FVarsIn P a) :
 
 theorem FVarsIn.instantiateList (h1 : FVarsIn P e) (h2 : ∀ a ∈ as, FVarsIn P a) :
     FVarsIn P (Expr.instantiateList e as k) := by
-  induction as generalizing e <;> simp_all [Expr.instantiateList, FVarsIn, FVarsIn.instantiate1_go]
+  induction as generalizing e <;> simp_all [Expr.instantiateList, FVarsIn.instantiate1_go]
 
 theorem FVarsIn.abstract1 (h1 : FVarsIn P e) :
     FVarsIn P (Expr.abstract1 a e k) := by
-  induction e generalizing k <;> simp_all [FVarsIn, Expr.instantiate1', Expr.abstract1]
+  induction e generalizing k <;> simp_all [FVarsIn, Expr.abstract1]
   split <;> simp [FVarsIn, *]
 
 theorem Closed.getAppFn {e} (h : Closed e) : Closed e.getAppFn := by
@@ -108,7 +108,7 @@ theorem Closed.getAppArgsList {e} (h : Closed e)
 
 theorem Closed.looseBVarRange_le : Closed e k → e.looseBVarRange' ≤ k := by
   induction e generalizing k <;>
-    simp +contextual [*, Closed, Expr.looseBVarRange', Nat.max_le, Nat.sub_le_of_le_add]
+    simp +contextual [*, Closed, Expr.looseBVarRange', Nat.max_le]
   exact id
 
 theorem Closed.looseBVarRange_zero (H : Closed e) : e.looseBVarRange' = 0 := by
@@ -226,7 +226,7 @@ protected theorem FVLift.find? (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
   | refl => simp [H]
   | @skip_fvar _ Δ' _ fv' _ W ih =>
     simp [find?]
-    cases v with simp [next, bind]
+    cases v with simp [next]
     | inl => exact ⟨_, _, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
     | inr fv =>
       cases eq : fv' == fv <;> simp
@@ -235,7 +235,7 @@ protected theorem FVLift.find? (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
         exact W.fvars_suffix.subset ((beq_iff_eq ..).1 eq ▸ find?_eq_some.1 ⟨_, H⟩)
   | cons_bvar d _ ih =>
     simp [find?] at H ⊢
-    obtain ⟨_|i⟩ | fv := v <;> simp [next, bind] at H ⊢ <;>
+    obtain ⟨_|i⟩ | fv := v <;> simp [next] at H ⊢ <;>
       [(obtain ⟨rfl, rfl⟩ := H);
        (obtain ⟨e, A, H, rfl, rfl⟩ := H
         refine ⟨_, _, ih (v := .inl i) hΔ'.1 H, ?_⟩);
@@ -290,7 +290,7 @@ protected theorem BVLift.find? (W : BVLift Δ Δ' dn dk n k) (H : find? Δ v = s
       exact ⟨_, _, ih H, by simp [VExpr.liftN_liftN]⟩
   | cons d _ ih =>
     obtain (_ | v) | fv := v <;> simp [liftVar] <;>
-      [ simp [find?, next] at H ⊢ <;> simp [← H];
+      [ (simp [find?, next] at H ⊢; simp [← H]);
         split <;> (
           rename_i h
           simp [Nat.add_right_comm _ 1, find?, next] at H ⊢
@@ -298,7 +298,7 @@ protected theorem BVLift.find? (W : BVLift Δ Δ' dn dk n k) (H : find? Δ v = s
           have := ih H
           simp [liftVar, h] at this
           refine ⟨_, _, this, ?_⟩);
-        ( simp [find?, liftVar, next] at H ⊢
+        ( simp [find?, next] at H ⊢
           obtain ⟨e, A, H, rfl, rfl⟩ := H
           refine ⟨_, _, ih H, ?_⟩ )] <;>
       open VLocalDecl in
@@ -855,7 +855,7 @@ theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
     obtain ⟨d, Δ₂, rfl, hΔ₁⟩ : ∃ d Δ₁', Δ₁ = (none, d) :: Δ₁' ∧
         VLCtx.IsDefEq env Us.length Δ₁' Δ₂ := by cases d <;> cases hΔ <;> exact ⟨_, _, rfl, ‹_›⟩
     simp [VLCtx.find?] at h1 ⊢
-    rcases i with _ | i <;> simp [VLCtx.next, bind] at h1 ⊢
+    rcases i with _ | i <;> simp [VLCtx.next] at h1 ⊢
     obtain ⟨_, _, h1, _⟩ := h1
     have ⟨_, h1⟩ := ih h1 hΔ₁ (Nat.lt_of_succ_lt_succ hc) hv
     exact ⟨_, _, _, _, h1, rfl, rfl⟩
@@ -1020,7 +1020,7 @@ theorem TrExprS.instN_let_var (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ)
   induction W generalizing v e' A with
   | zero =>
     obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1', Expr.liftLooseBVars_zero]
-    · cases H; simp [VLocalDecl.value, VExpr.inst]; exact h₀
+    · cases H; simp [VLocalDecl.value]; exact h₀
     · simp [VLCtx.find?, VLCtx.next] at H
       obtain ⟨e, A, H, rfl, rfl⟩ := H
       simp [VLocalDecl.depth]
@@ -1032,7 +1032,7 @@ theorem TrExprS.instN_let_var (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ)
   | @succ _ k _ _ d _ ih =>
     obtain (_|i)|fv := v <;> simp [VLCtx.varToExpr, Expr.instantiate1']
     · cases H
-      cases d <;> exact .bvar <| by simp [VLocalDecl.value, VExpr.inst, VLocalDecl.depth]; rfl
+      cases d <;> exact .bvar <| by simp [VLocalDecl.value]; rfl
     · simp [VLCtx.find?, VLCtx.next] at H
       obtain ⟨e, A, H, rfl, rfl⟩ := H
       have := ih H; revert this
@@ -1126,7 +1126,7 @@ theorem ofLevel_mkLevelMax'
     simp [subsumes] at h
     obtain ⟨h1, h2⟩ | h := h
     · clear subsumes mkLevelMaxCore
-      induction v generalizing u u' v' with simp [Level.getOffsetAux, VLevel.ofLevel] at hv h2 ⊢
+      induction v generalizing u u' v' with simp [VLevel.ofLevel] at hv h2 ⊢
       | zero => subst v'; exact VLevel.zero_le
       | succ _ ih =>
         obtain ⟨_, hv, rfl⟩ := hv

@@ -99,11 +99,11 @@ theorem lookup_isSome : ∀ {Δ : VLCtx}, (Δ.lookup (some fv)).isSome = (Δ.fin
     cases ofv with
     | none =>
       simp [show (some fv == none) = false from rfl, lookup_isSome]
-      cases find? Δ (.inr fv) <;> simp [bind]
+      cases find? Δ (.inr fv) <;> simp
     | some fv' =>
       simp [show (some fv == some fv') = (fv == fv') from rfl, beq_comm fv]
       cases fv' == fv <;> simp [lookup_isSome]
-      cases find? Δ (.inr fv) <;> simp [bind]
+      cases find? Δ (.inr fv) <;> simp
 
 theorem lookup_eq_some : ∀ {Δ : VLCtx}, (∃ x, Δ.lookup (some fv) = some x) ↔ fv ∈ fvars Δ
   | [] => by simp

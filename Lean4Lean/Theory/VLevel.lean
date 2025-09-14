@@ -105,7 +105,7 @@ theorem inst_inst {l : VLevel} : (l.inst ls).inst ls' = l.inst (ls.map (inst ls'
   case param n => cases ls[n]? <;> simp [inst]
 
 theorem inst_id {l : VLevel} (h : l.WF u) : l.inst ((List.range u).map .param) = l := by
-  induction l <;> simp_all [inst, WF, List.getD_eq_getElem?_getD, List.getElem?_range]
+  induction l <;> simp_all [inst, WF, List.getD_eq_getElem?_getD]
 
 theorem eval_inst {l : VLevel} : (l.inst ls).eval ns = l.eval (ls.map (eval ns)) := by
   induction l <;> simp [eval, inst, *, List.getD_eq_getElem?_getD]
@@ -147,7 +147,7 @@ def ofLevel : Lean.Level → Option VLevel
   | .mvar _ => none
 
 theorem WF.of_ofLevel (h : ofLevel ls l = some l') : l'.WF ls.length := by
-  induction l generalizing l' with simp [ofLevel, bind, Option.bind_eq_some_iff] at h
+  induction l generalizing l' with simp [ofLevel, bind] at h
   | zero => cases h; trivial
   | succ _ ih => obtain ⟨l', h, ⟨⟩⟩ := h; exact @ih l' h
   | max _ _ ih1 ih2 | imax _ _ ih1 ih2 => obtain ⟨_, h1, _, h2, ⟨⟩⟩ := h; exact ⟨ih1 h1, ih2 h2⟩
