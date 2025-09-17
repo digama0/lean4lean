@@ -504,7 +504,7 @@ def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
   match t, s with
   | .lam .., .lam .. => toLBoolM <| isDefEqLambda t s
   | .forallE .., .forallE .. => toLBoolM <| isDefEqForall t s
-  | .sort a1, .sort a2 => pure (a1.isEquiv a2).toLBool
+  | .sort a1, .sort a2 => pure (a1.isEquiv' a2).toLBool
   | .mdata _ a1, .mdata _ a2 => toLBoolM <| isDefEq a1 a2
   | .mvar .., .mvar .. => unreachable!
   | .lit a1, .lit a2 => pure (a1 == a2).toLBool

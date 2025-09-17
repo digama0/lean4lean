@@ -101,7 +101,7 @@ def checkInductiveTypes
       if stats.indConsts.isEmpty then
         let lctx := (← read).lctx
         stats := { stats with lctx, resultLevel, isNotZero := resultLevel.isNeverZero }
-      else if !resultLevel.isEquiv stats.resultLevel then
+      else if !resultLevel.isEquiv' stats.resultLevel then
         throw <| .other "mutually inductive types must live in the same universe"
       stats := { stats with
         nindices := stats.nindices.push nindices
