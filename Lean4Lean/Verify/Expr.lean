@@ -321,6 +321,10 @@ theorem instantiateList_forallE : instantiateList (.forallE n ty body bi) as =
     .forallE n (instantiateList ty as) (instantiateList body as 1) bi := by
   induction as generalizing ty body <;> simp [instantiate1', *]
 
+theorem instantiateList_letE : instantiateList (.letE n ty val body nd) as =
+    .letE n (instantiateList ty as) (instantiateList val as) (instantiateList body as 1) nd := by
+  induction as generalizing ty val body <;> simp [instantiate1', *]
+
 theorem instantiateList_instantiate1_comm (h : a.looseBVarRange' = 0) :
     (instantiateList e as 1).instantiate1' a =
     instantiateList (e.instantiate1' a) as := by
@@ -378,8 +382,7 @@ theorem abstract1_abstractList' {e : Expr} {as : List FVarId} {k} (H : (a :: as)
     rw [← ih H.2.1, ← Nat.add_assoc, ← abstract1_comm (.symm H.1.1), ih H.1.2, ih H.2.1]
 
 theorem abstract1_hasLooseBVar (a e k i) :
-    (abstract1 a e k).hasLooseBVar' (if i < k then i else i+1) =
-    e.hasLooseBVar' i := by
+    (abstract1 a e k).hasLooseBVar' (if i < k then i else i+1) = e.hasLooseBVar' i := by
   have (i) k : (if i < k then i else i + 1) + 1 = if i + 1 < k + 1 then i + 1 else i + 1 + 1 := by
     simp; split <;> rfl
   induction e generalizing i k with simp only [hasLooseBVar', abstract1, *]
@@ -390,10 +393,30 @@ theorem abstract1_hasLooseBVar (a e k i) :
     split <;> simp [hasLooseBVar']
     split <;> omega
 
+theorem abstract1_eq_liftLooseBVars (h : (abstract1 a e k).hasLooseBVar' k = false) :
+    abstract1 a e k = liftLooseBVars' e k 1 := by
+  induction e generalizing k <;> grind [abstract1, hasLooseBVar', liftLooseBVars']
+
+-- theorem abstract1_looseBVarRange_le :
+--     (abstract1 a e k).looseBVarRange' ≤ max k e.looseBVarRange' + 1 := by
+--   have H {k a b c d} (h1 : a ≤ max k c + 1) (h2 : b ≤ max k d + 1) :
+--       max a b ≤ max k (max c d) + 1 := by
+--     rw [Nat.max_le]; simp [Nat.max_def]; split <;> split <;> omega
+--   have {k a b c d} (h1 : a ≤ max k c + 1) (h2 : b ≤ max (k+1) d + 1) :
+--       max a (b - 1) ≤ max k (max c (d - 1)) + 1 := by apply H <;> omega
+--   induction e generalizing k with simp [abstract1, looseBVarRange', *] <;> try solve_by_elim
+--   | bvar => split <;> omega
+--   | fvar => split <;> simp [looseBVarRange']
+
 theorem lowerLooseBVars_eq_instantiate (h : e.hasLooseBVar' k = false) :
     e.lowerLooseBVars' (k + 1) 1 = instantiate1' e v k := by
   induction e generalizing k with simp_all [hasLooseBVar', lowerLooseBVars', instantiate1']
   | bvar j => split <;> [rw [if_pos (by omega)]; rw [if_neg (by omega)]]
+
+theorem hasLooseBVar_of_ge_looseBVarRange {e : Expr} (h : e.looseBVarRange' ≤ k) :
+    e.hasLooseBVar' k = false := by
+  induction e generalizing k with simp_all [hasLooseBVar', looseBVarRange', Nat.max_le]
+  | bvar j => omega
 
 theorem abstract1_lower {e : Expr} (h : e.hasLooseBVar' k₁ = false) (hk : k₁ ≤ k₂) :
     Expr.abstract1 a (e.lowerLooseBVars' (k₁ + 1) 1) k₂ =

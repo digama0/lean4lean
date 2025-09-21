@@ -43,6 +43,9 @@ theorem List.Forall₂.trans (H : ∀ a b c, R a b → S b c → T a c)
     {l₁ l₂ l₃} (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ S l₂ l₃) : Forall₂ T l₁ l₃ := by
   induction h₁ generalizing l₃ <;> cases h₂ <;> constructor <;> solve_by_elim
 
+theorem List.Forall₂.and {l₁ l₂} (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ S l₁ l₂) :
+    Forall₂ (fun x y => R x y ∧ S x y) l₁ l₂ := by induction h₁ <;> simp_all
+
 @[simp] theorem List.forall₂_map_left_iff {f : γ → α} :
     ∀ {l u}, Forall₂ R (map f l) u ↔ Forall₂ (fun c b => R (f c) b) l u
   | [], _ => by simp only [map, forall₂_nil_left_iff]
@@ -66,6 +69,16 @@ theorem List.Forall₂.forall_exists_r {l₁ l₂} (h : Forall₂ R l₁ l₂) :
 theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → length l₁ = length l₂
   | _, _, Forall₂.nil => rfl
   | _, _, Forall₂.cons _ h₂ => congrArg Nat.succ (Forall₂.length_eq h₂)
+
+theorem List.Forall₂.append_of_left : ∀ {l₁ l₂ r₁ r₂}, length l₁ = length l₂ →
+    (Forall₂ R (l₁ ++ r₁) (l₂ ++ r₂) ↔ Forall₂ R l₁ l₂ ∧ Forall₂ R r₁ r₂)
+  | [], [], _, _, _ => by simp
+  | a::l₁, b::l₂, _, _, eq => by simp [append_of_left (Nat.succ_inj.1 eq), and_assoc]
+
+theorem List.Forall₂.append_of_right {l₁ l₂ r₁ r₂} (H : length r₁ = length r₂) :
+    Forall₂ R (l₁ ++ r₁) (l₂ ++ r₂) ↔ Forall₂ R l₁ l₂ ∧ Forall₂ R r₁ r₂ := by
+  refine ⟨fun h => (append_of_left ?_).1 h, fun h => (append_of_left h.1.length_eq).2 h⟩
+  simpa [H] using h.length_eq
 
 theorem List.map_id''' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
   induction l <;> simp_all

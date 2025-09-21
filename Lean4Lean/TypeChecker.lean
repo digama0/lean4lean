@@ -36,6 +36,13 @@ def M.run (env : Environment) (safety : DefinitionSafety := .safe) (lctx : Local
     (x : M α) : Except Exception α :=
   x { env, safety, lctx } |>.run' {}
 
+def M.runTermElab (m : M α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α := do
+  ofExceptKernelException <|
+    withReader ({· with lparams := (← get).levelNames }) m
+    |>.run (env := (← getEnv).toKernelEnv) (lctx := ← getLCtx) (safety := safety)
+
+instance : MonadLift M Elab.Term.TermElabM := ⟨M.runTermElab⟩
+
 def getEnv : M Environment := return (← read).env
 
 instance : MonadLCtx M where
@@ -133,9 +140,8 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
     let d := dom.instantiateRev fvars
     let t1 ← ensureSortCore (← inferType d inferOnly) d
     let us := us.push t1.sortLevel!
-    withLocalDecl name d bi fun fv => do
-      let fvars := fvars.push fv
-      loop fvars us body
+    withLocalDecl name d bi fun fv =>
+      loop (fvars.push fv) us body
   | e => do
     let r ← inferType (e.instantiateRev fvars) inferOnly
     let s ← ensureSortCore r e
@@ -175,20 +181,18 @@ def markUsed (n : Nat) (fvars : Array Expr) (b : Expr) (used : Array Bool) : Arr
             return false
       return true
 
-def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
-  loop fvars vals : Expr → RecM Expr
+def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] #[] e where
+  loop fvars tys vals : Expr → RecM Expr
   | .letE name type val body _ => do
     let type := type.instantiateRev fvars
     let val := val.instantiateRev fvars
-    withLetDecl name type val fun fv => do
-      let fvars := fvars.push fv
-      let vals := vals.push val
-      if !inferOnly then
-        _ ← ensureSortCore (← inferType type inferOnly) type
-        let valType ← inferType val inferOnly
-        if !(← isDefEq valType type) then
-          throw <| .letTypeMismatch (← getEnv) (← getLCtx) name valType type
-      loop fvars vals body
+    if !inferOnly then
+      _ ← ensureSortCore (← inferType type inferOnly) type
+      let valType ← inferType val inferOnly
+      if !(← isDefEq valType type) then
+        throw <| .letTypeMismatch (← getEnv) (← getLCtx) name valType type
+    withLetDecl name type val fun fv =>
+      loop (fvars.push fv) (tys.push type) (vals.push val) body
   | e => do
     let r ← inferType (e.instantiateRev fvars) inferOnly
     let r := r.cheapBetaReduce
@@ -196,15 +200,20 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
       match i with
       | 0 => used
       | i+1 =>
-        let used := if used[i]! then markUsed i fvars vals[i]! used else used
+        let used := if used[i]! then
+          markUsed i fvars tys[i]! used |> markUsed i fvars vals[i]!
+        else used
         loopUsed i used
     let used := Array.replicate fvars.size false
     let used := markUsed fvars.size fvars r used
     let used := loopUsed fvars.size used
-    let mut usedFVars := #[]
-    for fvar in fvars, b in used do
-      if b then
-        usedFVars := usedFVars.push fvar
+    let rec usedFVars i acc :=
+      if _ : i < fvars.size then
+        let acc := if used[i]! then acc.push fvars[i] else acc
+        usedFVars (i+1) acc
+      else
+        acc
+    let usedFVars := usedFVars 0 #[]
     return (← getLCtx).mkForall usedFVars r
 
 def isProp (e : Expr) : RecM Bool :=
@@ -728,6 +737,11 @@ def Methods.withFuel : Nat → Methods
 
 def RecM.run (x : RecM α) : M α := x (Methods.withFuel 1000)
 
+def RecM.runTermElab (x : RecM α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α :=
+  x.run.runTermElab safety
+
+instance : MonadLift RecM Elab.Term.TermElabM := ⟨RecM.runTermElab⟩
+
 def check (e : Expr) (lps : List Name) : M Expr :=
   withReader ({ · with lparams := lps }) (inferType e (inferOnly := false)).run
 
@@ -768,3 +782,17 @@ def etaExpand (e : Expr) : M Expr :=
     | _, it => return (← getLCtx).mkLambda fvars (mkAppN it args)
     loop2 fvars #[] 1000 itType
   loop #[] e
+
+-- for testing:
+
+-- example (P : Unit → Prop) (p : ∀ a, P a) :
+--     (let y := Unit; let x : y := (); p x) = p () := by
+--   run_tac
+--     let env ← Lean.getEnv
+--     let lctx ← getLCtx
+--     let (_, lhs, _) := (← Elab.Tactic.getMainTarget).eq?.get!
+--     logInfo lhs
+--     let ty ← inferType lhs
+--     logInfo ty
+--     let sort ← inferType ty
+--     logInfo sort

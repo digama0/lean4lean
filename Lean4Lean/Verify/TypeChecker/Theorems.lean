@@ -43,6 +43,7 @@ namespace Lean4Lean
 namespace TypeChecker
 open Lean hiding Environment Exception
 open Kernel
+open scoped List
 
 inductive MLCtx where
   | nil : MLCtx
@@ -75,6 +76,19 @@ def MLCtx.decls : MLCtx → List LocalDecl
   | n+1, .vlam id _ _ _ _ c, h
   | n+1, .vlet id _ _ _ _ _ c, h => id :: c.fvarRevList n (Nat.le_of_succ_le_succ h)
 termination_by structural n
+
+@[simp] theorem MLCtx.fvarRevList_length {c n hn} : (MLCtx.fvarRevList c n hn).length = n := by
+  induction n generalizing c <;> [simp; cases c <;> simp [*] at hn ⊢]
+
+@[simp] def MLCtx.letValList (c : MLCtx) (n) (hn : n ≤ c.length) : List (Option (Expr × Expr)) :=
+  match n, c, hn with
+  | 0, _, _ => []
+  | n+1, .vlam _ _ _ _ _ c, h => none :: c.letValList n (Nat.le_of_succ_le_succ h)
+  | n+1, .vlet _ _ ty v _ _ c, h => some (ty, v) :: c.letValList n (Nat.le_of_succ_le_succ h)
+termination_by structural n
+
+@[simp] theorem MLCtx.letValList_length {c n hn} : (MLCtx.letValList c n hn).length = n := by
+  induction n generalizing c <;> [simp; cases c <;> simp [*] at hn ⊢]
 
 @[simp] def MLCtx.dropN (c : MLCtx) (n) (hn : n ≤ c.length) : MLCtx :=
   match n, c, hn with
@@ -220,7 +234,12 @@ instance : Coe (M.WF c s x Q) (RecM.WF c s x Q) := ⟨M.WF.lift⟩
 
 theorem RecM.WF.bind {c : VContext} {s : VState} {x : RecM α} {f : α → RecM β} {Q R}
     (h1 : x.WF c s Q) (h2 : ∀ a s', s ≤ s' → Q a s' → (f a).WF c s' R) : (x >>= f).WF c s R :=
-  fun _ h => M.WF.bind (h1 _ h) (fun _ _ h1' h2' => h2 _ _ h1' h2' _ h)
+  fun _ h => M.WF.bind (h1 _ h) fun _ _ h1' h2' => h2 _ _ h1' h2' _ h
+
+theorem RecM.WF.bind_le {c : VContext} {s : VState} {x : RecM α} {f : α → RecM β} {Q R}
+    (h1 : x.WF c s Q) (hs : s₀ ≤ s)
+    (h2 : ∀ a s', s₀ ≤ s' → Q a s' → (f a).WF c s' R) : (x >>= f).WF c s R :=
+  RecM.WF.bind h1 fun _ _ h => h2 _ _ (hs.trans h)
 
 theorem RecM.WF.pure {c : VContext} {s : VState} {Q} (H : Q a s) : (pure a : RecM α).WF c s Q :=
   fun _ _ => .pure H
@@ -290,7 +309,8 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
     {s : VState} {f : Expr → RecM α} {Q name ty ty' bi}
     (hty : (c.withMLC m).TrExprS ty ty')
     (hty' : (c.withMLC m).IsType ty')
-    (H : ∀ id cwf' s', s ≤ s' →
+    (hs : s₀ ≤ s)
+    (H : ∀ id cwf' s', s₀ ≤ s' →
       s'.ngen.Reserves id →
       ¬s.ngen.Reserves id →
       WF (c.withMLC (.vlam id name ty ty' bi m) (wf := cwf')) s' (f (.fvar id)) Q) :
@@ -304,7 +324,7 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
     ngen_wf := by simp [VContext.withMLC]; exact ⟨h0, wf'.ngen_wf⟩
     trctx := wf.trctx.mkLocalDecl h1' hty hty'
   }
-  let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ le h0 h1 _ mwf this a s' e
+  let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h0 h1 _ mwf this a s' e
   refine ⟨s', hs1, hs2, { wf with ngen_wf := ?_ }, hs4⟩
   have := wf'.ngen_wf; simp [VContext.withMLC] at this; exact this.2
 
@@ -313,7 +333,8 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
     (hty : (c.withMLC m).TrExprS ty ty')
     (hval : (c.withMLC m).TrExprS val val')
     (hval' : (c.withMLC m).HasType val' ty')
-    (H : ∀ id cwf' s', s ≤ s' →
+    (hs : s₀ ≤ s)
+    (H : ∀ id cwf' s', s₀ ≤ s' →
       s'.ngen.Reserves id →
       ¬s.ngen.Reserves id →
       WF (c.withMLC (.vlet id name ty val ty' val' m) (wf := cwf')) s' (f (.fvar id)) Q) :
@@ -327,7 +348,7 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
     ngen_wf := by simp [VContext.withMLC]; exact ⟨h0, wf'.ngen_wf⟩
     trctx := wf.trctx.mkLetDecl h1' hty hval hval'
   }
-  let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ le h0 h1 _ mwf this a s' e
+  let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h0 h1 _ mwf this a s' e
   refine ⟨s', hs1, hs2, { wf with ngen_wf := ?_ }, hs4⟩
   have := wf'.ngen_wf; simp [VContext.withMLC] at this; exact this.2
 
@@ -371,6 +392,24 @@ termination_by structural n
   | 0, _, _, e => e
   | n+1, .vlam _ _ _ ty _ c, h, e => c.mkLambda' n (Nat.le_of_succ_le_succ h) (.lam ty e)
   | n+1, .vlet _ _ _ _ _ _ c, h, e => c.mkLambda' n (Nat.le_of_succ_le_succ h) e
+termination_by structural n
+
+@[simp] def MLCtx.mkLet (c : MLCtx) (n) (hn : n ≤ c.length)
+    (nds : List (Option Bool)) (eq : nds.length = n) (e : Expr) (asForall := false) : Expr :=
+  match n, c, hn, nds, eq, e with
+  | 0, _, _, _, _, e => e
+  | n+1, .vlam x name ty _ bi c, h, _ :: nds, eq, e =>
+    c.mkLet n (Nat.le_of_succ_le_succ h) nds (Nat.succ_inj.1 eq) <|
+      if asForall then .forallE name ty (.abstract1 x e) bi else .lam name ty (.abstract1 x e) bi
+  | n+1, .vlet x name ty val _ _ c, h, nd :: nds, eq, e =>
+    c.mkLet n (Nat.le_of_succ_le_succ h) nds (Nat.succ_inj.1 eq) <|
+      let e' := Expr.abstract1 x e
+      if e'.hasLooseBVar' 0 then
+        .letE name ty val e' (nd.getD false)
+      else if let some nd := nd then
+        .letE name ty val e' nd
+      else
+        e'.lowerLooseBVars' 1 1
 termination_by structural n
 
 variable! (henv : VEnv.WF env) in
@@ -483,6 +522,30 @@ theorem MLCtx.WF.mkLambda_tr (henv : VEnv.WF env) {c : MLCtx} (wf : c.WF env Us)
   have := wf.mkLambda_trS henv H1 eq.hasType.1 n hn
   exact ⟨⟨_, this.1, _, H⟩, this.2.defeqU_l henv (wf.dropN n hn).tr.wf ⟨_, H⟩⟩
 
+variable! (henv : VEnv.WF env) in
+theorem MLCtx.WF.mkLet_trS {c : MLCtx} (wf : c.WF env Us)
+    (H1 : TrExprS env Us c.vlctx e e')
+    (H2 : env.HasType Us.length c.vlctx.toCtx e' ty') (n hn nds hnds) :
+    TrExprS env Us (c.dropN n hn).vlctx (c.mkLet n hn nds hnds e) (c.mkLambda' n hn e') ∧
+    env.HasType Us.length (c.dropN n hn).vlctx.toCtx
+      (c.mkLambda' n hn e') (c.mkForall' n hn ty') := by
+  induction n generalizing c e e' ty' nds with
+  | zero => exact ⟨H1, H2⟩
+  | succ n ih =>
+    match c with
+    | .vlam x name ty ty' bi c =>
+      let ⟨h1, _, h3, _, h4⟩ := wf; let _ :: _ := nds
+      refine ih h1 ?_ (.lam h4 H2) ..
+      exact .lam ⟨_, h4⟩ h3 (.abstract .zero H1)
+    | .vlet x name ty val ty' val' c =>
+      let ⟨h1, _, h3, h4, h5⟩ := wf; let _ :: _ := nds
+      refine ih h1 ?_ H2 ..; dsimp; split <;> [skip; split]
+      · exact .letE h5 h3 h4 (.abstract .zero H1)
+      · exact .letE h5 h3 h4 (.abstract .zero H1)
+      · rename_i h _ _ _; simp at h
+        rw [Expr.lowerLooseBVars_eq_instantiate h (v := val)]
+        exact .inst_let henv (.abstract .zero H1) h4
+
 theorem MLCtx.fvarRevList_prefix (c : MLCtx)
     {n hn} : c.fvarRevList n hn <+: c.vlctx.fvars := by
   induction n generalizing c with
@@ -518,29 +581,65 @@ theorem MLCtx.WF.find?_eq {c : MLCtx} (wf : c.WF env Us) :
     c.lctx.find? x = c.decls.find? (x == ·.fvarId) := by
   simp [wf.tr.1.find?_eq_find?_toList, wf.toList_eq]
 
-theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
-    (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
+inductive MLCtx.PartialForall : MLCtx → Nat → List FVarId → Expr → Prop where
+  | nil : PartialForall c 0 [] e
+  | vlam : PartialForall c n fvs (.forallE x ty (.abstract1 fv e) bi) →
+    PartialForall (c.vlam fv x ty ty' bi) (n+1) (fv :: fvs) e
+  | vlet : PartialForall c n fvs (
+      let e' := Expr.abstract1 fv e
+      if e'.hasLooseBVar' 0 then .letE x ty v e' false
+      else e'.lowerLooseBVars' 1 1) →
+    PartialForall (c.vlet fv x ty v ty' v') (n+1) (fv :: fvs) e
+  | skip : e.looseBVarRange' = 0 → e' = Expr.abstract1 fv e → e'.hasLooseBVar' 0 = false →
+    PartialForall c n fvs e →
+    PartialForall (c.vlet fv x ty v ty' v') (n+1) fvs e
+
+theorem MLCtx.PartialForall.full : MLCtx.PartialForall c n (c.fvarRevList n hn) e := by
+  induction n generalizing c e with
+  | zero => exact .nil
+  | succ n ih => match c with | .vlam .. | .vlet .. => constructor; apply ih
+
+theorem MLCtx.PartialForall.sublist (H : MLCtx.PartialForall c n l e) : l <+ c.vlctx.fvars := by
+  induction H with
+  | nil => simp
+  | vlam _ ih | vlet _ ih => simp [ih]
+  | skip _ _ _ _ ih => exact ih.trans (List.sublist_cons_self ..)
+
+theorem MLCtx.WF.mkForall_partial {c : MLCtx} (wf : c.WF env Us) (n hn)
+    (harr : arr.toList.reverse = l.map .fvar) (hp : MLCtx.PartialForall c n l e) :
     c.lctx.mkForall arr e = c.mkForall n hn e := by
   have := congrArg (Array.mk ·.reverse) harr; simp at this
   rw [LocalContext.mkForall, this, ← List.map_reverse, LocalContext.mkBinding_eq,
     LocalContext.mkBindingList_eq_fold, List.foldr_reverse]
   · clear harr this
-    induction n generalizing c e with
-    | zero => simp
-    | succ n ih =>
-      match c with
-      | .vlam .. | .vlet .. =>
-        simp
-        refine (List.foldl_congr fun _ y h => ?_).trans <|
-          .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _)
-        · refine LocalContext.mkBindingList1_congr ?_
-          rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
-          simp [LocalDecl.fvarId]; rintro ⟨⟩
-          have := wf.fvarRevList_nodup (n+1) hn; simp_all
-        · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
+    induction hp with
+    | nil => simp
+    | vlam hp ih | vlet hp ih =>
+      simp
+      refine (List.foldl_congr fun _ y h => ?_).trans <|
+        .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _)
+      · refine LocalContext.mkBindingList1_congr ?_
+        rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
+        simp [LocalDecl.fvarId]; rintro ⟨⟩
+        have := (List.cons_sublist_cons.2 hp.sublist).nodup wf.fvars_nodup; simp_all
+      · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
+    | skip h1 h2 h3 hp ih =>
+      subst h2; simp [h3]
+      rw [Expr.lowerLooseBVars_eq_instantiate h3 (v := default),
+        Expr.abstract1_eq_liftLooseBVars h3, Expr.liftLooseBVars_eq_self (by simp [h1]),
+        Expr.instantiate1_eq_self h1]
+      refine (List.foldl_congr fun _ y h => ?_).trans (ih wf.1 _)
+      refine LocalContext.mkBindingList1_congr ?_
+      rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
+      simp [LocalDecl.fvarId]; rintro ⟨⟩
+      have := (List.cons_sublist_cons.2 hp.sublist).nodup wf.fvars_nodup; simp_all
   · intro _ h
-    exact wf.tr.find?_eq_some.2 ((MLCtx.fvarRevList_prefix ..).subset (List.mem_reverse.1 h))
-  · exact List.nodup_reverse.2 (wf.fvarRevList_nodup ..)
+    exact wf.tr.find?_eq_some.2 (hp.sublist.subset (List.mem_reverse.1 h))
+  · exact List.nodup_reverse.2 (hp.sublist.nodup wf.fvars_nodup)
+
+theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
+    (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
+    c.lctx.mkForall arr e = c.mkForall n hn e := mkForall_partial wf n hn harr .full
 
 theorem MLCtx.WF.mkLambda_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
@@ -653,8 +752,8 @@ theorem inferConstant.WF {c : VContext}
     (inferConstant c.toContext name ls inferOnly).WF fun ty =>
       ∃ e' ty', c.TrExprS (.const name ls) e' ∧ c.TrExprS ty ty' ∧ c.HasType e' ty' := by
   simp [inferConstant]; refine envGet.WF.bind fun ci eq1 => ?_
-  have : (ls.foldlM (fun b a => checkLevel c.toContext a) PUnit.unit).WF (fun _ =>
-      ∃ ls', ls.Forall₂ (VLevel.ofLevel c.lparams · = some ·) ls') := by
+  have : (ls.foldlM (fun b a => checkLevel c.toContext a) PUnit.unit).WF fun _ =>
+      ∃ ls', ls.Forall₂ (VLevel.ofLevel c.lparams · = some ·) ls' := by
     clear hinf
     induction ls with
     | nil => exact .pure ⟨_, .nil⟩
@@ -701,8 +800,8 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
     (hr1 : e.FVarsIn s.ngen.Reserves)
     (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
     (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
-    (inferLambda.loop inferOnly arr e).WF (c.withMLC m) s (fun ty _ =>
-      ∃ e', c.TrExprS e₀ e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty') := by
+    (inferLambda.loop inferOnly arr e).WF (c.withMLC m) s fun ty _ =>
+      ∃ e', c.TrExprS e₀ e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' := by
   unfold inferLambda.loop
   generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
   simp [harr, -bind_pure_comp]; split
@@ -711,41 +810,40 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
     generalize eqP : (fun ty x => ∃ _, _) = P
     rw [Expr.instantiateList_lam] at hei; subst ei
     have main {s₁} (le₁ : s ≤ s₁) {dom'}
-        (domty : (c.withMLC m).venv.IsType (c.withMLC m).lparams.length (c.withMLC m).vlctx.toCtx dom')
+        (domty : (c.withMLC m).venv.IsType
+          (c.withMLC m).lparams.length (c.withMLC m).vlctx.toCtx dom')
         (hdom : (c.withMLC m).TrExprS (dom.instantiateList fvs) dom')
         (hbody : inferOnly = true → ∃ body',
-          TrExprS c.venv c.lparams ((none, VLocalDecl.vlam dom') :: m.vlctx)
+          TrExprS c.venv c.lparams ((none, .vlam dom') :: m.vlctx)
             (body.instantiateList fvs 1) body') :
         F.WF (c.withMLC m) s₁ P := by
       refine .stateWF fun wf => ?_
       have hdom' := hdom.trExpr c.venv_wf mwf.1.tr.wf
       subst eqF eqP
-      refine .withLocalDecl hdom domty fun a mwf' s' le₂ res h6 => ?_
+      refine .withLocalDecl hdom domty le₁ fun a mwf' s' le₂ res h6 => ?_
       have h6' := wf.find?_eq_none h6
-      refine .stateWF fun wf' => ?_
-      have := le₁.trans le₂
       have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
       refine inferLambda.loop.WF (Nat.succ_le_succ hn) (by simp [hdrop])
-        (by simp [← eqfvs, harr]) ?_ (by simp; rfl) (this.reserves hr1).2 ?_ ?_
+        (by simp [← eqfvs, harr]) ?_ (by simp; rfl) (le₂.reserves hr1).2 ?_ ?_
       · rw [he₀, eqfvs, ← eq]; simp; congr 2
         refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
         · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
         · rintro _ h rfl; exact h6 <| le₁.reservesV h
       · simp [or_imp, forall_and]
-        exact ⟨res, fun _ h => this.reservesV (hr2 _ h)⟩
+        exact ⟨res, fun _ h => le₂.reservesV (hr2 _ h)⟩
       · intro h; let ⟨_, hbody⟩ := hbody h
         exact eqfvs.symm ▸ eq ▸ ⟨_, hbody.inst_fvar c.venv_wf.ordered mwf'.1.tr.wf⟩
     split
     · subst inferOnly
-      refine (checkType.WF ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
+      refine (checkType.WF ?_).bind fun uv _ le ⟨dom', uv', h1, h2, h3⟩ => ?_
       · apply hr1.1.instantiateList; simp [← eqfvs]
         exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
-      refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
+      refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf))
+        |>.bind_le le fun _ _ le ⟨h4, h5⟩ => ?_
       obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort _, h5⟩ := h5
-      refine .stateWF fun wf => ?_
       have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
       have domty' : (c.withMLC m).IsType dom' := ⟨_, domty⟩
-      exact main (le₁.trans le₂) domty' h1 nofun
+      exact main le domty' h1 nofun
     · simp_all; let ⟨_, h1⟩ := hinf
       have .lam (ty' := dom') (body' := body') domty hdom hbody := h1
       exact main .rfl domty hdom _ hbody
@@ -765,12 +863,12 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
 theorem inferLambda.WF
     (h1 : e.FVarsIn s.ngen.Reserves)
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
-    (inferLambda e inferOnly).WF c s (fun ty _ => ∃ e',
-      c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty') :=
+    (inferLambda e inferOnly).WF c s fun ty _ => ∃ e',
+      c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' :=
   .stateWF fun wf =>
   (c.withMLC_self ▸ inferLambda.loop.WF (Nat.zero_le _) rfl rfl rfl rfl h1 wf.ngen_wf) hinf
 
-theorem checkForall.loop.WF {c : VContext} {e₀ : Expr}
+theorem inferForall.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)
     (hdrop : m.dropN n hn = c.mlctx)
     (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
@@ -782,36 +880,35 @@ theorem checkForall.loop.WF {c : VContext} {e₀ : Expr}
     (hΔ : m.vlctx.SortList c.venv c.lparams.length us')
     (hlen : us'.length = n)
     (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
-    (inferForall.loop inferOnly arr us e).WF (c.withMLC m) s (fun ty _ =>
-      ∃ e', c.TrExprS e₀ e' ∧ ∃ u, c.TrExprS ty (.sort u) ∧ c.HasType e' (.sort u)) := by
+    (inferForall.loop inferOnly arr us e).WF (c.withMLC m) s fun ty _ =>
+      ∃ e', c.TrExprS e₀ e' ∧ ∃ u, c.TrExprS ty (.sort u) ∧ c.HasType e' (.sort u) := by
   unfold inferForall.loop
   generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
   simp [harr, -bind_pure_comp]; split
   · rename_i name dom body bi
     rw [Expr.instantiateList_forallE] at hei; subst ei
-    refine (inferType.WF' ?_ ?_).bind fun uv _ le₁ ⟨dom', uv', h1, h2, h3⟩ => ?_
+    refine (inferType.WF' ?_ ?_).bind fun uv _ le ⟨dom', uv', h1, h2, h3⟩ => ?_
     · apply hr1.1.instantiateList; simp [← eqfvs]
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
     · intro h; let ⟨_, .forallE _ _ h _⟩ := hinf h; exact ⟨_, h⟩
-    refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
+    refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf))
+      |>.bind_le le fun _ _ le ⟨h4, h5⟩ => ?_
     obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort h4, h5⟩ := h5
     refine .stateWF fun wf => ?_
     have domty := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
     have domty' : (c.withMLC m).IsType dom' := ⟨_, domty⟩
-    refine .withLocalDecl h1 domty' fun a mwf' s' le₃ res h6 => ?_
+    refine .withLocalDecl h1 domty' le fun a mwf' s' le₂ res h6 => ?_
     have h6' := wf.find?_eq_none h6
-    refine .stateWF fun wf' => ?_
-    have := le₁.trans le₂ |>.trans le₃
     have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
-    refine checkForall.loop.WF (Nat.succ_le_succ hn) (by simp [hdrop])
-      (by simp [eqfvs, harr]) ?_ (by simp [eqfvs]; rfl) (this.reserves hr1).2 ?_
+    refine inferForall.loop.WF (Nat.succ_le_succ hn) (by simp [hdrop])
+      (by simp [eqfvs, harr]) ?_ (by simp [eqfvs]; rfl) (le₂.reserves hr1).2 ?_
       (by simpa using ⟨h4, hus⟩) (.cons hΔ domty) (by simp [hlen]) ?_
     · simp [he₀, ← eq]; congr 2
       refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_).mono ?_)).symm
       · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
-      · rintro _ h rfl; exact h6 <| (le₁.trans le₂).reservesV h
+      · rintro _ h rfl; exact h6 <| le.reservesV h
     · simp [or_imp, forall_and]
-      exact ⟨res, fun _ h => this.reservesV (hr2 _ h)⟩
+      exact ⟨res, fun _ h => le₂.reservesV (hr2 _ h)⟩
     · intro h; let ⟨_, .forallE (body' := body') _ _ hdom₁ hbody₁⟩ := hinf h
       refine have hΔ := .refl c.venv_wf mwf.1.tr.wf; have H := hdom₁.uniq c.venv_wf hΔ h1; ?_
       have H := H.of_r c.venv_wf mwf.1.tr.wf.toCtx domty
@@ -822,22 +919,21 @@ theorem checkForall.loop.WF {c : VContext} {e₀ : Expr}
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
     refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
     obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort (u' := u') h4, h5⟩ := h5
-    refine .stateWF fun wf => .pure ?_
     obtain ⟨us, rfl⟩ : ∃ l, ⟨List.reverse l⟩ = us := ⟨us.toList.reverse, by simp⟩
     simp [Expr.sortLevel!] at hus ⊢
     have h3 := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx h5.symm
     let ⟨h1', h2'⟩ := mwf.1.mkForall_trS c.venv_wf h1 ⟨_, h3⟩ n hn
     have ⟨_, h3', h4'⟩ := mkForall_hasType hus hΔ h4 h3 n hn (hus.length_eq.trans hlen)
     simp [hdrop] at h1' h2' h4'
-    exact ⟨_, he₀ ▸ h1', _, .sort h3', h4'⟩
+    exact .pure ⟨_, he₀ ▸ h1', _, .sort h3', h4'⟩
 
-theorem checkForall.WF
+theorem inferForall.WF
     (h1 : e.FVarsIn s.ngen.Reserves)
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
-    (inferForall e inferOnly).WF c s (fun ty _ =>
-      ∃ e', c.TrExprS e e' ∧ ∃ u, c.TrExprS ty (.sort u) ∧ c.HasType e' (.sort u)) :=
+    (inferForall e inferOnly).WF c s fun ty _ =>
+      ∃ e', c.TrExprS e e' ∧ ∃ u, c.TrExprS ty (.sort u) ∧ c.HasType e' (.sort u) :=
   .stateWF fun wf =>
-  (c.withMLC_self ▸ checkForall.loop.WF (Nat.zero_le _)
+  (c.withMLC_self ▸ inferForall.loop.WF (Nat.zero_le _)
     rfl rfl rfl rfl h1 wf.ngen_wf .nil .nil rfl) hinf
 
 theorem addEquiv.WF {c : VContext} {s : VState} :
@@ -930,3 +1026,255 @@ theorem inferApp.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     (hty'.trExpr henv hΔ) ety rfl rfl rfl).le fun _ _ _ ⟨_, h1, _, h2, h3⟩ => ?_
   have := (e.mkAppList_getAppArgsList ▸ h1).uniq henv (.refl henv hΔ) he
   exact ⟨_, h2, h3.defeqU_l henv hΔ this⟩
+
+def inferLet.loop.usedFVarsList : List FVarId → List Bool → List FVarId
+  | [], _ => []
+  | a :: as, used =>
+    if used.headD true then a :: usedFVarsList as used.tail else usedFVarsList as used.tail
+
+theorem inferLet.loop.usedFVars_eq
+    (hsz : arr.size = used.size)
+    (harr : arr.toList.reverse = (arr₁.reverseAux arr₂).map .fvar)
+    (hused : used.toList.reverse = used₁.reverseAux used₂)
+    (harr₂ : arr₂.length = i) (hused₂ : used₂.length = i)
+    (hacc : acc.toList.reverse = (usedFVarsList arr₂ used₂).map .fvar) :
+    (usedFVars arr used i acc).toList.reverse =
+    (usedFVarsList (.reverseAux arr₁ arr₂) (.reverseAux used₁ used₂)).map .fvar := by
+  fun_induction usedFVars generalizing arr₁ arr₂ used₁ used₂ with
+  | @case1 i acc₁ h acc₂ ih =>
+    have h' := hsz ▸ h
+    rw [Array.size, ← List.length_reverse] at h h'
+    simp [harr, ← harr₂] at h; simp [hused, ← hused₂] at h'
+    let a :: arr₁ := arr₁; let u :: used₁ := used₁; dsimp at harr hused ⊢
+    refine ih harr hused (by simpa) (by simpa) ?_
+    subst acc₂
+    simp [usedFVarsList, show used[i]! = u by
+      have := congrArg (·.reverse.toArray) hused
+      simp at this; subst used; simp [← hused₂]]
+    rw [show arr[i] = .fvar a by
+      have := congrArg (·.reverse.toArray) harr
+      simp at this; subst arr; simp [← harr₂]]
+    split <;> simp [hacc]
+  | case2 i acc h =>
+    have h' := hsz ▸ h
+    rw [Array.size, ← List.length_reverse] at h h'
+    simp [harr, ← harr₂] at h; simp [hused, ← hused₂] at h'
+    subst arr₁ used₁; simpa
+
+attribute [-simp] List.reverse_eq_append_iff
+
+theorem markUsed.WF
+    (harr : fvars.toList.reverse = lfvs.map .fvar)
+    (hlfvs : lfvs = fvars₁ ++ fvars₂) (hfsz : lfvs.length = n) (hfvars₂ : fvars₂.length = i)
+    (hused : used.toList.reverse = lused) (husz : lused.length = n)
+    (hlused : lused = used₁ ++ used₂) (hused₂ : used₂.length = i) :
+    ∃ used', used₂.Forall₂ (fun a b => b = false → a = false) used' ∧
+      (markUsed i fvars e used).toList.reverse = used₁ ++ used' ∧
+      used'.Forall₂ (fun u fv => u = false → e.FVarsIn (· ≠ fv)) fvars₂ := by
+  sorry
+
+theorem inferLet.loop.loopUsed.WF {c : VContext}
+    {m} [mwf : c.MLCWF m] {i} (hi)
+    (hdrop : m.dropN i hi = c.mlctx)
+    (harr : fvars.toList.reverse = lfvs.map .fvar)
+    (hlfvs : lfvs = fvars₁ ++ m.fvarRevList i hi) (hfsz : lfvs.length = n)
+    (htys : tys.toList.reverse = tys₁ ++ tys₂) (hvsz : tys.size = n) (htys₂ : tys₂.length = i)
+    (hvals : vals.toList.reverse = vals₁ ++ vals₂) (hvsz : vals.size = n)
+    (hvals₂ : vals₂.length = i)
+    (hused : used.toList.reverse = lused) (husz : lused.length = n)
+    (hlused : lused = used₁ ++ used₂) (hused₂ : used₂.length = i)
+    (hlet : m.letValList i hi = (tys₂.zip vals₂).map some) :
+    ∃ used', used₂.Forall₂ (fun a b => b = false → a = false) used' ∧
+      (loopUsed fvars tys vals i used).toList.reverse = used₁ ++ used' ∧
+      ∀ e, e.Closed ∧
+        used₂.Forall₂ (fun u fv => u = false → e.FVarsIn (· ≠ fv)) (m.fvarRevList i hi) →
+        m.PartialForall i (usedFVarsList (m.fvarRevList i hi) used') e := by
+  induction i generalizing used lused m fvars₁ tys₁ tys₂ vals₁ vals₂ used₁ used₂ with
+    simp only [loopUsed]
+  | zero =>
+    simp at hused₂; simp [hused₂] at hlused ⊢; subst used₁
+    exact ⟨hused, fun e _ => .nil⟩
+  | succ i ih =>
+    cases m with simp at hi htys₂ hvals₂ <;> (
+      let v :: vals₂ := vals₂; let ty :: tys₂ := tys₂
+      injection hlet with e hlet
+      cases e) | vlet fv x ty v ty' v' m
+    let u :: used₂ := used₂; have : c.MLCWF m := ⟨mwf.1.1⟩
+    simp at hused₂ harr hvals₂ htys₂
+    rw [show used[i]! = u by
+      have := congrArg (·.reverse.toArray) hused; simp at this; subst used lused; simp [hused₂]]
+    rw [show tys[i]! = ty by
+      have := congrArg (·.reverse.toArray) htys; simp at this; subst tys; simp [htys₂]]
+    rw [show vals[i]! = v by
+      have := congrArg (·.reverse.toArray) hvals; simp at this; subst vals; simp [hvals₂]]
+    generalize hused' : ite (u = true) .. = used'
+    have ⟨used₂', h1, h2, h3⟩ : ∃ used₂', used₂.Forall₂ (fun a b => b = false → a = false) used₂' ∧
+        used'.toList.reverse = used₁ ++ u :: used₂' ∧
+        (u = true → used₂'.Forall₂ (fun u fv => u = false →
+          ty.FVarsIn (· ≠ fv) ∧ v.FVarsIn (· ≠ fv)) (m.fvarRevList i hi)) := by
+      subst hused'; split <;> [skip; exact ⟨_, .rfl fun _ _ => id, hused ▸ hlused, by simp [*]⟩]
+      simp at hlfvs
+      let ⟨used₂', h1, h2, h3⟩ := markUsed.WF harr (fvars₁ := fvars₁ ++ [fv])
+        (fvars₂ := m.fvarRevList i hi) (by simp [hlfvs]) hfsz (e := ty) (by simp)
+        (used₁ := used₁ ++ [u]) (used₂ := used₂) hused husz (by simpa) hused₂
+      let ⟨used₂'', h1', h2', h3'⟩ := markUsed.WF harr (fvars₁ := fvars₁ ++ [fv])
+        (fvars₂ := m.fvarRevList i hi) (by simp [hlfvs]) hfsz (e := v) (by simp)
+        rfl (by rw [h2]; rw [hlused] at husz; simpa [← h1.length_eq] using husz)
+        h2 (h1.length_eq ▸ hused₂)
+      refine ⟨_, h1.trans (fun _ _ _ h1 h2 h => h1 (h2 h)) h1', by simpa using h2', fun h => ?_⟩
+      have h3 : used₂''.Forall₂
+          (fun u fv => u = false → ty.FVarsIn (· ≠ fv)) (m.fvarRevList i hi) :=
+        h1'.flip.trans (fun u₁ u₂ fv h1 h2 h => h2 (h1 h)) h3
+      exact (h3.and h3').imp fun _ _ ⟨h1, h2⟩ h => ⟨h1 h, h2 h⟩
+    have ⟨used₂'', h4, h5, h6⟩ := ih _ hdrop (fvars₁ := fvars₁ ++ [fv]) (by simp [hlfvs])
+      (tys₁ := tys₁ ++ [ty]) (by simp [htys]) htys₂
+      (vals₁ := vals₁ ++ [v]) (vals₂ := vals₂) (by simp [hvals])
+      (used := used') (used₁ := used₁ ++ [u]) (used₂ := used₂') rfl ?_
+      (by simp [h2]) (h1.length_eq.symm.trans hused₂) (hvals₂ := hvals₂) hlet
+    · refine ⟨u::used₂'', .cons id <| h1.trans (fun _ _ _ h1 h2 h => h1 (h2 h)) h4,
+        by simp [h5], fun e ⟨he1, he2⟩ => ?_⟩
+      simp [usedFVarsList]
+      have he' := he1.looseBVarRange_zero
+      simp at he2
+      have he3 : used₂'.Forall₂ (fun u fv => u = false → e.FVarsIn (· ≠ fv)) (m.fvarRevList i hi) :=
+        h1.flip.trans (fun u₁ u₂ fv h1 h2 h => h2 (h1 h)) he2.2
+      have := he1.abstract1 (a := fv)
+      cases eu : u <;> simp <;> simp [eu] at he2
+      · refine .skip he' rfl ?_ ?_
+        · rw [FVarsIn.abstract_eq_self _ he1,
+            Expr.hasLooseBVar_of_ge_looseBVarRange (by simp [he'])]
+          ; exact he2.1
+        · refine h6 _ ⟨he1, he3⟩
+      · refine .vlet (h6 _ ?_); simp; split <;> rename_i h
+        · refine ⟨⟨m.noBV ▸ mwf.1.2.2.1.closed, m.noBV ▸ mwf.1.2.2.2.1.closed, this⟩, ?_⟩
+          simp [Expr.FVarsIn, FVarsIn]
+          exact ((h3 eu).and he3).imp fun _ _ ⟨h1, h2⟩ h => ⟨(h1 h).1, (h1 h).2, .abstract1 (h2 h)⟩
+        · simp at h he2
+          rw [Expr.lowerLooseBVars_eq_instantiate h (v := default),
+            Expr.abstract1_eq_liftLooseBVars h, Expr.liftLooseBVars_eq_self (by simp [he']),
+            Expr.instantiate1_eq_self he']
+          exact ⟨he1, he3⟩
+    · have h2 := congrArg (·.length) h2
+      have hlused := congrArg (·.length) hlused
+      simp [h1.length_eq] at h2 hlused
+      simpa [← hlused, husz] using h2
+
+theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
+    {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length) (nds hnds)
+    (hdrop : m.dropN n hn = c.mlctx)
+    (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
+    (htys : tys.toList.reverse = tys') (htsz : tys'.length = n)
+    (hvals : vals.toList.reverse = vals') (hvsz : vals'.length = n)
+    (hlet : m.letValList n hn = (tys'.zip vals').map some)
+    (he₀ : e₀ = m.mkLet n hn nds hnds ei)
+    (hei : e.instantiateList ((m.fvarRevList n hn).map .fvar) = ei)
+    (hr1 : e.FVarsIn s.ngen.Reserves)
+    (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
+    (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
+    (inferLet.loop inferOnly arr tys vals e).WF (c.withMLC m) s fun ty _ =>
+      ∃ e', c.TrExprS e₀ e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' := by
+  generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
+  unfold inferLet.loop
+  -- the termination proof is hard for lean without this
+  have IH body (_ : sizeOf body < sizeOf e) := @inferLet.loop.WF (e := body)
+  simp [harr, -bind_pure_comp]; split
+  · rename_i name dom val body nd
+    specialize IH body (by decreasing_tactic)
+    generalize eqF : withLetDecl (m := RecM) _ _ _ _ = F
+    generalize eqP : (fun ty x => ∃ _, _) = P
+    rw [Expr.instantiateList_letE] at hei; subst ei
+    have main {s₁} (le₁ : s ≤ s₁) {dom' val'}
+        (hdom : (c.withMLC m).TrExprS (dom.instantiateList fvs) dom')
+        (hval : (c.withMLC m).TrExprS (val.instantiateList fvs) val')
+        (valty : (c.withMLC m).venv.HasType
+          (c.withMLC m).lparams.length (c.withMLC m).vlctx.toCtx val' dom')
+        (hbody : inferOnly = true → ∃ body',
+          TrExprS c.venv c.lparams ((none, .vlet dom' val') :: m.vlctx)
+            (body.instantiateList fvs 1) body') :
+        F.WF (c.withMLC m) s₁ P := by
+      refine .stateWF fun wf => ?_
+      have hdom' := hdom.trExpr c.venv_wf mwf.1.tr.wf
+      subst eqF eqP
+      refine .withLetDecl hdom hval valty le₁ fun a mwf' s' le₂ res h6 => ?_
+      have h6' := wf.find?_eq_none h6
+      have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
+      refine IH _ _ _ _ _ _ _ (Nat.succ_le_succ hn) (some nd :: nds)
+        (by simp [hnds]) (by simp [hdrop]) (by simp [← eqfvs, harr])
+        (by simp [htys]; rfl) (by simp [htsz])
+        (by simp [hvals]; rfl) (by simp [hvsz])
+        (by simp [hlet])
+        ?_ (by simp; rfl)
+        (le₂.reserves hr1).2.2 ?_ ?_
+      · rw [he₀, eqfvs, ← eq]; simp; congr 2
+        refine (FVarsIn.abstract_instantiate1 ((hr1.2.2.instantiateList ?_).mono ?_)).symm
+        · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+        · rintro _ h rfl; exact h6 <| le₁.reservesV h
+      · simp [or_imp, forall_and]
+        exact ⟨res, fun _ h => le₂.reservesV (hr2 _ h)⟩
+      · intro h; let ⟨_, hbody⟩ := hbody h
+        exact eqfvs.symm ▸ eq ▸ ⟨_, hbody.inst_fvar c.venv_wf.ordered mwf'.1.tr.wf⟩
+    clear IH; split
+    · subst inferOnly
+      refine (checkType.WF ?_).bind fun uv _ le ⟨dom', uv', h1, h2, h3⟩ => ?_
+      · apply hr1.1.instantiateList; simp [← eqfvs]
+        exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+      refine (ensureSortCore.WF (h2.trExpr c.venv_wf mwf.1.tr.wf)).bind fun _ _ le₂ ⟨h4, h5⟩ => ?_
+      obtain ⟨_, rfl⟩ := h4; let ⟨_, .sort _, h5⟩ := h5; have le := le.trans le₂
+      refine (checkType.WF ?_).bind_le le fun ty _ le ⟨val', ty', h4, h5, h6⟩ => ?_
+      · apply (le.reserves hr1).2.1.instantiateList; simp [← eqfvs]
+        exact fun _ h => le.reserves (hr2 _ (m.fvarRevList_prefix.subset h))
+      refine (isDefEq.WF
+        (h5.trExpr c.venv_wf mwf.1.tr.wf)
+        (h1.trExpr c.venv_wf mwf.1.tr.wf)).bind_le le fun b _ le h7 => ?_
+      cases b <;> simp
+      · exact .getEnv <| .getLCtx .throw
+      have valty := h6.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx (h7 rfl)
+      exact main le h1 h4 valty nofun
+    · simp_all; let ⟨_, h1⟩ := hinf
+      have .letE (ty' := dom') (body' := body') valty hdom hval hbody := h1
+      exact main .rfl hdom hval valty _ hbody
+  · clear IH; subst ei; refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
+    · apply hr1.instantiateList; simp [← eqfvs]
+      exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
+    refine .stateWF fun wf => .getLCtx <| .pure ?_
+    generalize harr₁ : markUsed .. = arr₁
+    generalize harr₂ : loopUsed .. = arr₂
+    generalize hfvs' : usedFVars .. = fvs'
+    have ⟨_, hty, e2⟩ := h2.trExpr c.venv_wf.ordered wf.trctx.wf
+      |>.cheapBetaReduce c.venv_wf wf.trctx.wf m.noBV
+    have h3 := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx e2.symm
+    let ⟨h1', h2'⟩ := mwf.1.mkLet_trS c.venv_wf h1 h3 n hn nds hnds
+    have h3' := (mwf.1.mkForall_trS c.venv_wf hty (h3.isType c.venv_wf mwf.1.tr.wf.toCtx) n hn).1
+    simp [hdrop] at h1' h2' h3'
+    subst fvs'
+    have H1 : arr.size = n := by rw [Array.size, ← List.length_reverse, harr]; simp [← eqfvs]
+    have H2 : arr₂.size = n ∧ m.PartialForall n
+        (usedFVarsList (m.fvarRevList n hn) arr₂.toList.reverse) ty.cheapBetaReduce := by
+      subst arr₂; rw [H1]
+      have ⟨used, h1, h2, h3⟩ := (harr₁ ▸ markUsed.WF (eqfvs ▸ harr)
+        (fvars₁ := []) rfl m.fvarRevList_length (by simp [H1]) (by simp [H1]; rfl) (by simp)
+        (used₁ := []) rfl (by simp [H1]) :)
+      have usz : used.length = n := by simp [← h1.length_eq]
+      have ⟨used', h1', h2', h3'⟩ := (inferLet.loop.loopUsed.WF
+        hn hdrop (eqfvs ▸ harr) (fvars₁ := []) rfl m.fvarRevList_length
+        (tys₁ := []) htys (by simp [← htsz, ← htys]) htsz
+        (vals₁ := []) hvals (by simp [← hvsz, ← hvals]) hvsz
+        (h2.trans (by simp)) usz (used₁ := []) rfl usz hlet :)
+      simp at h2'; subst h2'
+      refine ⟨by simpa [h1'.length_eq] using usz, h3' _ ⟨m.noBV ▸ hty.closed, h3⟩⟩
+    have h4 := usedFVars_eq (H1.trans H2.1.symm)
+      (arr₁ := (m.fvarRevList n hn).reverse) (arr₂ := []) (by simp [harr, ← eqfvs])
+      (used₁ := arr₂.toList) (used₂ := []) rfl (rfl : _ = 0) rfl (acc := #[]) rfl
+    simp at h4
+    rw [← mwf.1.mkForall_partial _ _ h4 H2.2] at h3'
+    exact ⟨_, he₀ ▸ h1', _, h3', h2'⟩
+termination_by e
+
+theorem inferLet.WF
+    (h1 : e.FVarsIn s.ngen.Reserves)
+    (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
+    (inferLet e inferOnly).WF c s fun ty _ =>
+      ∃ e', c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' :=
+  .stateWF fun wf =>
+  (c.withMLC_self ▸ inferLet.loop.WF (Nat.zero_le _) []
+    rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl h1 wf.ngen_wf) hinf

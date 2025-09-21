@@ -92,6 +92,12 @@ theorem FVarsIn.abstract1 (h1 : FVarsIn P e) :
   induction e generalizing k <;> simp_all [FVarsIn, Expr.abstract1]
   split <;> simp [FVarsIn, *]
 
+theorem Closed.abstract1 (h1 : Closed e k) :
+    Closed (Expr.abstract1 a e k) (k+1) := by
+  induction e generalizing k with simp_all [Closed, Expr.abstract1]
+  | bvar => omega
+  | fvar => split <;> simp [Closed]
+
 theorem Closed.getAppFn {e} (h : Closed e) : Closed e.getAppFn := by
   unfold Expr.getAppFn; split
   · exact Closed.getAppFn h.1
