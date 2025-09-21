@@ -1027,159 +1027,21 @@ theorem inferApp.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   have := (e.mkAppList_getAppArgsList ▸ h1).uniq henv (.refl henv hΔ) he
   exact ⟨_, h2, h3.defeqU_l henv hΔ this⟩
 
-def inferLet.loop.usedFVarsList : List FVarId → List Bool → List FVarId
-  | [], _ => []
-  | a :: as, used =>
-    if used.headD true then a :: usedFVarsList as used.tail else usedFVarsList as used.tail
-
-theorem inferLet.loop.usedFVars_eq
-    (hsz : arr.size = used.size)
-    (harr : arr.toList.reverse = (arr₁.reverseAux arr₂).map .fvar)
-    (hused : used.toList.reverse = used₁.reverseAux used₂)
-    (harr₂ : arr₂.length = i) (hused₂ : used₂.length = i)
-    (hacc : acc.toList.reverse = (usedFVarsList arr₂ used₂).map .fvar) :
-    (usedFVars arr used i acc).toList.reverse =
-    (usedFVarsList (.reverseAux arr₁ arr₂) (.reverseAux used₁ used₂)).map .fvar := by
-  fun_induction usedFVars generalizing arr₁ arr₂ used₁ used₂ with
-  | @case1 i acc₁ h acc₂ ih =>
-    have h' := hsz ▸ h
-    rw [Array.size, ← List.length_reverse] at h h'
-    simp [harr, ← harr₂] at h; simp [hused, ← hused₂] at h'
-    let a :: arr₁ := arr₁; let u :: used₁ := used₁; dsimp at harr hused ⊢
-    refine ih harr hused (by simpa) (by simpa) ?_
-    subst acc₂
-    simp [usedFVarsList, show used[i]! = u by
-      have := congrArg (·.reverse.toArray) hused
-      simp at this; subst used; simp [← hused₂]]
-    rw [show arr[i] = .fvar a by
-      have := congrArg (·.reverse.toArray) harr
-      simp at this; subst arr; simp [← harr₂]]
-    split <;> simp [hacc]
-  | case2 i acc h =>
-    have h' := hsz ▸ h
-    rw [Array.size, ← List.length_reverse] at h h'
-    simp [harr, ← harr₂] at h; simp [hused, ← hused₂] at h'
-    subst arr₁ used₁; simpa
-
-attribute [-simp] List.reverse_eq_append_iff
-
-theorem markUsed.WF
-    (harr : fvars.toList.reverse = lfvs.map .fvar)
-    (hlfvs : lfvs = fvars₁ ++ fvars₂) (hfsz : lfvs.length = n) (hfvars₂ : fvars₂.length = i)
-    (hused : used.toList.reverse = lused) (husz : lused.length = n)
-    (hlused : lused = used₁ ++ used₂) (hused₂ : used₂.length = i) :
-    ∃ used', used₂.Forall₂ (fun a b => b = false → a = false) used' ∧
-      (markUsed i fvars e used).toList.reverse = used₁ ++ used' ∧
-      used'.Forall₂ (fun u fv => u = false → e.FVarsIn (· ≠ fv)) fvars₂ := by
-  sorry
-
-theorem inferLet.loop.loopUsed.WF {c : VContext}
-    {m} [mwf : c.MLCWF m] {i} (hi)
-    (hdrop : m.dropN i hi = c.mlctx)
-    (harr : fvars.toList.reverse = lfvs.map .fvar)
-    (hlfvs : lfvs = fvars₁ ++ m.fvarRevList i hi) (hfsz : lfvs.length = n)
-    (htys : tys.toList.reverse = tys₁ ++ tys₂) (hvsz : tys.size = n) (htys₂ : tys₂.length = i)
-    (hvals : vals.toList.reverse = vals₁ ++ vals₂) (hvsz : vals.size = n)
-    (hvals₂ : vals₂.length = i)
-    (hused : used.toList.reverse = lused) (husz : lused.length = n)
-    (hlused : lused = used₁ ++ used₂) (hused₂ : used₂.length = i)
-    (hlet : m.letValList i hi = (tys₂.zip vals₂).map some) :
-    ∃ used', used₂.Forall₂ (fun a b => b = false → a = false) used' ∧
-      (loopUsed fvars tys vals i used).toList.reverse = used₁ ++ used' ∧
-      ∀ e, e.Closed ∧
-        used₂.Forall₂ (fun u fv => u = false → e.FVarsIn (· ≠ fv)) (m.fvarRevList i hi) →
-        m.PartialForall i (usedFVarsList (m.fvarRevList i hi) used') e := by
-  induction i generalizing used lused m fvars₁ tys₁ tys₂ vals₁ vals₂ used₁ used₂ with
-    simp only [loopUsed]
-  | zero =>
-    simp at hused₂; simp [hused₂] at hlused ⊢; subst used₁
-    exact ⟨hused, fun e _ => .nil⟩
-  | succ i ih =>
-    cases m with simp at hi htys₂ hvals₂ <;> (
-      let v :: vals₂ := vals₂; let ty :: tys₂ := tys₂
-      injection hlet with e hlet
-      cases e) | vlet fv x ty v ty' v' m
-    let u :: used₂ := used₂; have : c.MLCWF m := ⟨mwf.1.1⟩
-    simp at hused₂ harr hvals₂ htys₂
-    rw [show used[i]! = u by
-      have := congrArg (·.reverse.toArray) hused; simp at this; subst used lused; simp [hused₂]]
-    rw [show tys[i]! = ty by
-      have := congrArg (·.reverse.toArray) htys; simp at this; subst tys; simp [htys₂]]
-    rw [show vals[i]! = v by
-      have := congrArg (·.reverse.toArray) hvals; simp at this; subst vals; simp [hvals₂]]
-    generalize hused' : ite (u = true) .. = used'
-    have ⟨used₂', h1, h2, h3⟩ : ∃ used₂', used₂.Forall₂ (fun a b => b = false → a = false) used₂' ∧
-        used'.toList.reverse = used₁ ++ u :: used₂' ∧
-        (u = true → used₂'.Forall₂ (fun u fv => u = false →
-          ty.FVarsIn (· ≠ fv) ∧ v.FVarsIn (· ≠ fv)) (m.fvarRevList i hi)) := by
-      subst hused'; split <;> [skip; exact ⟨_, .rfl fun _ _ => id, hused ▸ hlused, by simp [*]⟩]
-      simp at hlfvs
-      let ⟨used₂', h1, h2, h3⟩ := markUsed.WF harr (fvars₁ := fvars₁ ++ [fv])
-        (fvars₂ := m.fvarRevList i hi) (by simp [hlfvs]) hfsz (e := ty) (by simp)
-        (used₁ := used₁ ++ [u]) (used₂ := used₂) hused husz (by simpa) hused₂
-      let ⟨used₂'', h1', h2', h3'⟩ := markUsed.WF harr (fvars₁ := fvars₁ ++ [fv])
-        (fvars₂ := m.fvarRevList i hi) (by simp [hlfvs]) hfsz (e := v) (by simp)
-        rfl (by rw [h2]; rw [hlused] at husz; simpa [← h1.length_eq] using husz)
-        h2 (h1.length_eq ▸ hused₂)
-      refine ⟨_, h1.trans (fun _ _ _ h1 h2 h => h1 (h2 h)) h1', by simpa using h2', fun h => ?_⟩
-      have h3 : used₂''.Forall₂
-          (fun u fv => u = false → ty.FVarsIn (· ≠ fv)) (m.fvarRevList i hi) :=
-        h1'.flip.trans (fun u₁ u₂ fv h1 h2 h => h2 (h1 h)) h3
-      exact (h3.and h3').imp fun _ _ ⟨h1, h2⟩ h => ⟨h1 h, h2 h⟩
-    have ⟨used₂'', h4, h5, h6⟩ := ih _ hdrop (fvars₁ := fvars₁ ++ [fv]) (by simp [hlfvs])
-      (tys₁ := tys₁ ++ [ty]) (by simp [htys]) htys₂
-      (vals₁ := vals₁ ++ [v]) (vals₂ := vals₂) (by simp [hvals])
-      (used := used') (used₁ := used₁ ++ [u]) (used₂ := used₂') rfl ?_
-      (by simp [h2]) (h1.length_eq.symm.trans hused₂) (hvals₂ := hvals₂) hlet
-    · refine ⟨u::used₂'', .cons id <| h1.trans (fun _ _ _ h1 h2 h => h1 (h2 h)) h4,
-        by simp [h5], fun e ⟨he1, he2⟩ => ?_⟩
-      simp [usedFVarsList]
-      have he' := he1.looseBVarRange_zero
-      simp at he2
-      have he3 : used₂'.Forall₂ (fun u fv => u = false → e.FVarsIn (· ≠ fv)) (m.fvarRevList i hi) :=
-        h1.flip.trans (fun u₁ u₂ fv h1 h2 h => h2 (h1 h)) he2.2
-      have := he1.abstract1 (a := fv)
-      cases eu : u <;> simp <;> simp [eu] at he2
-      · refine .skip he' rfl ?_ ?_
-        · rw [FVarsIn.abstract_eq_self _ he1,
-            Expr.hasLooseBVar_of_ge_looseBVarRange (by simp [he'])]
-          ; exact he2.1
-        · refine h6 _ ⟨he1, he3⟩
-      · refine .vlet (h6 _ ?_); simp; split <;> rename_i h
-        · refine ⟨⟨m.noBV ▸ mwf.1.2.2.1.closed, m.noBV ▸ mwf.1.2.2.2.1.closed, this⟩, ?_⟩
-          simp [Expr.FVarsIn, FVarsIn]
-          exact ((h3 eu).and he3).imp fun _ _ ⟨h1, h2⟩ h => ⟨(h1 h).1, (h1 h).2, .abstract1 (h2 h)⟩
-        · simp at h he2
-          rw [Expr.lowerLooseBVars_eq_instantiate h (v := default),
-            Expr.abstract1_eq_liftLooseBVars h, Expr.liftLooseBVars_eq_self (by simp [he']),
-            Expr.instantiate1_eq_self he']
-          exact ⟨he1, he3⟩
-    · have h2 := congrArg (·.length) h2
-      have hlused := congrArg (·.length) hlused
-      simp [h1.length_eq] at h2 hlused
-      simpa [← hlused, husz] using h2
-
 theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length) (nds hnds)
     (hdrop : m.dropN n hn = c.mlctx)
     (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
-    (htys : tys.toList.reverse = tys') (htsz : tys'.length = n)
-    (hvals : vals.toList.reverse = vals') (hvsz : vals'.length = n)
-    (hlet : m.letValList n hn = (tys'.zip vals').map some)
     (he₀ : e₀ = m.mkLet n hn nds hnds ei)
     (hei : e.instantiateList ((m.fvarRevList n hn).map .fvar) = ei)
     (hr1 : e.FVarsIn s.ngen.Reserves)
     (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
     (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
-    (inferLet.loop inferOnly arr tys vals e).WF (c.withMLC m) s fun ty _ =>
+    (inferLet.loop inferOnly arr e).WF (c.withMLC m) s fun ty _ =>
       ∃ e', c.TrExprS e₀ e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' := by
   generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
   unfold inferLet.loop
-  -- the termination proof is hard for lean without this
-  have IH body (_ : sizeOf body < sizeOf e) := @inferLet.loop.WF (e := body)
   simp [harr, -bind_pure_comp]; split
   · rename_i name dom val body nd
-    specialize IH body (by decreasing_tactic)
     generalize eqF : withLetDecl (m := RecM) _ _ _ _ = F
     generalize eqP : (fun ty x => ∃ _, _) = P
     rw [Expr.instantiateList_letE] at hei; subst ei
@@ -1198,13 +1060,9 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
       refine .withLetDecl hdom hval valty le₁ fun a mwf' s' le₂ res h6 => ?_
       have h6' := wf.find?_eq_none h6
       have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
-      refine IH _ _ _ _ _ _ _ (Nat.succ_le_succ hn) (some nd :: nds)
+      refine inferLet.loop.WF (Nat.succ_le_succ hn) (some nd :: nds)
         (by simp [hnds]) (by simp [hdrop]) (by simp [← eqfvs, harr])
-        (by simp [htys]; rfl) (by simp [htsz])
-        (by simp [hvals]; rfl) (by simp [hvsz])
-        (by simp [hlet])
-        ?_ (by simp; rfl)
-        (le₂.reserves hr1).2.2 ?_ ?_
+        ?_ (by simp; rfl) (le₂.reserves hr1).2.2 ?_ ?_
       · rw [he₀, eqfvs, ← eq]; simp; congr 2
         refine (FVarsIn.abstract_instantiate1 ((hr1.2.2.instantiateList ?_).mono ?_)).symm
         · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
@@ -1213,7 +1071,7 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
         exact ⟨res, fun _ h => le₂.reservesV (hr2 _ h)⟩
       · intro h; let ⟨_, hbody⟩ := hbody h
         exact eqfvs.symm ▸ eq ▸ ⟨_, hbody.inst_fvar c.venv_wf.ordered mwf'.1.tr.wf⟩
-    clear IH; split
+    split
     · subst inferOnly
       refine (checkType.WF ?_).bind fun uv _ le ⟨dom', uv', h1, h2, h3⟩ => ?_
       · apply hr1.1.instantiateList; simp [← eqfvs]
@@ -1233,40 +1091,17 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
     · simp_all; let ⟨_, h1⟩ := hinf
       have .letE (ty' := dom') (body' := body') valty hdom hval hbody := h1
       exact main .rfl hdom hval valty _ hbody
-  · clear IH; subst ei; refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
+  · subst ei; refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', h1, h2, h3⟩ => ?_
     · apply hr1.instantiateList; simp [← eqfvs]
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
     refine .stateWF fun wf => .getLCtx <| .pure ?_
-    generalize harr₁ : markUsed .. = arr₁
-    generalize harr₂ : loopUsed .. = arr₂
-    generalize hfvs' : usedFVars .. = fvs'
     have ⟨_, hty, e2⟩ := h2.trExpr c.venv_wf.ordered wf.trctx.wf
       |>.cheapBetaReduce c.venv_wf wf.trctx.wf m.noBV
     have h3 := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx e2.symm
     let ⟨h1', h2'⟩ := mwf.1.mkLet_trS c.venv_wf h1 h3 n hn nds hnds
     have h3' := (mwf.1.mkForall_trS c.venv_wf hty (h3.isType c.venv_wf mwf.1.tr.wf.toCtx) n hn).1
     simp [hdrop] at h1' h2' h3'
-    subst fvs'
-    have H1 : arr.size = n := by rw [Array.size, ← List.length_reverse, harr]; simp [← eqfvs]
-    have H2 : arr₂.size = n ∧ m.PartialForall n
-        (usedFVarsList (m.fvarRevList n hn) arr₂.toList.reverse) ty.cheapBetaReduce := by
-      subst arr₂; rw [H1]
-      have ⟨used, h1, h2, h3⟩ := (harr₁ ▸ markUsed.WF (eqfvs ▸ harr)
-        (fvars₁ := []) rfl m.fvarRevList_length (by simp [H1]) (by simp [H1]; rfl) (by simp)
-        (used₁ := []) rfl (by simp [H1]) :)
-      have usz : used.length = n := by simp [← h1.length_eq]
-      have ⟨used', h1', h2', h3'⟩ := (inferLet.loop.loopUsed.WF
-        hn hdrop (eqfvs ▸ harr) (fvars₁ := []) rfl m.fvarRevList_length
-        (tys₁ := []) htys (by simp [← htsz, ← htys]) htsz
-        (vals₁ := []) hvals (by simp [← hvsz, ← hvals]) hvsz
-        (h2.trans (by simp)) usz (used₁ := []) rfl usz hlet :)
-      simp at h2'; subst h2'
-      refine ⟨by simpa [h1'.length_eq] using usz, h3' _ ⟨m.noBV ▸ hty.closed, h3⟩⟩
-    have h4 := usedFVars_eq (H1.trans H2.1.symm)
-      (arr₁ := (m.fvarRevList n hn).reverse) (arr₂ := []) (by simp [harr, ← eqfvs])
-      (used₁ := arr₂.toList) (used₂ := []) rfl (rfl : _ = 0) rfl (acc := #[]) rfl
-    simp at h4
-    rw [← mwf.1.mkForall_partial _ _ h4 H2.2] at h3'
+    rw [← mwf.1.mkForall_eq _ _ (eqfvs ▸ harr)] at h3'
     exact ⟨_, he₀ ▸ h1', _, h3', h2'⟩
 termination_by e
 
@@ -1276,5 +1111,4 @@ theorem inferLet.WF
     (inferLet e inferOnly).WF c s fun ty _ =>
       ∃ e', c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' :=
   .stateWF fun wf =>
-  (c.withMLC_self ▸ inferLet.loop.WF (Nat.zero_le _) []
-    rfl rfl rfl rfl rfl rfl rfl rfl rfl rfl h1 wf.ngen_wf) hinf
+  (c.withMLC_self ▸ inferLet.loop.WF (Nat.zero_le _) [] rfl rfl rfl rfl rfl h1 wf.ngen_wf) hinf

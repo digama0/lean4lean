@@ -169,20 +169,8 @@ def inferApp (e : Expr) : RecM Expr := do
       return fType.instantiateRevRange j args.size args
   do loop (← inferType f) 0 0
 
-def markUsed (n : Nat) (fvars : Array Expr) (b : Expr) (used : Array Bool) : Array Bool := Id.run do
-  if !b.hasFVar then return used
-  (·.2) <$> StateT.run (s := used) do
-    b.forEachV' fun x => do
-      if !x.hasFVar then return false
-      if let .fvar name := x then
-        for i in [:n] do
-          if fvars[i]!.fvarId! == name then
-            modify (·.set! i true)
-            return false
-      return true
-
-def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] #[] e where
-  loop fvars tys vals : Expr → RecM Expr
+def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
+  loop fvars : Expr → RecM Expr
   | .letE name type val body _ => do
     let type := type.instantiateRev fvars
     let val := val.instantiateRev fvars
@@ -192,29 +180,11 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] #[] e whe
       if !(← isDefEq valType type) then
         throw <| .letTypeMismatch (← getEnv) (← getLCtx) name valType type
     withLetDecl name type val fun fv =>
-      loop (fvars.push fv) (tys.push type) (vals.push val) body
+      loop (fvars.push fv) body
   | e => do
     let r ← inferType (e.instantiateRev fvars) inferOnly
     let r := r.cheapBetaReduce
-    let rec loopUsed i (used : Array Bool) :=
-      match i with
-      | 0 => used
-      | i+1 =>
-        let used := if used[i]! then
-          markUsed i fvars tys[i]! used |> markUsed i fvars vals[i]!
-        else used
-        loopUsed i used
-    let used := Array.replicate fvars.size false
-    let used := markUsed fvars.size fvars r used
-    let used := loopUsed fvars.size used
-    let rec usedFVars i acc :=
-      if _ : i < fvars.size then
-        let acc := if used[i]! then acc.push fvars[i] else acc
-        usedFVars (i+1) acc
-      else
-        acc
-    let usedFVars := usedFVars 0 #[]
-    return (← getLCtx).mkForall usedFVars r
+    return (← getLCtx).mkForall fvars r
 
 def isProp (e : Expr) : RecM Bool :=
   return (← whnf (← inferType e)) == .prop
