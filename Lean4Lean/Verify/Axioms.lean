@@ -372,4 +372,27 @@ def hasLooseBVar' : (e : @& Expr) → (bvarIdx : @& Nat) → Bool
 /-- This could be an `@[implemented_by]` -/
 @[simp] axiom hasLooseBVar_eq (e : Expr) (n : Nat) : e.hasLooseBVar n = e.hasLooseBVar' n
 
+def eqv' : (e1 e2 : Expr) → (strict : Bool := false) → Bool
+  | .bvar i, .bvar i', _
+  | .lit i, .lit i', _
+  | .mvar i, .mvar i', _
+  | .fvar i, .fvar i', _
+  | .sort i, .sort i', _ => i == i'
+  | .mdata d e, .mdata d' e', st => e.eqv' e' st && d == d'
+  | .proj s i e, .proj s' i' e', st => e.eqv' e' st && s == s' && i == i'
+  | .const n ls, .const n' ls', _ => n == n' && ls == ls'
+  | .app f a, .app f' a', st => f.eqv' f' st && a.eqv' a' st
+  | .lam n t b bi, .lam n' t' b' bi', st
+  | .forallE n t b bi, .forallE n' t' b' bi', st =>
+    t.eqv' t' st && b.eqv' b' st && (!st || (n == n' && bi == bi'))
+  | .letE n t v b nd, .letE n' t' v' b' nd', st =>
+    t.eqv' t' st && v.eqv' v' st && b.eqv' b' st && nd == nd' && (!st || n == n')
+  | _, _, _ => false
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom eqv_eq (e1 e2 : Expr) : e1.eqv e2 = e1.eqv' e2
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom equal_eq (e1 e2 : Expr) : e1.equal e2 = e1.eqv' e2 (strict := true)
+
 end Expr

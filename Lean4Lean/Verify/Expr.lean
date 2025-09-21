@@ -491,3 +491,7 @@ theorem instantiateLevelParams_eq {e ps ls} :
     split <;> simp [*, List.findIdx?_cons]; cases List.findIdx? .. <;> simp
   · refine instantiateLevelParamsCore_id.symm.trans ?_; congr; ext n
     cases ps <;> simp_all
+
+theorem eqv_sort {e : Expr} : e == .sort u ↔ ∃ u', e = .sort u' ∧ u' == u := by
+  conv => lhs; simp [(·==·)]
+  cases e <;> simp [eqv']

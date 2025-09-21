@@ -1112,3 +1112,13 @@ theorem inferLet.WF
       ∃ e', c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' :=
   .stateWF fun wf =>
   (c.withMLC_self ▸ inferLet.loop.WF (Nat.zero_le _) [] rfl rfl rfl rfl rfl h1 wf.ngen_wf) hinf
+
+theorem isProp.WF
+    (he : c.TrExprS e e') : (isProp e).WF c s fun b _ => b → c.HasType e' (.sort .zero) := by
+  unfold isProp
+  refine (inferType.WF he).bind fun ty _ le ⟨ty', h1, h2⟩ => ?_
+  refine .stateWF fun wf => ?_
+  refine (whnf.WF (h1.trExpr c.venv_wf wf.trctx.wf)).bind fun ty _ le ⟨ty₂, h3, h4⟩ => .pure ?_
+  simp [Expr.prop, Expr.eqv_sort]; rintro rfl
+  let .sort h3 := h3; cases h3
+  exact h2.defeqU_r c.venv_wf c.mlctx_wf.tr.wf h4.symm
