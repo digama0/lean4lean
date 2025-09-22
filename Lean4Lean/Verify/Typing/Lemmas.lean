@@ -9,6 +9,9 @@ namespace Lean4Lean
 open VEnv Lean
 open scoped List
 
+theorem fvarsIn_iff : FVarsIn P e ↔ (∀ fv ∈ e.fvarsList, P fv) ∧ FVarsIn (fun _ => True) e := by
+  induction e <;> simp [FVarsIn, Expr.fvarsList, *] <;> grind
+
 theorem FVarsIn.mp (H : ∀ fv, P fv → Q fv → R fv) :
     ∀ {e}, FVarsIn P e → FVarsIn Q e → FVarsIn R e
   | .bvar _, l, _ | .sort .., l, _ | .const .., l, _ | .lit .., l, _ => l
@@ -83,7 +86,7 @@ theorem FVarsIn.instantiate1_go (h1 : FVarsIn P e) (h2 : FVarsIn P a) :
 theorem FVarsIn.instantiate1 (h1 : FVarsIn P e) (h2 : FVarsIn P a) :
     FVarsIn P (Expr.instantiate1' e a) := h1.instantiate1_go h2
 
-theorem FVarsIn.instantiateList (h1 : FVarsIn P e) (h2 : ∀ a ∈ as, FVarsIn P a) :
+theorem FVarsIn.instantiateList (h1 : FVarsIn P e) (h2 : ∀ a ∈ as, FVarsIn P a) (k := 0) :
     FVarsIn P (Expr.instantiateList e as k) := by
   induction as generalizing e <;> simp_all [Expr.instantiateList, FVarsIn.instantiate1_go]
 
@@ -91,6 +94,10 @@ theorem FVarsIn.abstract1 (h1 : FVarsIn P e) :
     FVarsIn P (Expr.abstract1 a e k) := by
   induction e generalizing k <;> simp_all [FVarsIn, Expr.abstract1]
   split <;> simp [FVarsIn, *]
+
+theorem FVarsIn.appRevList :
+    FVarsIn P (f.mkAppRevList es) ↔ FVarsIn P f ∧ ∀ e ∈ es, FVarsIn P e := by
+  induction es <;> simp [FVarsIn, and_comm, and_left_comm, *]
 
 theorem Closed.abstract1 (h1 : Closed e k) :
     Closed (Expr.abstract1 a e k) (k+1) := by
@@ -178,9 +185,9 @@ instance : Coe (WF env U Δ) (OnCtx Δ.toCtx (env.IsType U)) := ⟨(·.toCtx)⟩
 theorem WF.fvars_nodup : ∀ {Δ}, WF env U Δ → Δ.fvars.Nodup
   | [], _ => .nil
   | (none, _) :: Δ, ⟨hΔ, _, _⟩ => fvars_nodup (Δ := Δ) hΔ
-  | (some fv, _) :: Δ, ⟨hΔ,  h, _⟩ => by
-    suffices fv ∉ fvars Δ from (fvars_nodup hΔ).cons (fun _ h e => this (e ▸ h))
-    simpa using h
+  | (some (fv, _), _) :: Δ, ⟨hΔ,  h, _⟩ => by
+    suffices fv ∉ fvars Δ from (fvars_nodup hΔ).cons (fun _ h (e:fv=_) => this (e ▸ h))
+    exact (h _ _ rfl).1
 
 theorem liftVar_zero : liftVar 0 k v = v := by cases v <;> simp [liftVar]
 
@@ -231,7 +238,7 @@ protected theorem FVLift.find? (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
   induction W generalizing v e A with
   | refl => simp [H]
   | @skip_fvar _ Δ' _ fv' _ W ih =>
-    simp [find?]
+    let (fv', deps) := fv'; simp [find?]
     cases v with simp [next]
     | inl => exact ⟨_, _, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
     | inr fv =>
@@ -362,7 +369,7 @@ theorem InstLet.fvars_eq (W : InstLet Δ₀ e₀ A₀ dk k Δ₁ Δ) :
 
 variable (Δ₀ : VLCtx) (v₀ : FVarId) (d₀ : VLocalDecl) in
 inductive Abstract : Nat → Nat → VLCtx → VLCtx → Prop where
-  | zero : Abstract 0 0 ((some v₀, d₀) :: Δ₀) ((none, d₀) :: Δ₀)
+  | zero : Abstract 0 0 ((some (v₀, deps), d₀) :: Δ₀) ((none, d₀) :: Δ₀)
   | succ : Abstract dk k Γ Γ' → Abstract (dk + 1) (k + d.depth) ((none, d) :: Γ) ((none, d) :: Γ')
 
 protected theorem Abstract.toCtx (W : Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) : Δ₁.toCtx = Δ.toCtx := by
@@ -530,7 +537,7 @@ inductive VLCtx.IsDefEq : VLCtx → VLCtx → Prop
   | nil : VLCtx.IsDefEq [] []
   | cons {Δ₁ Δ₂ : VLCtx} :
     VLCtx.IsDefEq Δ₁ Δ₂ →
-    (∀ fv, ofv = some fv → fv ∉ Δ₁.fvars) →
+    (∀ fv deps, ofv = some (fv, deps) → fv ∉ Δ₁.fvars ∧ deps ⊆ Δ₁.fvars) →
     VLocalDecl.IsDefEq env U Δ₁.toCtx d₁ d₂ →
     VLCtx.IsDefEq ((ofv, d₁) :: Δ₁) ((ofv, d₂) :: Δ₂)
 
@@ -642,11 +649,17 @@ theorem TrExprS.fvarsIn (H : TrExprS env Us Δ e e') : FVarsIn (· ∈ Δ.fvars)
   | letE _ _ _ _ ih1 ih2 ih3 => exact ⟨ih1, ih2, ih3⟩
   | proj _ _ ih => exact ih
 
+theorem TrExprS.fvarsList (H : TrExprS env Us Δ e e') : e.fvarsList ⊆ Δ.fvars :=
+  (fvarsIn_iff.1 H.fvarsIn).1
+
 theorem TrExpr.closed (H : TrExpr env Us Δ e e') : Closed e Δ.bvars :=
   let ⟨_, H, _⟩ := H; H.closed
 
 theorem TrExpr.fvarsIn (H : TrExpr env Us Δ e e') : FVarsIn (· ∈ Δ.fvars) e :=
   let ⟨_, H, _⟩ := H; H.fvarsIn
+
+theorem TrExpr.fvarsList (H : TrExpr env Us Δ e e') : e.fvarsList ⊆ Δ.fvars :=
+  (fvarsIn_iff.1 H.fvarsIn).1
 
 theorem TrProj.wf (H1 : TrProj Δ s i e e') (H2 : VExpr.WF env U Γ e) : VExpr.WF env U Γ e' := sorry
 
@@ -1400,21 +1413,25 @@ def VLCtx.Closed : VLCtx → Prop
 def IsFVarUpSet (P : FVarId → Prop) : VLCtx → Prop
   | [] => True
   | (none, _) :: Δ => IsFVarUpSet P Δ
-  | (some fv, d) :: (Δ : VLCtx) =>
-    (P fv → d.OnVars fun i => ∀ fv, Δ.vlamName i = some (some fv) → P fv) ∧
+  | (some (fv, deps), d) :: (Δ : VLCtx) =>
+    (P fv → (∀ fv' ∈ deps, P fv') ∧
+      d.OnVars fun i => ∀ fv, Δ.vlamName i = some (some fv) → P fv.1) ∧
     IsFVarUpSet P Δ
 
-theorem IsFVarUpSet.congr :
-    ∀ {Δ}, (H : ∀ fv ∈ VLCtx.fvars Δ, P fv ↔ Q fv) → IsFVarUpSet P Δ ↔ IsFVarUpSet Q Δ
-  | [], _ => .rfl
-  | (none, _) :: Δ, H => congr (Δ := Δ) H
-  | (some fv, d) :: (Δ : VLCtx), H => by
-    refine and_congr (imp_congr (H _ (.head _)) ?_) (congr fun fv h => H _ (.tail _ h))
-    apply iff_of_eq; congr; funext i; refine forall_congr fun fv => propext ?_
-    exact imp_congr_right fun ha => H _ (.tail _ (VLCtx.vlamName_mem_fvars ha))
+theorem IsFVarUpSet.congr : ∀ {Δ}, VLCtx.FVWF Δ →
+    (H : ∀ fv ∈ VLCtx.fvars Δ, P fv ↔ Q fv) → IsFVarUpSet P Δ ↔ IsFVarUpSet Q Δ
+  | [], _, _ => .rfl
+  | (none, _) :: Δ, ⟨h1, _⟩, H => congr (Δ := Δ) h1 H
+  | (some (fv, deps), d) :: (Δ : VLCtx), ⟨h1, h2⟩, H => by
+    refine and_congr (imp_congr (H _ (.head _)) ?_) (congr h1 fun fv h => H _ (.tail _ h))
+    refine and_congr (forall_congr' fun fv => imp_congr_right fun h => ?_) ?_
+    · exact H _ (by simp [(h2 _ _ rfl).2 h])
+    · apply iff_of_eq; congr; funext i; refine forall_congr fun fv => propext ?_
+      exact imp_congr_right fun ha => H _ (.tail _ (VLCtx.vlamName_mem_fvars ha))
 
-theorem IsFVarUpSet.and_fvars : IsFVarUpSet P Δ ↔ IsFVarUpSet (fun fv => P fv ∧ fv ∈ Δ.fvars) Δ :=
-  IsFVarUpSet.congr fun _ h => (and_iff_left h).symm
+theorem IsFVarUpSet.and_fvars (H : VLCtx.FVWF Δ) :
+    IsFVarUpSet P Δ ↔ IsFVarUpSet (fun fv => P fv ∧ fv ∈ Δ.fvars) Δ :=
+  IsFVarUpSet.congr H fun _ h => (and_iff_left h).symm
 
 theorem IsFVarUpSet.trivial : ∀ {Δ}, IsFVarUpSet (fun _ => True) Δ
   | [] => ⟨⟩
@@ -1422,8 +1439,19 @@ theorem IsFVarUpSet.trivial : ∀ {Δ}, IsFVarUpSet (fun _ => True) Δ
   | (some _, d) :: Δ =>
     ⟨fun _ => by cases d <;> simp [VLocalDecl.OnVars, VExpr.OnVars], trivial⟩
 
-theorem IsFVarUpSet.fvars : IsFVarUpSet (· ∈ Δ.fvars) Δ :=
-  (IsFVarUpSet.congr fun _ => iff_true_intro).2 trivial
+theorem IsFVarUpSet.fvars (H : VLCtx.FVWF Δ) : IsFVarUpSet (· ∈ Δ.fvars) Δ :=
+  (IsFVarUpSet.congr H fun _ => iff_true_intro).2 trivial
+
+def FVarsBelow (Δ e e') := ∀ P, IsFVarUpSet P Δ → FVarsIn P e → FVarsIn P e'
+
+theorem FVarsBelow.rfl : FVarsBelow Δ e e := fun _ _ => id
+
+theorem FVarsBelow.trans (H1 : FVarsBelow Δ e₁ e₂) (H2 : FVarsBelow Δ e₂ e₃) :
+    FVarsBelow Δ e₁ e₃ := fun _ h => H2 _ h ∘ H1 _ h
+
+def TrTyping (env : VEnv) (Us : List Name) (Δ : VLCtx) (e A : Expr) (e' A' : VExpr) : Prop :=
+  FVarsBelow Δ e A ∧ TrExprS env Us Δ e e' ∧ TrExprS env Us Δ A A' ∧
+  env.HasType Us.length Δ.toCtx e' A'
 
 inductive LambdaBodyN : Nat → Expr → Expr → Prop
   | zero : LambdaBodyN 0 e e
@@ -1560,28 +1588,28 @@ theorem TrExpr.uninstantiateN
   let ⟨_, s, h⟩ := H; ⟨_, s.uninstantiateN W sc, W.toCtx ▸ h⟩
 
 theorem TrExprS.uninstantiate
-    (H : TrExprS env Us ((some v, d) :: Δ) (e.instantiate1' (.fvar v)) e')
+    (H : TrExprS env Us ((some (v, deps), d) :: Δ) (e.instantiate1' (.fvar v)) e')
     (sc : FVarsIn (· ≠ v) e) :
     TrExprS env Us ((none, d) :: Δ) e e' := H.uninstantiateN .zero sc
 
 theorem TrExpr.uninstantiate
-    (H : TrExpr env Us ((some v, d) :: Δ) (e.instantiate1' (.fvar v)) e')
+    (H : TrExpr env Us ((some (v, deps), d) :: Δ) (e.instantiate1' (.fvar v)) e')
     (sc : FVarsIn (· ≠ v) e) :
     TrExpr env Us ((none, d) :: Δ) e e' := H.uninstantiateN .zero sc
 
 theorem TrExprS.inst_fvar {Δ : VLCtx} (henv : Ordered env)
-    (hΔ : VLCtx.WF env Us.length ((some a, d) :: Δ))
+    (hΔ : VLCtx.WF env Us.length ((some (a, deps), d) :: Δ))
     (H : TrExprS env Us ((none, d) :: Δ) e e') :
-    TrExprS env Us ((some a, d) :: Δ) (e.instantiate1' (.fvar a)) e' := by
+    TrExprS env Us ((some (a, deps), d) :: Δ) (e.instantiate1' (.fvar a)) e' := by
   refine
-    have W := .skip_fvar a d .refl
+    have W := .skip_fvar (a, deps) d .refl
     have := H.weakFV henv (.cons_bvar _ W) ⟨hΔ, nofun, hΔ.2.2.weakN henv W.toCtx⟩
     ?_
-  have hf := TrExprS.fvar (env := env) (Us := Us) (fv := a) (Δ := (some a, d) :: Δ) <| by
+  have hf := TrExprS.fvar (env := env) (Us := Us) (fv := a) (Δ := (some (a, deps), d) :: Δ) <| by
     simp [VLCtx.find?, VLCtx.next]; exact ⟨rfl, rfl⟩
   match d with
   | .vlam A₀ =>
-    have := this.inst henv (.bvar .zero) (Δ := (some a, .vlam _) :: Δ) hf
+    have := this.inst henv (.bvar .zero) (Δ := (some (a, deps), .vlam _) :: Δ) hf
     rwa [VLocalDecl.depth, VExpr.instN_bvar0] at this
   | .vlet A₀ e₀ =>
     simp [VLocalDecl.depth, VLocalDecl.liftN] at this

@@ -17,6 +17,16 @@ def Closed : Expr → (k :_:= 0) → Prop
 
 nonrec abbrev _root_.Lean.Expr.Closed := @Closed
 
+/-- This is very inefficient, only use for spec purposes -/
+def _root_.Lean.Expr.fvarsList : Expr → List FVarId
+  | .bvar _ | .sort .. | .const .. | .lit .. | .mvar .. => []
+  | .fvar fv => [fv]
+  | .app f a => f.fvarsList ++ a.fvarsList
+  | .lam _ d b _
+  | .forallE _ d b _ => d.fvarsList ++ b.fvarsList
+  | .letE _ d v b _ => d.fvarsList ++ v.fvarsList ++ b.fvarsList
+  | .proj _ _ e | .mdata _ e => e.fvarsList
+
 variable (fvars : FVarId → Prop) in
 def FVarsIn : Expr → Prop
   | .bvar _ => True
@@ -35,11 +45,21 @@ def VLocalDecl.WF (env : VEnv) (U : Nat) (Γ : List VExpr) : VLocalDecl → Prop
   | .vlam type => env.IsType U Γ type
   | .vlet type value => env.HasType U Γ value type
 
+def VLCtx.FVWF : VLCtx → Prop
+  | [] => True
+  | (ofv, _) :: (Δ : VLCtx) =>
+    VLCtx.FVWF Δ ∧ (∀ fv deps, ofv = some (fv, deps) → fv ∉ Δ.fvars ∧ deps ⊆ Δ.fvars)
+
 variable (env : VEnv) (U : Nat) in
 def VLCtx.WF : VLCtx → Prop
   | [] => True
   | (ofv, d) :: (Δ : VLCtx) =>
-    VLCtx.WF Δ ∧ (∀ fv, ofv = some fv → fv ∉ Δ.fvars) ∧ VLocalDecl.WF env U Δ.toCtx d
+    VLCtx.WF Δ ∧ (∀ fv deps, ofv = some (fv, deps) → fv ∉ Δ.fvars ∧ deps ⊆ Δ.fvars) ∧
+    VLocalDecl.WF env U Δ.toCtx d
+
+def VLCtx.WF.fvwf : ∀ {Δ}, VLCtx.WF env U Δ → Δ.FVWF
+  | [], h => h
+  | _ :: _, ⟨h1, h2, _⟩ => ⟨h1.fvwf, h2⟩
 
 def TrProj : ∀ (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr), VExpr → Prop := sorry
 

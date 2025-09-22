@@ -37,7 +37,7 @@ def VLocalDecl.instL : VLocalDecl → List VLevel → VLocalDecl
   | .vlam A, ls => .vlam (A.instL ls)
   | .vlet A e, ls => .vlet (A.instL ls) (e.instL ls)
 
-def VLCtx := List (Option FVarId × VLocalDecl)
+def VLCtx := List (Option (FVarId × List FVarId) × VLocalDecl)
 
 namespace VLCtx
 
@@ -48,12 +48,12 @@ def bvars : VLCtx → Nat
 
 abbrev NoBV (Δ : VLCtx) : Prop := Δ.bvars = 0
 
-def next : Option FVarId → Nat ⊕ FVarId → Option (Nat ⊕ FVarId)
+def next : Option (FVarId × List FVarId) → Nat ⊕ FVarId → Option (Nat ⊕ FVarId)
   | none, .inl 0 => none
   | none, .inl (n+1) => some (.inl n)
   | some _, .inl n => some (.inl n)
   | none, .inr fv' => some (.inr fv')
-  | some fv, .inr fv' => if fv == fv' then none else some (.inr fv')
+  | some (fv, _), .inr fv' => if fv == fv' then none else some (.inr fv')
 
 def find? : VLCtx → Nat ⊕ FVarId → Option (VExpr × VExpr)
   | [], _ => none
@@ -70,17 +70,18 @@ def varToExpr : Nat ⊕ FVarId → Expr
   | .inl i => .bvar i
   | .inr fv => .fvar fv
 
-def vlamName : VLCtx → Nat → Option (Option FVarId)
+def vlamName : VLCtx → Nat → Option (Option (FVarId × List FVarId))
   | [], _ => none
   | (_, .vlet ..) :: Δ, i
   | (_, .vlam ..) :: Δ, i+1 => vlamName Δ i
   | (ofv, .vlam ..) :: _, 0 => some ofv
 
-def fvars (Δ : VLCtx) : List FVarId := Δ.filterMap (·.1)
+def fvars (Δ : VLCtx) : List FVarId := Δ.filterMap (·.1.map (·.1))
 
 @[simp] theorem fvars_nil : fvars [] = [] := rfl
 @[simp] theorem fvars_cons_none {Δ : VLCtx} : fvars ((none, d) :: Δ) = fvars Δ := rfl
-@[simp] theorem fvars_cons_some {Δ : VLCtx} : fvars ((some fv, d) :: Δ) = fv :: fvars Δ := rfl
+@[simp] theorem fvars_cons_some {Δ : VLCtx} :
+    fvars ((some fv, d) :: Δ) = fv.1 :: fvars Δ := rfl
 
 def toCtx : VLCtx → List VExpr
   | [] => []
@@ -92,32 +93,16 @@ def instL (Δ : VLCtx) (ls : List VLevel) : VLCtx :=
   | [] => []
   | (ofv, d) :: Δ => (ofv, d.instL ls) :: instL Δ ls
 
-theorem lookup_isSome : ∀ {Δ : VLCtx}, (Δ.lookup (some fv)).isSome = (Δ.find? (.inr fv)).isSome
-  | [] => rfl
-  | (ofv, d) :: Δ => by
-    simp [List.lookup, find?, next]
-    cases ofv with
-    | none =>
-      simp [show (some fv == none) = false from rfl, lookup_isSome]
-      cases find? Δ (.inr fv) <;> simp
-    | some fv' =>
-      simp [show (some fv == some fv') = (fv == fv') from rfl, beq_comm fv]
-      cases fv' == fv <;> simp [lookup_isSome]
-      cases find? Δ (.inr fv) <;> simp
-
-theorem lookup_eq_some : ∀ {Δ : VLCtx}, (∃ x, Δ.lookup (some fv) = some x) ↔ fv ∈ fvars Δ
-  | [] => by simp
-  | (ofv, d) :: Δ => by
-    cases ofv with
-    | none => simp [List.lookup, show (some fv == none) = false from rfl, lookup_eq_some]
-    | some fv' =>
-      simp [List.lookup, show (some fv == some fv') = (fv == fv') from rfl]
-      cases e : fv == fv' <;> simp at e <;> simp [e, lookup_eq_some]
-
 theorem find?_eq_some : (∃ x, Δ.find? (.inr fv) = some x) ↔ fv ∈ fvars Δ := by
-  rw [← Option.isSome_iff_exists, ← lookup_isSome, Option.isSome_iff_exists, lookup_eq_some]
+  induction Δ with simp [find?] | cons d Δ ih
+  match d with
+  | (none, _) => simp [next, ← ih]; grind
+  | (some (fv',  _), _) =>
+    simp [next]; rw [@eq_comm _ fv]
+    by_cases h : fv' == fv <;> simp [h] <;> simp at h <;> simp [h]; grind
 
-theorem vlamName_mem_fvars : ∀ {Δ : VLCtx} {i}, Δ.vlamName i = some (some fv) → fv ∈ fvars Δ
+theorem vlamName_mem_fvars :
+    ∀ {Δ : VLCtx} {i}, Δ.vlamName i = some (some fv) → fv.1 ∈ fvars Δ
   | (none, .vlet ..) :: Δ, _, h
   | (none, .vlam ..) :: Δ, _+1, h => vlamName_mem_fvars (Δ := Δ) h
   | (some _, .vlet ..) :: Δ, _, h

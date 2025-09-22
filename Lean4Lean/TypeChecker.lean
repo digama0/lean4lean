@@ -222,7 +222,7 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
     throw <| .other
       s!"type checker does not support loose bound variables, {""
         }replace them with free variables before invoking it"
-  assert! !e.hasLooseBVars
+  -- assert! !e.hasLooseBVars
   let state ← get
   if let some r := (cond inferOnly state.inferTypeI state.inferTypeC)[e]? then
     return r

@@ -197,12 +197,20 @@ inductive TrLocalDecl : LocalDecl → VLocalDecl → Prop
 theorem TrLocalDecl.wf : TrLocalDecl env Us Δ d d' → d'.WF env Us.length Δ.toCtx
   | .vlam _ h | .vlet _ _ h => h
 
+def _root_.Lean.LocalDecl.deps : LocalDecl → List FVarId
+  | .cdecl (type := t) .. => t.fvarsList
+  | .ldecl (type := t) (value := v) .. => t.fvarsList ++ v.fvarsList
+
+theorem TrLocalDecl.deps_wf : TrLocalDecl env Us Δ d d' → d.deps ⊆ Δ.fvars
+  | .vlam h _ => h.fvarsList
+  | .vlet h1 h2 _ => by simp [LocalDecl.deps, h1.fvarsList, h2.fvarsList]
+
 variable (env : VEnv) (Us : List Name) in
 inductive TrLCtx' : List LocalDecl → VLCtx → Prop
   | nil : TrLCtx' [] []
   | cons :
     TrLCtx' ds Δ → TrLocalDecl env Us Δ d d' →
-    TrLCtx' (d :: ds) ((some d.fvarId, d') :: Δ)
+    TrLCtx' (d :: ds) ((some (d.fvarId, d.deps), d') :: Δ)
 
 def TrLCtx (env : VEnv) (Us : List Name) (lctx : LocalContext) (Δ : VLCtx) : Prop :=
   lctx.WF ∧ TrLCtx' env Us lctx.toList Δ
@@ -212,7 +220,7 @@ theorem TrLCtx'.noBV : TrLCtx' env Us ds Δ → Δ.NoBV
   | .cons h _ => h.noBV
 
 theorem TrLCtx'.forall₂ :
-    TrLCtx' env Us ds Δ → ds.Forall₂ Δ (R := fun d d' => d'.1 = some d.fvarId)
+    TrLCtx' env Us ds Δ → ds.Forall₂ Δ (R := fun d d' => d'.1 = some (d.fvarId, d.deps))
   | .nil => by simp
   | .cons h _ => by simp; exact h.forall₂
 
@@ -225,22 +233,20 @@ theorem TrLCtx'.fvars_eq (H : TrLCtx' env Us ds Δ) : ds.map (·.fvarId) = Δ.fv
 theorem TrLCtx.fvars_eq (H : TrLCtx env Us lctx Δ) : lctx.fvars = Δ.fvars :=
   H.2.fvars_eq
 
+theorem TrLCtx'.find?_eq_some (H : TrLCtx' env Us ds Δ) :
+    (∃ d, ds.find? (fv == ·.fvarId) = some d) ↔ fv ∈ Δ.fvars := by
+  rw [← Option.isSome_iff_exists, List.find?_isSome]
+  induction H with simp
+  | @cons _ _ d d' _ _ ih => simp [← ih]
+
 theorem TrLCtx'.find?_isSome (H : TrLCtx' env Us ds Δ) :
     (ds.find? (fv == ·.fvarId)).isSome = (Δ.find? (.inr fv)).isSome := by
-  rw [← VLCtx.lookup_isSome]
-  induction H with
-  | nil => rfl
-  | @cons _ _ d d' _ ih =>
-    simp [List.find?, List.lookup, show (some fv == some d.fvarId) = (fv == d.fvarId) from rfl]
-    split <;> simp [*]
+  rw [Bool.eq_iff_iff, Option.isSome_iff_exists, Option.isSome_iff_exists,
+    H.find?_eq_some, VLCtx.find?_eq_some]
 
 theorem TrLCtx.find?_isSome (H : TrLCtx env Us lctx Δ) :
     (lctx.find? fv).isSome = (Δ.find? (.inr fv)).isSome := by
   rw [H.1.find?_eq_find?_toList, H.2.find?_isSome]
-
-theorem TrLCtx'.find?_eq_some (H : TrLCtx' env Us ds Δ) :
-    (∃ d, ds.find? (fv == ·.fvarId) = some d) ↔ fv ∈ Δ.fvars := by
-  rw [← Option.isSome_iff_exists, H.find?_isSome, Option.isSome_iff_exists, VLCtx.find?_eq_some]
 
 theorem TrLCtx.find?_eq_some (H : TrLCtx env Us lctx Δ) :
     (∃ d, lctx.find? fv = some d) ↔ fv ∈ Δ.fvars := by
@@ -255,14 +261,17 @@ theorem TrLCtx.contains (H : TrLCtx env Us lctx Δ) : lctx.contains fv ↔ fv �
 
 theorem TrLCtx'.wf : TrLCtx' env Us ds Δ → (ds.map (·.fvarId)).Nodup → Δ.WF env Us.length
   | .nil, _ => ⟨⟩
-  | .cons h1 h2, .cons H1 H2 =>
-    ⟨h1.wf H2, by simpa [← h1.find?_eq_some] using H1, h2.wf⟩
+  | .cons h1 h2, .cons H1 H2 => by
+    refine ⟨h1.wf H2, fun _ _ => ?_, h2.wf⟩
+    rintro ⟨⟩; exact ⟨by simpa [← h1.find?_eq_some] using H1, h2.deps_wf⟩
 
 theorem TrLCtx.wf (H : TrLCtx env Us lctx Δ) : Δ.WF env Us.length := H.2.wf H.1.nodup
 
 theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
     (nd : (ds.map (·.fvarId)).Nodup) (hm : decl ∈ ds) :
-    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧ TrExprS env Us Δ decl.type A := by
+    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧
+      FVarsBelow Δ (.fvar decl.fvarId) decl.type ∧
+      TrExprS env Us Δ decl.type A := by
   have := H.wf nd
   match H with
   | .nil => cases hm
@@ -271,27 +280,38 @@ theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
     obtain _ | ⟨_, hm : decl ∈ ds⟩ := hm
     · simp [and_assoc]
       cases h2 with
-      | vlam h2 h3 => exact h2.weakFV henv (.skip_fvar _ _ .refl) this
-      | vlet h2 h3 => simpa [VLocalDecl.depth] using h2.weakFV henv (.skip_fvar _ _ .refl) this
+      | vlam h2 h3 =>
+        constructor
+        · intro P hP he; exact fvarsIn_iff.2 ⟨(hP.1 he).1, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
+        · exact h2.weakFV henv (.skip_fvar _ _ .refl) this
+      | vlet h2 h3 =>
+        constructor
+        · intro P hP he; have := hP.1 he; simp [LocalDecl.deps, or_imp, forall_and] at this
+          exact fvarsIn_iff.2 ⟨this.1.1, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
+        · simpa [VLocalDecl.depth] using h2.weakFV henv (.skip_fvar _ _ .refl) this
     · simp at nd; rw [if_neg (by simpa using Ne.symm (nd.1 _ hm))]; simp
-      have ⟨_, _, h1, h2⟩ := h1.find?_of_mem henv nd.2 hm
-      refine ⟨_, _, ⟨_, _, h1, rfl, rfl⟩, ?_⟩
-      simpa using h2.weakFV henv (.skip_fvar _ _ .refl) this
+      have ⟨_, _, h1, h2, h3⟩ := h1.find?_of_mem henv nd.2 hm
+      refine ⟨_, _, ⟨_, _, h1, rfl, rfl⟩, fun _ h => h2 _ h.2, ?_⟩
+      simpa using h3.weakFV henv (.skip_fvar _ _ .refl) this
 
 theorem TrLCtx.find?_of_mem (henv : env.WF) (H : TrLCtx env Us lctx Δ)
     (hm : decl ∈ lctx.toList) :
-    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧ TrExprS env Us Δ decl.type A :=
+    ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧
+      FVarsBelow Δ (.fvar decl.fvarId) decl.type ∧
+      TrExprS env Us Δ decl.type A :=
   H.2.find?_of_mem henv H.1.nodup hm
 
 theorem TrLCtx.mkLocalDecl
     (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none) (h3 : TrExprS env Us Δ ty ty')
     (h4 : env.IsType Us.length Δ.toCtx ty') :
-    TrLCtx env Us (lctx.mkLocalDecl fv name ty bi kind) ((some fv, .vlam ty') :: Δ) :=
+    TrLCtx env Us (lctx.mkLocalDecl fv name ty bi kind)
+      ((some (fv, ty.fvarsList), .vlam ty') :: Δ) :=
   ⟨h1.1.mkLocalDecl h2, by simpa using .cons h1.2 (.vlam h3 h4)⟩
 
 theorem TrLCtx.mkLetDecl
     (h1 : TrLCtx env Us lctx Δ) (h2 : lctx.find? fv = none)
     (h3 : TrExprS env Us Δ ty ty') (h4 : TrExprS env Us Δ val val')
     (h5 : env.HasType Us.length Δ.toCtx val' ty') :
-    TrLCtx env Us (lctx.mkLetDecl fv name ty val bi kind) ((some fv, .vlet ty' val') :: Δ) :=
+    TrLCtx env Us (lctx.mkLetDecl fv name ty val bi kind)
+      ((some (fv, ty.fvarsList ++ val.fvarsList), .vlet ty' val') :: Δ) :=
   ⟨h1.1.mkLetDecl h2, by simpa using .cons h1.2 (.vlet h3 h4 h5)⟩
