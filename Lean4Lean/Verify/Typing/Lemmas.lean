@@ -1586,3 +1586,14 @@ theorem TrExprS.inst_fvar {Δ : VLCtx} (henv : Ordered env)
   | .vlet A₀ e₀ =>
     simp [VLocalDecl.depth, VLocalDecl.liftN] at this
     exact this.inst_let henv hf
+
+theorem TrExprS.eqv (H : TrExprS env Us Δ e₁ e') (eq : e₁ == e₂) : TrExprS env Us Δ e₂ e' := by
+  simp [(· == ·)] at eq
+  induction H generalizing e₂ <;> (cases e₂ <;> try change false = _ at eq; cases eq)
+  all_goals simp [Expr.eqv'] at eq; (repeat cases ‹_ ∧ _›); subst_vars
+  case' mdata ih1 _ _ h1 _ | proj ih1 _ _ _ h1 _ => specialize ih1 h1
+  case' app ih1 ih2 _ _ h1 h2 | lam ih1 ih2 _ _ _ _ h1 h2 | forallE ih1 ih2 _ _ _ _ h1 h2  =>
+    specialize ih1 h1; specialize ih2 h2
+  case' letE ih1 ih2 ih3 _ _ _ _ _ h3 h1 h2 =>
+    specialize ih1 h1; specialize ih2 h2; specialize ih3 h3
+  all_goals constructor <;> assumption

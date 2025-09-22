@@ -8,8 +8,9 @@ import Std.Tactic.BVDecide
 
 namespace Lean
 
+namespace Literal
 open Expr in
-theorem Literal.toConstructor_hasLevelParam :
+theorem toConstructor_hasLevelParam :
     (Literal.toConstructor l).hasLevelParam' = false := by
   cases l with simp [Literal.toConstructor]
   | natVal n => cases n <;> simp [natLitToConstructor, hasLevelParam', natZero, natSucc]
@@ -17,6 +18,18 @@ theorem Literal.toConstructor_hasLevelParam :
     let ⟨l⟩ := s
     simp [strLitToConstructor, hasLevelParam', String.foldr_eq]
     induction l <;> simp_all [hasLevelParam', Level.hasParam']
+
+protected theorem beq_iff_eq {m n : Literal} : m == n ↔ m = n := by
+  cases m <;> cases n <;> simp! [(· == ·)]
+
+instance : LawfulBEq Literal where
+  eq_of_beq := Literal.beq_iff_eq.1
+  rfl := Literal.beq_iff_eq.2 rfl
+
+instance : DecidableEq Literal :=
+  fun a b => if h : a == b then .isTrue (by simp_all) else .isFalse (by simp_all)
+
+end Literal
 
 namespace Expr
 
