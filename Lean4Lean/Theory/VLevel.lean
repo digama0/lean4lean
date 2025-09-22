@@ -59,11 +59,20 @@ instance : HasEquiv VLevel := ⟨VLevel.Equiv⟩
 theorem equiv_def' {a b : VLevel} : a ≈ b ↔ a.eval = b.eval := .rfl
 theorem equiv_def {a b : VLevel} : a ≈ b ↔ ∀ ls, a.eval ls = b.eval ls := funext_iff
 
+theorem equiv_congr_left {a b c : VLevel} (h : a ≈ b) : a ≈ c ↔ b ≈ c :=
+  iff_of_eq (congrArg (· = _) h)
+
+theorem equiv_congr_right {a b c : VLevel} (h : a ≈ b) : c ≈ a ↔ c ≈ b :=
+  iff_of_eq (congrArg (_ = ·) h)
+
 theorem le_antisymm_iff {a b : VLevel} : a ≈ b ↔ a ≤ b ∧ b ≤ a :=
   equiv_def.trans <| (forall_congr' fun _ => Nat.le_antisymm_iff).trans forall_and
 
 theorem succ_congr {a b : VLevel} (h : a ≈ b) : succ a ≈ succ b := by
   simpa [equiv_def, eval] using h
+
+theorem succ_congr_iff {a b : VLevel} : succ a ≈ succ b ↔ a ≈ b := by
+  simp [equiv_def, eval]
 
 theorem max_congr (h₁ : a₁ ≈ b₁) (h₂ : a₂ ≈ b₂) : max a₁ a₂ ≈ max b₁ b₂ := by
   simp_all [equiv_def, eval]

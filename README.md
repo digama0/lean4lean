@@ -63,10 +63,7 @@ If you run this as is (with no additional arguments), it will check every olean 
       * `Lemmas.lean`: theorems about the typing relation
       * `Meta.lean`: tactic for proving typing judgments
       * `Strong.lean`: proof that you can have all the inductive hypotheses
-      * `Stratified.lean`: (experimental) stratified typing judgment
-      * `StratifiedUntyped.lean` (experimental) another stratified typing judgment
       * `UniqueTyping.lean`: conjectures about the typing relation
-      * `ParallelReduction.lean`: (experimental) stuff related to church-rosser
       * `Env.lean`: typing for environments
   * `Verify`: relation between the metatheory and the kernel
     * `Axioms.lean`: theorems about upstream opaques that shouldn't be opaque
@@ -83,3 +80,8 @@ If you run this as is (with no additional arguments), it will check every olean 
     * `Environment.lean`: translating environments
     * `TypeChecker`
       * `Theorems.lean`: theorems about the top-level functions (endpoint file)
+  * `Experimental`: work in progress formalizations and ideas
+      * `Stratified.lean`: stratified typing judgment
+      * `StratifiedUntyped.lean` another stratified typing judgment
+      * `ParallelReduction.lean`: stuff related to church-rosser
+      * `Stronger.lean`: a more heavily annotated typing judgment

@@ -17,6 +17,10 @@ globs = ["Lean4Lean.Theory.*"]
 name = "Lean4Lean.Verify"
 globs = ["Lean4Lean.Verify.*"]
 
+[[lean_lib]]
+name = "Lean4Lean.Experimental"
+globs = ["Lean4Lean.Experimental.*"]
+
 [[lean_exe]]
 name = "lean4lean"
 root = "Main"

@@ -12,7 +12,7 @@ structure VDefEq where
   rhs : VExpr
   type : VExpr
 
-structure VEnv where
+@[ext] structure VEnv where
   constants : Name → Option (Option VConstant)
   defeqs : VDefEq → Prop
 
