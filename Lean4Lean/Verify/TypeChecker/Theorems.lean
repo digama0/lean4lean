@@ -161,6 +161,9 @@ instance (c : VContext) : c.MLCWF c.mlctx := ⟨c.mlctx_wf⟩
 
 structure VState extends State where
 
+def InferCache.WF (c : VContext) (s : VState) (m : InferCache) : Prop :=
+  ∀ ⦃e ty : Expr⦄, m[e]? = some ty → ConditionallyHasType s.ngen c.venv c.lparams c.vlctx e ty
+
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
   ngen_wf : ∀ fv ∈ c.vlctx.fvars, s.ngen.Reserves fv
@@ -266,6 +269,14 @@ theorem mkFreshId.WF {c : VContext} {s : VState} :
   · exact { wf with ngen_wf _ h := le.reservesV (wf.ngen_wf _ h) }
   · exact s.ngen.next_reserves_self
   · exact s.ngen.not_reserves_self
+
+theorem get.WF {c : VContext} {s : VState} :
+    M.WF c s get fun a s' => s.toState = a ∧ s = s' := by
+  rintro wf _ _ ⟨⟩; exact ⟨_, rfl, .rfl, wf, rfl, rfl⟩
+
+theorem RecM.WF.get {c : VContext} {s : VState} {f : State → RecM α} {Q}
+    (H : WF c s (f s.toState) Q) : (get >>= f).WF c s Q :=
+  get.WF.lift.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
 
 theorem getEnv.WF {c : VContext} {s : VState} :
     M.WF c s getEnv fun a s' => c.env = a ∧ s = s' := by
@@ -1131,3 +1142,20 @@ theorem isProp.WF
   simp [Expr.prop, Expr.eqv_sort]; rintro rfl
   let .sort h3 := h3; cases h3
   exact h2.defeqU_r c.venv_wf c.mlctx_wf.tr.wf h4.symm
+
+theorem inferProj.WF
+    (he : c.TrExprS e e') (hty : c.TrExprS ety ety') (hasty : c.HasType e' ty') :
+    (inferProj st i e ety).WF c s fun ty _ =>
+      ∃ ty', c.TrTyping (.proj st i e) ty e' ty' := sorry
+
+theorem inferType'.WF
+    (h1 : e.FVarsIn s.ngen.Reserves)
+    (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
+    (inferType' e inferOnly).WF c s fun ty _ =>
+      ∃ e', c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' := by
+  unfold inferType'; simp
+  split <;> [exact .throw; refine .get ?_]
+  split
+  · rename_i h; refine .pure ?_
+    sorry
+  · sorry
