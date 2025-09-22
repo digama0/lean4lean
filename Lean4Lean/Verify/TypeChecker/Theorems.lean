@@ -120,6 +120,13 @@ theorem MLCtx.WF.dropN {c : MLCtx} (n hn) : c.WF env Us → (c.dropN n hn).WF en
   | n+1, .vlam .., h
   | n+1, .vlet .., h => fun H => H.1.dropN n (Nat.le_of_succ_le_succ h)
 
+theorem MLCtx.dropN_fvars_subset {c : MLCtx} (n hn) : (c.dropN n hn).vlctx.fvars ⊆ c.vlctx.fvars :=
+  match n, c, hn with
+  | 0, _, _ => fun _ => id
+  | n+1, .vlam .., h
+  | n+1, .vlet .., h =>
+    List.subset_cons_of_subset _ <| dropN_fvars_subset n (Nat.le_of_succ_le_succ h)
+
 theorem MLCtx.noBV (c : MLCtx) : c.vlctx.NoBV := by
   induction c <;> trivial
 
@@ -368,11 +375,11 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
   have := wf'.ngen_wf; simp [VContext.withMLC] at this; exact this.2
 
 @[simp] def MLCtx.mkForall (c : MLCtx) (n) (hn : n ≤ c.length) (e : Expr) : Expr :=
-  match n, c, hn, e with
-  | 0, _, _, e => e
-  | n+1, .vlam x name ty _ bi c, h, e =>
+  match n, c, hn with
+  | 0, _, _ => e
+  | n+1, .vlam x name ty _ bi c, h =>
     c.mkForall n (Nat.le_of_succ_le_succ h) (.forallE name ty (.abstract1 x e) bi)
-  | n+1, .vlet x name ty val _ _ c, h, e =>
+  | n+1, .vlet x name ty val _ _ c, h =>
     c.mkForall n (Nat.le_of_succ_le_succ h) <|
       let e' := Expr.abstract1 x e
       if e'.hasLooseBVar' 0 then
@@ -380,6 +387,11 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
       else
         e'.lowerLooseBVars' 1 1
 termination_by structural n
+
+def AllAbove (Δ : VLCtx) (P : FVarId → Prop) (fv : FVarId) : Prop := fv ∈ Δ.fvars → P fv
+
+theorem AllAbove.wf (H : Δ.FVWF) : IsFVarUpSet (AllAbove Δ P) Δ ↔ IsFVarUpSet P Δ :=
+  IsFVarUpSet.congr H fun _ h => by simp [h, AllAbove]
 
 @[simp] def MLCtx.mkForall' (c : MLCtx) (n) (hn : n ≤ c.length) (e : VExpr) : VExpr :=
   match n, c, hn, e with
@@ -811,11 +823,14 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
     (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
     (he₀ : e₀ = m.mkLambda n hn ei)
     (hei : e.instantiateList ((m.fvarRevList n hn).map .fvar) = ei)
+    (hbelow : ∀ P, IsFVarUpSet P c.vlctx → FVarsIn P e₀ →
+      IsFVarUpSet (AllAbove c.vlctx P) m.vlctx ∧ FVarsIn (AllAbove c.vlctx P) ei ∧
+      ∀ ty, FVarsIn (AllAbove c.vlctx P) ty → FVarsIn (AllAbove c.vlctx P) (m.mkForall n hn ty))
     (hr1 : e.FVarsIn s.ngen.Reserves)
     (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
     (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
     (inferLambda.loop inferOnly arr e).WF (c.withMLC m) s fun ty _ =>
-      ∃ e', c.TrExprS e₀ e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' := by
+      ∃ e' ty', c.TrTyping e₀ ty e' ty' := by
   unfold inferLambda.loop
   generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
   simp [harr, -bind_pure_comp]; split
@@ -838,11 +853,17 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
       have h6' := wf.find?_eq_none h6
       have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
       refine inferLambda.loop.WF (Nat.succ_le_succ hn) (by simp [hdrop])
-        (by simp [← eqfvs, harr]) ?_ (by simp; rfl) (le₂.reserves hr1).2 ?_ ?_
+        (by simp [← eqfvs, harr]) ?_ (by simp; rfl) ?_ (le₂.reserves hr1).2 ?_ ?_
       · rw [he₀, eqfvs, ← eq]; simp; congr 2
         refine (FVarsIn.abstract_instantiate1 ((hr1.2.instantiateList ?_ _).mono ?_)).symm
         · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
         · rintro _ h rfl; exact h6 <| le₁.reservesV h
+      · intro P hP he
+        have ⟨h1, h2, h3⟩ := hbelow _ hP he
+        refine ⟨⟨h1, fun _ => (fvarsIn_iff.1 h2.1).1⟩, ?_, fun ty hty => h3 _ ⟨h2.1, hty.abstract1⟩⟩
+        rw [eqfvs, ← eq]
+        refine h2.2.instantiate1 fun h => ?_
+        exact h6.elim (wf.ngen_wf _ (m.dropN_fvars_subset n hn (hdrop ▸ h)))
       · simp [or_imp, forall_and]
         exact ⟨res, fun _ h => le₂.reservesV (hr2 _ h)⟩
       · intro h; let ⟨_, hbody⟩ := hbody h
@@ -862,25 +883,30 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
       have .lam (ty' := dom') (body' := body') domty hdom hbody := h1
       exact main .rfl domty hdom _ hbody
   · subst ei
-    refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', _, h1, h2, h3⟩ => ?_
+    refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', hb, h1, h2, h3⟩ => ?_
     · apply hr1.instantiateList; simp [← eqfvs]
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
     refine .stateWF fun wf => .getLCtx <| .pure ?_
-    have ⟨_, h2, e2⟩ := h2.trExpr c.venv_wf.ordered wf.trctx.wf
+    have ⟨_, h2', e2⟩ := h2.trExpr c.venv_wf.ordered wf.trctx.wf
       |>.cheapBetaReduce c.venv_wf wf.trctx.wf m.noBV
     have h3 := h3.defeqU_r c.venv_wf mwf.1.tr.wf.toCtx e2.symm
-    let ⟨h1', h2'⟩ := mwf.1.mkLambda_trS c.venv_wf h1 h3 n hn
-    have h3' := (mwf.1.mkForall_trS c.venv_wf h2 (h3.isType c.venv_wf mwf.1.tr.wf.toCtx) n hn).1
-    simp [hdrop] at h1' h2' h3'
-    exact ⟨_, he₀ ▸ h1', _, mwf.1.mkForall_eq _ _ (eqfvs ▸ harr) ▸ h3', h2'⟩
+    let ⟨h1', h2''⟩ := mwf.1.mkLambda_trS c.venv_wf h1 h3 n hn
+    have h3' := (mwf.1.mkForall_trS c.venv_wf h2' (h3.isType c.venv_wf mwf.1.tr.wf.toCtx) n hn).1
+    simp [hdrop] at h1' h2'' h3'
+    refine mwf.1.mkForall_eq _ _ (eqfvs ▸ harr) ▸
+      ⟨_, _, fun P hP he => ?_, he₀ ▸ h1', h3', h2''⟩
+    have ⟨c1, c2, c3⟩ := hbelow _ hP he
+    have := c3 _ <| FVarsBelow.cheapBetaReduce (m.noBV ▸ h2.closed) _ c1 <| hb _ c1 c2
+    exact this.mp (fun _ => id) h3'.fvarsIn
 
 theorem inferLambda.WF
     (h1 : e.FVarsIn s.ngen.Reserves)
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
-    (inferLambda e inferOnly).WF c s fun ty _ => ∃ e',
-      c.TrExprS e e' ∧ ∃ ty', c.TrExprS ty ty' ∧ c.HasType e' ty' :=
-  .stateWF fun wf =>
-  (c.withMLC_self ▸ inferLambda.loop.WF (Nat.zero_le _) rfl rfl rfl rfl h1 wf.ngen_wf) hinf
+    (inferLambda e inferOnly).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
+  refine .stateWF fun wf => ?_
+  refine (c.withMLC_self ▸
+    inferLambda.loop.WF (Nat.zero_le _) rfl rfl rfl rfl ?_ h1 wf.ngen_wf) hinf
+  exact fun P hP he => ⟨(AllAbove.wf wf.trctx.wf.fvwf).2 hP, he.mono fun _ h _ => h, fun _ => id⟩
 
 theorem inferForall.loop.WF {c : VContext} {e₀ : Expr}
     {m} [mwf : c.MLCWF m] {n} (hn : n ≤ m.length)
@@ -1052,6 +1078,9 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
     (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
     (he₀ : e₀ = m.mkLet n hn nds hnds ei)
     (hei : e.instantiateList ((m.fvarRevList n hn).map .fvar) = ei)
+    (hbelow : ∀ P, IsFVarUpSet P c.vlctx → FVarsIn P e₀ →
+      IsFVarUpSet (AllAbove c.vlctx P) m.vlctx ∧ FVarsIn (AllAbove c.vlctx P) ei ∧
+      ∀ ty, FVarsIn (AllAbove c.vlctx P) ty → FVarsIn (AllAbove c.vlctx P) (m.mkForall n hn ty))
     (hr1 : e.FVarsIn s.ngen.Reserves)
     (hr2 : ∀ v ∈ m.vlctx.fvars, s.ngen.Reserves v)
     (hinf : inferOnly = true → ∃ e', (c.withMLC m).TrExprS ei e') :
@@ -1081,11 +1110,23 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
       have eq := @Expr.instantiateList_instantiate1_comm body fvs (.fvar a) (by trivial)
       refine inferLet.loop.WF (Nat.succ_le_succ hn) (some nd :: nds)
         (by simp [hnds]) (by simp [hdrop]) (by simp [← eqfvs, harr])
-        ?_ (by simp; rfl) (le₂.reserves hr1).2.2 ?_ ?_
+        ?_ (by simp; rfl) ?_ (le₂.reserves hr1).2.2 ?_ ?_
       · rw [he₀, eqfvs, ← eq]; simp; congr 2
         refine (FVarsIn.abstract_instantiate1 ((hr1.2.2.instantiateList ?_ _).mono ?_)).symm
         · simp [← eqfvs, FVarsIn]; exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
         · rintro _ h rfl; exact h6 <| le₁.reservesV h
+      · intro P hP he
+        have ⟨h1, h2, h3⟩ := hbelow _ hP he
+        refine ⟨⟨h1, fun _ => ?_⟩, ?_, fun ty hty => h3 _ ?_⟩
+        · simp [or_imp, forall_and]
+          exact ⟨(fvarsIn_iff.1 h2.1).1, (fvarsIn_iff.1 h2.2.1).1⟩
+        · rw [eqfvs, ← eq]
+          refine h2.2.2.instantiate1 fun h => ?_
+          exact h6.elim (wf.ngen_wf _ (m.dropN_fvars_subset n hn (hdrop ▸ h)))
+        · simp; split <;> rename_i h
+          · exact ⟨h2.1, h2.2.1, hty.abstract1⟩
+          · rw [Expr.lowerLooseBVars_eq_instantiate (v := .sort .zero) (by simpa using h)]
+            exact hty.abstract1.instantiate1 ⟨⟩
       · simp [or_imp, forall_and]
         exact ⟨res, fun _ h => le₂.reservesV (hr2 _ h)⟩
       · intro h; let ⟨_, hbody⟩ := hbody h
@@ -1111,7 +1152,7 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
     · simp_all; let ⟨_, h1⟩ := hinf
       have .letE (ty' := dom') (body' := body') valty hdom hval hbody := h1
       exact main .rfl hdom hval valty _ hbody
-  · subst ei; refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', _, h1, h2, h3⟩ => ?_
+  · subst ei; refine (inferType.WF' ?_ hinf).bind fun ty _ _ ⟨e', ty', hb, h1, h2, h3⟩ => ?_
     · apply hr1.instantiateList; simp [← eqfvs]
       exact fun _ h => hr2 _ (m.fvarRevList_prefix.subset h)
     refine .stateWF fun wf => .getLCtx <| .pure ?_
@@ -1121,17 +1162,22 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
     let ⟨h1', h2'⟩ := mwf.1.mkLet_trS c.venv_wf h1 h3 n hn nds hnds
     have h3' := (mwf.1.mkForall_trS c.venv_wf hty (h3.isType c.venv_wf mwf.1.tr.wf.toCtx) n hn).1
     simp [hdrop] at h1' h2' h3'
-    rw [← mwf.1.mkForall_eq _ _ (eqfvs ▸ harr)] at h3'
-    exact ⟨_, _, sorry, he₀ ▸ h1', h3', h2'⟩
+    erw [mwf.1.mkForall_eq _ _ (eqfvs ▸ harr)]
+    refine ⟨_, _, fun P hP he => ?_, he₀ ▸ h1', h3', h2'⟩
+    have ⟨c1, c2, c3⟩ := hbelow _ hP he
+    have := c3 _ <| FVarsBelow.cheapBetaReduce (m.noBV ▸ h2.closed) _ c1 <| hb _ c1 c2
+    refine this.mp (fun _ => id) h3'.fvarsIn
 termination_by e
 
 theorem inferLet.WF
     (h1 : e.FVarsIn s.ngen.Reserves)
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
     (inferLet e inferOnly).WF c s fun ty _ =>
-      ∃ e' ty', c.TrTyping e ty e' ty' :=
-  .stateWF fun wf =>
-  (c.withMLC_self ▸ inferLet.loop.WF (Nat.zero_le _) [] rfl rfl rfl rfl rfl h1 wf.ngen_wf) hinf
+      ∃ e' ty', c.TrTyping e ty e' ty' := by
+  refine .stateWF fun wf => ?_
+  refine (c.withMLC_self ▸
+    inferLet.loop.WF (Nat.zero_le _) [] rfl rfl rfl rfl rfl ?_ h1 wf.ngen_wf) hinf
+  exact fun P hP he => ⟨(AllAbove.wf wf.trctx.wf.fvwf).2 hP, he.mono fun _ h _ => h, fun _ => id⟩
 
 theorem isProp.WF
     (he : c.TrExprS e e') : (isProp e).WF c s fun b _ => b → c.HasType e' (.sort .zero) := by

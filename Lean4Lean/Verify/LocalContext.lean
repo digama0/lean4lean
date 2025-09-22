@@ -282,16 +282,16 @@ theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
       cases h2 with
       | vlam h2 h3 =>
         constructor
-        · intro P hP he; exact fvarsIn_iff.2 ⟨(hP.1 he).1, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
+        · intro P hP he; exact fvarsIn_iff.2 ⟨hP.2 he, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
         · exact h2.weakFV henv (.skip_fvar _ _ .refl) this
       | vlet h2 h3 =>
         constructor
-        · intro P hP he; have := hP.1 he; simp [LocalDecl.deps, or_imp, forall_and] at this
-          exact fvarsIn_iff.2 ⟨this.1.1, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
+        · intro P hP he; have := hP.2 he; simp [LocalDecl.deps, or_imp, forall_and] at this
+          exact fvarsIn_iff.2 ⟨this.1, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
         · simpa [VLocalDecl.depth] using h2.weakFV henv (.skip_fvar _ _ .refl) this
     · simp at nd; rw [if_neg (by simpa using Ne.symm (nd.1 _ hm))]; simp
       have ⟨_, _, h1, h2, h3⟩ := h1.find?_of_mem henv nd.2 hm
-      refine ⟨_, _, ⟨_, _, h1, rfl, rfl⟩, fun _ h => h2 _ h.2, ?_⟩
+      refine ⟨_, _, ⟨_, _, h1, rfl, rfl⟩, fun _ h => h2 _ h.1, ?_⟩
       simpa using h3.weakFV henv (.skip_fvar _ _ .refl) this
 
 theorem TrLCtx.find?_of_mem (henv : env.WF) (H : TrLCtx env Us lctx Δ)

@@ -65,14 +65,14 @@ theorem ConditionallyHasType.weakN_inv
   have ee := h2.uniq henv (.refl henv hΔ) <| he.weakFV henv W hΔ
   have := hΔ.2.1 _ _ rfl
   have : IsFVarUpSet (· ∈ VLCtx.fvars Δ) ((some fv, d) :: Δ) :=
-    ⟨(hΔ.2.1 _ _ rfl).1.elim, .fvars hΔ.1.fvwf⟩
+    ⟨.fvars hΔ.1.fvwf, (hΔ.2.1 _ _ rfl).1.elim⟩
   have ⟨_, hA⟩ := TrExprS.weakFV_inv henv W (.refl henv hΔ) h3 c2 <| h1 _ this H4
   have AA := h3.uniq henv (.refl henv hΔ) <| hA.weakFV henv W hΔ
   have h4 := h4.defeqU_r henv hΔ.toCtx AA |>.defeqU_l henv hΔ.toCtx ee
   have h4 := (HasType.weakN_iff henv hΔ.toCtx W.toCtx).1 h4
   refine ⟨_, _, fun P hP he' => ?_, he, hA, h4⟩
   exact h1 _
-    ⟨fun h => (hΔ.2.1 _ _ rfl).1.elim h.2, (IsFVarUpSet.and_fvars hΔ.1.fvwf).1 hP⟩
+    ⟨(IsFVarUpSet.and_fvars hΔ.1.fvwf).1 hP, fun h => (hΔ.2.1 _ _ rfl).1.elim h.2⟩
     (he'.mp (fun _ => .intro) he.fvarsIn) |>.mono fun _ => (·.1)
 
 theorem ConditionallyHasType.fresh
@@ -84,7 +84,7 @@ theorem ConditionallyHasType.fresh
   have ⟨_, _, h1, h2, h3, h4⟩ := H (H4.mp ?_ f1)
   · have W : VLCtx.FVLift Δ ((some (⟨ngen.curr⟩, deps), d) :: Δ) 0 (0 + d.depth) 0 :=
       .skip_fvar _ _ .refl
-    exact ⟨_, _, fun P hP => h1 _ hP.2,
+    exact ⟨_, _, fun P hP => h1 _ hP.1,
       h2.weakFV henv W hΔ, h3.weakFV henv W hΔ, h4.weakN henv W.toCtx⟩
   · intro _ h1 h2; simp at h1; rcases h1 with rfl | h1
     · cases Nat.lt_irrefl _ (h2 _ rfl)

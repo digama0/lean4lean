@@ -1393,14 +1393,6 @@ theorem TrExpr.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H : 
     TrExpr env Us Δ (e.abstract1 v₀ dk) e' :=
   let ⟨_, s, h⟩ := H; ⟨_, s.abstract W, W.toCtx ▸ h⟩
 
-def VLocalDecl.OnVars (P : Nat → Prop) : VLocalDecl → Prop
-  | .vlam A => A.OnVars P
-  | .vlet A e => A.OnVars P ∧ e.OnVars P
-
-def IsUpSet (P : Nat → Prop) : List VExpr → Prop
-  | [] => True
-  | A :: Γ => (P 0 → A.OnVars (fun k => P (k + 1))) ∧ IsUpSet (fun k => P (k + 1)) Γ
-
 def VLocalDecl.ClosedN : VLocalDecl → (k : Nat := 0) → Prop
   | .vlam A, k => A.ClosedN k
   | .vlet A e, k => A.ClosedN k ∧ e.ClosedN k
@@ -1413,21 +1405,18 @@ def VLCtx.Closed : VLCtx → Prop
 def IsFVarUpSet (P : FVarId → Prop) : VLCtx → Prop
   | [] => True
   | (none, _) :: Δ => IsFVarUpSet P Δ
-  | (some (fv, deps), d) :: (Δ : VLCtx) =>
-    (P fv → (∀ fv' ∈ deps, P fv') ∧
-      d.OnVars fun i => ∀ fv, Δ.vlamName i = some (some fv) → P fv.1) ∧
-    IsFVarUpSet P Δ
+  | (some (fv, deps), _) :: (Δ : VLCtx) =>
+    IsFVarUpSet P Δ ∧
+    (P fv → ∀ fv' ∈ deps, P fv')
 
 theorem IsFVarUpSet.congr : ∀ {Δ}, VLCtx.FVWF Δ →
     (H : ∀ fv ∈ VLCtx.fvars Δ, P fv ↔ Q fv) → IsFVarUpSet P Δ ↔ IsFVarUpSet Q Δ
   | [], _, _ => .rfl
   | (none, _) :: Δ, ⟨h1, _⟩, H => congr (Δ := Δ) h1 H
   | (some (fv, deps), d) :: (Δ : VLCtx), ⟨h1, h2⟩, H => by
-    refine and_congr (imp_congr (H _ (.head _)) ?_) (congr h1 fun fv h => H _ (.tail _ h))
-    refine and_congr (forall_congr' fun fv => imp_congr_right fun h => ?_) ?_
-    · exact H _ (by simp [(h2 _ _ rfl).2 h])
-    · apply iff_of_eq; congr; funext i; refine forall_congr fun fv => propext ?_
-      exact imp_congr_right fun ha => H _ (.tail _ (VLCtx.vlamName_mem_fvars ha))
+    refine and_congr (congr h1 fun fv h => H _ (.tail _ h)) (imp_congr (H _ (.head _)) ?_)
+    refine forall_congr' fun fv => imp_congr_right fun h => ?_
+    exact H _ (by simp [(h2 _ _ rfl).2 h])
 
 theorem IsFVarUpSet.and_fvars (H : VLCtx.FVWF Δ) :
     IsFVarUpSet P Δ ↔ IsFVarUpSet (fun fv => P fv ∧ fv ∈ Δ.fvars) Δ :=
@@ -1436,11 +1425,15 @@ theorem IsFVarUpSet.and_fvars (H : VLCtx.FVWF Δ) :
 theorem IsFVarUpSet.trivial : ∀ {Δ}, IsFVarUpSet (fun _ => True) Δ
   | [] => ⟨⟩
   | (none, _) :: Δ => trivial (Δ := Δ)
-  | (some _, d) :: Δ =>
-    ⟨fun _ => by cases d <;> simp [VLocalDecl.OnVars, VExpr.OnVars], trivial⟩
+  | (some _, _) :: _ => ⟨trivial, fun _ _ _ => ⟨⟩⟩
 
 theorem IsFVarUpSet.fvars (H : VLCtx.FVWF Δ) : IsFVarUpSet (· ∈ Δ.fvars) Δ :=
   (IsFVarUpSet.congr H fun _ => iff_true_intro).2 trivial
+
+def AllAbove (Δ : VLCtx) (P : FVarId → Prop) (fv : FVarId) : Prop := fv ∈ Δ.fvars → P fv
+
+theorem AllAbove.wf (H : Δ.FVWF) : IsFVarUpSet (AllAbove Δ P) Δ ↔ IsFVarUpSet P Δ :=
+  IsFVarUpSet.congr H fun _ h => by simp [h, AllAbove]
 
 def FVarsBelow (Δ e e') := ∀ P, IsFVarUpSet P Δ → FVarsIn P e → FVarsIn P e'
 
@@ -1485,6 +1478,14 @@ theorem BetaReduce.appList (H : BetaReduce f f') :
   induction es generalizing f f' with
   | nil => exact H
   | cons _ _ ih => exact ih (.app H)
+
+theorem FVarsBelow.betaReduce (H : BetaReduce e e') : FVarsBelow Δ e e' := by
+  intro P hP he
+  induction H with
+  | refl => exact he
+  | trans _ _ ih1 ih2 => exact ih2 (ih1 he)
+  | app _ ih => exact ⟨ih he.1, he.2⟩
+  | beta => exact he.1.2.instantiate1 he.2
 
 theorem BetaReduce.cheapBetaReduce (hc : e.Closed) : BetaReduce e e.cheapBetaReduce := by
   simp [Expr.cheapBetaReduce]
@@ -1566,6 +1567,9 @@ theorem TrExpr.beta (H : TrExpr env Us Δ e e')
     have be' := (tb.uniq henv hΓΓ tb').of_l henv hΓΓ.wf hb
     have hi := be'.instDF henv hΓ (.defeq Ae ha)
     exact ⟨_, .inst henv ha tb' ta, _, beta.trans_l henv hΓ hi |>.symm.trans_l henv hΓ df⟩
+
+theorem FVarsBelow.cheapBetaReduce (he : e.Closed) : FVarsBelow Δ e e.cheapBetaReduce :=
+  .betaReduce (.cheapBetaReduce he)
 
 theorem TrExpr.cheapBetaReduce (H : TrExpr env Us Δ e e')
     (henv : VEnv.WF env) (hΓ : VLCtx.WF env Us.length Δ)
