@@ -243,6 +243,12 @@ structure Methods.WF (m : Methods) where
 def RecM.WF (c : VContext) (s : VState) (x : RecM α) (Q : α → VState → Prop) : Prop :=
   ∀ m, m.WF → M.WF c s (x m) Q
 
+theorem M.WF.liftExcept {c : VContext} {s : VState} {x : Except Exception α} {Q} (h : x.WF Q) :
+    M.WF c s (liftM x) fun a _ => Q a := by
+  rintro wf _ _ eq
+  cases x <;> cases eq
+  exact ⟨s, rfl, .rfl, wf, h _ rfl⟩
+
 theorem M.WF.lift {c : VContext} {s : VState} {x : M α} {Q} (h : x.WF c s Q) :
     RecM.WF c s x Q := fun _ _ => h
 
@@ -276,16 +282,14 @@ theorem get.WF {c : VContext} {s : VState} :
   rintro wf _ _ ⟨⟩; exact ⟨_, rfl, .rfl, wf, rfl, rfl⟩
 
 theorem RecM.WF.get {c : VContext} {s : VState} {f : State → RecM α} {Q}
-    (H : WF c s (f s.toState) Q) : (get >>= f).WF c s Q :=
-  get.WF.lift.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
+    (H : WF c s (f s.toState) Q) : (get >>= f).WF c s Q := H
 
 theorem getEnv.WF {c : VContext} {s : VState} :
     M.WF c s getEnv fun a s' => c.env = a ∧ s = s' := by
   rintro wf _ _ ⟨⟩; exact ⟨_, rfl, .rfl, wf, rfl, rfl⟩
 
 theorem RecM.WF.getEnv {c : VContext} {s : VState} {f : Environment → RecM α} {Q}
-    (H : WF c s (f c.env) Q) : (liftM getEnv >>= f).WF c s Q :=
-  getEnv.WF.lift.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
+    (H : WF c s (f c.env) Q) : (liftM getEnv >>= f).WF c s Q := H
 
 theorem getLCtx.WF {c : VContext} {s : VState} :
     M.WF c s getLCtx fun a s' => c.lctx' = a ∧ s = s' := by
@@ -295,17 +299,18 @@ theorem RecM.WF.getLCtx {c : VContext} {s : VState} {f : LocalContext → RecM �
     (H : WF c s (f c.lctx') Q) : (getLCtx >>= f).WF c s Q :=
   getLCtx.WF.lift.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
 
+theorem RecM.WF.readThe {c : VContext} {s : VState} {f : Context → RecM α} {Q}
+    (H : WF c s (f c.toContext) Q) : (readThe Context >>= f).WF c s Q := H
+
 theorem getNGen.WF {c : VContext} {s : VState} :
     M.WF c s getNGen fun a s' => s.ngen = a ∧ s = s' := by
   rintro wf _ _ ⟨⟩; exact ⟨_, rfl, .rfl, wf, rfl, rfl⟩
 
 theorem M.WF.getNGen {c : VContext} {s : VState} {f : NameGenerator → M α} {Q}
-    (H : WF c s (f s.ngen) Q) : (getNGen >>= f).WF c s Q :=
-  getNGen.WF.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
+    (H : WF c s (f s.ngen) Q) : (getNGen >>= f).WF c s Q := H
 
 theorem RecM.WF.getNGen {c : VContext} {s : VState} {f : NameGenerator → RecM α} {Q}
-    (H : WF c s (f s.ngen) Q) : (getNGen >>= f).WF c s Q :=
-  getNGen.WF.lift.bind <| by rintro _ _ _ ⟨rfl, rfl⟩; exact H
+    (H : WF c s (f s.ngen) Q) : (getNGen >>= f).WF c s Q := H
 
 theorem RecM.WF.stateWF {c : VContext} {s : VState} {x : RecM α} {Q}
     (H : s.WF c → WF c s x Q) : WF c s x Q :=
@@ -972,7 +977,7 @@ theorem inferForall.loop.WF {c : VContext} {e₀ : Expr}
     let ⟨h1', h2'⟩ := mwf.1.mkForall_trS c.venv_wf h1 ⟨_, h3⟩ n hn
     have ⟨_, h3', h4'⟩ := mkForall_hasType hus hΔ h4 h3 n hn (hus.length_eq.trans hlen)
     simp [hdrop] at h1' h2' h4'
-    refine .pure ⟨_, _, fun _ _ _ => ⟨⟩, he₀ ▸ h1', .sort h3', h4'⟩
+    refine have h := .sort h3'; .pure ⟨_, _, fun _ _ _ => h.fvarsIn, he₀ ▸ h1', h, h4'⟩
 
 theorem inferForall.WF
     (hr : e.FVarsIn (· ∈ c.vlctx.fvars))
@@ -1129,7 +1134,7 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
         · simp; split <;> rename_i h
           · exact ⟨h2.1, h2.2.1, hty.abstract1⟩
           · rw [Expr.lowerLooseBVars_eq_instantiate (v := .sort .zero) (by simpa using h)]
-            exact hty.abstract1.instantiate1 ⟨⟩
+            exact hty.abstract1.instantiate1 rfl
       · intro h; let ⟨_, hbody⟩ := hbody h
         exact eqfvs.symm ▸ eq ▸ ⟨_, hbody.inst_fvar c.venv_wf.ordered mwf'.1.tr.wf⟩
     split
@@ -1191,19 +1196,26 @@ theorem inferProj.WF
     (inferProj st i e ety).WF c s fun ty _ =>
       ∃ ty', c.TrTyping (.proj st i e) ty e' ty' := sorry
 
+theorem infer_literal {c : VContext} : c.TrTyping (.lit l) l.type sorry sorry := by
+  sorry
+
+theorem infer_sort {c : VContext} (H : VLevel.ofLevel c.lparams u = some u') :
+    c.TrTyping (.sort u) (.sort u.succ) (.sort u') (.sort u'.succ) := by
+  sorry
+
 theorem inferType'.WF
     (h1 : e.FVarsIn (· ∈ c.vlctx.fvars))
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
     (inferType' e inferOnly).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
-  unfold inferType'; lift_lets; intro F; simp
-  split <;> [exact .throw; refine .get ?_]
+  unfold inferType'; lift_lets; intro F F1 F2 --; simp
+  split <;> [exact .throw; refine .get <| .get ?_]
   split
   · rename_i h; refine .stateWF fun wf => .pure ?_
     generalize hic : cond .. = ic at h
     have : ic.WF c s := by
       subst ic; cases inferOnly <;> [exact wf.inferTypeC_wf; exact wf.inferTypeI_wf]
     exact (this h).2.2.2.2 h1
-  have hF {ty e' ty'} (H : c.TrTyping e ty e' ty') :
+  have hF {ty e' ty' s} (H : c.TrTyping e ty e' ty') :
       (F ty).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
     rintro _ mwf wf a s' ⟨⟩
     refine let s' := _; ⟨s', rfl, ?_⟩
@@ -1217,5 +1229,46 @@ theorem inferType'.WF
     revert s'; cases inferOnly <;> (dsimp -zeta; intro s'; refine ⟨.rfl, ?_, _, _, H⟩)
     · refine { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
     · refine { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
-  split
-  stop sorry
+  unfold F1; refine .get ?_; split
+  · exact hF infer_literal
+  · refine (inferType'.WF (by exact h1) ?_).bind fun _ _ _ ⟨_, _, hb, h1, h⟩ => ?_
+    · exact fun h => let ⟨_, .mdata h⟩ := hinf h; ⟨_, h⟩
+    exact hF ⟨hb, .mdata h1, h⟩
+  · refine (inferType'.WF (by exact h1) ?_).bind fun _ _ _ ⟨_, _, hb, h1, h2, h3⟩ => ?_
+    · exact fun h => let ⟨_, .proj h ..⟩ := hinf h; ⟨_, h⟩
+    exact (inferProj.WF h1 h2 h3).bind fun ty _ _ ⟨ty', h⟩ => hF h
+  · exact .readThe <| (M.WF.liftExcept inferFVar.WF).lift.bind fun _ _ _ ⟨_, _, h⟩ => hF h
+  · exact .throw
+  · rename_i h _; simp [Expr.isBVar] at h
+  · split <;> rename_i h
+    · refine .readThe <| (M.WF.liftExcept (checkLevel.WF h1)).lift.bind fun _ _ _ ⟨_, h⟩ => ?_
+      exact hF (infer_sort h)
+    · let ⟨_, .sort h⟩ := hinf (by simpa using h)
+      exact hF (infer_sort h)
+  · refine .readThe <|
+      (M.WF.liftExcept (inferConstant.WF h1 hinf)).lift.bind fun _ _ _ ⟨_, _, h⟩ => hF h
+  · exact (inferLambda.WF h1 hinf).bind fun _ _ _ ⟨_, _, h⟩ => hF h
+  · exact (inferForall.WF h1 hinf).bind fun _ _ _ ⟨_, _, h⟩ => hF h
+  · split <;> rename_i h
+    · let ⟨_, h⟩ := hinf h; exact (inferApp.WF h).bind fun _ _ _ ⟨_, h⟩ => hF h
+    refine (inferType'.WF h1.1 ?_).bind fun _ _ _ ⟨_, _, hfb, hf1, hf2, hf3⟩ => ?_
+    · exact fun h => let ⟨_, .app _ _ h _⟩ := hinf h; ⟨_, h⟩
+    refine .stateWF fun wf => ?_
+    refine (ensureForallCore.WF (hf2.trExpr c.venv_wf wf.trctx.wf)).bind fun _ _ _ ⟨h1, h2⟩ => ?_
+    obtain ⟨_, _, _, _, rfl⟩ := h1
+    let ⟨_, .forallE hl1 hl2 hl3 hl4, hl5⟩ := h2.1
+    extract_lets _ G1
+    refine (inferType'.WF h1.2 ?_).bind fun _ _ _ ⟨_, _, hab, ha1, ha2, ha3⟩ => ?_
+    · exact fun h => let ⟨_, .app _ _ _ h⟩ := hinf h; ⟨_, h⟩
+    extract_lets G2
+    generalize hP : (fun ty:Expr => _) = P
+    suffices ∀ {s b ty ty'} (H : b = true → c.IsDefEqU ty ty'), RecM.WF c s (G2 b) P by
+      split
+      · sorry
+      · exact (isDefEq.WF (hl3.trExpr c.venv_wf wf.trctx.wf)
+          (ha2.trExpr c.venv_wf wf.trctx.wf)).bind fun b _ _ => this
+    subst G2; dsimp; rintro s ⟨⟩ ty ty' H
+    · exact .getEnv <| .getLCtx .throw
+    simp [G1, Expr.bindingBody!]
+    sorry
+  · exact (inferLet.WF h1 hinf).bind fun _ _ _ ⟨_, _, h⟩ => hF h

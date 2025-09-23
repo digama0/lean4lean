@@ -42,7 +42,7 @@ theorem Closed.natLitToConstructor : Closed (.natLitToConstructor n) k := by
 
 theorem FVarsIn.strLitToConstructor : FVarsIn P (.strLitToConstructor s) := by
   simp [FVarsIn, String.foldr_eq, Expr.strLitToConstructor]
-  induction s.data <;> simp [*, FVarsIn]
+  induction s.data <;> simp [*, FVarsIn, Level.hasMVar']
 
 theorem Closed.strLitToConstructor : Closed (.strLitToConstructor s) k := by
   simp [Closed, String.foldr_eq, Expr.strLitToConstructor]
@@ -639,10 +639,21 @@ theorem TrExprS.closed (H : TrExprS env Us Δ e e') : Closed e Δ.bvars := by
   | letE _ _ _ _ ih1 ih2 ih3 => exact ⟨ih1, ih2, ih3⟩
   | proj _ _ ih => exact ih
 
+theorem ofLevel_hasMVar (h : VLevel.ofLevel ls l = some l') : l.hasMVar' = false := by
+  induction l generalizing l' with simp [VLevel.ofLevel, bind, Level.hasMVar'] at h ⊢
+  | succ _ ih => obtain ⟨l', h, ⟨⟩⟩ := h; exact ih h
+  | max _ _ ih1 ih2 | imax _ _ ih1 ih2 => obtain ⟨_, h1, _, h2, ⟨⟩⟩ := h; exact ⟨ih1 h1, ih2 h2⟩
+
 theorem TrExprS.fvarsIn (H : TrExprS env Us Δ e e') : FVarsIn (· ∈ Δ.fvars) e := by
   induction H with
   | fvar h1 => exact VLCtx.find?_eq_some.1 ⟨_, h1⟩
-  | bvar | sort | const | lit | mdata => trivial
+  | sort h => exact ofLevel_hasMVar h
+  | const _ h =>
+    rw [List.mapM_eq_some] at h
+    intro _ hl
+    have ⟨_, _, h⟩ := h.forall_exists_l _ hl
+    exact ofLevel_hasMVar h
+  | bvar | lit | mdata => trivial
   | app _ _ _ _ ih1 ih2
   | lam _ _ _ ih1 ih2
   | forallE _ _ _ _ ih1 ih2 => exact ⟨ih1, ih2⟩

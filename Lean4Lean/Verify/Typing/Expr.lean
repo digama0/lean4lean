@@ -1,6 +1,7 @@
 import Lean4Lean.Theory.Typing.Basic
 import Lean4Lean.Verify.NameGenerator
 import Lean4Lean.Verify.VLCtx
+import Lean4Lean.Verify.Axioms
 
 namespace Lean4Lean
 open Lean
@@ -31,7 +32,9 @@ variable (fvars : FVarId → Prop) in
 def FVarsIn : Expr → Prop
   | .bvar _ => True
   | .fvar fv => fvars fv
-  | .sort .. | .const .. | .lit .. => True
+  | .sort u => u.hasMVar' = false
+  | .const _ us => ∀ u ∈ us, u.hasMVar' = false
+  | .lit .. => True
   | .app f a => FVarsIn f ∧ FVarsIn a
   | .lam _ d b _
   | .forallE _ d b _ => FVarsIn d ∧ FVarsIn b
