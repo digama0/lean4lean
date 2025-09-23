@@ -1197,11 +1197,12 @@ theorem inferProj.WF
       ∃ ty', c.TrTyping (.proj st i e) ty e' ty' := sorry
 
 theorem infer_literal {c : VContext} : c.TrTyping (.lit l) l.type sorry sorry := by
-  sorry
+  refine ⟨fun _ _ _ => .litType, .lit sorry, sorry⟩
 
 theorem infer_sort {c : VContext} (H : VLevel.ofLevel c.lparams u = some u') :
     c.TrTyping (.sort u) (.sort u.succ) (.sort u') (.sort u'.succ) := by
-  sorry
+  refine ⟨fun _ _ _ => (?a).fvarsIn, .sort H, ?a, .sort (.of_ofLevel H)⟩
+  exact .sort <| by simpa [VLevel.ofLevel]
 
 theorem inferType'.WF
     (h1 : e.FVarsIn (· ∈ c.vlctx.fvars))
@@ -1215,8 +1216,8 @@ theorem inferType'.WF
     have : ic.WF c s := by
       subst ic; cases inferOnly <;> [exact wf.inferTypeC_wf; exact wf.inferTypeI_wf]
     exact (this h).2.2.2.2 h1
-  have hF {ty e' ty' s} (H : c.TrTyping e ty e' ty') :
-      (F ty).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
+  generalize hP : (fun ty:Expr => _) = P
+  have hF {ty e' ty' s} (H : c.TrTyping e ty e' ty') : (F ty).WF c s P := by
     rintro _ mwf wf a s' ⟨⟩
     refine let s' := _; ⟨s', rfl, ?_⟩
     have hic {ic} (hic : InferCache.WF c s ic) : InferCache.WF c s (ic.insert e ty) := by
@@ -1226,7 +1227,7 @@ theorem inferType'.WF
       refine .mk c.mlctx.noBV (.eqv H eq BEq.rfl) (.eqv eq ?_) ?_
       · exact H.2.1.fvarsIn.mono wf.ngen_wf
       · exact H.2.2.1.fvarsIn.mono wf.ngen_wf
-    revert s'; cases inferOnly <;> (dsimp -zeta; intro s'; refine ⟨.rfl, ?_, _, _, H⟩)
+    subst P; revert s'; cases inferOnly <;> (dsimp -zeta; intro s'; refine ⟨.rfl, ?_, _, _, H⟩)
     · refine { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
     · refine { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
   unfold F1; refine .get ?_; split
@@ -1255,20 +1256,27 @@ theorem inferType'.WF
     · exact fun h => let ⟨_, .app _ _ h _⟩ := hinf h; ⟨_, h⟩
     refine .stateWF fun wf => ?_
     refine (ensureForallCore.WF (hf2.trExpr c.venv_wf wf.trctx.wf)).bind fun _ _ _ ⟨h1, h2⟩ => ?_
-    obtain ⟨_, _, _, _, rfl⟩ := h1
-    let ⟨_, .forallE hl1 hl2 hl3 hl4, hl5⟩ := h2.1
+    obtain ⟨name, dType, body, bi, rfl⟩ := h1
+    let ⟨_, .forallE (ty' := dType') hl1 hl2 hl3 hl4, hl5⟩ := h2.1
     extract_lets _ G1
-    refine (inferType'.WF h1.2 ?_).bind fun _ _ _ ⟨_, _, hab, ha1, ha2, ha3⟩ => ?_
+    refine (inferType'.WF h1.2 ?_).bind fun aType _ _ ⟨_, aType', hab, ha1, ha2, ha3⟩ => ?_
     · exact fun h => let ⟨_, .app _ _ _ h⟩ := hinf h; ⟨_, h⟩
     extract_lets G2
-    generalize hP : (fun ty:Expr => _) = P
-    suffices ∀ {s b ty ty'} (H : b = true → c.IsDefEqU ty ty'), RecM.WF c s (G2 b) P by
+    suffices ∀ {s b} (H : b = true → c.IsDefEqU dType' aType'), RecM.WF c s (G2 b) P by
+      have hl3 := hl3.trExpr c.venv_wf wf.trctx.wf
+      have ha2 := ha2.trExpr c.venv_wf wf.trctx.wf
       split
-      · sorry
-      · exact (isDefEq.WF (hl3.trExpr c.venv_wf wf.trctx.wf)
-          (ha2.trExpr c.venv_wf wf.trctx.wf)).bind fun b _ _ => this
-    subst G2; dsimp; rintro s ⟨⟩ ty ty' H
+      · refine .bind ?_ (Q := fun b _ => b = true → c.IsDefEqU dType' aType') fun b _ _ => this
+        intro _ mwf wf _ _ eq
+        let c' := { c with eagerReduce := true }
+        have ⟨_, h1, h2, h3, h4⟩ := isDefEq.WF (c := c') hl3 ha2 _ mwf { wf with } _ _ eq
+        exact ⟨_, h1, h2, { h3 with }, h4⟩
+      · exact (isDefEq.WF hl3 ha2).bind fun b _ _ => this
+    subst G2; dsimp; rintro s ⟨⟩ H
     · exact .getEnv <| .getLCtx .throw
     simp [G1, Expr.bindingBody!]
-    sorry
+    have hf3 := hf3.defeqU_r c.venv_wf c.mlctx_wf.tr.wf hl5.symm
+    have ha3 := ha3.defeqU_r c.venv_wf c.mlctx_wf.tr.wf (H rfl).symm
+    subst hP; refine hF ⟨?_, .app hf3 ha3 hf1 ha1, hl4.inst c.venv_wf ha3 ha1, .app hf3 ha3⟩
+    exact fun _ hP he => (hfb.trans h2.2 _ hP he.1).2.instantiate1 he.2
   · exact (inferLet.WF h1 hinf).bind fun _ _ _ ⟨_, _, h⟩ => hF h

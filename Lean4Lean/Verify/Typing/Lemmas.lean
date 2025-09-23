@@ -52,9 +52,14 @@ theorem FVarsIn.toConstructor : ∀ {l : Literal}, FVarsIn P l.toConstructor
   | .natVal _ => .natLitToConstructor
   | .strVal _ => .strLitToConstructor
 
+theorem FVarsIn.litType {l : Literal} : FVarsIn P l.type := by
+  cases l <;> simp [FVarsIn, Literal.type]
+
 theorem Closed.toConstructor : ∀ {l : Literal}, Closed l.toConstructor k
   | .natVal _ => .natLitToConstructor
   | .strVal _ => .strLitToConstructor
+
+theorem Closed.litType {l : Literal} : Closed l.type k := by cases l <;> trivial
 
 theorem FVarsIn.fvars_cons :
     FVarsIn (· ∈ VLCtx.fvars Δ) e → FVarsIn (· ∈ VLCtx.fvars ((ofv, d) :: Δ)) e :=
