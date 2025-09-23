@@ -220,14 +220,17 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
 def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
   if e.isBVar then
     throw <| .other
-      s!"type checker does not support loose bound variables, {""
-        }replace them with free variables before invoking it"
-  -- assert! !e.hasLooseBVars
+      s!"type checker does not support loose bound variables, \
+         replace them with free variables before invoking it"
   let state ← get
   if let some r := (cond inferOnly state.inferTypeI state.inferTypeC)[e]? then
     return r
   let r ← match e with
-    | .lit l => pure l.type
+    | .lit l =>
+      let c := l.typeName
+      if !inferOnly then
+        _ ← (← getEnv).get c
+      pure (mkConst c)
     | .mdata _ e => inferType' e inferOnly
     | .proj s idx e => inferProj s idx e (← inferType' e inferOnly)
     | .fvar n => inferFVar (← readThe Context) n
@@ -755,14 +758,13 @@ def etaExpand (e : Expr) : M Expr :=
 
 -- for testing:
 
--- example (P : Unit → Prop) (p : ∀ a, P a) :
---     (let y := Unit; let x : y := (); p x) = p () := by
+-- example : "hi" = sorry := by
 --   run_tac
 --     let env ← Lean.getEnv
 --     let lctx ← getLCtx
 --     let (_, lhs, _) := (← Elab.Tactic.getMainTarget).eq?.get!
 --     logInfo lhs
---     let ty ← inferType lhs
+--     let ty ← show M _ from withReader ({· with env := .empty `h}) (inferType lhs)
 --     logInfo ty
 --     let sort ← inferType ty
 --     logInfo sort

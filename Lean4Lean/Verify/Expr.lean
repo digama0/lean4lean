@@ -8,19 +8,53 @@ import Std.Tactic.BVDecide
 
 namespace Lean
 
-namespace MVarId
+namespace Name
+open Std
 
-protected theorem beq_iff_eq {m n : MVarId} : m == n ↔ m = n := by
-  cases m; cases n; simp! [(· == ·)]; exact Name.beq_iff_eq
+instance : TransCmp Name.quickCmp where
+  eq_swap {a b} := by
+    simp [quickCmp]
+    rw [OrientedOrd.eq_swap]
+    cases compare b.hash a.hash <;> simp
+    induction a generalizing b with obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [quickCmpAux]
+    | str a₁ a₂ ih | num a₁ a₂ ih =>
+      rw [OrientedOrd.eq_swap]
+      cases compare b₂ a₂ <;> simp [ih]
+  isLE_trans {a b c} := by
+    have {α} [Ord α] [TransOrd α] {a₁ b₁ c₁ : α} {a₂ b₂ c₂}
+        (H : (quickCmpAux a₂ b₂).isLE → (quickCmpAux b₂ c₂).isLE → (quickCmpAux a₂ c₂).isLE) :
+        ((compare a₁ b₁).then (quickCmpAux a₂ b₂)).isLE →
+        ((compare b₁ c₁).then (quickCmpAux b₂ c₂)).isLE →
+        ((compare a₁ c₁).then (quickCmpAux a₂ c₂)).isLE := by
+      simp [Ordering.isLE_then_iff_and]
+      intro h1 h2 h3 h4
+      refine ⟨TransCmp.isLE_trans h1 h3, ?_⟩
+      refine h2.elim (fun h2 => .inl <| TransCmp.lt_of_lt_of_isLE h2 h3) fun h2 => ?_
+      refine h4.elim (fun h4 => .inl <| TransCmp.lt_of_isLE_of_lt h1 h4) fun h4 => .inr (H h2 h4)
+    apply this
+    induction a generalizing b c with
+      obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [quickCmpAux] at * <;>
+      obtain _|⟨c₁,c₂⟩|⟨c₁,c₂⟩ := c <;> simp [quickCmpAux] at *
+    | str a₁ a₂ ih | num a₁ a₂ ih => apply this ih
+
+instance : LawfulBEqCmp Name.quickCmp where
+  compare_eq_iff_beq {a b} := by
+    simp; refine ⟨fun h => ?_, fun h => h ▸ ReflCmp.compare_self⟩
+    replace h := (Ordering.then_eq_eq.1 h).2; revert h
+    induction a generalizing b with obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [quickCmpAux]
+    | str a₁ a₂ ih | num a₁ a₂ ih =>
+      refine ?_ ∘ Ordering.then_eq_eq.1
+      simp +contextual; exact fun _ => ih
+
+end Name
+
+instance : LawfulBEq FVarId where
+  eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
+  rfl := BEq.rfl (α := Name)
 
 instance : LawfulBEq MVarId where
-  eq_of_beq := MVarId.beq_iff_eq.1
-  rfl := MVarId.beq_iff_eq.2 rfl
-
-instance : DecidableEq MVarId :=
-  fun a b => if h : a == b then .isTrue (by simp_all) else .isFalse (by simp_all)
-
-end MVarId
+  eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
+  rfl := BEq.rfl (α := Name)
 
 namespace Substring
 
@@ -165,6 +199,9 @@ instance : LawfulBEq Literal where
 
 instance : DecidableEq Literal :=
   fun a b => if h : a == b then .isTrue (by simp_all) else .isFalse (by simp_all)
+
+@[simp] theorem mkConst_typeName {l : Literal} : .const l.typeName [] = l.type := by
+  cases l <;> simp [typeName, type, mkConst]
 
 end Literal
 

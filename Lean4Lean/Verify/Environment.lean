@@ -10,6 +10,9 @@ def isAsSafeAs : DefinitionSafety → ConstantInfo → Bool
   | .partial, ci => !ci.isUnsafe
   | .safe, ci => !ci.isUnsafe && !ci.isPartial
 
+theorem isAsSafeAs_of_safe : isAsSafeAs .safe ci → isAsSafeAs safety ci := by
+  cases safety <;> simp +contextual [isAsSafeAs]
+
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrConstant (ci : ConstantInfo) (ci' : VConstant) : Prop :=
   isAsSafeAs safety ci ∧ ci.levelParams.length = ci'.uvars ∧

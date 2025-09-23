@@ -22,6 +22,8 @@ def VEnv.empty : VEnv where
 
 instance : EmptyCollection VEnv := ⟨.empty⟩
 
+def VEnv.contains (env : VEnv) (name : Name) := ∃ ci, env.constants name = some (some ci)
+
 def VEnv.addConst (env : VEnv) (name : Name) (ci : Option VConstant) : Option VEnv :=
   match env.constants name with
   | some _ => none

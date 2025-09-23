@@ -133,6 +133,9 @@ theorem MLCtx.noBV (c : MLCtx) : c.vlctx.NoBV := by
 structure VContext extends Context where
   venv : VEnv
   venv_wf : VEnv.WF venv
+  hasPrimitives : VEnv.HasPrimitives venv
+  safePrimitives : env.find? n = some ci →
+    Environment.primitives.contains n → isAsSafeAs .safe ci
   trenv : TrEnv safety env venv
   mlctx : MLCtx
   mlctx_wf : mlctx.WF venv lparams
@@ -1196,8 +1199,20 @@ theorem inferProj.WF
     (inferProj st i e ety).WF c s fun ty _ =>
       ∃ ty', c.TrTyping (.proj st i e) ty e' ty' := sorry
 
-theorem infer_literal {c : VContext} : c.TrTyping (.lit l) l.type sorry sorry := by
-  refine ⟨fun _ _ _ => .litType, .lit sorry, sorry⟩
+theorem literal_typeName_is_primitive {l : Literal} :
+    Environment.primitives.contains l.typeName := by
+  simp [Environment.primitives, NameSet.ofList]
+  cases l <;> simp +decide [Literal.typeName, NameSet.contains]
+
+theorem infer_literal {c : VContext} (H : c.venv.contains l.typeName) :
+    c.TrTyping (.lit l) l.type (.trLiteral l) (.const l.typeName []) := by
+  refine
+    have := TrExprS.trLiteral c.venv_wf c.hasPrimitives H
+    ⟨fun _ _ _ => .litType, this.1, ?_, this.2⟩
+  rw [← Literal.mkConst_typeName]
+  have ⟨_, h⟩ := this.2.isType c.venv_wf c.mlctx_wf.tr.wf
+  have ⟨_, h1, _, h3⟩  := h.const_inv c.venv_wf c.mlctx_wf.tr.wf
+  exact .const h1 rfl h3
 
 theorem infer_sort {c : VContext} (H : VLevel.ofLevel c.lparams u = some u') :
     c.TrTyping (.sort u) (.sort u.succ) (.sort u') (.sort u'.succ) := by
@@ -1231,7 +1246,14 @@ theorem inferType'.WF
     · refine { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
     · refine { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
   unfold F1; refine .get ?_; split
-  · exact hF infer_literal
+  · extract_lets n G1; split
+    · refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h => ?_
+      have ⟨_, h, _⟩ := c.trenv.find? h <|
+        isAsSafeAs_of_safe <| c.safePrimitives h literal_typeName_is_primitive
+      simp [n, G1]; exact hF (infer_literal ⟨_, h⟩)
+    · rename_i h; have ⟨_, h⟩ := hinf (by simpa using h)
+      have := h.lit_has_type c.venv_wf c.hasPrimitives
+      simp [n, G1]; exact hF (infer_literal this)
   · refine (inferType'.WF (by exact h1) ?_).bind fun _ _ _ ⟨_, _, hb, h1, h⟩ => ?_
     · exact fun h => let ⟨_, .mdata h⟩ := hinf h; ⟨_, h⟩
     exact hF ⟨hb, .mdata h1, h⟩

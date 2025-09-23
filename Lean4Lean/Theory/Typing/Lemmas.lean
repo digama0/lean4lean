@@ -225,9 +225,10 @@ theorem HasObjects.bind_const {env env' : VEnv} (hls : env.HasObjects ls)
     ∃ env1, env1.HasObjects (.const n oci :: ls) ∧ f env1 = some env' :=
   let ⟨env1, h1, henv1⟩ := Option.bind_eq_some_iff.1 h; ⟨env1, hls.const h1, henv1⟩
 
-theorem IsDefEq.sort (h : l.WF U) : HasType env U Γ (.sort l) (.sort (.succ l)) :=
+nonrec theorem HasType.bvar (h : Lookup Γ i A): HasType env U Γ (.bvar i) A := .bvar h
+theorem HasType.sort (h : l.WF U) : HasType env U Γ (.sort l) (.sort (.succ l)) :=
   .sortDF h h rfl
-theorem IsDefEq.const
+theorem HasType.const
     (h1 : env.constants c = some (some ci)) (h2 : ∀ l ∈ ls, l.WF U) (h3 : ls.length = ci.uvars) :
     HasType env U Γ (.const c ls) (ci.type.instL ls) :=
   .constDF h1 h2 h2 h3 (.rfl fun _ _ => rfl)
@@ -828,4 +829,4 @@ theorem IsDefEq.instDF
     (IsDefEq.beta hf.hasType.1 ha.hasType.1).symm.trans <|
       .trans (.appDF (.lamDF hA hf) ha) <|
       .defeqDF (.symm hi) (.beta hf.hasType.2 ha.hasType.2)
-  H2 hf <| H2 hB (.sort (hB.sort_r henv (Γ := _::_) ⟨hΓ, _, hA⟩))
+  H2 hf <| H2 hB (HasType.sort (hB.sort_r henv (Γ := _::_) ⟨hΓ, _, hA⟩))

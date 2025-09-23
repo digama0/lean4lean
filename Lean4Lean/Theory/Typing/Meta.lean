@@ -25,9 +25,9 @@ macro_rules | `(tactic| lookup_tac) => `(tactic|
   | refine Lookup.succ' (ty := ?_) ?_ ?_ <;> [skip; lookup_tac; exact rfl]
 )
 
-theorem IsDefEq.app' (h1 : HasType env U Γ f (.forallE A B)) (h2 : HasType env U Γ a A)
+theorem HasType.app' (h1 : HasType env U Γ f (.forallE A B)) (h2 : HasType env U Γ a A)
     (eq : B.inst a = B') : HasType env U Γ (.app f a) B' := eq ▸ .appDF h1 h2
-theorem IsDefEq.const'
+theorem HasType.const'
   (h1 : constants env c = some (some ci))
   (h2 : ∀ (l : VLevel), l ∈ ls → VLevel.WF uvars l)
   (h3 : List.length ls = ci.uvars)
@@ -38,9 +38,9 @@ syntax "type_tac" : tactic -- TODO: write an actual tactic
 macro_rules | `(tactic| type_tac) => `(tactic|
   first
   | refine HasType.forallE (u := ?_) (v := ?_) ?_ ?_ <;> [skip; skip; type_tac; type_tac]
-  | refine IsDefEq.sort ?_; decide
-  | refine IsDefEq.bvar ?_; lookup_tac
-  | refine IsDefEq.app' (A := ?_) (B := ?_) ?_ ?_ ?_ <;> [skip; skip; type_tac; type_tac; exact rfl]
-  | refine IsDefEq.const' (ci := ?_) ?_ ?_ ?_ ?_ <;> [skip; assumption; decide; decide; exact rfl]
+  | refine HasType.sort ?_; decide
+  | refine HasType.bvar ?_; lookup_tac
+  | refine HasType.app' (A := ?_) (B := ?_) ?_ ?_ ?_ <;> [skip; skip; type_tac; type_tac; exact rfl]
+  | refine HasType.const' (ci := ?_) ?_ ?_ ?_ ?_ <;> [skip; assumption; decide; decide; exact rfl]
   | refine HasType.lam (u := ?_) ?_ ?_ <;> [skip; type_tac; type_tac]
 )

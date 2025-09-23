@@ -91,6 +91,15 @@ def strLitToConstructor (s : String) : Expr :=
 
 end Expr
 
-def Literal.toConstructor : Literal → Expr
+namespace Literal
+
+def toConstructor : Literal → Expr
   | .natVal n => .natLitToConstructor n
   | .strVal s => .strLitToConstructor s
+
+/-- Return the type of a literal value. -/
+def typeName : Literal → Name
+  | .natVal _ => ``Nat
+  | .strVal _ => ``String
+
+end Literal

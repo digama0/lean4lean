@@ -1,4 +1,4 @@
-import Lean4Lean.Expr
+import Lean4Lean.Verify.Expr
 import Lean4Lean.Theory.VExpr
 
 namespace Lean4Lean

@@ -399,7 +399,7 @@ def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams :
       -- @List.nil.{0} Char : List Char
       let listNil := q(List.nil (α := Char))
       unless ← isDefEq (← checkType listNil) q(List Char) do fail
-      -- @List.cons.{0} Char : List Char
+      -- @List.cons.{0} Char : Char → List Char → List Char
       let listCons := q(List.cons (α := Char))
       unless ← isDefEq (← checkType listCons) q(Char → List Char → List Char) do fail
       -- String.mk : List Char → String (already checked)

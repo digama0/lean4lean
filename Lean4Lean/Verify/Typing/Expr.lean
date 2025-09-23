@@ -100,3 +100,37 @@ inductive TrExprS : VLCtx → Expr → VExpr → Prop
 
 def TrExpr (env : VEnv) (Us : List Name) (Δ : VLCtx) (e : Expr) (e' : VExpr) : Prop :=
   ∃ e₂, TrExprS env Us Δ e e₂ ∧ env.IsDefEqU Us.length Δ.toCtx e₂ e'
+
+def VExpr.nat : VExpr := .const ``Nat []
+def VExpr.natZero : VExpr := .const ``Nat.zero []
+def VExpr.natSucc : VExpr := .const ``Nat.succ []
+def VExpr.natLit : Nat → VExpr
+  | 0 => .natZero
+  | n+1 => .app .natSucc (.natLit n)
+
+def VExpr.char : VExpr := .const ``Char []
+def VExpr.string : VExpr := .const ``String []
+def VExpr.stringMk : VExpr := .const ``String.mk []
+def VExpr.listChar : VExpr := .app (.const ``List [.zero]) .char
+def VExpr.listCharNil : VExpr := .app (.const ``List.nil [.zero]) .char
+def VExpr.listCharCons : VExpr := .app (.const ``List.cons [.zero]) .char
+def VExpr.charOfNat : VExpr := .const ``Char.ofNat []
+def VExpr.listCharLit : List Char → VExpr
+  | [] => .listCharNil
+  | a :: as => .app (.app .listCharCons (.app .charOfNat (.natLit a.toNat))) (.listCharLit as)
+
+def VExpr.trLiteral : Literal → VExpr
+  | .natVal n => .natLit n
+  | .strVal s => .app .stringMk (.listCharLit s.data)
+
+structure VEnv.HasPrimitives (env : VEnv) : Prop where
+  nat : env.contains ``Nat → env.contains ``Nat.zero ∧ env.contains ``Nat.succ
+  natZero : env.constants ``Nat.zero = some (some ci) → ci = { uvars := 0, type := .nat }
+  natSucc : env.constants ``Nat.succ = some (some ci) →
+    ci = { uvars := 0, type := .forallE .nat .nat }
+  string : env.contains ``String → env.contains ``String.mk ∧
+    env.HasType 0 [] .listCharNil .listChar ∧
+    env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar) ∧
+    env.HasType 0 [] .charOfNat (.forallE .nat .char)
+  stringMk : env.constants ``String.mk = some (some ci) →
+    ci = { uvars := 0, type := .forallE .listChar .string }

@@ -3,6 +3,8 @@ import Batteries.Data.Array.Lemmas
 import Batteries.Data.HashMap.Basic
 import Batteries.Tactic.SeqFocus
 
+open Std
+
 attribute [simp] Option.bind_eq_some List.filterMap_cons
 
 protected theorem Nat.le_iff_exists_add {a b : Nat} : a ≤ b ↔ ∃ c, b = a + c :=
@@ -127,10 +129,6 @@ instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
   trans h1 h2 := by simp at *; exact h1.trans h2
 
-instance : LawfulBEq Lean.FVarId where
-  eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Lean.Name) h; rfl
-  rfl := BEq.rfl (α := Lean.Name)
-
 theorem beq_comm [BEq α] [PartialEquivBEq α] (a b : α) : (a == b) = (b == a) :=
   Bool.eq_iff_iff.2 ⟨PartialEquivBEq.symm, PartialEquivBEq.symm⟩
 
@@ -170,3 +168,29 @@ instance [BEq α] [PartialEquivBEq α] : PartialEquivBEq (List α) where
 
 instance [BEq α] [EquivBEq α] : EquivBEq (List α) where
   rfl {a} := by simp [(· == ·)]; induction a <;> simp [List.beq, *]
+
+namespace BitVec
+
+variable (n : Nat)
+
+instance : TransOrd (BitVec n) :=
+  TransOrd.compareOfLessAndEq_of_antisymm_of_trans_of_total_of_not_le
+    BitVec.le_antisymm BitVec.le_trans BitVec.le_total BitVec.not_le
+
+instance : LawfulEqOrd (BitVec n) where
+  eq_of_compare := compareOfLessAndEq_eq_eq BitVec.le_refl BitVec.not_le |>.mp
+
+end BitVec
+
+namespace UInt64
+
+variable (n : Nat)
+
+instance : TransOrd UInt64 :=
+  TransOrd.compareOfLessAndEq_of_antisymm_of_trans_of_total_of_not_le
+    UInt64.le_antisymm UInt64.le_trans UInt64.le_total UInt64.not_le
+
+instance : LawfulEqOrd UInt64 where
+  eq_of_compare := compareOfLessAndEq_eq_eq UInt64.le_refl UInt64.not_le |>.mp
+
+end UInt64
