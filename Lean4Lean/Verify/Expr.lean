@@ -665,3 +665,13 @@ instance : EquivBEq Expr where
   symm h := eqv_euc h (eqv_refl _)
   trans h1 h2 := eqv_euc (eqv_euc h1 (eqv_refl _)) h2
   rfl := eqv_refl _
+
+theorem data_eq {e₁ e₂ : Expr} : e₁ == e₂ → e₁.data = e₂.data := by
+  simp [(· == ·)]; induction e₁ generalizing e₂
+  all_goals
+    cases e₂ <;> try change false = _ → _; rintro ⟨⟩
+    simp [eqv']; intros; subst_vars; try simp [*]
+  all_goals simp [Expr.data]; grind
+
+instance : LawfulHashable Expr where
+  hash_eq e₁ e₂ h := by simp [hash, Expr.hash, data_eq h]

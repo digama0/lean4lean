@@ -1209,7 +1209,7 @@ theorem inferType'.WF
     refine let s' := _; ⟨s', rfl, ?_⟩
     have hic {ic} (H : InferCache.WF c s ic) : InferCache.WF c s (ic.insert e ty) := by
       intro _ _ H
-      -- rw [Std.HashMap.getElem?_insert] at H
+      rw [Std.HashMap.getElem?_insert] at H
       sorry
     revert s'; cases inferOnly <;> (dsimp -zeta; intro s'; refine ⟨.rfl, ?_, _, _, H⟩)
     · refine { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
