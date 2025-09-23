@@ -8,6 +8,143 @@ import Std.Tactic.BVDecide
 
 namespace Lean
 
+namespace MVarId
+
+protected theorem beq_iff_eq {m n : MVarId} : m == n ↔ m = n := by
+  cases m; cases n; simp! [(· == ·)]; exact Name.beq_iff_eq
+
+instance : LawfulBEq MVarId where
+  eq_of_beq := MVarId.beq_iff_eq.1
+  rfl := MVarId.beq_iff_eq.2 rfl
+
+instance : DecidableEq MVarId :=
+  fun a b => if h : a == b then .isTrue (by simp_all) else .isFalse (by simp_all)
+
+end MVarId
+
+namespace Substring
+
+open private substrEq.loop from Init.Data.String.Basic in
+nonrec theorem beq_symm {s t : Substring} : s == t → t == s := by
+  let ⟨s, ⟨b⟩, e⟩ := s
+  let ⟨s2, ⟨b2⟩, e2⟩ := t
+  simp +contextual [(· == ·), Substring.beq, Substring.bsize, String.substrEq]
+  let rec loop {s s' b b' i n} :
+      substrEq.loop s s' ⟨b + i⟩ ⟨b' + i⟩ ⟨b + n⟩ ↔
+      substrEq.loop s' s ⟨b' + i⟩ ⟨b + i⟩ ⟨b' + n⟩ := by
+    unfold substrEq.loop; simp [beq_comm, Decidable.or_iff_not_imp_left]
+    refine imp_congr_right fun h1 => and_congr_right fun h2 => ?_
+    simp [h2, instHAddPosChar, Nat.add_assoc]
+    have := Char.utf8Size_pos (s'.get ⟨b'+i⟩)
+    exact Bool.eq_iff_iff.2 loop
+  termination_by b + n - (b + i)
+  intro h1 h2 h3
+  have loop := @loop (i := 0); simp at loop
+  simp [loop]
+
+open private substrEq.loop from Init.Data.String.Basic in
+nonrec theorem beq_trans {s t : Substring} : s == t → t == u → s == u := by
+  let ⟨s, ⟨b⟩, e⟩ := s
+  let ⟨s2, ⟨b2⟩, e2⟩ := t
+  let ⟨s3, ⟨b3⟩, e3⟩ := u
+  simp +contextual [(· == ·), Substring.beq, Substring.bsize, String.substrEq]
+  intro h1 h2 h3 h4 h5 h6 h7 h8
+  constructor; · omega
+  simp [h5] at h4
+  let rec loop {s₁ s₂ s₃ b₁ b₂ b₃ i n} :
+      (h : substrEq.loop s₁ s₂ ⟨b₁ + i⟩ ⟨b₂ + i⟩ ⟨b₁ + n⟩) →
+      (substrEq.loop s₁ s₃ ⟨b₁ + i⟩ ⟨b₃ + i⟩ ⟨b₁ + n⟩ ↔
+       substrEq.loop s₂ s₃ ⟨b₂ + i⟩ ⟨b₃ + i⟩ ⟨b₂ + n⟩) := by
+    unfold substrEq.loop; simp [Decidable.or_iff_not_imp_left]
+    refine fun h1 => imp_congr_right fun h => ?_; let ⟨h1, h2⟩ := h1 h
+    simp [h1]; intro h3; simp [h1, h3, instHAddPosChar, Nat.add_assoc] at h2 ⊢
+    have := Char.utf8Size_pos (s₃.get ⟨b₃+i⟩)
+    refine Bool.eq_iff_iff.2 (loop h2)
+  termination_by n - i
+  have loop := @loop (i := 0) (h := h4); simp at loop
+  simpa [loop] using h8
+
+instance : EquivBEq Substring where
+  symm := beq_symm
+  trans := beq_trans
+  rfl := beq_refl _
+
+end Substring
+
+namespace Syntax
+
+namespace Preresolved
+
+protected theorem beq_iff_eq {m n : Preresolved} : m == n ↔ m = n := by
+  simp only [(· == ·)]; cases m <;> cases n <;> simp! <;> grind only [cases Or]
+
+instance : LawfulBEq Preresolved where
+  eq_of_beq := Preresolved.beq_iff_eq.1
+  rfl := Preresolved.beq_iff_eq.2 rfl
+
+instance : DecidableEq Preresolved :=
+  fun a b => if h : a == b then .isTrue (by simp_all) else .isFalse (by simp_all)
+
+end Preresolved
+
+theorem structEq_refl (s : Syntax) : s.structEq' s := by
+  unfold structEq'
+  cases s with
+  | node i k args =>
+    let ⟨args⟩ := args; simp; intro x _ _ _
+    have IH := structEq_refl x
+    induction args.attach <;> simp
+    rintro (⟨rfl, ⟨⟩⟩ | h) <;> [skip; solve_by_elim]
+    simpa using IH
+  | _ => simp
+
+attribute [-simp] List.all_eq_true in
+theorem structEq_euc {s : Syntax} (H : s.structEq' t) : s.structEq' u = t.structEq' u := by
+  unfold structEq' at H; split at H
+  case h_1 => simp
+  case h_5 => cases H
+  all_goals
+    revert H; simp; intros; subst_vars
+    unfold structEq'; cases u <;> simp <;> rw [Bool.eq_iff_iff] <;> simp [*]
+  -- all_goals intros; subst_vars
+  case ident => intros; apply BEq.congr_left ‹_›
+  case node args₁ _ _ args₂ eq H _ _ args₃ =>
+    rintro rfl eq'; revert H
+    have IH {a} (h : a ∈ args₁) := @structEq_euc (s := a)
+    let ⟨args₁⟩ := args₁; let ⟨args₂⟩ := args₂; let ⟨args₃⟩ := args₃
+    revert eq eq'; simp at IH ⊢
+    simp only [← args₁.length_attach, ← args₂.length_attach, ← args₃.length_attach]
+    generalize args₁.attach = l₁, args₂.attach = l₂, args₃.attach = l₃
+    induction l₁ generalizing l₂ l₃ with cases l₂ <;> simp <;> cases l₃ <;> simp | cons a l₁ ih
+    intros _ _ H; rw [IH a.2 _ _ H, Bool.eq_iff_iff]; simp [*]; grind
+termination_by s
+
+theorem structEq_symm {s : Syntax} (H : s.structEq' t) : t.structEq' s :=
+  structEq_euc H ▸ structEq_refl _
+
+theorem structEq_trans {s : Syntax} (H : s.structEq' t) (H2 : t.structEq' u) : s.structEq' u :=
+  structEq_euc H ▸ H2
+
+theorem beq_def : (a == b) = structEq' a b := structEq_eq
+
+instance : EquivBEq Syntax where
+  symm := by simp [beq_def]; exact structEq_symm
+  trans := by simp [beq_def]; exact structEq_trans
+  rfl := by simp [beq_def]; exact structEq_refl _
+
+end Syntax
+
+namespace DataValue
+
+instance : EquivBEq DataValue where
+  symm {a b} := by simp [(· == ·)]; cases a <;> cases b <;> simp! [beq_comm]
+  trans {a b c} := by
+    simp [(· == ·)]; cases a <;> cases b <;> simp! [beq_comm] <;> try rintro rfl; simp
+    cases c <;> simp!; exact BEq.trans
+  rfl {a} := by simp [(· == ·)]; cases a <;> simp!
+
+end DataValue
+
 namespace Literal
 open Expr in
 theorem toConstructor_hasLevelParam :
@@ -506,5 +643,25 @@ theorem instantiateLevelParams_eq {e ps ls} :
     cases ps <;> simp_all
 
 theorem eqv_sort {e : Expr} : e == .sort u ↔ ∃ u', e = .sort u' ∧ u' == u := by
-  conv => lhs; simp [(·==·)]
+  conv => lhs; simp [(· == ·)]
   cases e <;> simp [eqv']
+
+theorem eqv_refl (e : Expr) : e == e := by
+  simp [(· == ·)]; induction e <;> simp [eqv', *]
+
+theorem eqv_euc {e₁ e₂ e₃ : Expr} : e₁ == e₂ → e₁ == e₃ → e₂ == e₃ := by
+  simp [(· == ·)]
+  induction e₁ generalizing e₂ e₃
+  all_goals
+    cases e₂ <;> try change false = _ → _; rintro ⟨⟩
+    simp [eqv']; intros; subst_vars; try simp [*]
+  all_goals
+    revert ‹Expr.eqv' .. = _›
+    cases e₃ <;> try change false = _ → _; rintro ⟨⟩
+    simp +contextual [eqv', *]
+  simp [BEq.congr_left ‹_›]
+
+instance : EquivBEq Expr where
+  symm h := eqv_euc h (eqv_refl _)
+  trans h1 h2 := eqv_euc (eqv_euc h1 (eqv_refl _)) h2
+  rfl := eqv_refl _

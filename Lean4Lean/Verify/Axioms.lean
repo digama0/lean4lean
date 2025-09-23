@@ -77,6 +77,48 @@ axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Exp
   mkAppRangeAux n args i e =
     if i < n then mkAppRangeAux n args (i + 1) (mkApp e args[i]!) else e
 
+namespace Substring
+
+/-- info: false -/
+#guard_msgs in #eval let s : Substring := ⟨"", ⟨1⟩, 0⟩; s == s
+
+/-- This is not true, as demonstrated above; it fails on substrings with bad UTF-8. (lean4#10511)
+However, this is likely to be fixed by fixing `Substring` rather than changing invariants to
+avoid it, so we make this assumption on the hope that it gets fixed upstream. -/
+@[instance] axiom beq_refl (s : Substring) : s == s
+
+end Substring
+
+namespace Syntax
+
+def structEq' : Syntax → Syntax → Bool
+  | .missing, .missing => true
+  | .node _ k args, .node _ k' args' => k == k' &&
+    (args.size == args'.size &&
+      (args.toList.attach.zip args'.toList.attach).all fun (a, b) =>
+        have := Array.mem_toList_iff.1 a.2; structEq' a b)
+  | .atom _ val, .atom _ val' => val == val'
+  | .ident _ rawVal val preresolved, Syntax.ident _ rawVal' val' preresolved' =>
+    rawVal == rawVal' && val == val' && preresolved == preresolved'
+  | _, _ => false
+termination_by x _ => x
+
+theorem structEq'_node :
+    structEq' (.node _x k args) (.node _y k' args') = (k == k' && args.isEqv args' structEq') := by
+  unfold structEq'; simp; congr 1
+  by_cases h : args.size = args'.size <;> [simp [h]; simp [Array.isEqv, h]]
+  let ⟨args⟩ := args; let ⟨args'⟩ := args'; simp at h ⊢
+  have' : ((args.attach.map (·.1)).zip (args'.attach.map (·.1))).all
+      (fun x => x.1.structEq' x.2) = _ := by
+    simp only [List.zip_map_left, List.zip_map_right]; simp [Function.comp_def]; rfl
+  rw [← this]; simp; clear this
+  induction args generalizing args' <;> cases args' <;> simp at h <;> simp [List.isEqv, *]
+
+/-- This is a `partial` because it is not obviously terminating. The `structEq'_node` theorem
+shows that a definition with the same clauses can be defined manually. -/
+@[simp] axiom structEq_eq : structEq a b = structEq' a b
+end Syntax
+
 namespace Level
 
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
@@ -378,7 +420,7 @@ def eqv' : (e1 e2 : Expr) → (strict : Bool := false) → Bool
   | .mvar i, .mvar i', _
   | .fvar i, .fvar i', _
   | .sort i, .sort i', _ => i == i'
-  | .mdata d e, .mdata d' e', st => e.eqv' e' st && d == d'
+  | .mdata d e, .mdata d' e', st => e.eqv' e' st && d.entries == d'.entries
   | .proj s i e, .proj s' i' e', st => e.eqv' e' st && s == s' && i == i'
   | .const n ls, .const n' ls', _ => n == n' && ls == ls'
   | .app f a, .app f' a', st => f.eqv' f' st && a.eqv' a' st

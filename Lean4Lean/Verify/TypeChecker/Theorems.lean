@@ -1194,9 +1194,8 @@ theorem inferProj.WF
 theorem inferType'.WF
     (h1 : e.FVarsIn (· ∈ c.vlctx.fvars))
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
-    (inferType' e inferOnly).WF c s fun ty _ =>
-      ∃ e' ty', c.TrTyping e ty e' ty' := by
-  unfold inferType'; simp
+    (inferType' e inferOnly).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
+  unfold inferType'; lift_lets; intro F; simp
   split <;> [exact .throw; refine .get ?_]
   split
   · rename_i h; refine .stateWF fun wf => .pure ?_
@@ -1204,4 +1203,16 @@ theorem inferType'.WF
     have : ic.WF c s := by
       subst ic; cases inferOnly <;> [exact wf.inferTypeC_wf; exact wf.inferTypeI_wf]
     exact (this h).2.2.2.2 h1
-  · sorry
+  have hF {ty e' ty'} (H : c.TrTyping e ty e' ty') :
+      (F ty).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
+    rintro _ mwf wf a s' ⟨⟩
+    refine let s' := _; ⟨s', rfl, ?_⟩
+    have hic {ic} (H : InferCache.WF c s ic) : InferCache.WF c s (ic.insert e ty) := by
+      intro _ _ H
+      -- rw [Std.HashMap.getElem?_insert] at H
+      sorry
+    revert s'; cases inferOnly <;> (dsimp -zeta; intro s'; refine ⟨.rfl, ?_, _, _, H⟩)
+    · refine { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
+    · refine { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
+  split
+  stop sorry

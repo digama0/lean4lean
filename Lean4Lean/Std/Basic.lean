@@ -151,3 +151,22 @@ theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
 @[simp] theorem Option.orElse_eq_none {a : Option α} {b : Unit → Option α} :
     a.orElse b = none ↔ a = none ∧ b () = none := by
   cases a <;> simp [Option.orElse]
+
+instance [BEq α] [PartialEquivBEq α] [BEq β] [PartialEquivBEq β] : PartialEquivBEq (α × β) where
+  symm := by simp [(· == ·)]; grind [BEq.symm]
+  trans := by simp [(· == ·)]; grind [BEq.trans]
+
+instance [BEq α] [EquivBEq α] [BEq β] [EquivBEq β] : EquivBEq (α × β) where
+  rfl := by simp [(· == ·)]
+
+instance [BEq α] [PartialEquivBEq α] : PartialEquivBEq (List α) where
+  symm := by
+    simp [(· == ·)]; intro a b
+    induction a generalizing b <;> cases b <;> simp [List.beq]; grind [BEq.symm]
+  trans := by
+    simp [(· == ·)]; intro a b c
+    induction a generalizing b c <;> cases b <;> simp [List.beq]
+    cases c <;> simp [List.beq]; grind [BEq.trans]
+
+instance [BEq α] [EquivBEq α] : EquivBEq (List α) where
+  rfl {a} := by simp [(· == ·)]; induction a <;> simp [List.beq, *]
