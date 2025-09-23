@@ -1619,13 +1619,28 @@ theorem TrExprS.inst_fvar {Δ : VLCtx} (henv : Ordered env)
     simp [VLocalDecl.depth, VLocalDecl.liftN] at this
     exact this.inst_let henv hf
 
-theorem TrExprS.eqv (H : TrExprS env Us Δ e₁ e') (eq : e₁ == e₂) : TrExprS env Us Δ e₂ e' := by
-  simp [(· == ·)] at eq
-  induction H generalizing e₂ <;> (cases e₂ <;> try change false = _ at eq; cases eq)
-  all_goals simp [Expr.eqv'] at eq; (repeat cases ‹_ ∧ _›); subst_vars
-  case' mdata ih1 _ _ h1 _ | proj ih1 _ _ _ h1 _ => specialize ih1 h1
-  case' app ih1 ih2 _ _ h1 h2 | lam ih1 ih2 _ _ _ _ h1 h2 | forallE ih1 ih2 _ _ _ _ h1 h2  =>
-    specialize ih1 h1; specialize ih2 h2
-  case' letE ih1 ih2 ih3 _ _ _ _ _ h3 h1 h2 =>
-    specialize ih1 h1; specialize ih2 h2; specialize ih3 h3
-  all_goals constructor <;> assumption
+theorem TrExprS.eqv (H : TrExprS env Us Δ e₁ e') : e₁ == e₂ → TrExprS env Us Δ e₂ e' := by
+  simp [(· == ·)]
+  induction H generalizing e₂ <;> (cases e₂ <;> try change false = _ → _; rintro ⟨⟩)
+  all_goals simp [Expr.eqv']; grind [TrExprS]
+
+theorem fvarsList_eqv {e₁ e₂ : Expr} : e₁ == e₂ → e₁.fvarsList = e₂.fvarsList := by
+  simp [(· == ·)]
+  induction e₁ generalizing e₂ <;> (cases e₂ <;> try change false = _ → _; rintro ⟨⟩)
+  all_goals simp [Expr.eqv']; intros; subst_vars; simp [Expr.fvarsList]
+  all_goals grind
+
+theorem FVarsIn.eqv : e₁ == e₂ → FVarsIn P e₁ → FVarsIn P e₂ := by
+  simp [(· == ·)]
+  induction e₁ generalizing e₂ <;> (cases e₂ <;> try change false = _ → _; rintro ⟨⟩)
+  all_goals simp [Expr.eqv']; intros; subst_vars; revert ‹FVarsIn ..›; simp [FVarsIn]
+  all_goals grind
+
+theorem FVarsBelow.eqv (H : FVarsBelow Δ e₁ ty₁)
+    (eq : e₁ == e₂) (eq' : ty₁ == ty₂) : FVarsBelow Δ e₂ ty₂ :=
+  fun _ hP he => .eqv eq' (H _ hP (.eqv (BEq.symm eq) he))
+
+theorem TrTyping.eqv (H : TrTyping env Us Δ e₁ ty₁ e' ty')
+    (eq : e₁ == e₂) (eq' : ty₁ == ty₂) : TrTyping env Us Δ e₂ ty₂ e' ty' :=
+  let ⟨h1, h2, h3, h4⟩ := H
+  ⟨.eqv h1 eq eq', h2.eqv eq, h3.eqv eq', h4⟩

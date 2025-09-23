@@ -1207,10 +1207,13 @@ theorem inferType'.WF
       (F ty).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
     rintro _ mwf wf a s' ⟨⟩
     refine let s' := _; ⟨s', rfl, ?_⟩
-    have hic {ic} (H : InferCache.WF c s ic) : InferCache.WF c s (ic.insert e ty) := by
-      intro _ _ H
-      rw [Std.HashMap.getElem?_insert] at H
-      sorry
+    have hic {ic} (hic : InferCache.WF c s ic) : InferCache.WF c s (ic.insert e ty) := by
+      intro _ _ h
+      rw [Std.HashMap.getElem?_insert] at h; split at h <;> [cases h; exact hic h]
+      rename_i eq
+      refine .mk c.mlctx.noBV (.eqv H eq BEq.rfl) (.eqv eq ?_) ?_
+      · exact H.2.1.fvarsIn.mono wf.ngen_wf
+      · exact H.2.2.1.fvarsIn.mono wf.ngen_wf
     revert s'; cases inferOnly <;> (dsimp -zeta; intro s'; refine ⟨.rfl, ?_, _, _, H⟩)
     · refine { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
     · refine { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
