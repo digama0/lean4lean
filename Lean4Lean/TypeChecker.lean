@@ -218,7 +218,7 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
   return dom
 
 def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
-  if e.isBVar then
+  if e.hasLooseBVars then
     throw <| .other
       s!"type checker does not support loose bound variables, \
          replace them with free variables before invoking it"
