@@ -89,3 +89,56 @@ theorem ConditionallyHasType.fresh
   · intro _ h1 h2; simp at h1; rcases h1 with rfl | h1
     · cases Nat.lt_irrefl _ (h2 _ rfl)
     · exact h1
+
+def ConditionallyWHNF
+    (ngen : NameGenerator) (env : VEnv) (Us : List Name) (Δ : VLCtx) (e e₁ : Expr) : Prop :=
+  Closed e ∧ FVarsIn ngen.Reserves e ∧ Closed e₁ ∧ FVarsIn ngen.Reserves e₁ ∧
+    (FVarsIn (· ∈ Δ.fvars) e → ∃ e',
+      FVarsBelow Δ e e₁ ∧ TrExprS env Us Δ e e' ∧ TrExpr env Us Δ e₁ e')
+
+theorem ConditionallyWHNF.mk {Δ : VLCtx}
+    (noBV : Δ.NoBV) (hb : FVarsBelow Δ e e₁)
+    (he : TrExprS env Us Δ e e') (he₁ : TrExpr env Us Δ e₁ e')
+    (re : FVarsIn ngen.Reserves e) (re₁ : FVarsIn ngen.Reserves e₁) :
+    ConditionallyWHNF ngen env Us Δ e e₁ := by
+  refine ⟨noBV ▸ he.closed, re, noBV ▸ he₁.closed, re₁, fun _ => ⟨_, hb, he, he₁⟩⟩
+
+theorem ConditionallyWHNF.mono (H : ngen₁ ≤ ngen₂) :
+    ConditionallyWHNF ngen₁ env Us Δ e A → ConditionallyWHNF ngen₂ env Us Δ e A
+  | ⟨c1, f1, c2, f2, h'⟩ => ⟨c1, f1.mono fun _ h => h.mono H, c2, f2.mono fun _ h => h.mono H, h'⟩
+
+theorem ConditionallyWHNF.weakN_inv
+    (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length ((some fv, d) :: Δ))
+    (H : ConditionallyWHNF ngen env Us ((some fv, d) :: Δ) e e₁) :
+    ConditionallyWHNF ngen env Us Δ e e₁ := by
+  have ⟨c1, f1, c2, f2, H⟩ := H
+  refine ⟨c1, f1, c2, f2, fun H4 => ?_⟩
+  have ⟨e', h1, h2, _, h3, h4⟩ := H H4.fvars_cons
+  have W : VLCtx.FVLift Δ ((some fv, d) :: Δ) 0 (0 + d.depth) 0 := .skip_fvar _ _ .refl
+  have ⟨e'', he⟩ := TrExprS.weakFV_inv henv W (.refl henv hΔ) h2 c1 H4
+  have ee := h2.uniq henv (.refl henv hΔ) <| he.weakFV henv W hΔ
+  have := hΔ.2.1 _ _ rfl
+  have : IsFVarUpSet (· ∈ VLCtx.fvars Δ) ((some fv, d) :: Δ) :=
+    ⟨.fvars hΔ.1.fvwf, (hΔ.2.1 _ _ rfl).1.elim⟩
+  have ⟨_, he₁⟩ := TrExprS.weakFV_inv henv W (.refl henv hΔ) h3 c2 <| h1 _ this H4
+  have ee₁ := h3.uniq henv (.refl henv hΔ) <| he₁.weakFV henv W hΔ
+  have h4 := ee₁.symm.trans henv hΔ.toCtx h4 |>.trans henv hΔ.toCtx ee
+  have h4 := (IsDefEqU.weakN_iff henv hΔ.toCtx W.toCtx).1 h4
+  refine ⟨_, fun P hP he' => ?_, he, _, he₁, h4⟩
+  exact h1 _
+    ⟨(IsFVarUpSet.and_fvars hΔ.1.fvwf).1 hP, fun h => (hΔ.2.1 _ _ rfl).1.elim h.2⟩
+    (he'.mp (fun _ => .intro) he.fvarsIn) |>.mono fun _ => (·.1)
+
+theorem ConditionallyWHNF.fresh
+    (henv : env.WF)
+    (hΔ : VLCtx.WF env Us.length ((some (⟨ngen.curr⟩, deps), d) :: Δ))
+    (H : ConditionallyWHNF ngen env Us Δ e e₁) :
+    ConditionallyWHNF ngen env Us ((some (⟨ngen.curr⟩, deps), d) :: Δ) e e₁ := by
+  refine have ⟨c1, f1, c2, f2, H⟩ := H; ⟨c1, f1, c2, f2, fun H4 => ?_⟩
+  have ⟨_, h1, h2, h3⟩ := H (H4.mp ?_ f1)
+  · have W : VLCtx.FVLift Δ ((some (⟨ngen.curr⟩, deps), d) :: Δ) 0 (0 + d.depth) 0 :=
+      .skip_fvar _ _ .refl
+    exact ⟨_, fun P hP => h1 _ hP.1, h2.weakFV henv W hΔ, h3.weakFV henv W hΔ⟩
+  · intro _ h1 h2; simp at h1; rcases h1 with rfl | h1
+    · cases Nat.lt_irrefl _ (h2 _ rfl)
+    · exact h1

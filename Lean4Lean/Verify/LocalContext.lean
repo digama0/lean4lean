@@ -267,11 +267,15 @@ theorem TrLCtx'.wf : TrLCtx' env Us ds Δ → (ds.map (·.fvarId)).Nodup → Δ.
 
 theorem TrLCtx.wf (H : TrLCtx env Us lctx Δ) : Δ.WF env Us.length := H.2.wf H.1.nodup
 
+def _root_.Lean.LocalDecl.value' : LocalDecl → Expr
+  | .ldecl (value := v) .. => v
+  | .cdecl (fvarId := fv) .. => .fvar fv
+
 theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
     (nd : (ds.map (·.fvarId)).Nodup) (hm : decl ∈ ds) :
     ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧
-      FVarsBelow Δ (.fvar decl.fvarId) decl.type ∧
-      TrExprS env Us Δ decl.type A := by
+      FVarsBelow Δ (.fvar decl.fvarId) decl.value' ∧ FVarsBelow Δ (.fvar decl.fvarId) decl.type ∧
+      TrExprS env Us Δ decl.value' e ∧ TrExprS env Us Δ decl.type A := by
   have := H.wf nd
   match H with
   | .nil => cases hm
@@ -281,24 +285,28 @@ theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
     · simp [and_assoc]
       cases h2 with
       | vlam h2 h3 =>
-        constructor
+        refine ⟨.rfl, ?_, .fvar <| by simp [VLCtx.find?, VLCtx.next, LocalDecl.fvarId]; rfl, ?_⟩
         · intro P hP he; exact fvarsIn_iff.2 ⟨hP.2 he, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
         · exact h2.weakFV henv (.skip_fvar _ _ .refl) this
       | vlet h2 h3 =>
-        constructor
+        refine ⟨?_, ?_, ?_, ?_⟩
+        · intro P hP he; have := hP.2 he; simp [LocalDecl.deps, or_imp, forall_and] at this
+          exact fvarsIn_iff.2 ⟨this.2, h3.fvarsIn.mono fun _ _ => ⟨⟩⟩
         · intro P hP he; have := hP.2 he; simp [LocalDecl.deps, or_imp, forall_and] at this
           exact fvarsIn_iff.2 ⟨this.1, h2.fvarsIn.mono fun _ _ => ⟨⟩⟩
+        · simpa [VLocalDecl.depth] using h3.weakFV henv (.skip_fvar _ _ .refl) this
         · simpa [VLocalDecl.depth] using h2.weakFV henv (.skip_fvar _ _ .refl) this
     · simp at nd; rw [if_neg (by simpa using Ne.symm (nd.1 _ hm))]; simp
-      have ⟨_, _, h1, h2, h3⟩ := h1.find?_of_mem henv nd.2 hm
-      refine ⟨_, _, ⟨_, _, h1, rfl, rfl⟩, fun _ h => h2 _ h.1, ?_⟩
-      simpa using h3.weakFV henv (.skip_fvar _ _ .refl) this
+      have ⟨_, _, h1, h2, h3, h4, h5⟩ := h1.find?_of_mem henv nd.2 hm
+      refine ⟨_, _, ⟨_, _, h1, rfl, rfl⟩, fun _ h => h2 _ h.1, fun _ h => h3 _ h.1, ?_, ?_⟩
+      · simpa using h4.weakFV henv (.skip_fvar _ _ .refl) this
+      · simpa using h5.weakFV henv (.skip_fvar _ _ .refl) this
 
 theorem TrLCtx.find?_of_mem (henv : env.WF) (H : TrLCtx env Us lctx Δ)
     (hm : decl ∈ lctx.toList) :
     ∃ e A, Δ.find? (.inr decl.fvarId) = some (e, A) ∧
-      FVarsBelow Δ (.fvar decl.fvarId) decl.type ∧
-      TrExprS env Us Δ decl.type A :=
+      FVarsBelow Δ (.fvar decl.fvarId) decl.value' ∧ FVarsBelow Δ (.fvar decl.fvarId) decl.type ∧
+      TrExprS env Us Δ decl.value' e ∧ TrExprS env Us Δ decl.type A :=
   H.2.find?_of_mem henv H.1.nodup hm
 
 theorem TrLCtx.mkLocalDecl

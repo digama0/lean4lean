@@ -762,6 +762,14 @@ theorem TrExprS.uniq (H1 : TrExprS env Us Δ₁ e e₁) (H2 : TrExprS env Us Δ�
   | proj _ l2 ih1 => let .proj r1 r2 := H2; exact l2.uniq henv hΔ.defeqCtx r2 (ih1 hΔ r1)
 
 variable! (henv : VEnv.WF env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
+theorem TrExpr.uniq (H1 : TrExpr env Us Δ₁ e e₁) (H2 : TrExpr env Us Δ₂ e e₂) :
+    env.IsDefEqU Us.length Δ₁.toCtx e₁ e₂ := by
+  let ⟨_, H1, eq1⟩ := H1
+  let ⟨_, H2, eq2⟩ := H2
+  exact eq1.symm.trans henv hΔ.wf <| (H1.uniq henv hΔ H2).trans henv hΔ.wf <|
+    eq2.defeqDFC henv (hΔ.defeqCtx.symm henv)
+
+variable! (henv : VEnv.WF env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
 theorem TrExprS.defeqDFC (H : TrExprS env Us Δ₁ e e₁) : ∃ e₂, TrExprS env Us Δ₂ e e₂ := by
   induction H generalizing Δ₂ with
   | bvar h1 => have ⟨_, _, h1⟩ := hΔ.find?_defeqDFC h1; exact ⟨_, .bvar h1⟩
@@ -1844,6 +1852,9 @@ theorem TrExprS.eqv (H : TrExprS env Us Δ e₁ e') : e₁ == e₂ → TrExprS e
   simp [(· == ·)]
   induction H generalizing e₂ <;> (cases e₂ <;> try change false = _ → _; rintro ⟨⟩)
   all_goals simp [Expr.eqv']; grind [TrExprS]
+
+theorem TrExpr.eqv (H : TrExpr env Us Δ e₁ e') (h : e₁ == e₂) : TrExpr env Us Δ e₂ e' :=
+  let ⟨_, h1, h2⟩ := H; ⟨_, h1.eqv h, h2⟩
 
 theorem fvarsList_eqv {e₁ e₂ : Expr} : e₁ == e₂ → e₁.fvarsList = e₂.fvarsList := by
   simp [(· == ·)]

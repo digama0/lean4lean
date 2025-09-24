@@ -319,11 +319,25 @@ theorem getAppArgs_eq_rev : getAppArgs e = (getAppArgsRevList e).reverse.toArray
 theorem getAppArgs_eq : getAppArgs e = (getAppArgsList e).toArray := by
   simp [← getAppArgs_toList]
 
+open private getAppRevArgsAux from Lean.Expr in
+theorem getAppRevArgs_toList : (getAppRevArgs e).toList = getAppArgsRevList e := by
+  simp [getAppRevArgs, loop]
+where
+  loop {e args} : (getAppRevArgsAux e args).toList = args.toList ++ getAppArgsRevList e := by
+    unfold getAppRevArgsAux getAppArgsRevList; split <;> [(rw [loop]; simp); simp]
+
+theorem getAppRevArgs_eq : getAppRevArgs e = (getAppArgsRevList e).toArray := by
+  simp [← getAppRevArgs_toList]
+
 @[simp] theorem withApp_eq {e : Expr} : e.withApp f = f e.getAppFn e.getAppArgs := loop where
   loop {e arr n} : withAppAux f e arr n = f e.getAppFn (getAppArgsAux e arr n) := by
-    unfold withAppAux getAppArgsAux; split
-    · exact loop
-    · simp [getAppFn]
+    unfold withAppAux getAppArgsAux; split <;> [exact loop; simp [getAppFn]]
+
+open private withAppRevAux getAppRevArgsAux from Lean.Expr in
+@[simp] theorem withRevApp_eq {e : Expr} :
+    e.withAppRev f = f e.getAppFn e.getAppRevArgs := loop where
+  loop {e arr} : withAppRevAux f e arr = f e.getAppFn (getAppRevArgsAux e arr) := by
+    unfold withAppRevAux getAppRevArgsAux; split <;> [exact loop; simp [getAppFn]]
 
 @[simp] def mkAppList : Expr → List Expr → Expr
   | e, [] => e
@@ -381,7 +395,33 @@ theorem mkAppRange_eq (h1 : args.toList = l₁ ++ l₂ ++ l₃)
 theorem mkAppRange_eq_rev (h1 : args.toList = l₁ ++ l₂ ++ l₃)
     (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
     mkAppRange e i j args = mkAppRevList e l₂.reverse := by
-  simp [mkAppRange_eq h1 h2 h3, mkAppRevList_reverse]
+  rw [mkAppRange_eq h1 h2 h3, mkAppRevList_reverse]
+
+open private mkAppRevRangeAux from Lean.Expr in
+theorem mkAppRevRange_eq(h1 : args.toList = l₁ ++ l₂ ++ l₃)
+      (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
+    mkAppRevRange e i j args = mkAppList e l₂.reverse := by
+  simpa using loop l₁ l₂.reverse l₃ [] (by simpa using h1) h2 (by simpa using h3)
+where
+  loop {start i} (l₁ l₂ l₃ l₄) (h1 : args.toList = l₁ ++ l₂.reverse ++ l₃)
+      (h2 : l₁.length = start) (h3 : l₁.length + List.length l₂ = i) :
+      mkAppRevRangeAux args start (mkAppRevList e l₄) i = mkAppList (mkAppRevList e l₄) l₂ := by
+    rw [mkAppRevRangeAux.eq_def]; split
+    · have : l₂.length = 0 := by omega
+      simp_all
+    · have : 0 < l₂.length := by omega
+      let a::l₂ := l₂; simp [← Nat.add_assoc] at h3
+      let i+1 := i; simp at h3
+      simp [Array.getElem!_eq_getD, ← Array.getElem?_toList, h1]
+      rw [List.getElem?_append_right (by omega)]
+      simp at h1; simp [← List.append_assoc] at h1
+      simp [← h3]; rw [h3]
+      simpa using loop l₁ l₂ (a :: l₃) (a :: l₄) (by simp [h1]) h2 h3
+
+theorem mkAppRevRange_eq_rev (h1 : args.toList = l₁ ++ l₂ ++ l₃)
+    (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
+    mkAppRevRange e i j args = mkAppRevList e l₂ := by
+  rw [mkAppRevRange_eq h1 h2 h3, mkAppList_reverse]
 
 theorem liftLooseBVars_eq_self : e.looseBVarRange' ≤ s → liftLooseBVars' e s d = e := by
   induction e generalizing s <;>

@@ -669,6 +669,10 @@ theorem HasType.defeqDFC (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ₁
 theorem IsType.defeqDFC (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ₁ Γ₂)
     (h2 : env.IsType U Γ₁ A) : env.IsType U Γ₂ A := h2.imp fun _ => (·.defeqDFC henv h1)
 
+theorem IsDefEqU.defeqDFC (henv : Ordered env) (h1 : IsDefEqCtx env U Γ₀ Γ₁ Γ₂)
+    (h2 : env.IsDefEqU U Γ₁ e₁ e₂) : env.IsDefEqU U Γ₂ e₁ e₂ :=
+  let ⟨_, h2⟩ := h2; ⟨_, h2.defeqDFC henv h1⟩
+
 theorem IsDefEqCtx.symm (henv : Ordered env) :
     IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → IsDefEqCtx env U Γ₀ Γ₂ Γ₁
   | .zero => .zero
