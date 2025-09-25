@@ -507,7 +507,6 @@ theorem instantiate1'_instantiate1' (e1 e2 e3 j) :
     let i+1 := i
     have hk := Nat.lt_of_add_lt_add_right hk
     simp [instantiate1']
-    -- have := Nat.lt_of_le_of_lt (Nat.le_add_left ..) hk
     rw [if_neg (by omega), if_neg (by omega), if_neg (by omega), if_neg (by omega)]
     simp [instantiate1']
     rw [if_neg (Nat.lt_asymm hk), if_neg (Nat.ne_of_gt hk)]
@@ -529,7 +528,8 @@ theorem instantiateList_append :
   simp [instantiateList_eq_foldl]
 
 theorem instantiateRevList_append :
-    instantiateRevList e (es₁ ++ es₂) k = instantiateRevList (instantiateRevList e es₂ k) es₁ k := by
+    instantiateRevList e (es₁ ++ es₂) k =
+    instantiateRevList (instantiateRevList e es₂ k) es₁ k := by
   simp [instantiateRevList_eq_foldr]
 
 theorem instantiateList_reverse :
@@ -540,16 +540,35 @@ theorem instantiateRevList_reverse :
     instantiateRevList e as.reverse k = instantiateList e as k := by
   simp [instantiateList_eq_foldl, instantiateRevList_eq_foldr]
 
-theorem instantiateList_lam : instantiateList (.lam n ty body bi) as =
-    .lam n (instantiateList ty as) (instantiateList body as 1) bi := by
+@[simp]
+theorem instantiateRevList_lam : instantiateRevList (.lam n ty body bi) as k =
+    .lam n (instantiateRevList ty as k) (instantiateRevList body as (k + 1)) bi := by
+  induction as <;> simp [instantiate1', *]
+
+@[simp]
+theorem instantiateList_lam : instantiateList (.lam n ty body bi) as k =
+    .lam n (instantiateList ty as k) (instantiateList body as (k + 1)) bi := by
+  simp [← instantiateRevList_reverse, instantiateRevList_lam]
+
+@[simp]
+theorem instantiateRevList_app : instantiateRevList (.app f a) as k =
+    .app (instantiateRevList f as k) (instantiateRevList a as k) := by
+  induction as <;> simp [instantiate1', *]
+
+@[simp]
+theorem instantiateList_app : instantiateList (.app f a) as k =
+    .app (instantiateList f as k) (instantiateList a as k) := by
+  simp [← instantiateRevList_reverse, instantiateRevList_app]
+
+@[simp]
+theorem instantiateList_forallE : instantiateList (.forallE n ty body bi) as k =
+    .forallE n (instantiateList ty as k) (instantiateList body as (k + 1)) bi := by
   induction as generalizing ty body <;> simp [instantiate1', *]
 
-theorem instantiateList_forallE : instantiateList (.forallE n ty body bi) as =
-    .forallE n (instantiateList ty as) (instantiateList body as 1) bi := by
-  induction as generalizing ty body <;> simp [instantiate1', *]
-
-theorem instantiateList_letE : instantiateList (.letE n ty val body nd) as =
-    .letE n (instantiateList ty as) (instantiateList val as) (instantiateList body as 1) nd := by
+@[simp]
+theorem instantiateList_letE : instantiateList (.letE n ty val body nd) as k =
+    .letE n (instantiateList ty as k) (instantiateList val as k)
+      (instantiateList body as (k + 1)) nd := by
   induction as generalizing ty val body <;> simp [instantiate1', *]
 
 theorem instantiateList_instantiate1_comm (h : a.looseBVarRange' = 0) :

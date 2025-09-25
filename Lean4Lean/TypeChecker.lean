@@ -315,14 +315,14 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
     let f ← whnfCore f0 cheapRec cheapProj
     if let .lam _ _ body _ := f then
       let rec loop m (f : Expr) : RecM Expr :=
-        let cont2 := do
+        let rec cont := do
           let r := f.instantiateRange (rargs.size - m) rargs.size rargs
           let r := r.mkAppRevRange 0 (rargs.size - m) rargs
           save <|← whnfCore r cheapRec cheapProj
         if let .lam _ _ body _ := f then
           if m < rargs.size then loop (m + 1) body
-          else cont2
-        else cont2
+          else cont
+        else cont
       loop 1 body
     else if f == f0 then
       if let some r ← reduceRecursor e cheapRec cheapProj then

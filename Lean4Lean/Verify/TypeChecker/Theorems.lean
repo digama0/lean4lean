@@ -1283,7 +1283,7 @@ theorem inferType'.WF
     exact (inferProj.WF h1 h2 h3).bind fun ty _ _ ⟨ty', h⟩ => hF h
   · exact .readThe <| (M.WF.liftExcept inferFVar.WF).lift.bind fun _ _ _ ⟨_, _, h⟩ => hF h
   · exact .throw
-  · rename_i h _; simp [Expr.isBVar] at h
+  · rename_i h _; simp [Expr.hasLooseBVars, Expr.looseBVarRange'] at h
   · split <;> rename_i h
     · refine .readThe <| (M.WF.liftExcept (checkLevel.WF h1)).lift.bind fun _ _ _ ⟨_, h⟩ => ?_
       exact hF (infer_sort h)
@@ -1386,11 +1386,41 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     exact hP ▸ ⟨.rfl, { wf with whnfCore_wf := hic wf.whnfCore_wf }, h1, h2⟩
   unfold F; split <;> cases hfull
   · simp; exact hP ▸ whnfFVar.WF he
-  · rename_i fn arg _; rw [Expr.withRevApp_eq]
-    have ⟨_, stk⟩ := AppStack.build <| (fn.app arg).mkAppList_getAppArgsList ▸ he
-    refine (whnfCore.WF stk.tr).bind fun _ _ _ ⟨h1, h2⟩ => ?_
-    split <;> [skip; split]
-    · sorry
+  · rename_i fn arg _; generalize eq : fn.app arg = e at *
+    rw [Expr.withRevApp_eq]
+    have ⟨_, stk⟩ := AppStack.build <| e.mkAppList_getAppArgsList ▸ he
+    refine (whnfCore.WF stk.tr).bind fun _ s _ ⟨h1, h2⟩ => ?_
+    split <;> [rename_i name dom body bi _; split]
+    · let rec loop.WF {e e' i rargs f} (H : LambdaBodyN i e' f) (hi : i ≤ rargs.size) :
+        ∃ n f', LambdaBodyN n e' f' ∧ n ≤ rargs.size ∧
+          loop e cheapRec cheapProj rargs i f = loop.cont e cheapRec cheapProj rargs n f' := by
+        unfold loop; split
+        · split
+          · refine loop.WF (by simpa [Nat.add_comm] using H.add (.succ .zero)) ‹_›
+          · exact ⟨_, _, H, hi, rfl⟩
+        · exact ⟨_, _, H, hi, rfl⟩
+      refine
+        let ⟨i, f, h3, h4, eq⟩ := loop.WF (e' := .lam name dom body bi) (.succ .zero) <| by
+          simp [← eq, Expr.getAppRevArgs_eq, Expr.getAppArgsRevList]
+        eq ▸ ?_; clear eq
+      simp [Expr.getAppRevArgs_eq] at h4 ⊢
+      obtain ⟨l₁, l₂, h5, rfl⟩ : ∃ l₁ l₂, e.getAppArgsRevList = l₁ ++ l₂ ∧ l₂.length = i :=
+        ⟨_, _, (List.take_append_drop (e.getAppArgsRevList.length - i) ..).symm, by simp; omega⟩
+      simp [loop.cont, h5, List.take_of_length_le]
+      rw [Expr.mkAppRevRange_eq_rev (l₁ := []) (l₂ := l₁) (l₃ := l₂) (by simp) (by rfl) (by rfl)]
+      have br := BetaReduce.inst_reduce (l₁ := l₂.reverse)
+        [] (by simpa using h3) (Expr.instantiateList_append ..) (h := by
+          have := h5 ▸ (c.mlctx.noBV ▸ he.closed).getAppArgsRevList
+          simp [or_imp, forall_and] at this ⊢
+          exact this.2) |>.mkAppRevList (es := l₁)
+      simp [← Expr.mkAppRevList_reverse, ← Expr.mkAppRevList_append, ← h5] at br
+      have := h2.rebuild_mkAppRevList c.venv_wf c.mlctx_wf.tr.wf stk.tr <|
+        e.mkAppRevList_getAppArgsRevList ▸ he
+      have ⟨_, a1, a2⟩ := this.beta c.venv_wf c.mlctx_wf.tr.wf br
+      refine (whnfCore.WF a1).bind fun _ _ _ ⟨b1, b2⟩ => ?_
+      have hb := e.mkAppRevList_getAppArgsRevList ▸ h1.mkAppRevList
+      exact hsave (hb.trans (.betaReduce br) |>.trans b1) <|
+        b2.defeq c.venv_wf c.mlctx_wf.tr.wf a2
     · refine (reduceRecursor.WF he).bind fun _ _ _ h => ?_
       split <;> [skip; exact hid]
       let ⟨h1, _, h2, eq⟩ := h _ rfl
@@ -1411,7 +1441,7 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
           have ⟨h5, h6⟩ := ih hb h3 he he₁
           exact ⟨fun _ hP he => ⟨h5 _ hP he.1, he.2⟩,
             .app c.venv_wf c.mlctx_wf.tr.wf h1 h2 h6 (h4.trExpr c.venv_wf c.mlctx_wf.tr.wf)⟩
-      have eq := (fn.app arg).mkAppRevList_getAppArgsRevList
+      have eq := e.mkAppRevList_getAppArgsRevList
       let ⟨h3, _, h4, eq⟩ := eq ▸ this h1 (eq ▸ he) stk.tr h2
       refine (whnfCore.WF h4).bind fun _ _ _ ⟨h5, h6⟩ => ?_
       refine hsave (h3.trans h5) (h6.defeq c.venv_wf c.mlctx_wf.tr.wf eq)

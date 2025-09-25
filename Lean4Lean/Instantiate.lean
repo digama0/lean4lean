@@ -18,12 +18,12 @@ def cheapBetaReduce (e : Expr) : Expr := Id.run do
       mkAppRange args[i - n - 1]! i args.size args
     else
       e
-  let rec loop i fn : Id Expr :=
+  let rec loop i fn :=
     if i < args.size then
       match fn with
       | .lam _ _ body .. => loop (i + 1) body
       | _ => cont i fn
     else cont i fn
-  loop 0 fn
+  return loop 0 fn
 
 end Expr
