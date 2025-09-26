@@ -1488,6 +1488,39 @@ theorem TrExprS.unique' (hΔ : IsUniqueCtx Δ₁ Δ₂) (H : IsUnique e)
 theorem TrExprS.unique (H : IsUnique e)
     (H1 : TrExprS env Us Δ e e₁) (H2 : TrExprS env Us Δ e e₂) : e₁ = e₂ := H1.unique' .base H H2
 
+theorem TrExprS.boolFalse (henv : env.HasPrimitives) (H : env.contains ``Bool) :
+    TrExprS env Us Δ (toExpr false) .boolFalse ∧
+    env.HasType Us.length Δ.toCtx .boolFalse .bool := by
+  let ⟨⟨_, H⟩, _⟩ := henv.bool H
+  cases henv.boolFalse H
+  exact ⟨.const H rfl rfl, .const H nofun rfl⟩
+
+theorem TrExprS.boolTrue (henv : env.HasPrimitives) (H : env.contains ``Bool) :
+    TrExprS env Us Δ (toExpr true) .boolTrue ∧
+    env.HasType Us.length Δ.toCtx .boolTrue .bool := by
+  let ⟨_, _, H⟩ := henv.bool H
+  cases henv.boolTrue H
+  exact ⟨.const H rfl rfl, .const H nofun rfl⟩
+
+theorem TrExprS.boolLit (henv : env.HasPrimitives) (H : env.contains ``Bool) (b : Bool) :
+    TrExprS env Us Δ (toExpr b) (.boolLit b) ∧
+    env.HasType Us.length Δ.toCtx (.boolLit b) .bool := by
+  match b with
+  | false => exact TrExprS.boolFalse henv H
+  | true => exact TrExprS.boolTrue henv H
+
+theorem FVarsIn.boolLit {b : Bool} : FVarsIn P (toExpr b) := by cases b <;> exact nofun
+
+theorem VExpr.WF.boolLit_has_type (wf : env.Ordered) (henv : env.HasPrimitives)
+    (hΓ : OnCtx Γ (env.IsType U)) (H : VExpr.WF env U Γ (.boolLit b)) : env.contains ``Bool := by
+  suffices env.HasType U Γ (.boolLit b) .bool by
+    have ⟨_, H⟩ := this.isType wf hΓ
+    have ⟨_, H, _⟩ := HasType.const_inv wf hΓ H
+    exact ⟨_, H⟩
+  cases b with have ⟨_, h1, h2, h3⟩ := let ⟨_, H⟩ := H; HasType.const_inv wf hΓ H
+  | false => cases henv.boolFalse h1; exact .const h1 h2 h3
+  | true => cases henv.boolTrue h1; exact .const h1 h2 h3
+
 theorem TrExprS.lit_has_type (wf : env.Ordered) (henv : env.HasPrimitives)
     (H : TrExprS env Us Δ (.lit l) e') : env.contains l.typeName := by
   match l with
@@ -1525,7 +1558,7 @@ theorem TrExprS.natSucc (henv : env.HasPrimitives) (H : env.contains ``Nat) :
   cases henv.natSucc H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
-theorem TrExprS.natLit (henv : env.HasPrimitives) (H : env.contains ``Nat) :
+theorem TrExprS.natLit (henv : env.HasPrimitives) (H : env.contains ``Nat) (n) :
     TrExprS env Us Δ (.lit (.natVal n)) (.natLit n) ∧
     env.HasType Us.length Δ.toCtx (.natLit n) .nat := by
   induction n with
@@ -1612,11 +1645,11 @@ theorem TrExprS.listCharLit (wf : env.Ordered) (henv : env.HasPrimitives)
     exact ⟨e1.app e2 ih.2 ih.1, e2.app ih.2⟩
 
 theorem TrExprS.trLiteral (wf : env.Ordered) (henv : env.HasPrimitives)
-    (H : env.contains l.typeName) :
+    (l) (H : env.contains l.typeName) :
     TrExprS env Us Δ (.lit l) (.trLiteral l) ∧
     env.HasType Us.length Δ.toCtx (.trLiteral l) (.const l.typeName []) := by
   match l with
-  | .natVal n => exact TrExprS.natLit henv H
+  | .natVal n => exact TrExprS.natLit henv H _
   | .strVal s =>
     have a := TrExprS.stringMk henv H (Us := Us) (Δ := Δ)
     have b := TrExprS.listCharLit wf henv H (Us := Us) (Δ := Δ) s.data

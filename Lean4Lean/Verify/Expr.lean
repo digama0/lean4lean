@@ -738,7 +738,11 @@ theorem instantiateLevelParams_eq {e ps ls} :
   · refine instantiateLevelParamsCore_id.symm.trans ?_; congr; ext n
     cases ps <;> simp_all
 
-theorem eqv_sort {e : Expr} : e == .sort u ↔ ∃ u', e = .sort u' ∧ u' == u := by
+theorem eqv_sort {e : Expr} : e == .sort u ↔ e = .sort u := by
+  conv => lhs; simp [(· == ·)]
+  cases e <;> simp [eqv']
+
+theorem eqv_const {e : Expr} : e == .const c ls ↔ e = .const c ls := by
   conv => lhs; simp [(· == ·)]
   cases e <;> simp [eqv']
 

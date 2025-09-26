@@ -101,6 +101,13 @@ inductive TrExprS : VLCtx → Expr → VExpr → Prop
 def TrExpr (env : VEnv) (Us : List Name) (Δ : VLCtx) (e : Expr) (e' : VExpr) : Prop :=
   ∃ e₂, TrExprS env Us Δ e e₂ ∧ env.IsDefEqU Us.length Δ.toCtx e₂ e'
 
+def VExpr.bool : VExpr := .const ``Bool []
+def VExpr.boolTrue : VExpr := .const ``Bool.true []
+def VExpr.boolFalse : VExpr := .const ``Bool.false []
+def VExpr.boolLit : Bool → VExpr
+  | .false => .boolFalse
+  | .true => .boolTrue
+
 def VExpr.nat : VExpr := .const ``Nat []
 def VExpr.natZero : VExpr := .const ``Nat.zero []
 def VExpr.natSucc : VExpr := .const ``Nat.succ []
@@ -124,6 +131,9 @@ def VExpr.trLiteral : Literal → VExpr
   | .strVal s => .app .stringMk (.listCharLit s.data)
 
 structure VEnv.HasPrimitives (env : VEnv) : Prop where
+  bool : env.contains ``Bool → env.contains ``Bool.false ∧ env.contains ``Bool.true
+  boolFalse : env.constants ``Bool.false = some (some ci) → ci = { uvars := 0, type := .bool }
+  boolTrue : env.constants ``Bool.true = some (some ci) → ci = { uvars := 0, type := .bool }
   nat : env.contains ``Nat → env.contains ``Nat.zero ∧ env.contains ``Nat.succ
   natZero : env.constants ``Nat.zero = some (some ci) → ci = { uvars := 0, type := .nat }
   natSucc : env.constants ``Nat.succ = some (some ci) →

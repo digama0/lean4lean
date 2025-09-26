@@ -251,6 +251,8 @@ theorem IsType.forallE : IsType env U Γ A → IsType env U (A::Γ) body →
 theorem IsDefEq.hasType {env : VEnv} (H : env.IsDefEq U Γ e1 e2 A) :
     env.HasType U Γ e1 A ∧ env.HasType U Γ e2 A := ⟨H.trans H.symm, H.symm.trans H⟩
 
+theorem IsDefEq.toU {env : VEnv} (H : env.IsDefEq U Γ e1 e2 A) : env.IsDefEqU U Γ e1 e2 := ⟨_, H⟩
+
 theorem IsDefEqU.refl {env : VEnv} (h1 : e.WF env U Γ) : env.IsDefEqU U Γ e e := h1
 theorem IsDefEqU.symm {env : VEnv} (h1 : env.IsDefEqU U Γ e₁ e₂) : env.IsDefEqU U Γ e₂ e₁ :=
   h1.imp fun _ => (·.symm)

@@ -109,6 +109,11 @@ theorem Aligned.find?_uniq (H : Aligned safety C venv)
 
 end
 
+theorem TrEnv.find?_iff (H : TrEnv safety env venv) :
+    (∃ ci, env.find? name = some ci) ↔ ∃ oci, venv.constants name = some oci := by
+  conv => enter [1,1,_,1]; apply H.map_wf.find?'_eq_find?
+  erw [← Option.isSome_iff_exists, H.aligned.find?_isSome, Option.isSome_iff_exists]
+
 theorem TrEnv.find? (H : TrEnv safety env venv)
     (h : env.find? name = some ci) (hs : isAsSafeAs safety ci) :
     ∃ ci', venv.constants name = some (some ci') ∧ TrConstant safety venv ci ci' :=
