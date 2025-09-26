@@ -113,8 +113,18 @@ theorem inst_inst {l : VLevel} : (l.inst ls).inst ls' = l.inst (ls.map (inst ls'
   induction l <;> simp [inst, *, List.getD_eq_getElem?_getD, List.getElem?_map]
   case param n => cases ls[n]? <;> simp [inst]
 
-theorem inst_id {l : VLevel} (h : l.WF u) : l.inst ((List.range u).map .param) = l := by
-  induction l <;> simp_all [inst, WF, List.getD_eq_getElem?_getD]
+def params (n : Nat) : List VLevel := (List.range n).map .param
+
+@[simp] theorem params_length {n : Nat} : (params n).length = n := by simp [params]
+
+theorem params_wf {n : Nat} : ∀ ⦃l⦄, l ∈ params n → l.WF n := by simp [params, WF]
+
+theorem inst_id {l : VLevel} (h : l.WF u) : l.inst (params u) = l := by
+  induction l <;> simp_all [params, inst, WF, List.getD_eq_getElem?_getD]
+
+theorem inst_map_id (h : ls.length = n) : (params n).map (inst ls) = ls := by
+  subst n; simp [params]; apply List.ext_get (by simp)
+  intro i _ _; simp [inst]; rw [List.getElem?_eq_getElem]; rfl
 
 theorem eval_inst {l : VLevel} : (l.inst ls).eval ns = l.eval (ls.map (eval ns)) := by
   induction l <;> simp [eval, inst, *, List.getD_eq_getElem?_getD]

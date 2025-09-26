@@ -9,7 +9,7 @@ structure VDefVal extends VConstVal where
   value : VExpr
 
 def VDefVal.toDefEq (v : VDefVal) : VDefEq :=
-  ⟨v.uvars, .const v.name ((List.range v.uvars).map .param), v.value, v.type⟩
+  ⟨v.uvars, .const v.name (VLevel.params v.uvars), v.value, v.type⟩
 
 structure VInductiveType extends VConstVal where
   ctors : List VConstVal

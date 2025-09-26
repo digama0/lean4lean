@@ -5,6 +5,12 @@ namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
 
+theorem ConstantInfo.hasValue_eq (ci : ConstantInfo) : ci.hasValue = ci.value?.isSome := by
+  cases ci <;> rfl
+
+theorem ConstantInfo.value!_eq (ci : ConstantInfo) : ci.value! = ci.value?.get! := by
+  cases ci <;> simp [ConstantInfo.value?, ConstantInfo.value!]
+
 def isAsSafeAs : DefinitionSafety → ConstantInfo → Bool
   | .unsafe, _ => true
   | .partial, ci => !ci.isUnsafe
@@ -42,6 +48,12 @@ theorem AddQuot1.to_addQuot
   let ⟨_, _, _, h1, h2, h3⟩ := H
   simpa using ⟨_, h2, H1 _ _ h3⟩
 
+theorem AddQuot1.le
+    (H1 : ∀ m env, P m env → env ≤ env₀)
+    (m env) (H : AddQuot1 name kind ci' P m env) : env ≤ env₀ :=
+  let ⟨_, _, _, _, h2, h3⟩ := H
+  .trans (VEnv.addConst_le h2) (H1 _ _ h3)
+
 def AddQuot (m₁ m₂ : ConstMap) (env₁ env₂ : VEnv) : Prop :=
   AddQuot1 ``Quot .type quotConst (m := m₁) (env := env₁) <|
   AddQuot1 ``Quot.mk .ctor quotMkConst <|
@@ -50,6 +62,9 @@ def AddQuot (m₁ m₂ : ConstMap) (env₁ env₂ : VEnv) : Prop :=
 
 nonrec theorem AddQuot.to_addQuot (H : AddQuot m₁ m₂ env₁ env₂) : env₁.addQuot = some env₂ :=
   open AddQuot1 in (to_addQuot <| to_addQuot <| to_addQuot <| to_addQuot (by simp)) _ _ H
+
+nonrec theorem AddQuot.le (H : AddQuot m₁ m₂ env₁ env₂) : env₁ ≤ env₂ :=
+  open AddQuot1 in (le <| le <| le <| le fun _ _ h => h.2 ▸ VEnv.addDefEq_le) _ _ H
 
 inductive AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     (m₂ : ConstMap) (env₂ : VEnv) : Prop

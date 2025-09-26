@@ -373,6 +373,10 @@ theorem IsDefEq.closedN {env : VEnv} (henv : env.Ordered)
     (H : env.IsDefEq U Γ e1 e2 A) (hΓ : CtxClosed Γ) : e1.ClosedN Γ.length :=
   (H.closedN' henv.closed hΓ).1
 
+theorem _root_.Lean4Lean.VExpr.WF.closedN {env : VEnv} (henv : env.Ordered)
+    (H : VExpr.WF env U Γ e) (hΓ : CtxClosed Γ) : e.ClosedN Γ.length :=
+  let ⟨_, h⟩ := H; h.closedN henv hΓ
+
 variable! (henv : Ordered env) in
 theorem IsDefEqCtx.closed (H : CtxClosed Γ₀) :
     IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → CtxClosed Γ₁ ∧ CtxClosed Γ₂
@@ -483,6 +487,18 @@ theorem IsDefEq.levelWF (H : env.IsDefEq U Γ e1 e2 A) (W : OnCtx Γ fun _ A => 
     let ⟨hh, _, hp⟩ := ih2 W; let ⟨hh', _, _⟩ := ih3 W
     exact ⟨hh, hh', hp⟩
   | extra _ h2 => exact ⟨.instL h2, .instL h2, .instL h2⟩
+
+theorem HasType.const0 (H : env.constants c = some (some ci)) (wf : ci.WF env) :
+    HasType env ci.uvars [] (.const c (VLevel.params ci.uvars)) ci.type := by
+  have := const H (ls := VLevel.params ci.uvars) VLevel.params_wf VLevel.params_length (Γ := [])
+  have ⟨_, h⟩ := wf
+  rwa [(IsDefEq.levelWF h trivial).1.instL_id] at this
+
+theorem IsDefEq.extra0 (H : env.defeqs df) (wf : df.WF env) :
+    IsDefEq env df.uvars [] df.lhs df.rhs df.type := by
+  have := extra H (ls := VLevel.params df.uvars) VLevel.params_wf VLevel.params_length (Γ := [])
+  let ⟨_, h2, h3⟩ := IsDefEq.levelWF wf.2 trivial
+  rwa [(IsDefEq.levelWF wf.1 trivial).1.instL_id, h2.instL_id, h3.instL_id] at this
 
 variable! (henv : Ordered env) in
 theorem IsDefEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :

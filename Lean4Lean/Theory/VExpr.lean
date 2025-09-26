@@ -171,8 +171,7 @@ def LevelWF (U : Nat) : VExpr → Prop
   | .const _ ls => ∀ l ∈ ls, l.WF U
   | .app e1 e2 | .lam e1 e2 | .forallE e1 e2 => e1.LevelWF U ∧ e2.LevelWF U
 
-theorem LevelWF.instL_id {e : VExpr} (h : e.LevelWF U) :
-    e.instL ((List.range U).map .param) = e := by
+theorem LevelWF.instL_id {e : VExpr} (h : e.LevelWF U) : e.instL (VLevel.params U) = e := by
   induction e <;> simp_all [instL, LevelWF, VLevel.inst_id]
   case const => exact List.map_id''' _ fun _ h1 => VLevel.inst_id (h _ h1)
 
