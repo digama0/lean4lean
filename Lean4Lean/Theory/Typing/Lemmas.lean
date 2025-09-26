@@ -539,6 +539,10 @@ variable! (henv : Ordered env) in
 nonrec theorem HasType.weak0 (H : env.HasType U [] e A) : env.HasType U Γ e A := H.weak0 henv
 
 variable! (henv : Ordered env) in
+theorem IsDefEqU.weak0 (H : env.IsDefEqU U [] e1 e2) : env.IsDefEqU U Γ e1 e2 :=
+  let ⟨_, H⟩ := H; ⟨_, H.weak0 henv⟩
+
+variable! (henv : Ordered env) in
 theorem IsDefEq.weak' (W : Ctx.Lift' l Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U Γ' (e1.lift' l) (e2.lift' l) (A.lift' l) := by
   generalize e : l.depth = n

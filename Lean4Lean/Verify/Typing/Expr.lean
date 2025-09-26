@@ -130,6 +130,14 @@ def VExpr.trLiteral : Literal → VExpr
   | .natVal n => .natLit n
   | .strVal s => .app .stringMk (.listCharLit s.data)
 
+def VEnv.ReflectsNatNatNat (env : VEnv) (fc : Name) (f : Nat → Nat → Nat) :=
+  env.contains fc →
+  ∀ a b, env.IsDefEqU 0 [] (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.natLit (f a b))
+
+def VEnv.ReflectsNatNatBool (env : VEnv) (fc : Name) (f : Nat → Nat → Bool) :=
+  env.contains fc →
+  ∀ a b, env.IsDefEqU 0 [] (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.boolLit (f a b))
+
 structure VEnv.HasPrimitives (env : VEnv) : Prop where
   bool : env.contains ``Bool → env.contains ``Bool.false ∧ env.contains ``Bool.true
   boolFalse : env.constants ``Bool.false = some (some ci) → ci = { uvars := 0, type := .bool }
@@ -138,6 +146,20 @@ structure VEnv.HasPrimitives (env : VEnv) : Prop where
   natZero : env.constants ``Nat.zero = some (some ci) → ci = { uvars := 0, type := .nat }
   natSucc : env.constants ``Nat.succ = some (some ci) →
     ci = { uvars := 0, type := .forallE .nat .nat }
+  natAdd : env.ReflectsNatNatNat ``Nat.add Nat.add
+  natSub : env.ReflectsNatNatNat ``Nat.sub Nat.sub
+  natMul : env.ReflectsNatNatNat ``Nat.mul Nat.mul
+  natPow : env.ReflectsNatNatNat ``Nat.pow Nat.pow
+  natGcd : env.ReflectsNatNatNat ``Nat.gcd Nat.gcd
+  natMod : env.ReflectsNatNatNat ``Nat.mod Nat.mod
+  natDiv : env.ReflectsNatNatNat ``Nat.div Nat.div
+  natBEq : env.ReflectsNatNatBool ``Nat.beq Nat.beq
+  natBLE : env.ReflectsNatNatBool ``Nat.ble Nat.ble
+  natLAnd : env.ReflectsNatNatNat ``Nat.land Nat.land
+  natLOr : env.ReflectsNatNatNat ``Nat.lor Nat.lor
+  natXor : env.ReflectsNatNatNat ``Nat.xor Nat.xor
+  natShiftLeft : env.ReflectsNatNatNat ``Nat.shiftLeft Nat.shiftLeft
+  natShiftRight : env.ReflectsNatNatNat ``Nat.shiftRight Nat.shiftRight
   string : env.contains ``String → env.contains ``String.mk ∧
     env.HasType 0 [] .listCharNil .listChar ∧
     env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar) ∧

@@ -1495,6 +1495,9 @@ theorem TrExprS.boolFalse (henv : env.HasPrimitives) (H : env.contains ``Bool) :
   cases henv.boolFalse H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
+@[simp] theorem VExpr.instL_boolFalse : VExpr.boolFalse.instL ls = VExpr.boolFalse := by
+  simp [boolFalse, instL]
+
 theorem TrExprS.boolTrue (henv : env.HasPrimitives) (H : env.contains ``Bool) :
     TrExprS env Us Δ (toExpr true) .boolTrue ∧
     env.HasType Us.length Δ.toCtx .boolTrue .bool := by
@@ -1502,12 +1505,18 @@ theorem TrExprS.boolTrue (henv : env.HasPrimitives) (H : env.contains ``Bool) :
   cases henv.boolTrue H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
+@[simp] theorem VExpr.instL_boolTrue : VExpr.boolTrue.instL ls = VExpr.boolTrue := by
+  simp [boolTrue, instL]
+
 theorem TrExprS.boolLit (henv : env.HasPrimitives) (H : env.contains ``Bool) (b : Bool) :
     TrExprS env Us Δ (toExpr b) (.boolLit b) ∧
     env.HasType Us.length Δ.toCtx (.boolLit b) .bool := by
   match b with
   | false => exact TrExprS.boolFalse henv H
   | true => exact TrExprS.boolTrue henv H
+
+@[simp] theorem VExpr.instL_boolLit : (VExpr.boolLit b).instL ls = VExpr.boolLit b := by
+  cases b <;> simp [boolLit]
 
 theorem FVarsIn.boolLit {b : Bool} : FVarsIn P (toExpr b) := by cases b <;> exact nofun
 
@@ -1551,6 +1560,9 @@ theorem TrExprS.natZero (henv : env.HasPrimitives) (H : env.contains ``Nat) :
   cases henv.natZero H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
+@[simp] theorem VExpr.instL_natZero : VExpr.natZero.instL ls = .natZero := by
+  simp [natZero, instL]
+
 theorem TrExprS.natSucc (henv : env.HasPrimitives) (H : env.contains ``Nat) :
     TrExprS env Us Δ .natSucc .natSucc ∧
     env.HasType Us.length Δ.toCtx .natSucc (.forallE .nat .nat) := by
@@ -1558,12 +1570,18 @@ theorem TrExprS.natSucc (henv : env.HasPrimitives) (H : env.contains ``Nat) :
   cases henv.natSucc H
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
+@[simp] theorem VExpr.instL_natSucc : VExpr.natSucc.instL ls = .natSucc := by
+  simp [natSucc, instL]
+
 theorem TrExprS.natLit (henv : env.HasPrimitives) (H : env.contains ``Nat) (n) :
     TrExprS env Us Δ (.lit (.natVal n)) (.natLit n) ∧
     env.HasType Us.length Δ.toCtx (.natLit n) .nat := by
   induction n with
   | zero => exact let ⟨h1, h2⟩ := natZero henv H; ⟨.lit h1, h2⟩
   | succ n ih => exact let ⟨h1, h2⟩ := natSucc henv H; ⟨.lit (.app h2 ih.2 h1 ih.1), .app h2 ih.2⟩
+
+@[simp] theorem VExpr.instL_natLit : (VExpr.natLit n).instL ls = VExpr.natLit n := by
+  induction n <;> simp [*, natLit, instL]
 
 theorem TrExprS.stringMk (henv : env.HasPrimitives) (H : env.contains ``String) :
     TrExprS env Us Δ (.const ``String.mk []) .stringMk ∧
