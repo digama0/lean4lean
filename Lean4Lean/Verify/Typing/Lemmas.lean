@@ -2000,3 +2000,33 @@ theorem TrTyping.eqv (H : TrTyping env Us Δ e₁ ty₁ e' ty')
     (eq : e₁ == e₂) (eq' : ty₁ == ty₂) : TrTyping env Us Δ e₂ ty₂ e' ty' :=
   let ⟨h1, h2, h3, h4⟩ := H
   ⟨.eqv h1 eq eq', h2.eqv eq, h3.eqv eq', h4⟩
+
+variable (env : VEnv) (Us : List Name) (Δ : VLCtx) in
+inductive AppStack : Expr → VExpr → List Expr → Prop where
+  | head : TrExprS env Us Δ f f' → AppStack f f' []
+  | app :
+    env.HasType Us.length Δ.toCtx f' (.forallE A B) →
+    env.HasType Us.length Δ.toCtx a' A →
+    TrExprS env Us Δ f f' →
+    TrExprS env Us Δ a a' →
+    AppStack (.app f a) (.app f' a') as →
+    AppStack f f' (a :: as)
+
+theorem AppStack.build_rev {e : Expr} :
+    ∀ {as}, TrExprS env Us Δ (e.mkAppRevList as) e' →
+      AppStack env Us Δ (e.mkAppRevList as) e' as' →
+      ∃ e', AppStack env Us Δ e e' (as.reverseAux as')
+  | [], _, H2 => ⟨_, H2⟩
+  | _ :: as, .app h1 h2 h3 h4, H2 =>
+    AppStack.build_rev (as := as) h3 (.app h1 h2 h3 h4 H2)
+
+theorem AppStack.tr : AppStack env Us Δ e e' as → TrExprS env Us Δ e e'
+  | .head H | .app _ _ H _ _ => H
+
+theorem AppStack.append {e : Expr} (H : AppStack env Us Δ (e.mkAppList as) e' bs) :
+    ∃ e', AppStack env Us Δ e e' (as ++ bs) := by
+  rw [← Expr.mkAppRevList_reverse] at H
+  simpa using AppStack.build_rev H.tr H
+
+theorem AppStack.build {e : Expr} (H : TrExprS env Us Δ (e.mkAppList as) e') :
+    ∃ e', AppStack env Us Δ e e' as := by simpa using AppStack.append (.head H)
