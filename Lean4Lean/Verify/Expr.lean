@@ -56,6 +56,10 @@ instance : LawfulBEq MVarId where
   eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
   rfl := BEq.rfl (α := Name)
 
+instance : LawfulBEq LBool where
+  rfl {a} := by cases a <;> rfl
+  eq_of_beq {a b} := by cases a <;> cases b <;> simp +decide
+
 namespace Substring
 
 open private substrEq.loop from Init.Data.String.Basic in
@@ -460,6 +464,26 @@ theorem liftLooseBVars_comm (e : Expr) (n1 n2 k1 k2 : Nat) (h : k2 ≤ k1) :
     · have := mt (Nat.lt_of_lt_of_le · h) h'
       rw [if_neg (by omega), if_neg this, if_neg (by omega), Nat.add_right_comm]
 
+theorem liftLooseBVars_looseBVarRange :
+    (liftLooseBVars' e k n).looseBVarRange' ≤ e.looseBVarRange' + n := by
+  induction e generalizing k <;> simp [*, looseBVarRange', liftLooseBVars'] <;> grind
+
+theorem instantiate1'_looseBVarRange
+    (he : e.looseBVarRange' ≤ n + k + 1) (ha : a.looseBVarRange' ≤ n) :
+    (instantiate1' e a k).looseBVarRange' ≤ n + k := by
+  induction e generalizing k with
+    simp_all [looseBVarRange', instantiate1', Nat.max_le]
+  | bvar =>
+    split <;> [skip; split] <;> try simp [looseBVarRange'] at he ⊢; omega
+    have := @liftLooseBVars_looseBVarRange a 0 k; omega
+  | _ => grind
+
+theorem instantiateList_looseBVarRange
+    (he : e.looseBVarRange' ≤ n + k + as.length) (ha : ∀ a ∈ as, a.looseBVarRange' ≤ n) :
+    (instantiateList e as k).looseBVarRange' ≤ n + k := by
+  induction as generalizing e with simp_all | cons _ _ ih
+  apply ih; rw [Nat.add_right_comm]; apply instantiate1'_looseBVarRange <;> omega
+
 theorem instantiate1'_eq_self : e.looseBVarRange' ≤ k → instantiate1' e a k = e := by
   induction e generalizing k <;>
     simp +contextual [*, looseBVarRange', instantiate1', Nat.max_le]
@@ -467,6 +491,9 @@ theorem instantiate1'_eq_self : e.looseBVarRange' ≤ k → instantiate1' e a k 
 
 theorem instantiate1_eq_self (H : e.looseBVarRange' = 0) : instantiate1' e a = e := by
   simpa using instantiate1'_eq_self (e := e) (Nat.le_zero.2 H)
+
+theorem instantiateList'_eq_self (h : e.looseBVarRange' ≤ k) : instantiateList e as k = e := by
+  induction as <;> simp [instantiateList, instantiate1'_eq_self, *]
 
 theorem instantiateList_eq_self (h : e.looseBVarRange' = 0) : instantiateList e as = e := by
   induction as <;> simp [instantiateList, instantiate1_eq_self, *]
@@ -775,3 +802,16 @@ theorem data_eq {e₁ e₂ : Expr} : e₁ == e₂ → e₁.data = e₂.data := b
 
 instance : LawfulHashable Expr where
   hash_eq e₁ e₂ h := by simp [hash, Expr.hash, data_eq h]
+
+theorem instantiate1_eqv {e₁ e₂ : Expr} :
+    e₁ == e₂ → e₁.instantiate1' a k == e₂.instantiate1' a k := by
+  simp [(· == ·)]; induction e₁ generalizing e₂ k
+  all_goals
+    cases e₂ <;> try change false = _ → _; rintro ⟨⟩
+    simp [instantiate1', eqv']
+  all_goals intros; subst_vars; try simp [*]
+  split <;> [skip; split] <;> simpa [(· == ·)] using eqv_refl _
+
+theorem instantiateList_eqv {e₁ e₂ : Expr} (h : e₁ == e₂) :
+    e₁.instantiateList as k == e₂.instantiateList as k := by
+  induction as generalizing e₁ e₂ <;> simp [instantiate1_eqv, *]

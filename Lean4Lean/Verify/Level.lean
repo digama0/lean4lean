@@ -153,3 +153,14 @@ open private substParams.go from Lean.Level in
 
 theorem substParams_id {u : Level} :
     substParams' .param false u = u := by induction u <;> simp_all [substParams']
+
+theorem isEquiv'_wf (h : isEquiv' u v)
+    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : u' ≈ v' := sorry
+
+theorem isEquivList_wf (H : Level.isEquivList us vs) :
+    List.mapM (VLevel.ofLevel Us) us = some us' →
+    List.mapM (VLevel.ofLevel Us) vs = some vs' → us'.Forall₂ (· ≈ ·) vs' := by
+  simp [Level.isEquivList] at H; revert us' vs'
+  induction us generalizing vs with cases vs <;> simp [List.all2] at H <;> simp | cons u us ih
+  rename_i v vs; rintro _ _ u' hu us' hus rfl v' hv vs' hvs rfl
+  exact .cons (isEquiv'_wf H.1 hu hv) (ih H.2 hus hvs)

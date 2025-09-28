@@ -542,6 +542,10 @@ theorem IsDefEq.weak (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsDefEq U (B::Γ) e1.lift e2.lift A.lift := H.weakN henv .one
 
 variable! (henv : Ordered env) in
+theorem IsDefEqU.weak (H : env.IsDefEqU U Γ e1 e2) :
+    env.IsDefEqU U (B::Γ) e1.lift e2.lift := let ⟨_, H⟩ := H; ⟨_, H.weak henv⟩
+
+variable! (henv : Ordered env) in
 theorem IsDefEq.weakR (hΓ : CtxClosed Γ) (H : env.IsDefEq U Γ e1 e2 A) (Γ') :
     env.IsDefEq U (Γ ++ Γ') e1 e2 A := by
   have ⟨h1, h2, h3⟩ := H.closedN' henv.closed hΓ

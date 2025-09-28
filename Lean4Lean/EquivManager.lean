@@ -1,4 +1,5 @@
 import Batteries.Data.UnionFind.Basic
+import Lean4Lean.PtrEq
 
 namespace Lean4Lean
 open Lean
@@ -34,8 +35,7 @@ def toNode (e : Expr) : StateM EquivManager NodeRef := fun m => do
 
 variable (useHash : Bool) in
 def isEquiv (e1 e2 : Expr) : StateM EquivManager Bool := do
-  -- FIXME: find a way to do this with withPtrEq or benchmark how important it is
-  if unsafe ptrEq e1 e2 then return true
+  if ptrEqExpr e1 e2 then return true
   if useHash && e1.hash != e2.hash then return false
   if e1.isBVar && e2.isBVar then return e1.bvarIdx! == e2.bvarIdx!
   let r1 ← find (← toNode e1)

@@ -830,6 +830,11 @@ theorem TrExprS.defeqDFC (H : TrExprS env Us Δ₁ e e₁) : ∃ e₂, TrExprS e
     let ⟨_, h2⟩ := h2.defeqDFC henv hΔ.defeqCtx (h1.uniq henv hΔ h1')
     exact ⟨_, .proj h1' h2⟩
 
+variable! (henv : VEnv.WF env) {Us : List Name} (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂) in
+theorem TrExprS.defeqDFC' (H : TrExprS env Us Δ₁ e e') : TrExpr env Us Δ₂ e e' := by
+  let ⟨_, H'⟩ := H.defeqDFC henv hΔ
+  refine ⟨_, H', H'.uniq henv (hΔ.symm henv) H⟩
+
 theorem TrExpr.lam (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
     (h1 : env.IsType Us.length Δ.toCtx ty')
     (h2 : TrExpr env Us Δ ty ty')

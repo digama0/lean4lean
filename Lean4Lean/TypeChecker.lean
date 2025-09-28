@@ -447,12 +447,11 @@ def whnf' (e : Expr) : RecM Expr := do
 def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
   | .lam _ tDom tBody _, .lam name sDom sBody bi => do
-    let sType ← if tDom != sDom then
+    let sType ← if tDom == sDom then pure none else
       let sType := sDom.instantiateRev subst
       let tType := tDom.instantiateRev subst
       if !(← isDefEq tType sType) then return false
       pure (some sType)
-    else pure none
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev subst)
       withLocalDecl name sType bi fun fv => do
@@ -464,12 +463,11 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
 def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
   | .forallE _ tDom tBody _, .forallE name sDom sBody bi => do
-    let sType ← if tDom != sDom then
+    let sType ← if tDom == sDom then pure none else
       let sType := sDom.instantiateRev subst
       let tType := tDom.instantiateRev subst
       if !(← isDefEq tType sType) then return false
       pure (some sType)
-    else pure none
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev subst)
       withLocalDecl name sType bi fun fv =>
@@ -528,11 +526,15 @@ def isDefEqApp (t s : Expr) : RecM Bool := do
   unless t.isApp && s.isApp do return false
   t.withApp fun tf tArgs =>
   s.withApp fun sf sArgs => do
-  unless tArgs.size == sArgs.size do return false
-  unless ← isDefEq tf sf do return false
-  for ta in tArgs, sa in sArgs do
-    unless ← isDefEq ta sa do return false
-  return true
+  if _h : tArgs.size = sArgs.size then
+    unless ← isDefEq tf sf do return false
+    let rec loop i := do
+      if _h : i < tArgs.size then
+        unless ← isDefEq tArgs[i] sArgs[i] do return false
+        loop (i+1)
+      else return true
+    loop 0
+  else return false
 
 def isDefEqProofIrrel (t s : Expr) : RecM LBool := do
   let tType ← inferType t
@@ -585,7 +587,7 @@ def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
     else if hs.lt' ht then
       cont (← delta tn) sn
     else
-      if tn.isApp && sn.isApp && (unsafe ptrEq dt ds) && dt.hints.isRegular
+      if tn.isApp && sn.isApp && ptrEqConstantInfo dt ds && dt.hints.isRegular
         && !failedBefore (← get).failure tn sn
       then
         if Level.isEquivList tn.getAppFn.constLevels! sn.getAppFn.constLevels! then
@@ -659,7 +661,7 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   let tn ← whnfCore t (cheapProj := true)
   let sn ← whnfCore s (cheapProj := true)
 
-  if !(unsafe ptrEq tn t && ptrEq sn s) then
+  if !(ptrEqExpr tn t && ptrEqExpr sn s) then
     let r ← quickIsDefEq tn sn
     if r != .undef then return r == .true
 
@@ -681,7 +683,7 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
 
   let tnn ← whnfCore tn
   let snn ← whnfCore sn
-  if !(unsafe ptrEq tnn tn && ptrEq snn sn) then
+  if !(ptrEqExpr tnn tn && ptrEqExpr snn sn) then
     return ← isDefEqCore tnn snn
 
   if ← isDefEqApp tn sn then return true
