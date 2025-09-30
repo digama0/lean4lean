@@ -215,6 +215,8 @@ inductive TrLCtx' : List LocalDecl → VLCtx → Prop
 def TrLCtx (env : VEnv) (Us : List Name) (lctx : LocalContext) (Δ : VLCtx) : Prop :=
   lctx.WF ∧ TrLCtx' env Us lctx.toList Δ
 
+theorem TrLCtx.nil {env : VEnv} {Us : List Name} : TrLCtx env Us {} [] := ⟨.nil, .nil⟩
+
 theorem TrLCtx'.noBV : TrLCtx' env Us ds Δ → Δ.NoBV
   | .nil => rfl
   | .cons h _ => h.noBV

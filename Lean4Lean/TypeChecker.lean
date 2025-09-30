@@ -717,14 +717,14 @@ def RecM.runTermElab (x : RecM α) (safety := DefinitionSafety.safe) : Elab.Term
 
 instance : MonadLift RecM Elab.Term.TermElabM := ⟨RecM.runTermElab⟩
 
-def check (e : Expr) (lps : List Name) : M Expr :=
-  withReader ({ · with lparams := lps }) (inferType e (inferOnly := false)).run
-
 def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 
 def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
 def checkType (e : Expr) : M Expr := (Inner.inferType e (inferOnly := false)).run
+
+def check (e : Expr) (lps : List Name) : M Expr :=
+  withReader ({ · with lparams := lps }) (checkType e)
 
 def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
 

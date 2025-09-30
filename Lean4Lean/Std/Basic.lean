@@ -198,6 +198,8 @@ end UInt64
 
 namespace Batteries.UnionFind
 
+@[simp] theorem size_empty : (∅ : UnionFind).size = 0 := rfl
+
 @[simp] theorem size_push (uf : UnionFind) : uf.push.size = uf.size + 1 := by
   simp [push, size]
 

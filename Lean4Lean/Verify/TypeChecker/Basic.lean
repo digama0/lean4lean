@@ -86,6 +86,10 @@ structure WF (m : EquivManager) where
     m.toNodeMap[e₁]? = some i₁ → m.toNodeMap[e₂]? = some i₂ → m.uf.Equiv i₁ i₂ →
     IsDefEqE env Us Δ e₁ e₂
 
+theorem WF.empty : WF env Us Δ {} where
+  wf := by simp
+  defeq := by simp
+
 variable! (henv : env.WF) (W : VLCtx.FVLift' Δ Δ' 0 n 0) (hΔ : VLCtx.WF env Us.length Δ') in
 theorem WF.weak' (wf : WF env Us Δ m) : WF env Us Δ' m where
   wf := wf.wf
@@ -223,8 +227,12 @@ structure VState extends State where
 def _root_.Lean4Lean.InferCache.WF (c : VContext) (s : VState) (m : InferCache) : Prop :=
   ∀ ⦃e ty : Expr⦄, m[e]? = some ty → ConditionallyHasType s.ngen c.venv c.lparams c.vlctx e ty
 
+theorem _root_.Lean4Lean.InferCache.WF.empty : InferCache.WF c s {} := fun _ => by simp
+
 def WHNFCache.WF (c : VContext) (s : VState) (m : InferCache) : Prop :=
   ∀ ⦃e ty : Expr⦄, m[e]? = some ty → ConditionallyWHNF s.ngen c.venv c.lparams c.vlctx e ty
+
+theorem WHNFCache.WF.empty : WHNFCache.WF c s {} := fun _ => by simp
 
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
@@ -281,6 +289,10 @@ theorem M.WF.map {c : VContext} {s : VState} {x : M α} {f : α → β} {Q R}
     (h1 : x.WF c s Q) (h2 : ∀ a s', s ≤ s' → Q a s' → R (f a) s') : (f <$> x).WF c s R := by
   rw [map_eq_pure_bind]
   exact h1.bind fun _ _ le h => .pure (h2 _ _ le h)
+
+theorem M.WF.mono {c : VContext} {s : VState} {x : M α} {Q R}
+    (h1 : x.WF c s Q) (h2 : ∀ a s', s ≤ s' → Q a s' → R a s') : x.WF c s R := by
+  simpa using h1.bind fun _ _ a1 a2 => .pure (h2 _ _ a1 a2)
 
 theorem M.WF.throw {c : VContext} {s : VState} {Q} : (throw e : M α).WF c s Q := nofun
 
