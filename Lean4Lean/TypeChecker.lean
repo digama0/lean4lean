@@ -32,14 +32,13 @@ namespace TypeChecker
 
 abbrev M := ReaderT Context <| StateT State <| Except Exception
 
-def M.run (env : Environment) (safety : DefinitionSafety := .safe) (lctx : LocalContext := {})
-    (x : M α) : Except Exception α :=
-  x { env, safety, lctx } |>.run' {}
+def M.run (env : Environment) (safety : DefinitionSafety := .safe)
+    (lctx : LocalContext := {}) (lparams : List Name := []) (x : M α) : Except Exception α :=
+  x { env, safety, lctx, lparams } |>.run' {}
 
 def M.runTermElab (m : M α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α := do
-  ofExceptKernelException <|
-    withReader ({· with lparams := (← get).levelNames }) m
-    |>.run (env := (← getEnv).toKernelEnv) (lctx := ← getLCtx) (safety := safety)
+  ofExceptKernelException <| m.run (env := (← getEnv).toKernelEnv)
+    (lctx := ← getLCtx) (safety := safety) (lparams := (← get).levelNames)
 
 instance : MonadLift M Elab.Term.TermElabM := ⟨M.runTermElab⟩
 
@@ -722,9 +721,6 @@ def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
 def checkType (e : Expr) : M Expr := (Inner.inferType e (inferOnly := false)).run
-
-def check (e : Expr) (lps : List Name) : M Expr :=
-  withReader ({ · with lparams := lps }) (checkType e)
 
 def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
 

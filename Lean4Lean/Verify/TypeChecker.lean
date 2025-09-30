@@ -57,19 +57,14 @@ theorem VState.WF.empty {env : Environment} {ves : VEnvs} {wf : ves.WF env}
   whnfCore_wf := .empty
   whnf_wf := .empty
 
-theorem M.WF.runU {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+theorem M.WF.run {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     {x : M α} {Q} (H : x.WF (.mk' wf safety lparams) {} fun a _ => Q a) :
-    (M.run env safety {} (withReader ({ · with lparams }) x)).WF Q := by
+    (M.run env safety {} lparams x).WF Q := by
   intro a eq
-  simp [run, withReader, withTheReader, MonadWithReaderOf.withReader, Functor.map,
-    Except.map, StateT.run] at eq
+  simp [M.run, Functor.map, Except.map] at eq
   split at eq <;> cases eq; rename_i eq
   let ⟨_, _, _, _, H⟩ := H .empty _ _ eq
   exact H
-
-theorem M.WF.run {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    {x : M α} {Q} (H : x.WF (.mk' wf safety) {} fun a _ => Q a) :
-    (M.run env safety {} x).WF Q := H.runU wf
 
 nonrec theorem whnf.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     M.WF c s (whnf e) fun e₁ _ => c.TrExpr e₁ e' :=

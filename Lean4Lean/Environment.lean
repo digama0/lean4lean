@@ -13,7 +13,7 @@ def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := fa
   checkName env v.name allowPrimitive
   checkDuplicatedUnivParams v.levelParams
   checkNoMVarNoFVar env v.name v.type
-  let sort ← check v.type v.levelParams
+  let sort ← checkType v.type
   _ ← ensureSort sort v.type
 
 def addAxiom (env : Environment) (v : AxiomVal) (check := true) :
@@ -33,16 +33,16 @@ def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
     let env' := env.add (.defnInfo v)
     if check then
       checkNoMVarNoFVar env' v.name v.value
-      M.run env' (safety := .unsafe) (lctx := {}) do
-        let valType ← TypeChecker.check v.value v.levelParams
+      M.run env' (safety := .unsafe) (lctx := {}) (lparams := v.levelParams) do
+        let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.defnDecl v) valType
     return env'
   else
     if check then
-      M.run env (safety := .safe) (lctx := {}) do
+      M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) do
         checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
-        let valType ← TypeChecker.check v.value v.levelParams
+        let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env (.defnDecl v) valType
     return env.add (.defnInfo v)
@@ -51,11 +51,11 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
     Except Exception Environment := do
   if check then
     -- TODO(Leo): we must add support for handling tasks here
-    M.run env (safety := .safe) (lctx := {}) do
+    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) do
       if !(← isProp v.type) then
         throw <| .thmTypeIsNotProp env v.name v.type
       checkConstantVal env v.toConstantVal
-      let valType ← TypeChecker.check v.value v.levelParams
+      let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.thmDecl v) valType
   return env.add (.thmInfo v)
@@ -63,9 +63,9 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
 def addOpaque (env : Environment) (v : OpaqueVal) (check := true) :
     Except Exception Environment := do
   if check then
-    M.run env (safety := .safe) (lctx := {}) do
+    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) do
       checkConstantVal env v.toConstantVal
-      let valType ← TypeChecker.check v.value v.levelParams
+      let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.opaqueDecl v) valType
   return env.add (.opaqueInfo v)
@@ -76,7 +76,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
   if let .safe := v₀.safety then
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
   if check then
-    M.run env (safety := v₀.safety) (lctx := {}) do
+    M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) do
       for v in vs do
         if v.safety != v₀.safety then
           throw <| .other
@@ -86,10 +86,10 @@ def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
   for v in vs do
     env' := env'.add (.defnInfo v)
   if check then
-    M.run env' (safety := v₀.safety) (lctx := {}) do
+    M.run env' (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) do
       for v in vs do
         checkNoMVarNoFVar env' v.name v.value
-        let valType ← TypeChecker.check v.value v.levelParams
+        let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.mutualDefnDecl vs) valType
   return env'

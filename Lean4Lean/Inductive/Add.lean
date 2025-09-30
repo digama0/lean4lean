@@ -32,6 +32,7 @@ structure InductiveStats where
 structure Context where
   env : Environment
   lctx : LocalContext := {}
+  lparams : List Name
   ngen : NameGenerator := { namePrefix := `_ind_fresh }
   safety : DefinitionSafety
   allowPrimitive : Bool
@@ -42,7 +43,7 @@ instance : MonadLocalNameGenerator M where
   withFreshId f c := f c.ngen.curr { c with ngen := c.ngen.next }
 
 instance (priority := low) : MonadLift TypeChecker.M M where
-  monadLift x c := x.run c.env c.safety c.lctx
+  monadLift x c := x.run c.env c.safety c.lctx c.lparams
 
 instance (priority := low+1) : MonadWithReaderOf LocalContext M where
   withReader f x := withReader (fun c => { c with lctx := f c.lctx }) x
@@ -57,7 +58,7 @@ def getType (fvar : Expr) : M Expr :=
   return ((← getLCtx).get! fvar.fvarId!).type
 
 def checkInductiveTypes
-    (lparams : List Name) (nparams : Nat) (indTypes : Array InductiveType)
+    (nparams : Nat) (indTypes : Array InductiveType)
     (k : InductiveStats → M α) : M α := do
   let rec loopInd dIdx stats : M α := do
     if _h : dIdx < indTypes.size then
@@ -65,7 +66,7 @@ def checkInductiveTypes
       let env := (← read).env
       let type := indType.type
       env.checkNoMVarNoFVar indType.name type
-      _ ← check type lparams
+      _ ← checkType type
       let rec loop stats type i nindices fuel k : M α := match fuel with
       | 0 => throw .deepRecursion
       | fuel+1 => do
@@ -105,13 +106,13 @@ def checkInductiveTypes
       loopInd (dIdx + 1) stats
     else
       k <|
-        assert! stats.levels.length == lparams.length
+        assert! stats.levels.length == (← read).lparams.length
         assert! stats.nindices.size == indTypes.size
         assert! stats.indConsts.size == indTypes.size
         assert! stats.params.size == nparams
         stats
   termination_by indTypes.size - dIdx
-  loopInd 0 { (default : InductiveStats) with levels := lparams.map .param }
+  loopInd 0 { (default : InductiveStats) with levels := (← read).lparams.map .param }
 
 def hasIndOcc (indConsts : Array Expr) (t : Expr) : Bool :=
   (t.find? fun
@@ -137,18 +138,18 @@ def isReflexive (indTypes : Array InductiveType) (indConsts : Array Expr) : Bool
     | _ => false
   indTypes.any fun indType => indType.ctors.any fun ctor => loop ctor.type
 
-def declareInductiveTypes
-    (stats : InductiveStats)
-    (levelParams : List Name) (numParams : Nat) (indTypes : Array InductiveType)
-    (numNested : Nat) (isUnsafe : Bool) : M Environment :=
+def declareInductiveTypes (stats : InductiveStats) (numParams : Nat)
+    (indTypes : Array InductiveType) (numNested : Nat) (isUnsafe : Bool) : M Environment :=
+  fun c =>
   let all := indTypes.map (·.name) |>.toList
   let infos := indTypes.zipWith (bs := stats.nindices) fun indType numIndices =>
     { indType with
-      levelParams, numParams, numIndices, all, numNested, isUnsafe
+      numParams, numIndices, all, numNested, isUnsafe
+      levelParams := c.lparams
       ctors := indType.ctors.map (·.name)
       isRec := isRec indTypes stats.indConsts
       isReflexive := isReflexive indTypes stats.indConsts }
-  fun c => infos.foldlM (init := c.env) fun env info => do
+  infos.foldlM (init := c.env) fun env info => do
     env.checkName info.name c.allowPrimitive
     return env.add (.inductInfo info)
 
@@ -194,7 +195,7 @@ def checkPositivity (stats : InductiveStats) (t : Expr) (ctor : Name) (idx : Nat
       throw <| .other s!"arg #{idx + 1} of '{ctor}' \
         has a non valid occurrence of the datatypes being declared"
 
-def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
+def checkConstructors (indTypes : Array InductiveType)
     (stats : InductiveStats) (isUnsafe : Bool) : M Unit := do
   let env ← getEnv
   for h : idx in [:indTypes.size] do
@@ -207,7 +208,7 @@ def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
       foundCtors := foundCtors.insert n
       let t := ctor.type
       env.checkNoMVarNoFVar n t
-      _ ← check t lparams
+      _ ← checkType t
       let rec loop t i
       | 0 => throw .deepRecursion
       | fuel+1 => do
@@ -230,7 +231,7 @@ def checkConstructors (indTypes : Array InductiveType) (lparams : List Name)
           throw <| .other s!"invalid return type for '{n}'"
       loop t 0 1000
 
-def declareConstructors (stats : InductiveStats) (levelParams : List Name)
+def declareConstructors (stats : InductiveStats)
     (indTypes : Array InductiveType) (isUnsafe : Bool) : M Environment :=
   fun c => indTypes.foldlM (init := c.env) fun env indType => do
     let (_, env) ← indType.ctors.foldlM (init := (0, env)) fun (cidx, env) ctor => do
@@ -241,7 +242,8 @@ def declareConstructors (stats : InductiveStats) (levelParams : List Name)
       let arity := arity 0 type
       env.checkName ctor.name c.allowPrimitive
       pure (cidx + 1, env.add <| .ctorInfo {
-        levelParams, type, cidx, isUnsafe
+        type, cidx, isUnsafe
+        levelParams := c.lparams
         name := ctor.name
         induct := indType.name
         numParams := stats.params.size
@@ -272,13 +274,14 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
   | _ => return false
 
 partial -- TODO: remove
-def getElimLevel (stats : InductiveStats) (lparams : List Name) (indTypes : Array InductiveType) :
+def getElimLevel (stats : InductiveStats) (indTypes : Array InductiveType) :
     M Level := do
   unless ← isLargeEliminator stats indTypes do return .zero
-  let rec loop u i := do
+  let {lparams, ..} ← read
+  let rec loop u i := Id.run do
     unless lparams.contains u do return .param u
     loop ((`u).appendIndexAfter i) (i + 1)
-  loop `u 1
+  return loop `u 1
 
 def isKTarget (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool := do
   let #[indType] := indTypes | return false
@@ -442,16 +445,16 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
     rules := rules.push rule
   return rules.toList
 
-def run (lparams : List Name) (nparams : Nat) (types : List InductiveType)
-    (numNested : Nat) : M Environment := do
+def run (nparams : Nat) (types : List InductiveType) (numNested : Nat) : M Environment := do
   let isUnsafe := (← read).safety != .safe
   let indTypes := types.toArray
+  let {lparams, ..} ← read
   Environment.checkDuplicatedUnivParams lparams
-  checkInductiveTypes lparams nparams indTypes fun stats => do
-  withEnv (← declareInductiveTypes stats lparams nparams indTypes numNested isUnsafe) do
-  checkConstructors indTypes lparams stats isUnsafe
-  withEnv (← declareConstructors stats lparams indTypes isUnsafe) do
-  let elimLevel ← getElimLevel stats lparams indTypes
+  checkInductiveTypes nparams indTypes fun stats => do
+  withEnv (← declareInductiveTypes stats nparams indTypes numNested isUnsafe) do
+  checkConstructors indTypes stats isUnsafe
+  withEnv (← declareConstructors stats indTypes isUnsafe) do
+  let elimLevel ← getElimLevel stats indTypes
   mkRecInfos stats indTypes elimLevel fun recInfos => do
   let motives := recInfos.map (·.motive)
   let minors := recInfos.flatMap (·.minors)
@@ -720,8 +723,8 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
   let res ← ElimNestedInductive.run nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
-  let env' ← AddInductive.run lparams nparams res.types numNested
-    { env, allowPrimitive, safety := if isUnsafe then .unsafe else .safe }
+  let env' ← AddInductive.run nparams res.types numNested
+    { env, allowPrimitive, lparams, safety := if isUnsafe then .unsafe else .safe }
   if numNested = 0 then return env'
   let allIndNames := types.map (·.name)
   let (recNames', recNameMap') := mkAuxRecNameMap env' types
