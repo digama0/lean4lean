@@ -1,5 +1,5 @@
 import Batteries.Data.UnionFind.Lemmas
-import Lean4Lean.Verify.Typing.EnvLemmas
+import Lean4Lean.Verify.Environment.Lemmas
 import Lean4Lean.EquivManager
 import Lean4Lean.Verify.TypeChecker.Basic
 

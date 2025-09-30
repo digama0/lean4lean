@@ -1,4 +1,4 @@
-import Lean4Lean.Verify.Typing.EnvLemmas
+import Lean4Lean.Verify.Environment.Lemmas
 import Lean4Lean.Verify.Typing.ConditionallyTyped
 import Lean4Lean.TypeChecker
 

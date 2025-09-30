@@ -75,11 +75,17 @@ If you run this as is (with no additional arguments), it will check every olean 
     * `Typing`
       * `Expr.lean`: translating expressions (`TrExpr` is here)
       * `Lemmas.lean`: properties of `TrExpr`
-      * `EnvLemmas.lean`: properties of `TrEnv`
       * `ConditionallyTyped.lean`: properties of expressions in caches that may be out of scope
-    * `Environment.lean`: translating environments
+    * `Environment`
+      * `Basic.lean`: translating environments
+      * `Lemmas.lean`: properties of `TrEnv`
     * `TypeChecker`
-      * `Theorems.lean`: theorems about the top-level functions (endpoint file)
+      * `Basic.lean`: typechecker invariants
+      * `EquivManager.lean`: invariants for the union-find defeq cache
+      * `InferType.lean`: correctness of `inferType`
+      * `WHNF.lean`: correctness of `whnf`
+      * `IsDefEq.lean`: correctness of `isDefEq`
+    * `TypeChecker.lean`: top-level typechecker correctness
   * `Experimental`: work in progress formalizations and ideas
       * `Stratified.lean`: stratified typing judgment
       * `StratifiedUntyped.lean` another stratified typing judgment
