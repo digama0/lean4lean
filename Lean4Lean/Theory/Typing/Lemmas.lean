@@ -38,7 +38,7 @@ inductive Ctx.Lift' : Lift → List VExpr → List VExpr → Prop where
   | skip : Ctx.Lift' l Γ Γ' → Ctx.Lift' (.skip l) Γ (A :: Γ')
   | cons : Ctx.Lift' l Γ Γ' → Ctx.Lift' (.cons l) (A::Γ) (A.lift' l :: Γ')
 
-theorem Ctx.liftN_iff_lift' : Ctx.LiftN n k Γ Γ' ↔ Ctx.Lift' (.consN (.skipN n) k) Γ Γ' := by
+theorem Ctx.liftN_iff_lift' : Ctx.LiftN n k Γ Γ' ↔ Ctx.Lift' (.consN (.skipN .refl n) k) Γ Γ' := by
   constructor <;> intro h
   · induction h with
     | zero As =>
@@ -145,12 +145,12 @@ theorem Lookup.weak'_iff (W : Ctx.Lift' l Γ Γ') :
     Lookup Γ' (l.liftVar i) (A.lift' l) ↔ Lookup Γ i A := by
   generalize e : l.depth = n
   induction n generalizing l Γ' with
-  | zero => rw [liftVar_depth_zero e, VExpr.lift'_depth_zero e, W.depth_zero e]
+  | zero => rw [Lift.liftVar_depth_zero e, VExpr.lift'_depth_zero e, W.depth_zero e]
   | succ n ih =>
     obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
     have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
-    rw [Lift.consN_skip_eq, liftVar_comp, liftVar_consN_skipN, lift'_comp, lift'_consN_skipN,
-      weakN_iff W2, ih W1 Lift.depth_consN]
+    rw [Lift.consN_skip_eq, Lift.liftVar_comp, ← Lift.skipN_one, Lift.liftVar_consN_skipN,
+      lift'_comp, lift'_consN_skipN, weakN_iff W2, ih W1 Lift.depth_consN]
 
 theorem Lookup.instL : Lookup Γ i A → Lookup (Γ.map (VExpr.instL ls)) i (A.instL ls)
   | .zero => instL_liftN ▸ .zero
@@ -571,8 +571,17 @@ theorem IsDefEq.weak' (W : Ctx.Lift' l Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) :
   | succ n ih =>
     obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
     have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
-    simp only [Lift.consN_skip_eq, lift'_comp, lift'_consN_skipN]
+    rw [Lift.consN_skip_eq, lift'_comp, lift'_comp, lift'_comp, ← Lift.skipN_one,
+      lift'_consN_skipN, lift'_consN_skipN, lift'_consN_skipN]
     exact (ih W1 Lift.depth_consN).weakN henv W2
+
+variable! (henv : Ordered env) in
+theorem HasType.weak' (W : Ctx.Lift' l Γ Γ') (H : env.HasType U Γ e A) :
+    env.HasType U Γ' (e.lift' l) (A.lift' l) := IsDefEq.weak' henv W H
+
+variable! (henv : Ordered env) in
+theorem IsType.weak' (W : Ctx.Lift' l Γ Γ') (H : env.IsType U Γ A) :
+    env.IsType U Γ' (A.lift' l) := let ⟨_, h⟩ := H; ⟨_, h.weak' henv W⟩
 
 theorem IsType.lookup (henv : Ordered env) (h : OnCtx Γ (IsType env U)) (hL : Lookup Γ n A) :
     env.IsType U Γ A := h.lookup hL <| .weakN henv .one

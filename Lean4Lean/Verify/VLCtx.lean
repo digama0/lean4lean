@@ -25,6 +25,10 @@ def VLocalDecl.type : VLocalDecl → VExpr
   | .vlam A => A.lift
   | .vlet A _ => A
 
+def VLocalDecl.lift' : VLocalDecl → Lift → VLocalDecl
+  | .vlam A, n => .vlam (A.lift' n)
+  | .vlet A e, n => .vlet (A.lift' n) (e.lift' n)
+
 def VLocalDecl.liftN : VLocalDecl → Nat → Nat → VLocalDecl
   | .vlam A, n, k => .vlam (A.liftN n k)
   | .vlet A e, n, k => .vlet (A.liftN n k) (e.liftN n k)

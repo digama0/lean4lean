@@ -136,6 +136,10 @@ theorem Closed.looseBVarRange_le : Closed e k → e.looseBVarRange' ≤ k := by
 theorem Closed.looseBVarRange_zero (H : Closed e) : e.looseBVarRange' = 0 := by
   simpa using H.looseBVarRange_le
 
+theorem VLocalDecl.lift'_consN_skipN {d : VLocalDecl} :
+    d.lift' (.consN (.skipN .refl n) k) = d.liftN n k := by
+  cases d <;> simp [VLocalDecl.lift', VLocalDecl.liftN, VExpr.lift'_consN_skipN]
+
 theorem VLocalDecl.WF.hasType : ∀ {d}, VLocalDecl.WF env U (VLCtx.toCtx Δ) d →
     env.HasType U (VLCtx.toCtx ((ofv, d) :: Δ)) d.value d.type
   | .vlam _, _ => .bvar .zero
@@ -164,6 +168,18 @@ inductive VLocalDecl.IsDefEq : VLocalDecl → VLocalDecl → Prop
   | vlet :
     env.IsDefEq U Γ value₁ value₂ type₁ → env.IsDefEq U Γ type₁ type₂ (.sort u) →
     VLocalDecl.IsDefEq (.vlet type₁ value₁) (.vlet type₂ value₂)
+
+@[simp] theorem VLocalDecl.lift'_depth {d : VLocalDecl} : (d.lift' n).depth = d.depth := by
+  cases d <;> rfl
+
+theorem VLocalDecl.lift'_comp {d : VLocalDecl} : d.lift' (.comp l₁ l₂) = (d.lift' l₁).lift' l₂ := by
+  cases d <;> simp [VLocalDecl.lift', VExpr.lift'_comp]
+
+variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.Lift' n Γ Γ') in
+theorem VLocalDecl.weak'_iff : VLocalDecl.WF env U Γ' (d.lift' n) ↔ VLocalDecl.WF env U Γ d :=
+  match d with
+  | .vlam .. => IsType.weak'_iff henv hΓ' W
+  | .vlet .. => HasType.weak'_iff henv hΓ' W
 
 variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.LiftN n k Γ Γ') in
 theorem VLocalDecl.weakN_iff : VLocalDecl.WF env U Γ' (d.liftN n k) ↔ VLocalDecl.WF env U Γ d :=
@@ -200,61 +216,100 @@ theorem WF.fvars_nodup : ∀ {Δ}, WF env U Δ → Δ.fvars.Nodup
 
 theorem liftVar_zero : liftVar 0 k v = v := by cases v <;> simp [liftVar]
 
-inductive FVLift : VLCtx → VLCtx → Nat → Nat → Nat → Prop
-  | refl : FVLift Δ Δ 0 0 0
-  | skip_fvar (fv d) : FVLift Δ Δ' 0 n 0 → FVLift Δ ((some fv, d) :: Δ') 0 (n + d.depth) 0
-  | cons_bvar (d) : FVLift Δ Δ' dk n k →
-    FVLift ((none, d) :: Δ) ((none, d.liftN n k) :: Δ') (dk + 1) n (k + d.depth)
+inductive FVLift' : VLCtx → VLCtx → Nat → Lift → Nat → Prop
+  | refl : FVLift' Δ Δ 0 .refl 0
+  | skip_fvar (fv d) : FVLift' Δ Δ' 0 n 0 →
+    FVLift' Δ ((some fv, d) :: Δ') 0 (n.skipN d.depth) 0
+  | cons_fvar (fv d) : fv.2 ⊆ Δ.fvars → FVLift' Δ Δ' 0 n 0 →
+    FVLift' ((some fv, d) :: Δ) ((some fv, d.lift' n) :: Δ') 0 (.consN n d.depth) 0
+  | cons_bvar (d) : FVLift' Δ Δ' dk n k →
+    FVLift' ((none, d) :: Δ) ((none, d.lift' (n.consN k)) :: Δ') (dk + 1) n (k + d.depth)
 
-protected theorem FVLift.toCtx (W : FVLift Δ Δ' dk n k) : Ctx.LiftN n k Δ.toCtx Δ'.toCtx := by
+protected theorem FVLift'.toCtx (W : FVLift' Δ Δ' dk n k) :
+    Ctx.Lift' (n.consN k) Δ.toCtx Δ'.toCtx := by
   induction W with
-  | refl => exact .zero []
-  | @skip_fvar _ Δ' _ _ d _ ih =>
-    match d with
+  | refl => exact .refl
+  | skip_fvar _ d _ ih => match d with
     | .vlet .. => exact ih
-    | .vlam A =>
-      generalize hΓ' : toCtx Δ' = Γ' at ih
-      let .zero As eq := ih
-      simp [toCtx, hΓ']
-      exact .zero (A :: As) (eq ▸ rfl)
-  | cons_bvar d _ ih =>
-    match d with
+    | .vlam A => exact .skip ih
+  | cons_fvar _ d _ _ ih => match d with
     | .vlet .. => exact ih
-    | .vlam A => exact .succ ih
+    | .vlam A => exact .cons ih
+  | cons_bvar d _ ih => match d with
+    | .vlet .. => exact ih
+    | .vlam A => exact .cons ih
 
-theorem FVLift.from_nil : ∀ {Δ : VLCtx}, Δ.NoBV → FVLift [] Δ 0 Δ.toCtx.length 0
+theorem FVLift'.comp (H1 : FVLift' Δ₁ Δ₂ 0 n₁ 0) (H2 : FVLift' Δ₂ Δ₃ dk n₂ k) :
+    FVLift' Δ₁ Δ₃ dk (n₁.comp n₂) k := by
+  induction H2 generalizing n₁ Δ₁ with
+  | refl => exact H1
+  | skip_fvar _ _ _ ih => simpa [Lift.comp_skipN] using (ih H1).skip_fvar _ _
+  | cons_fvar _ d h1 _ ih => cases H1 with
+    | refl => simpa using (ih .refl).cons_fvar _ _ h1
+    | skip_fvar _ _ h2 => simpa [Lift.skipN_comp_consN] using (ih h2).skip_fvar _ (d.lift' _)
+    | cons_fvar _ d h1 h2 =>
+      simpa [← Lift.consN_comp, ← VLocalDecl.lift'_comp] using (ih h2).cons_fvar _ d h1
+  | cons_bvar d h1 ih => cases H1 with | refl => simpa using h1.cons_bvar _
+
+theorem FVLift'.from_nil : ∀ {Δ : VLCtx}, Δ.NoBV → FVLift' [] Δ 0 (.skipN .refl Δ.toCtx.length) 0
   | [], _ => .refl
   | (some _, .vlam _) :: _, H => .skip_fvar _ _ (.from_nil H)
   | (some _, .vlet _ _) :: _, H => .skip_fvar _ _ (.from_nil H)
 
+theorem FVLift'.fvars_sublist (W : FVLift' Δ Δ' dk n k) : Δ.fvars <+ Δ'.fvars := by
+  induction W with
+  | refl => exact .refl _
+  | skip_fvar _ _ _ ih => exact .cons _ ih
+  | cons_fvar _ _ _ _ ih => exact .cons₂ _ ih
+  | cons_bvar _ _ ih => exact ih
+
+theorem FVLift'.bvars_eq (W : FVLift' Δ Δ' dk n k) : Δ'.bvars = Δ.bvars := by
+  induction W with
+  | refl => rfl
+  | skip_fvar _ _ _ ih => exact ih
+  | cons_fvar _ _ _ _ ih => exact ih
+  | cons_bvar _ _ ih => exact congrArg Nat.succ ih
+
 variable! (henv : VEnv.WF env) in
-theorem FVLift.wf (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U := by
+theorem FVLift'.wf (W : FVLift' Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U := by
   induction W with
   | refl => exact hΔ'
   | skip_fvar _ _ _ ih => exact ih hΔ'.1
+  | cons_fvar _ _ hd W ih =>
+    let ⟨hΔ', h1, h2⟩ := hΔ'
+    refine ⟨ih hΔ', ?_, (VLocalDecl.weak'_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
+    rintro _ _ ⟨⟩; exact ⟨fun h => (h1 _ _ rfl).1 <| W.fvars_sublist.subset h, hd⟩
   | cons_bvar _ W ih =>
     let ⟨hΔ', _, h2⟩ := hΔ'
-    exact ⟨ih hΔ', nofun, (VLocalDecl.weakN_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
+    exact ⟨ih hΔ', nofun, (VLocalDecl.weak'_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
 
-theorem FVLift.fvars_suffix (W : FVLift Δ Δ' dk n k) : Δ.fvars <:+ Δ'.fvars := by
-  induction W with
-  | refl => exact List.suffix_refl _
-  | skip_fvar _ _ _ ih => exact ih.trans (List.suffix_cons ..)
-  | cons_bvar _ _ ih => exact ih
-
-protected theorem FVLift.find? (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
-    (H : find? Δ v = some (e, A)) : find? Δ' v = some (e.liftN n k, A.liftN n k) := by
+protected theorem FVLift'.find? (W : FVLift' Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
+    (H : find? Δ v = some (e, A)) :
+    find? Δ' v = some (e.lift' (n.consN k), A.lift' (n.consN k)) := by
   induction W generalizing v e A with
   | refl => simp [H]
-  | @skip_fvar _ Δ' _ fv' _ W ih =>
+  | skip_fvar fv' _ W ih =>
     let (fv', deps) := fv'; simp [find?]
     cases v with simp [next]
-    | inl => exact ⟨_, _, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
+    | inl =>
+      refine ⟨_, _, ih hΔ'.1 H, ?_⟩
+      simp [← VExpr.lift'_consN_skipN, ← VExpr.lift'_comp, Lift.comp_skipN]
     | inr fv =>
       cases eq : fv' == fv <;> simp
-      · exact ⟨_, _, ih hΔ'.1 H, by simp [VExpr.liftN_liftN]⟩
+      · refine ⟨_, _, ih hΔ'.1 H, ?_⟩
+        simp [← VExpr.lift'_consN_skipN, ← VExpr.lift'_comp, Lift.comp_skipN]
       · refine ((List.pairwise_cons.1 hΔ'.fvars_nodup).1 fv' ?_ rfl).elim
-        exact W.fvars_suffix.subset ((beq_iff_eq ..).1 eq ▸ find?_eq_some.1 ⟨_, H⟩)
+        exact W.fvars_sublist.subset ((beq_iff_eq ..).1 eq ▸ find?_eq_some.1 ⟨_, H⟩)
+  | cons_fvar fv' d _ W ih =>
+    let (fv', deps) := fv'; revert H; simp [find?]
+    obtain i | fv := v <;> simp [next] <;>
+      [skip; cases eq : fv' == fv <;> simp] <;>
+      [(rintro _ _ H rfl rfl; refine ⟨_, _, ih hΔ'.1 H, ?_⟩);
+       (rintro _ _ H rfl rfl; refine ⟨_, _, ih (v := .inr fv) hΔ'.1 H, ?_⟩);
+       rintro rfl rfl] <;>
+      open VLocalDecl in
+      cases d <;> simp [value, type, depth, lift', VExpr.lift,
+        ← VExpr.lift'_consN_skipN, ← VExpr.lift'_comp]
   | cons_bvar d _ ih =>
     simp [find?] at H ⊢
     obtain ⟨_|i⟩ | fv := v <;> simp [next] at H ⊢ <;>
@@ -264,7 +319,43 @@ protected theorem FVLift.find? (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
        (obtain ⟨e, A, H, rfl, rfl⟩ := H
         refine ⟨_, _, ih (v := .inr fv) hΔ'.1 H, ?_⟩)] <;>
       open VLocalDecl in
-      cases d <;> simp [VExpr.lift_liftN', liftN, value, type, depth, VExpr.liftN]
+      cases d <;> simp [value, type, depth, lift', VExpr.lift,
+        ← VExpr.lift'_consN_skipN, ← VExpr.lift'_comp]
+
+inductive FVLift : VLCtx → VLCtx → Nat → Nat → Nat → Prop
+  | refl : FVLift Δ Δ 0 0 0
+  | skip_fvar (fv d) : FVLift Δ Δ' 0 n 0 → FVLift Δ ((some fv, d) :: Δ') 0 (n + d.depth) 0
+  | cons_bvar (d) : FVLift Δ Δ' dk n k →
+    FVLift ((none, d) :: Δ) ((none, d.liftN n k) :: Δ') (dk + 1) n (k + d.depth)
+
+theorem FVLift.toFVLift' (W : FVLift Δ Δ' dk n k) : FVLift' Δ Δ' dk (.skipN .refl n) k := by
+  induction W with
+  | refl => exact .refl
+  | skip_fvar fv d _ ih => simpa [Lift.skipN_skipN] using ih.skip_fvar fv d
+  | cons_bvar d _ ih =>
+    simpa [← VLocalDecl.lift'_consN_skipN, Lift.skipN_skipN] using ih.cons_bvar d
+
+protected theorem FVLift.toCtx (W : FVLift Δ Δ' dk n k) : Ctx.LiftN n k Δ.toCtx Δ'.toCtx :=
+  Ctx.liftN_iff_lift'.2 W.toFVLift'.toCtx
+
+theorem FVLift.from_nil : ∀ {Δ : VLCtx}, Δ.NoBV → FVLift [] Δ 0 Δ.toCtx.length 0
+  | [], _ => .refl
+  | (some _, .vlam _) :: _, H => .skip_fvar _ _ (.from_nil H)
+  | (some _, .vlet _ _) :: _, H => .skip_fvar _ _ (.from_nil H)
+
+variable! (henv : VEnv.WF env) in
+theorem FVLift.wf (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U :=
+  W.toFVLift'.wf henv hΔ'
+
+theorem FVLift.fvars_suffix (W : FVLift Δ Δ' dk n k) : Δ.fvars <:+ Δ'.fvars := by
+  induction W with
+  | refl => exact List.suffix_refl _
+  | skip_fvar _ _ _ ih => exact ih.trans (List.suffix_cons ..)
+  | cons_bvar _ _ ih => exact ih
+
+protected theorem FVLift.find? (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U)
+    (H : find? Δ v = some (e, A)) : find? Δ' v = some (e.liftN n k, A.liftN n k) := by
+  simpa [VExpr.lift'_consN_skipN] using W.toFVLift'.find? hΔ' H
 
 inductive BVLift : (Δ Δ' : VLCtx) → (dn dk n k : Nat) → Prop
   | refl : BVLift Δ Δ 0 0 0 0
@@ -455,32 +546,47 @@ inductive SortList : VLCtx → List VLevel → Prop
 
 end VLCtx
 
+theorem TrProj.weak' (W : Ctx.Lift' n Γ Γ')
+    (H : TrProj Γ s i e e') : TrProj Γ' s i (e.lift' n) (e'.lift' n) := sorry
+
 theorem TrProj.weakN (W : Ctx.LiftN n k Γ Γ')
-    (H : TrProj Γ s i e e') : TrProj Γ' s i (e.liftN n k) (e'.liftN n k) := sorry
+    (H : TrProj Γ s i e e') : TrProj Γ' s i (e.liftN n k) (e'.liftN n k) := by
+  simpa [VExpr.lift'_consN_skipN] using H.weak' <| Ctx.liftN_iff_lift'.1 W
 
 variable! (henv : Ordered env) in
-theorem TrExprS.weakFV (W : VLCtx.FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
-    (H : TrExprS env Us Δ e e') : TrExprS env Us Δ' e (e'.liftN n k) := by
+theorem TrExprS.weakFV' (W : VLCtx.FVLift' Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
+    (H : TrExprS env Us Δ e e') : TrExprS env Us Δ' e (e'.lift' (n.consN k)) := by
   induction H generalizing Δ' dk k with
   | bvar h1 => exact .bvar (W.find? hΔ' h1)
   | fvar h1 => exact .fvar (W.find? hΔ' h1)
   | sort h1 => exact .sort h1
   | const h1 h2 h3 => exact .const h1 h2 h3
   | app h1 h2 _ _ ih1 ih2 =>
-    exact .app (h1.weakN henv W.toCtx) (h2.weakN henv W.toCtx) (ih1 W hΔ') (ih2 W hΔ')
+    exact .app (h1.weak' henv W.toCtx) (h2.weak' henv W.toCtx) (ih1 W hΔ') (ih2 W hΔ')
   | lam h1 _ _ ih1 ih2 =>
-    have h1 := h1.weakN henv W.toCtx
+    have h1 := h1.weak' henv W.toCtx
     exact .lam h1 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
   | forallE h1 h2 _ _ ih1 ih2 =>
-    have h1 := h1.weakN henv W.toCtx
-    have h2 := h2.weakN henv W.toCtx.succ
+    have h1 := h1.weak' henv W.toCtx
+    have h2 := h2.weak' henv W.toCtx.cons
     exact .forallE h1 h2 (ih1 W hΔ') (ih2 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
   | letE h1 _ _ _ ih1 ih2 ih3 =>
-    have h1 := h1.weakN henv W.toCtx
+    have h1 := h1.weak' henv W.toCtx
     exact .letE h1 (ih1 W hΔ') (ih2 W hΔ') (ih3 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
   | lit _ ih => exact .lit (ih W hΔ')
   | mdata _ ih => exact .mdata (ih W hΔ')
-  | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weakN W.toCtx)
+  | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weak' W.toCtx)
+
+variable! (henv : WF env) in
+theorem TrExpr.weakFV' (W : VLCtx.FVLift' Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
+    (H : TrExpr env Us Δ e e') : TrExpr env Us Δ' e (e'.lift' (n.consN k)) :=
+  let ⟨_, H1, H2⟩ := H
+  ⟨_, H1.weakFV' henv W hΔ', H2.weak' henv W.toCtx⟩
+
+variable! (henv : Ordered env) in
+theorem TrExprS.weakFV (W : VLCtx.FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
+    (H : TrExprS env Us Δ e e') : TrExprS env Us Δ' e (e'.liftN n k) := by
+  simpa [VExpr.lift'_consN_skipN] using H.weakFV' henv W.toFVLift' hΔ'
 
 variable! (henv : WF env) in
 theorem TrExpr.weakFV (W : VLCtx.FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.length)
@@ -510,13 +616,19 @@ theorem TrExprS.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (h2.weakN W.toCtx)
 
+variable! (henv : WF env) in
+theorem TrExpr.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
+    (H : TrExpr env Us Δ e e') : TrExpr env Us Δ' (e.liftLooseBVars' dk dn) (e'.liftN n k) :=
+  let ⟨_, H1, H2⟩ := H
+  ⟨_, H1.weakBV henv W, H2.weakN henv W.toCtx⟩
+
 variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
 theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
     (h1 : env.HasType U Γ' e A) (h2 : e.Skips n k) : ∃ B, env.HasType U Γ' e B ∧ B.Skips n k :=
   IsDefEq.skips henv hΓ' W h1 h2 h2
 
-theorem TrProj.weakN_inv (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U))
-    (W : Ctx.LiftN n k Γ Γ') : TrProj Γ' s i (e.liftN n k) e' → ∃ e', TrProj Γ s i e e' := sorry
+theorem TrProj.weak'_inv (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U))
+    (W : Ctx.Lift' l Γ Γ') : TrProj Γ' s i (e.lift' l) e' → ∃ e', TrProj Γ s i e e' := sorry
 
 theorem TrProj.defeqDFC (henv : VEnv.WF env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ₂)
     (he : env.IsDefEqU U Γ₁ e₁ e₂) (H : TrProj Γ₁ s i e₁ e') :
@@ -724,7 +836,7 @@ theorem TrExpr.app (henv : VEnv.WF env) (hΔ : OnCtx Δ.toCtx (env.IsType Us.len
   ⟨_, .app h3.hasType.1 h4.hasType.1 s3 s4, _, h3.appDF h4⟩
 
 variable! (henv : VEnv.WF env) (hΓ : IsDefEqCtx env U [] Γ₁ Γ₂) in
-theorem TrProj.uniq (H1 : TrProj Γ₁ s i e₁ e₁') (H2 : TrProj Γ₂ s i e₂ e₂')
+theorem TrProj.uniq (H1 : TrProj Γ₁ s₁ i e₁ e₁') (H2 : TrProj Γ₂ s₂ i e₂ e₂')
     (H : env.IsDefEqU U Γ₁ e₁ e₂) :
     env.IsDefEqU U Γ₁ e₁' e₂' := sorry
 
@@ -899,8 +1011,8 @@ theorem TrExpr.proj {env Us Δ e e' s i e''} (henv : VEnv.WF env) (hΔ : VLCtx.W
   have ⟨_, H2'⟩ := H2.defeqDFC henv (.refl hΔ) h2.symm
   ⟨_, .proj s2 H2', H2'.uniq henv (.refl hΔ) H2 h2⟩
 
-theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
-    (W : VLCtx.FVLift Δ Δ₂ dk n k) (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂)
+theorem TrExprS.weakFV'_inv (henv : VEnv.WF env)
+    (W : VLCtx.FVLift' Δ Δ₂ dk n k) (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂)
     (H : TrExprS env Us Δ₁ e e') (hc : Closed e dk) (hv : FVarsIn (· ∈ VLCtx.fvars Δ) e) :
     ∃ e', TrExprS env Us Δ e e' := by
   induction H generalizing Δ Δ₂ dk k with
@@ -922,9 +1034,9 @@ theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨f₁, ih1⟩ := ih1 W hΔ hc.1 hv.1
     let ⟨a₁, ih2⟩ := ih2 W hΔ hc.2 hv.2
-    have h1 := h1.defeqU_l henv hΔ₁.toCtx <| hf.uniq henv hΔ (ih1.weakFV henv W hΔ₂)
-    have h2 := h2.defeqU_l henv hΔ₁.toCtx <| ha.uniq henv hΔ (ih2.weakFV henv W hΔ₂)
-    have := VExpr.WF.weakN_iff henv hΔ₂.toCtx W.toCtx (e := f₁.app a₁)
+    have h1 := h1.defeqU_l henv hΔ₁.toCtx <| hf.uniq henv hΔ (ih1.weakFV' henv W hΔ₂)
+    have h2 := h2.defeqU_l henv hΔ₁.toCtx <| ha.uniq henv hΔ (ih2.weakFV' henv W hΔ₂)
+    have := VExpr.WF.weak'_iff henv hΔ₂.toCtx W.toCtx (e := f₁.app a₁)
     have := this.1 ⟨_, (h1.app h2).defeqDFC henv hΔ.defeqCtx⟩
     have ⟨_, _, h1, h2⟩ := this.app_inv henv (W.wf henv hΔ₂).toCtx
     exact ⟨_, .app h1 h2 ih1 ih2⟩
@@ -932,24 +1044,24 @@ theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
     let ⟨_, h1⟩ := h1
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hc.1 hv.1
-    have htt := ht.uniq henv hΔ (ih1.weakFV henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
+    have htt := ht.uniq henv hΔ (ih1.weakFV' henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
     have ⟨_, ih2⟩ := ih2 (W.cons_bvar (.vlam _))
       (hΔ.cons (ofv := none) nofun <| .vlam htt) hc.2 hv.2.fvars_cons
-    have h1 := HasType.weakN_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx
+    have h1 := HasType.weak'_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx
       |>.1 (htt.hasType.2.defeqDFC henv hΔ.defeqCtx)
     exact ⟨_, .lam ⟨_, h1⟩ ih1 ih2⟩
   | forallE h1 h2 ht hb ih1 ih2 =>
     let ⟨_, h1⟩ := h1; let ⟨_, h2⟩ := h2
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hc.1 hv.1
-    have htt := ht.uniq henv hΔ (ih1.weakFV henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
+    have htt := ht.uniq henv hΔ (ih1.weakFV' henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
     have hΔ' := hΔ.cons (ofv := none) nofun <| .vlam htt
     have ⟨_, ih2⟩ := ih2 (W.cons_bvar (.vlam _)) hΔ' hc.2 hv.2.fvars_cons
     have h1' := htt.hasType.2.defeqDFC henv hΔ.defeqCtx
-    have h1 := HasType.weakN_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx |>.1 h1'
+    have h1 := HasType.weak'_iff (A := .sort _) henv hΔ₂.toCtx W.toCtx |>.1 h1'
     have hΔ₂' : VLCtx.WF _ _ ((none, .vlam _) :: _) := ⟨hΔ₂, nofun, _, h1'⟩
-    have h2 := (HasType.weakN_iff (A := .sort _) henv hΔ₂'.toCtx (W.cons_bvar (.vlam _)).toCtx).1 <|
-      hb.uniq henv hΔ' (ih2.weakFV henv (W.cons_bvar _) hΔ₂')
+    have h2 := (HasType.weak'_iff (A := .sort _) henv hΔ₂'.toCtx (W.cons_bvar (.vlam _)).toCtx).1 <|
+      hb.uniq henv hΔ' (ih2.weakFV' henv (W.cons_bvar _) hΔ₂')
       |>.of_l (Γ := _::_) henv ⟨hΔ₁.toCtx, _, htt.hasType.1⟩ h2
       |>.hasType.2.defeqDFC henv (.succ hΔ.defeqCtx htt)
     exact ⟨_, .forallE ⟨_, h1⟩ ⟨_, h2⟩ ih1 ih2⟩
@@ -957,12 +1069,12 @@ theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
     have hΔ₁ := hΔ.wf; have hΔ₂ := (hΔ.symm henv).wf
     let ⟨ty₁, ih1⟩ := ih1 W hΔ hc.1 hv.1
     let ⟨val₁, ih2⟩ := ih2 W hΔ hc.2.1 hv.2.1
-    have hvv := ha.uniq henv hΔ (ih2.weakFV henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
+    have hvv := ha.uniq henv hΔ (ih2.weakFV' henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h1
     let ⟨_, h2⟩ := h1.isType henv hΔ₁.toCtx
-    have htt := ht.uniq henv hΔ (ih1.weakFV henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h2
+    have htt := ht.uniq henv hΔ (ih1.weakFV' henv W hΔ₂) |>.of_l henv hΔ₁.toCtx h2
     have ⟨_, ih3⟩ := ih3 (W.cons_bvar (.vlet ..))
       (hΔ.cons nofun <| .vlet hvv htt) hc.2.2 hv.2.2.fvars_cons
-    have h1 := HasType.weakN_iff henv hΔ₂.toCtx W.toCtx
+    have h1 := HasType.weak'_iff henv hΔ₂.toCtx W.toCtx
       |>.1 ((htt.defeqDF hvv).hasType.2.defeqDFC henv hΔ.defeqCtx)
     exact ⟨_, .letE h1 ih1 ih2 ih3⟩
   | lit _ ih => let ⟨_, ih⟩ := ih W hΔ .toConstructor .toConstructor; exact ⟨_, .lit ih⟩
@@ -970,10 +1082,15 @@ theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
   | proj h1 h2 ih =>
     have hΔ₂ := (hΔ.symm henv).wf
     let ⟨_, ih⟩ := ih W hΔ hc hv
-    have htt := h1.uniq henv hΔ (ih.weakFV henv W hΔ₂)
+    have htt := h1.uniq henv hΔ (ih.weakFV' henv W hΔ₂)
     have ⟨_, h2⟩ := h2.defeqDFC henv hΔ.defeqCtx htt
-    have ⟨_, h2⟩ := h2.weakN_inv henv hΔ₂.toCtx W.toCtx
+    have ⟨_, h2⟩ := h2.weak'_inv henv hΔ₂.toCtx W.toCtx
     exact ⟨_, .proj ih h2⟩
+
+theorem TrExprS.weakFV_inv (henv : VEnv.WF env)
+    (W : VLCtx.FVLift Δ Δ₂ dk n k) (hΔ : VLCtx.IsDefEq env Us.length Δ₁ Δ₂)
+    (H : TrExprS env Us Δ₁ e e') (hc : Closed e dk) (hv : FVarsIn (· ∈ VLCtx.fvars Δ) e) :
+    ∃ e', TrExprS env Us Δ e e' := H.weakFV'_inv henv W.toFVLift' hΔ hc hv
 
 variable! (henv : Ordered env) (h₀ : TrExprS env Us Δ₀ e₀ e₀') in
 theorem TrExprS.instN_var (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : Δ₁.find? v = some (e', A)) :

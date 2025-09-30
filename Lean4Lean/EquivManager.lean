@@ -56,6 +56,7 @@ def isEquiv (e1 e2 : Expr) : StateM EquivManager Bool := do
   if result then
     modify (merge · r1 r2)
   return result
+termination_by e1
 
 def addEquiv (m : EquivManager) (e1 e2 : Expr) : EquivManager :=
   let (r1, m) := toNode e1 m

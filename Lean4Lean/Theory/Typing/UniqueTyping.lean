@@ -20,6 +20,10 @@ variable! (henv : VEnv.WF env) in
 theorem IsDefEqU.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEqU U Γ e1 e2) :
     env.IsDefEqU U Γ' (e1.liftN n k) (e2.liftN n k) := let ⟨_, H⟩ := H; ⟨_, H.weakN henv W⟩
 
+variable! (henv : VEnv.WF env) in
+theorem IsDefEqU.weak' (W : Ctx.Lift' n Γ Γ') (H : env.IsDefEqU U Γ e1 e2) :
+    env.IsDefEqU U Γ' (e1.lift' n) (e2.lift' n) := let ⟨_, H⟩ := H; ⟨_, H.weak' henv W⟩
+
 theorem isDefEq_iff (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U)) :
     env.IsDefEq U Γ e₁ e₂ A ↔
     env.HasType U Γ e₁ A ∧ env.HasType U Γ e₂ A ∧ env.IsDefEqU U Γ e₁ e₂ := by
@@ -148,7 +152,8 @@ theorem IsDefEqU.weak'_iff (W : Ctx.Lift' l Γ Γ') :
   | succ n ih =>
     obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
     have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
-    simp only [Lift.consN_skip_eq, VExpr.lift'_comp, VExpr.lift'_consN_skipN,
+    rw [Lift.consN_skip_eq, VExpr.lift'_comp, VExpr.lift'_comp,
+      ← Lift.skipN_one, VExpr.lift'_consN_skipN, VExpr.lift'_consN_skipN,
       weakN_iff henv hΓ' W2, ih (hΓ'.weakN_inv henv W2) W1 Lift.depth_consN]
 
 variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
@@ -160,7 +165,8 @@ theorem IsDefEq.weak'_iff (W : Ctx.Lift' l Γ Γ') :
   | succ n ih =>
     obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
     have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
-    simp only [Lift.consN_skip_eq, VExpr.lift'_comp, VExpr.lift'_consN_skipN,
+    rw [Lift.consN_skip_eq, VExpr.lift'_comp, VExpr.lift'_comp, VExpr.lift'_comp,
+      ← Lift.skipN_one, VExpr.lift'_consN_skipN, VExpr.lift'_consN_skipN, VExpr.lift'_consN_skipN,
       weakN_iff henv hΓ' W2, ih (hΓ'.weakN_inv henv W2) W1 Lift.depth_consN]
 
 variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
@@ -172,3 +178,7 @@ variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
 theorem IsType.weak'_iff (W : Ctx.Lift' l Γ Γ') :
     env.IsType U Γ' (e.lift' l) ↔ env.IsType U Γ e :=
   exists_congr fun _ => HasType.weak'_iff henv hΓ' W (A := .sort _)
+
+variable! (henv : VEnv.WF env) (hΓ : OnCtx Γ' (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.weak'_iff (W : Ctx.Lift' l Γ Γ') :
+    VExpr.WF env U Γ' (e.lift' l) ↔ VExpr.WF env U Γ e := IsDefEqU.weak'_iff henv hΓ W

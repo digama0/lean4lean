@@ -33,10 +33,67 @@ theorem WF.le {Q R} {x : Except ε α}
 
 end Except
 
-namespace Lean4Lean.TypeChecker
+namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
 open scoped List
+
+namespace EquivManager
+
+variable {env : VEnv} {Us : List Name} {Δ : VLCtx}
+variable (env Us Δ) in
+inductive IsDefEqE : Expr → Expr → Prop
+  | rfl : IsDefEqE e e
+  | trans : IsDefEqE e₁ e₂ → IsDefEqE e₂ e₃ → IsDefEqE e₁ e₃
+  | defeq : TrExprS env Us Δ e₁ e' → TrExpr env Us Δ e₂ e' → IsDefEqE e₁ e₂
+  | app : IsDefEqE f₁ f₂ → IsDefEqE a₁ a₂ → IsDefEqE (.app f₁ a₁) (.app f₂ a₂)
+  | lam : IsDefEqE d₁ d₂ → IsDefEqE b₁ b₂ → IsDefEqE (.lam _ d₁ b₁ _) (.lam _ d₂ b₂ _)
+  | forallE : IsDefEqE d₁ d₂ → IsDefEqE b₁ b₂ → IsDefEqE (.forallE _ d₁ b₁ _) (.forallE _ d₂ b₂ _)
+  | letE : IsDefEqE t₁ t₂ → IsDefEqE v₁ v₂ → IsDefEqE b₁ b₂ →
+    IsDefEqE (.letE _ t₁ v₁ b₁ _) (.letE _ t₂ v₂ b₂ _)
+  | mdata : IsDefEqE e₁ e₂ → IsDefEqE (.mdata _ e₁) (.mdata _ e₂)
+  | proj : IsDefEqE e₁ e₂ → IsDefEqE (.proj _ i e₁) (.proj _ i e₂)
+
+theorem IsDefEqE.symm (H1 : IsDefEqE env Us Δ e₁ e₂) : IsDefEqE env Us Δ e₂ e₁ := by
+  induction H1 with
+  | rfl => exact .rfl
+  | trans _ _ ih1 ih2 => exact .trans ih2 ih1
+  | defeq h1 h2 => let ⟨_, h2, h3⟩ := h2; exact .defeq h2 ⟨_, h1, h3.symm⟩
+  | app _ _ ih1 ih2 => exact .app ih1 ih2
+  | lam _ _ ih1 ih2 => exact .lam ih1 ih2
+  | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
+  | letE _ _ _ ih1 ih2 ih3 => exact .letE ih1 ih2 ih3
+  | mdata _ ih => exact .mdata ih
+  | proj _ ih => exact .proj ih
+
+variable! (henv : env.WF) (W : VLCtx.FVLift' Δ Δ' 0 n 0) (hΔ : VLCtx.WF env Us.length Δ') in
+theorem IsDefEqE.weak' (H1 : IsDefEqE env Us Δ e₁ e₂) : IsDefEqE env Us Δ' e₁ e₂ := by
+  induction H1 with
+  | rfl => exact .rfl
+  | trans _ _ ih1 ih2 => exact .trans ih1 ih2
+  | defeq h1 h2 => exact .defeq (h1.weakFV' henv W hΔ) (h2.weakFV' henv W hΔ)
+  | app _ _ ih1 ih2 => exact .app ih1 ih2
+  | lam _ _ ih1 ih2 => exact .lam ih1 ih2
+  | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
+  | letE _ _ _ ih1 ih2 ih3 => exact .letE ih1 ih2 ih3
+  | mdata _ ih => exact .mdata ih
+  | proj _ ih => exact .proj ih
+
+variable (env Us Δ) in
+structure WF (m : EquivManager) where
+  wf {i} : i < m.uf.size ↔ ∃ e : Expr, m.toNodeMap[e]? = some i
+  defeq {e₁ e₂ : Expr} {i₁ i₂} :
+    m.toNodeMap[e₁]? = some i₁ → m.toNodeMap[e₂]? = some i₂ → m.uf.Equiv i₁ i₂ →
+    IsDefEqE env Us Δ e₁ e₂
+
+variable! (henv : env.WF) (W : VLCtx.FVLift' Δ Δ' 0 n 0) (hΔ : VLCtx.WF env Us.length Δ') in
+theorem WF.weak' (wf : WF env Us Δ m) : WF env Us Δ' m where
+  wf := wf.wf
+  defeq h1 h2 h3 := wf.defeq h1 h2 h3 |>.weak' henv W hΔ
+
+end EquivManager
+
+namespace TypeChecker
 
 inductive MLCtx where
   | nil : MLCtx
@@ -172,6 +229,8 @@ def WHNFCache.WF (c : VContext) (s : VState) (m : InferCache) : Prop :=
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
   ngen_wf : ∀ fv ∈ c.vlctx.fvars, s.ngen.Reserves fv
+  ectx : ∃ Δ' n, Δ'.WF c.venv c.lparams.length ∧ c.vlctx.FVLift' Δ' 0 n 0 ∧
+    s.eqvManager.WF c.venv c.lparams Δ' ∧ ∀ fv ∈ Δ'.fvars, s.ngen.Reserves fv
   inferTypeI_wf : s.inferTypeI.WF c s
   inferTypeC_wf : s.inferTypeC.WF c s
   whnfCore_wf : WHNFCache.WF c s s.whnfCoreCache
@@ -368,16 +427,25 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
       fun _ _ h => ((H h).fresh c.Ewf trctx.wf).mono le
     { ngen_wf := by
         simp [m', VContext.withMLC]; exact ⟨h0, fun _ h => le.reservesV (wf.ngen_wf _ h)⟩
+      ectx := by
+        let ⟨_, _, a1, a2, a3, a4⟩ := wf.ectx
+        refine
+          have b1 := ⟨a1, ?_, hty'.weak' c.Ewf.ordered a2.toCtx⟩
+          ⟨_, _, b1, a2.cons_fvar _ _ hty.fvarsList, a3.weak' c.Ewf (.skip_fvar _ _ .refl) b1,
+            fun _ h => by obtain _ | ⟨_, h⟩ := h <;> [exact h0; exact (a4 _ h).mono le]⟩
+        rintro _ _ ⟨⟩; exact ⟨mt (a4 _) h1, hty.fvarsList.trans a2.fvars_sublist.subset⟩
       trctx, inferTypeI_wf := hic wf.inferTypeI_wf, inferTypeC_wf := hic wf.inferTypeC_wf
       whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf }
   let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h1 _ mwf this a s' e
-  refine ⟨s', hs1, le.trans hs2, ?_, hs4⟩
+  refine have le' := le.trans hs2; ⟨s', hs1, le', ?_, hs4⟩
   have hic {ic} (H : InferCache.WF (c.withMLC m') s' ic) :
       InferCache.WF (c.withMLC m) s' ic := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
   have hwc {wc} (H : WHNFCache.WF (c.withMLC m') s' wc) :
       WHNFCache.WF (c.withMLC m) s' wc := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
+  let ⟨_, _, a1, a2, a3⟩ := wf'.ectx
   exact {
     ngen_wf := (by simpa [VContext.withMLC] using wf'.ngen_wf :).2
+    ectx := ⟨_, _, a1, .comp (.skip_fvar _ _ .refl) a2, a3⟩
     trctx := wf.trctx
     inferTypeI_wf := hic wf'.inferTypeI_wf, inferTypeC_wf := hic wf'.inferTypeC_wf
     whnfCore_wf := hwc wf'.whnfCore_wf, whnf_wf := hwc wf'.whnf_wf
@@ -409,6 +477,14 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
       fun _ _ h => ((H h).fresh c.Ewf trctx.wf).mono le
     { ngen_wf := by
         simp [m', VContext.withMLC]; exact ⟨h0, fun _ h => le.reservesV (wf.ngen_wf _ h)⟩
+      ectx := by
+        let ⟨_, _, a1, a2, a3, a4⟩ := wf.ectx
+        have hv := List.append_subset.2 ⟨hty.fvarsList, hval.fvarsList⟩
+        refine
+          have b1 := ⟨a1, ?_, hval'.weak' c.Ewf.ordered a2.toCtx⟩
+          ⟨_, _, b1, a2.cons_fvar _ _ hv, a3.weak' c.Ewf (.skip_fvar _ _ .refl) b1,
+            fun _ h => by obtain _ | ⟨_, h⟩ := h <;> [exact h0; exact (a4 _ h).mono le]⟩
+        rintro _ _ ⟨⟩; exact ⟨mt (a4 _) h1, hv.trans a2.fvars_sublist.subset⟩
       trctx, inferTypeI_wf := hic wf.inferTypeI_wf, inferTypeC_wf := hic wf.inferTypeC_wf
       whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf }
   let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h1 _ mwf this a s' e
@@ -417,8 +493,10 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
       InferCache.WF (c.withMLC m) s' ic := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
   have hwc {wc} (H : WHNFCache.WF (c.withMLC m') s' wc) :
       WHNFCache.WF (c.withMLC m) s' wc := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
+  let ⟨_, _, a1, a2, a3⟩ := wf'.ectx
   exact {
     ngen_wf := (by simpa [VContext.withMLC] using wf'.ngen_wf :).2
+    ectx := ⟨_, _, a1, .comp (.skip_fvar _ _ .refl) a2, a3⟩
     trctx := wf.trctx
     inferTypeI_wf := hic wf'.inferTypeI_wf, inferTypeC_wf := hic wf'.inferTypeC_wf
     whnfCore_wf := hwc wf'.whnfCore_wf, whnf_wf := hwc wf'.whnf_wf
@@ -779,20 +857,6 @@ theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn (· ∈ c.vlctx
 theorem whnfCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (whnfCore e cheapRec cheapProj) fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' :=
   fun _ wf => wf.whnfCore he
-
-theorem addEquiv.WF {c : VContext} {s : VState} :
-    RecM.WF c s (modify fun st => { st with eqvManager := st.eqvManager.addEquiv e₁ e₂ })
-      fun _ _ => True := by
-  rintro _ mwf wf _ _ ⟨⟩
-  exact ⟨{ s with toState := _ }, rfl, .rfl, { wf with }, trivial⟩
-
-theorem isDefEq.WF {c : VContext} {s : VState}
-    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (isDefEq e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
-  refine (isDefEqCore.WF he₁ he₂).bind fun b _ _ hb => ?_
-  simp; split
-  · exact addEquiv.WF.map fun _ _ _ _ => hb
-  · exact .pure hb
 
 theorem isDelta_is_some : isDelta env e = some ci ↔
     ∃ n, env.find? n = some ci ∧ (∃ v, ci.value? = some v) ∧ ∃ ls, e.getAppFn = .const n ls := by

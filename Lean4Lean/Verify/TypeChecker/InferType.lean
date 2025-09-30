@@ -1,4 +1,5 @@
 import Lean4Lean.Verify.TypeChecker.Reduce
+import Lean4Lean.Verify.EquivManager
 
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
@@ -8,7 +9,7 @@ theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
       (∃ u, e1 = .sort u) ∧ c.TrExpr e1 e' ∧ c.FVarsBelow e e1 := by
   simp [ensureSortCore]; split
-  · let .sort _ := e --; let ⟨_, .sort _, h⟩ := he
+  · let .sort _ := e
     exact .pure ⟨⟨_, rfl⟩, he.trExpr c.Ewf c.Δwf, .rfl⟩
   refine (whnf.WF he).bind fun e _ _ ⟨hb, he⟩ => ?_; split
   · let .sort _ := e

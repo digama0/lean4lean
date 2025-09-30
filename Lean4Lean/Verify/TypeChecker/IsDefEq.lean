@@ -1,4 +1,5 @@
 import Lean4Lean.Verify.TypeChecker.Reduce
+import Lean4Lean.Verify.EquivManager
 
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
@@ -143,12 +144,6 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
         |>.trans c'.Ewf hΓ b5.symm |>.of_r c'.Ewf hΓ bT
       ⟨_, .symm <| .forallEDF tt'.symm bb.symm⟩
 
-theorem EquivManager.isEquiv.WF {c : VContext}
-    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂')
-    (H : EquivManager.isEquiv useHash e₁ e₂ m = (b, m')) :
-    b → c.IsDefEqU e₁' e₂' := by
-  sorry
-
 theorem quickIsDefEq.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (quickIsDefEq e₁ e₂ useHash) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
@@ -160,8 +155,13 @@ theorem quickIsDefEq.WF {c : VContext} {s : VState}
     split at eq; rename_i b _ b' m hm
     change let s' := _; (_, s') = _ at eq; extract_lets s' at eq
     injection eq; subst b' s₁
-    have h1 := EquivManager.isEquiv.WF he₁ he₂ hm
-    exact let vs' := { s with toState := s' }; ⟨vs', rfl, .rfl, { wf with }, h1⟩
+    let ⟨_, _, a1, a2, ewf, a4⟩ := wf.ectx
+    have ⟨ewf, _, h1⟩ := EquivManager.isEquiv.WF ewf hm
+    refine let vs' := { s with toState := s' }; ⟨vs', rfl, .rfl, { wf with ectx := ?_ }, ?_⟩
+    · exact ⟨_, _, a1, a2, ewf, a4⟩
+    · intro h; apply (VEnv.IsDefEqU.weak'_iff c.Ewf a1 a2.toCtx).1
+      exact (h1 h).uniq c.Ewf (a2.bvars_eq.trans c.mlctx.noBV)
+        a1 (he₁.weakFV' c.Ewf a2 a1) (he₂.weakFV' c.Ewf a2 a1)
   extract_lets F; split <;> [exact .pure fun _ => h ‹_›; skip]
   refine .pureBind ?_; unfold F; split
   · exact .toLBoolM <| c.withMLC_self ▸
