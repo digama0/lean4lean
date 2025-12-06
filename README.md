@@ -38,6 +38,11 @@ If you run this as is (with no additional arguments), it will check every olean 
 * `--verbose`: shows the name of each declaration before adding it to the environment. Useful to know if the kernel got stuck on something.
 * `--compare`: If lean4lean takes more than a second on a given definition, we also check the C++ kernel performance to see if it is also slow on the same definition and report if lean4lean is abnormally slow in comparison.
 
+## More documentation
+
+* [bugs-found.md](bugs-found.md): A list of kernel bugs that the lean4lean project has uncovered.
+* [divergences.md](divergences.md): A list of deliberate divergences between lean's kernel and the lean4lean kernel.
+
 ## (Selected) file breakdown
 
 * `Main.lean`: command line app
