@@ -42,6 +42,7 @@ If you run this as is (with no additional arguments), it will check every olean 
 
 * [bugs-found.md](bugs-found.md): A list of kernel bugs that the lean4lean project has uncovered.
 * [divergences.md](divergences.md): A list of deliberate divergences between lean's kernel and the lean4lean kernel.
+* [axioms.md](axioms.md): An explanation of every axiom you can find in the `#print axioms` list at the end of [`Lean4Lean.Verify.Typechecker`](Lean4Lean/Verify/TypeChecker.lean).
 
 ## (Selected) file breakdown
 

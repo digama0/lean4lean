@@ -103,3 +103,58 @@ nonrec theorem ensureType.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   refine (ensureSort.WF a2).mono fun _ _ _ ⟨⟨_, b1, b2⟩, b3⟩ => ?_
   obtain ⟨_, rfl⟩ := b3; let .sort b1 := b1
   exact ⟨_, a1, _, _, rfl, b1, a3.defeqU_r c.Ewf c.Δwf b2.symm⟩
+
+/- See [axioms.md](../../axioms.md) for an explanation of all these axioms -/
+/--
+info: 'Lean4Lean.TypeChecker.checkType.WF' depends on axioms:
+[propext,
+ Classical.choice,
+ Lean4Lean.TrProj,
+ Lean4Lean.ptrEqConstantInfo_eq,
+ Lean4Lean.ptrEqExpr_eq,
+ Quot.sound,
+ Lean.Expr.abstractRange_eq,
+ Lean.Expr.abstract_eq,
+ Lean.Expr.eqv_eq,
+ Lean.Expr.hasLevelParam_eq,
+ Lean.Expr.hasLooseBVar_eq,
+ Lean.Expr.instantiate1_eq,
+ Lean.Expr.instantiateRange_eq,
+ Lean.Expr.instantiateRevRange_eq,
+ Lean.Expr.instantiateRev_eq,
+ Lean.Expr.instantiate_eq,
+ Lean.Expr.looseBVarRange_eq,
+ Lean.Expr.lowerLooseBVars_eq,
+ Lean.Expr.replace_eq,
+ Lean.Level.hasMVar_eq,
+ Lean.Level.hasParam_eq,
+ Lean.Level.instLawfulBEqLevel,
+ Lean.Level.isEquiv'_wf,
+ Lean.PersistentArray.toList'_push,
+ Lean.PersistentHashMap.findAux_isSome,
+ Lean.Substring.beq_refl,
+ Lean.Syntax.structEq_eq,
+ Lean4Lean.TrProj.defeqDFC,
+ Lean4Lean.TrProj.instL,
+ Lean4Lean.TrProj.instN,
+ Lean4Lean.TrProj.uniq,
+ Lean4Lean.TrProj.weak',
+ Lean4Lean.TrProj.weak'_inv,
+ Lean4Lean.TrProj.wf,
+ Lean4Lean.VEnv.addInduct,
+ Lean4Lean.VEnv.addInduct_WF,
+ Lean4Lean.VInductDecl.WF,
+ Lean.Expr.mkAppRangeAux.eq_def,
+ Lean.PersistentHashMap.WF.find?_eq,
+ Lean.PersistentHashMap.WF.toList'_insert,
+ Lean4Lean.VEnv.IsDefEq.uniq,
+ Lean4Lean.VEnv.IsDefEqU.forallE_inv,
+ Lean4Lean.VEnv.IsDefEqU.weakN_inv,
+ Lean4Lean.TypeChecker.Inner.inferProj.WF,
+ Lean4Lean.TypeChecker.Inner.isDefEqUnitLike.WF,
+ Lean4Lean.TypeChecker.Inner.reduceProj.WF,
+ Lean4Lean.TypeChecker.Inner.reduceRecursor.WF,
+ Lean4Lean.TypeChecker.Inner.tryEtaStructCore.WF]
+-/
+#guard_msgs (whitespace := lax) in
+#print axioms checkType.WF

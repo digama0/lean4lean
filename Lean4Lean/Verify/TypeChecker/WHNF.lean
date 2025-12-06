@@ -3,9 +3,9 @@ import Lean4Lean.Verify.TypeChecker.Reduce
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 
-theorem reduceRecursor.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+axiom reduceRecursor.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (reduceRecursor e cheapRec cheapProj) fun oe _ =>
-      ∀ e₁, oe = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := sorry
+      ∀ e₁, oe = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' -- := sorry
 
 theorem whnfFVar.WF {c : VContext} {s : VState} (he : c.TrExprS (.fvar fv) e') :
     RecM.WF c s (whnfFVar (.fvar fv) cheapRec cheapProj) fun e₁ _ =>
@@ -22,9 +22,9 @@ theorem whnfFVar.WF {c : VContext} {s : VState} (he : c.TrExprS (.fvar fv) e') :
   refine (TrExprS.fvar h1).uniq c.Ewf ?_ he
   exact .refl c.Ewf c.Δwf
 
-theorem reduceProj.WF {c : VContext} {s : VState} (he : c.TrExprS (.proj n i e) e') :
+axiom reduceProj.WF {c : VContext} {s : VState} (he : c.TrExprS (.proj n i e) e') :
     RecM.WF c s (reduceProj i e cheapRec cheapProj) fun oe _ =>
-      ∀ e₁, oe = some e₁ → c.FVarsBelow (.proj n i e) e₁ ∧ c.TrExpr e₁ e' := sorry
+      ∀ e₁, oe = some e₁ → c.FVarsBelow (.proj n i e) e₁ ∧ c.TrExpr e₁ e' -- := sorry
 
 theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (whnfCore' e cheapRec cheapProj) fun e₁ _ =>

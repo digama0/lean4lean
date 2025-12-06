@@ -392,10 +392,10 @@ theorem inferLet.WF
   refine (c.withMLC_self ▸ inferLet.loop.WF (Nat.zero_le _) [] rfl rfl rfl rfl rfl ?_ hr) hinf
   exact fun P hP he => ⟨(AllAbove.wf wf.trctx.wf.fvwf).2 hP, he.mono fun _ h _ => h, fun _ => id⟩
 
-theorem inferProj.WF
+axiom inferProj.WF
     (he : c.TrExprS e e') (hty : c.TrExprS ety ety') (hasty : c.HasType e' ty') :
     (inferProj st i e ety).WF c s fun ty _ =>
-      ∃ ty', c.TrTyping (.proj st i e) ty e' ty' := sorry
+      ∃ ty', c.TrTyping (.proj st i e) ty e' ty' -- := sorry
 
 theorem literal_typeName_is_primitive {l : Literal} :
     Environment.primitives.contains l.typeName := by

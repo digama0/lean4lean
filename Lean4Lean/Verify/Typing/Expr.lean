@@ -64,7 +64,7 @@ def VLCtx.WF.fvwf : ∀ {Δ}, VLCtx.WF env U Δ → Δ.FVWF
   | [], h => h
   | _ :: _, ⟨h1, h2, _⟩ => ⟨h1.fvwf, h2⟩
 
-def TrProj : ∀ (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr), VExpr → Prop := sorry
+axiom TrProj (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr) : VExpr → Prop -- := sorry
 
 variable (env : VEnv) (Us : List Name) in
 inductive TrExprS : VLCtx → Expr → VExpr → Prop
