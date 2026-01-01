@@ -60,6 +60,44 @@ instance : LawfulBEq LBool where
   rfl {a} := by cases a <;> rfl
   eq_of_beq {a b} := by cases a <;> cases b <;> simp +decide
 
+instance : LawfulBEq DefinitionSafety where
+  rfl {a} := by cases a <;> rfl
+  eq_of_beq {a b} := by cases a <;> cases b <;> simp +decide
+
+-- we have to define this manually instead of `deriving instance Ord`
+-- because the variants are written in the wrong order in core
+protected def DefinitionSafety.compare : DefinitionSafety → DefinitionSafety → Ordering
+  | .unsafe, .unsafe => .eq
+  | .unsafe, _ => .lt
+  | _, .unsafe => .gt
+  | .partial, .partial => .eq
+  | .partial, _ => .lt
+  | _, .partial => .gt
+  | .safe, .safe => .eq
+
+instance : Ord DefinitionSafety := ⟨DefinitionSafety.compare⟩
+
+instance : Std.TransOrd DefinitionSafety where
+  eq_swap {a b} := by cases a <;> cases b <;> rfl
+  isLE_trans {a b c} := by cases a <;> cases b <;> simp! [compare] <;> cases c <;> decide
+
+instance : Std.LawfulBEqOrd DefinitionSafety where
+  compare_eq_iff_beq {a b} := by cases a <;> cases b <;> decide
+instance : Std.LawfulEqOrd DefinitionSafety := Std.LawfulBEqOrd.lawfulEqOrd
+
+instance : LE DefinitionSafety := leOfOrd
+instance : DecidableEq DefinitionSafety := instDecidableEqOfLawfulBEq
+
+theorem DefinitionSafety.le_trans {a b c : DefinitionSafety} : a ≤ b → b ≤ c → a ≤ c :=
+  Std.TransOrd.isLE_trans
+
+theorem DefinitionSafety.le_rfl {a : DefinitionSafety} : a ≤ a := Std.ReflCmp.isLE_rfl
+
+theorem DefinitionSafety.unsafe_le : «unsafe» ≤ a := by cases a <;> rfl
+theorem DefinitionSafety.le_safe : a ≤ safe := by cases a <;> rfl
+theorem DefinitionSafety.le_antisymm {a b : DefinitionSafety} : a ≤ b → b ≤ a → a = b := by
+  cases a <;> cases b <;> decide
+
 namespace Substring
 
 open private substrEq.loop from Init.Data.String.Basic in

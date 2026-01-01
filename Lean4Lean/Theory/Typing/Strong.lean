@@ -19,7 +19,7 @@ inductive IsDefEqStrong : List VExpr → VExpr → VExpr → VExpr → Prop wher
     l.WF uvars → l'.WF uvars → l ≈ l' →
     Γ ⊢ .sort l ≡ .sort l' : .sort (.succ l)
   | constDF :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF uvars) →
     (∀ l ∈ ls', l.WF uvars) →
     ls.length = ci.uvars →
@@ -558,7 +558,7 @@ theorem _root_.Lean4Lean.VExpr.WF.lam_inv (H : VExpr.WF env U Γ (.lam A body)) 
 variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.const_inv'
     (H : env.IsDefEq U Γ e1 e2 V) (eq : e1 = .const c ls ∨ e2 = .const c ls) :
-    ∃ ci, env.constants c = some (some ci) ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars := by
+    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars := by
   have H' := H.strong henv hΓ; clear H hΓ
   induction H' with
   | symm _ ih => exact ih eq.symm
@@ -581,10 +581,10 @@ theorem IsDefEq.const_inv'
 
 variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem HasType.const_inv (H : env.HasType U Γ (.const c ls) V) :
-    ∃ ci, env.constants c = some (some ci) ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
+    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
   H.const_inv' henv hΓ (.inl rfl)
 
 variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem _root_.Lean4Lean.VExpr.WF.const_inv (H : VExpr.WF env U Γ (.const c ls)) :
-    ∃ ci, env.constants c = some (some ci) ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
+    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
   let ⟨_, H⟩ := H; HasType.const_inv henv hΓ H

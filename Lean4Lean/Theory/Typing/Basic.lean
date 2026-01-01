@@ -22,7 +22,7 @@ inductive IsDefEq : List VExpr → VExpr → VExpr → VExpr → Prop where
     l.WF uvars → l'.WF uvars → l ≈ l' →
     Γ ⊢ .sort l ≡ .sort l' : .sort (.succ l)
   | constDF :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF uvars) →
     (∀ l ∈ ls', l.WF uvars) →
     ls.length = ci.uvars →

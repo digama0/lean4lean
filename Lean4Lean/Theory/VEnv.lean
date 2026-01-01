@@ -13,7 +13,7 @@ structure VDefEq where
   type : VExpr
 
 @[ext] structure VEnv where
-  constants : Name → Option (Option VConstant)
+  constants : Name → Option VConstant
   defeqs : VDefEq → Prop
 
 def VEnv.empty : VEnv where
@@ -22,9 +22,9 @@ def VEnv.empty : VEnv where
 
 instance : EmptyCollection VEnv := ⟨.empty⟩
 
-def VEnv.contains (env : VEnv) (name : Name) := ∃ ci, env.constants name = some (some ci)
+def VEnv.contains (env : VEnv) (name : Name) := ∃ ci, env.constants name = some ci
 
-def VEnv.addConst (env : VEnv) (name : Name) (ci : Option VConstant) : Option VEnv :=
+def VEnv.addConst (env : VEnv) (name : Name) (ci : VConstant) : Option VEnv :=
   match env.constants name with
   | some _ => none
   | none => some { env with constants := fun n => if name = n then some ci else env.constants n }

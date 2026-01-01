@@ -65,9 +65,13 @@ theorem WF.find?_eq {α β} [BEq α] [Hashable α] [LawfulBEq α] [LawfulHashabl
   · simp [toList', List.lookup_append, wf.map₂.find?_eq]
     cases List.lookup a .. <;> simp [Std.HashMap.getElem?_eq_lookup_toList]
 
-theorem WF.find?'_eq_find? {α β} [BEq α] [Hashable α] [LawfulBEq α] [LawfulHashable α]
+theorem WF.find?'_eq_find? {α β} [BEq α] [Hashable α] [EquivBEq α] [LawfulHashable α]
     {m : SMap α β} (wf : WF m) (a : α) : m.find?' a = m.find? a := by
   simp [find?, find?']; split; · rfl
   rename_i m₁ m₂
   cases e1 : m₁[a]? <;> cases e2 : m₂.find? a <;> simp
   cases wf.disjoint (by simp [PersistentHashMap.find?_isSome, e2]) (Std.HashMap.mem_of_getElem? e1)
+
+theorem find?_isSome {α β} [BEq α] [Hashable α] [EquivBEq α] [LawfulHashable α]
+    (m : SMap α β) (a : α) : m.contains a = (m.find? a).isSome := by
+  simp [find?, contains]; split <;> simp [← PersistentHashMap.find?_isSome, Bool.or_comm]

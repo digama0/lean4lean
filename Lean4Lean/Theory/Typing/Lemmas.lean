@@ -185,17 +185,17 @@ theorem Ctx.LiftN.right (h : CtxClosed Γ) (Γ') : Ctx.LiftN Γ'.length Γ.lengt
     simpa [h2.liftN_eq (Nat.le_refl _)] using LiftN.succ (LiftN.right h1 Γ') (A := A)
 
 inductive VObject where
-  | const (n : Name) (oci : Option VConstant)
+  | const (n : Name) (ci : VConstant)
   | defeq (df : VDefEq)
 
 namespace VEnv
 
-theorem addConst_le {env env' : VEnv} (h : env.addConst n oci = some env') : env ≤ env' := by
+theorem addConst_le {env env' : VEnv} (h : env.addConst n ci = some env') : env ≤ env' := by
   unfold addConst at h; split at h <;> cases h
   exact ⟨fun _ => by simp; split <;> simp_all, by simp [*]⟩
 
-theorem addConst_self {env env' : VEnv} (h : env.addConst n oci = some env') :
-    env'.constants n = some oci := by
+theorem addConst_self {env env' : VEnv} (h : env.addConst n ci = some env') :
+    env'.constants n = some ci := by
   unfold addConst at h; split at h <;> cases h; simp
 
 theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df := ⟨id, .inr⟩
@@ -204,7 +204,7 @@ theorem addDefEq_self {env : VEnv} : (env.addDefEq df).defeqs df := .inl rfl
 
 def HasObjects (env : VEnv) : List VObject → Prop
   | [] => True
-  | .const n oci :: ls => env.constants n = some oci ∧ env.HasObjects ls
+  | .const n ci :: ls => env.constants n = some ci ∧ env.HasObjects ls
   | .defeq df :: ls => env.defeqs df ∧ env.HasObjects ls
 
 theorem HasObjects.mono {env env' : VEnv} (henv : env ≤ env') :
@@ -214,22 +214,22 @@ theorem HasObjects.mono {env env' : VEnv} (henv : env ≤ env') :
   | .defeq .. :: _ => .imp henv.2 (mono henv)
 
 theorem HasObjects.const {env env' : VEnv} (hls : env.HasObjects ls)
-    (h : env.addConst n oci = some env') : env'.HasObjects (.const n oci :: ls) :=
+    (h : env.addConst n ci = some env') : env'.HasObjects (.const n ci :: ls) :=
   ⟨addConst_self h, hls.mono (addConst_le h)⟩
 
 theorem HasObjects.defeq {env : VEnv} (hls : env.HasObjects ls) :
     (addDefEq env df).HasObjects (.defeq df :: ls) := ⟨addDefEq_self, hls.mono addDefEq_le⟩
 
 theorem HasObjects.bind_const {env env' : VEnv} (hls : env.HasObjects ls)
-    (h : env.addConst n oci >>= f = some env') :
-    ∃ env1, env1.HasObjects (.const n oci :: ls) ∧ f env1 = some env' :=
+    (h : env.addConst n ci >>= f = some env') :
+    ∃ env1, env1.HasObjects (.const n ci :: ls) ∧ f env1 = some env' :=
   let ⟨env1, h1, henv1⟩ := Option.bind_eq_some_iff.1 h; ⟨env1, hls.const h1, henv1⟩
 
 nonrec theorem HasType.bvar (h : Lookup Γ i A): HasType env U Γ (.bvar i) A := .bvar h
 theorem HasType.sort (h : l.WF U) : HasType env U Γ (.sort l) (.sort (.succ l)) :=
   .sortDF h h rfl
 theorem HasType.const
-    (h1 : env.constants c = some (some ci)) (h2 : ∀ l ∈ ls, l.WF U) (h3 : ls.length = ci.uvars) :
+    (h1 : env.constants c = some ci) (h2 : ∀ l ∈ ls, l.WF U) (h3 : ls.length = ci.uvars) :
     HasType env U Γ (.const c ls) (ci.type.instL ls) :=
   .constDF h1 h2 h2 h3 (.rfl fun _ _ => rfl)
 theorem HasType.app (h1 : HasType env U Γ f (.forallE A B)) (h2 : HasType env U Γ a A) :
@@ -260,12 +260,12 @@ theorem IsDefEqU.symm {env : VEnv} (h1 : env.IsDefEqU U Γ e₁ e₂) : env.IsDe
 inductive Ordered : VEnv → Prop where
   | empty : Ordered ∅
   | const :
-    Ordered env → (∀ ci, oci = some ci → ci.WF env) →
-    env.addConst n oci = some env' → Ordered env'
+    Ordered env → ci.WF env →
+    env.addConst n ci = some env' → Ordered env'
   | defeq : Ordered env → df.WF env → Ordered (env.addDefEq df)
 
 def OnTypes (env : VEnv) (P : Nat → VExpr → VExpr → Prop) : Prop :=
-  (∀ {n ci}, env.constants n = some (some ci) → ∃ u, P ci.uvars ci.type (.sort u)) ∧
+  (∀ {n ci}, env.constants n = some ci → ∃ u, P ci.uvars ci.type (.sort u)) ∧
   (∀ {df}, env.defeqs df → P df.uvars df.lhs df.type ∧ P df.uvars df.rhs df.type)
 
 theorem OnTypes.mono (henv : env' ≤ env) (hP : ∀ {U e A}, P U e A → P' U e A)
@@ -285,7 +285,7 @@ theorem Ordered.induction (motive : VEnv → Nat → VExpr → VExpr → Prop)
     refine ⟨fun h => ?_, ih.2⟩
     simp at h; split at h
     · cases h
-      let ⟨_, ht⟩ := h2 _ rfl
+      let ⟨_, ht⟩ := h2
       exact ⟨_, type h1 ih ht⟩
     · exact ih.1 h
   | defeq h1 h2 ih =>
@@ -366,7 +366,7 @@ theorem Ordered.closed (H : Ordered env) : env.OnTypes fun _ e A => e.ClosedN �
   H.induction _ (fun _ => id) fun _ ih h => (IsDefEq.closedN' ih h trivial).2
 
 theorem Ordered.closedC (H : Ordered env)
-    (h : env.constants n = some (some ci)) : ci.type.ClosedN :=
+    (h : env.constants n = some ci) : ci.type.ClosedN :=
   let ⟨_, h⟩ := H.closed.1 h; h.1
 
 theorem IsDefEq.closedN {env : VEnv} (henv : env.Ordered)
@@ -427,14 +427,14 @@ theorem VDefEq.WF.mono {env env' : VEnv} (henv : env ≤ env') {df : VDefEq} : d
 
 namespace VEnv
 
-theorem Ordered.constWF (H : Ordered env) (h : env.constants n = some (some ci)) : ci.WF env := by
+theorem Ordered.constWF (H : Ordered env) (h : env.constants n = some ci) : ci.WF env := by
   induction H with
   | empty => cases h
   | const _ h2 h3 ih =>
     refine .mono (addConst_le h3) ?_
     unfold addConst at h3; split at h3 <;> cases h3
     simp at h; split at h
-    · cases h; exact h2 _ rfl
+    · cases h; exact h2
     · exact ih h
   | defeq _ _ ih => exact .mono addDefEq_le (ih h)
 
@@ -488,7 +488,7 @@ theorem IsDefEq.levelWF (H : env.IsDefEq U Γ e1 e2 A) (W : OnCtx Γ fun _ A => 
     exact ⟨hh, hh', hp⟩
   | extra _ h2 => exact ⟨.instL h2, .instL h2, .instL h2⟩
 
-theorem HasType.const0 (H : env.constants c = some (some ci)) (wf : ci.WF env) :
+theorem HasType.const0 (H : env.constants c = some ci) (wf : ci.WF env) :
     HasType env ci.uvars [] (.const c (VLevel.params ci.uvars)) ci.type := by
   have := const H (ls := VLevel.params ci.uvars) VLevel.params_wf VLevel.params_length (Γ := [])
   have ⟨_, h⟩ := wf

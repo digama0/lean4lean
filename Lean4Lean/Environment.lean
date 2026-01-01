@@ -20,7 +20,7 @@ def addAxiom (env : Environment) (v : AxiomVal) (check := true) :
     Except Exception Environment := do
   if check then
     _ ← (checkConstantVal env v.toConstantVal).run env
-      (safety := if v.isUnsafe then .unsafe else .safe)
+      (safety := if v.isUnsafe then .unsafe else .safe) (lparams := v.levelParams)
   return env.add (.axiomInfo v)
 
 def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
@@ -29,7 +29,8 @@ def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
     -- Meta definition can be recursive.
     -- So, we check the header, add, and then type check the body.
     if check then
-      _ ← (checkConstantVal env v.toConstantVal).run env (safety := .unsafe)
+      _ ← (checkConstantVal env v.toConstantVal).run env
+        (safety := .unsafe) (lparams := v.levelParams)
     let env' := env.add (.defnInfo v)
     if check then
       checkNoMVarNoFVar env' v.name v.value

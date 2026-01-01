@@ -7,9 +7,7 @@ namespace Except
 def WF (x : Except ε α) (Q : α → Prop) : Prop := ∀ a, x = .ok a → Q a
 
 theorem WF.bind {x : Except ε α} {f : α → Except ε β} {Q R}
-    (h1 : x.WF Q)
-    (h2 : ∀ a, Q a → (f a).WF R) :
-    (x >>= f).WF R := by
+    (h1 : x.WF Q) (h2 : ∀ a, Q a → (f a).WF R) : (x >>= f).WF R := by
   intro b
   simp [(· >>= ·), Except.bind]
   split; · simp
@@ -19,17 +17,22 @@ theorem WF.pure {Q} (H : Q a) :
     (pure a : Except ε α).WF Q := by rintro _ ⟨⟩; exact H
 
 theorem WF.map {x : Except ε α} {f : α → β} {Q R}
-    (h1 : x.WF Q)
-    (h2 : ∀ a, Q a → R (f a)) :
-    (f <$> x).WF R := by
+    (h1 : x.WF Q) (h2 : ∀ a, Q a → R (f a)) : (f <$> x).WF R := by
   rw [map_eq_pure_bind]
   exact h1.bind fun _ h => .pure (h2 _ h)
+
+theorem WF.mono {x : Except ε α} {Q R}
+    (h1 : x.WF Q) (h2 : ∀ a, Q a → R a) : x.WF R := by
+  simpa using h1.bind fun _ h => .pure (h2 _ h)
 
 theorem WF.throw {Q} : (throw e : Except ε α).WF Q := nofun
 
 theorem WF.le {Q R} {x : Except ε α}
     (h1 : x.WF Q) (H : ∀ a, Q a → R a) :
     x.WF R := fun _ e => H _ (h1 _ e)
+
+theorem WF.pureBind  {f : β → Except ε α} {Q}
+    {x : β} (H : WF (f x) Q) : ((Pure.pure x : Except ε β) >>= f).WF Q := H
 
 end Except
 
@@ -187,7 +190,7 @@ structure VContext extends Context where
   venv : VEnv
   hasPrimitives : VEnv.HasPrimitives venv
   safePrimitives : env.find? n = some ci →
-    Environment.primitives.contains n → isAsSafeAs .safe ci ∧ ci.levelParams = []
+    Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
   trenv : TrEnv safety env venv
   mlctx : MLCtx
   mlctx_wf : mlctx.WF venv lparams

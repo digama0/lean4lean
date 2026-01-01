@@ -85,16 +85,18 @@ theorem inferConstant.WF {c : VContext}
   · split <;> [exact .throw; rename_i h2]
     generalize eq1 : _ <$> (_ : Except Exception _) = F
     generalize eq2 : (fun ty : Expr => _) = P
-    suffices ci.isPartial = false ∨ (c.safety == .safe) = false → F.WF P by
+    suffices ci.isPartial = false ∨ c.safety ≠ .safe → F.WF P by
       split <;> [skip; exact this (.inl (ConstantInfo.isPartial.eq_2 _ ‹_›))]
-      split <;> [exact .throw; skip]
-      rename_i h; simp [Decidable.imp_iff_not_or] at h
-      exact this h
+      split <;> [exact .throw; apply this]
+      rename_i h; simpa [Decidable.or_iff_not_imp_left, ConstantInfo.isPartial] using h
     subst eq1 eq2; intro h3
     refine this.map fun _ ⟨_, H⟩ => ?_
     have ⟨_, h4, _, h5, h6⟩ := c.trenv.find? eq1 <| by
       revert h2 h3
-      cases c.safety <;> simp [isAsSafeAs] <;> cases ci.isUnsafe <;> simp +decide
+      simp [ConstantInfo.safety]
+      split <;> simp +contextual [DefinitionSafety.unsafe_le, *]
+      split <;> simp [DefinitionSafety.le_safe, *]
+      cases c.safety <;> decide
     have eq := h1.symm.trans h5
     exact main (.const h4 (List.mapM_eq_some.2 H) eq)
   · simp_all; let ⟨_, h⟩ := hinf; refine .pure (main h)
@@ -447,7 +449,7 @@ theorem inferType'.WF
   · extract_lets n G1; split
     · refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h => ?_
       have ⟨_, h, _⟩ := c.trenv.find? h <|
-        isAsSafeAs_of_safe (c.safePrimitives h literal_typeName_is_primitive).1
+        (c.safePrimitives h literal_typeName_is_primitive).1 ▸ DefinitionSafety.le_safe
       simp [n, G1]; exact hF (infer_literal ⟨_, h⟩)
     · rename_i h; have ⟨_, h⟩ := hinf (by simpa using h)
       have := h.lit_has_type c.Ewf c.hasPrimitives

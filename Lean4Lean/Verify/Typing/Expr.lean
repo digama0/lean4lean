@@ -72,7 +72,7 @@ inductive TrExprS : VLCtx → Expr → VExpr → Prop
   | fvar : Δ.find? (.inr fv) = some (e, A) → TrExprS Δ (.fvar fv) e
   | sort : VLevel.ofLevel Us u = some u' → TrExprS Δ (.sort u) (.sort u')
   | const :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     us.mapM (VLevel.ofLevel Us) = some us' →
     us.length = ci.uvars →
     TrExprS Δ (.const c us) (.const c us')
@@ -140,11 +140,11 @@ def VEnv.ReflectsNatNatBool (env : VEnv) (fc : Name) (f : Nat → Nat → Bool) 
 
 structure VEnv.HasPrimitives (env : VEnv) : Prop where
   bool : env.contains ``Bool → env.contains ``Bool.false ∧ env.contains ``Bool.true
-  boolFalse : env.constants ``Bool.false = some (some ci) → ci = { uvars := 0, type := .bool }
-  boolTrue : env.constants ``Bool.true = some (some ci) → ci = { uvars := 0, type := .bool }
+  boolFalse : env.constants ``Bool.false = some ci → ci = { uvars := 0, type := .bool }
+  boolTrue : env.constants ``Bool.true = some ci → ci = { uvars := 0, type := .bool }
   nat : env.contains ``Nat → env.contains ``Nat.zero ∧ env.contains ``Nat.succ
-  natZero : env.constants ``Nat.zero = some (some ci) → ci = { uvars := 0, type := .nat }
-  natSucc : env.constants ``Nat.succ = some (some ci) →
+  natZero : env.constants ``Nat.zero = some ci → ci = { uvars := 0, type := .nat }
+  natSucc : env.constants ``Nat.succ = some ci →
     ci = { uvars := 0, type := .forallE .nat .nat }
   natAdd : env.ReflectsNatNatNat ``Nat.add Nat.add
   natSub : env.ReflectsNatNatNat ``Nat.sub Nat.sub
@@ -164,5 +164,5 @@ structure VEnv.HasPrimitives (env : VEnv) : Prop where
     env.HasType 0 [] .listCharNil .listChar ∧
     env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar) ∧
     env.HasType 0 [] .charOfNat (.forallE .nat .char)
-  stringMk : env.constants ``String.mk = some (some ci) →
+  stringMk : env.constants ``String.mk = some ci →
     ci = { uvars := 0, type := .forallE .listChar .string }

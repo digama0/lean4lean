@@ -11,17 +11,12 @@ theorem ConstantInfo.hasValue_eq (ci : ConstantInfo) : ci.hasValue = ci.value?.i
 theorem ConstantInfo.value!_eq (ci : ConstantInfo) : ci.value! = ci.value?.get! := by
   cases ci <;> simp [ConstantInfo.value?, ConstantInfo.value!]
 
-def isAsSafeAs : DefinitionSafety → ConstantInfo → Bool
-  | .unsafe, _ => true
-  | .partial, ci => !ci.isUnsafe
-  | .safe, ci => !ci.isUnsafe && !ci.isPartial
-
-theorem isAsSafeAs_of_safe : isAsSafeAs .safe ci → isAsSafeAs safety ci := by
-  cases safety <;> simp +contextual [isAsSafeAs]
+def _root_.Lean.ConstantInfo.safety (ci : ConstantInfo) : DefinitionSafety :=
+  if ci.isUnsafe then .unsafe else if ci.isPartial then .partial else .safe
 
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrConstant (ci : ConstantInfo) (ci' : VConstant) : Prop :=
-  isAsSafeAs safety ci ∧ ci.levelParams.length = ci'.uvars ∧
+  safety ≤ ci.safety ∧ ci.levelParams.length = ci'.uvars ∧
   TrExprS env ci.levelParams [] ci.type ci'.type
 
 variable (safety : DefinitionSafety) (env : VEnv) in
@@ -38,20 +33,21 @@ def AddQuot1 (name : Name) (kind : QuotKind) (ci' : VConstant) (P : ConstMap →
   ∃ levelParams type env',
     let ci := .quotInfo { name, kind, levelParams, type }
     TrConstant .safe env ci ci' ∧
+    m.find? name = none ∧
     env.addConst name ci' = some env' ∧
     P (m.insert name ci) env'
 
 theorem AddQuot1.to_addQuot
     (H1 : ∀ m env, P m env → f env = some env')
     (m env) (H : AddQuot1 name kind ci' P m env) :
-    env.addConst name (some ci') >>= f = some env' := by
-  let ⟨_, _, _, h1, h2, h3⟩ := H
+    env.addConst name ci' >>= f = some env' := by
+  let ⟨_, _, _, h1, _, h2, h3⟩ := H
   simpa using ⟨_, h2, H1 _ _ h3⟩
 
 theorem AddQuot1.le
     (H1 : ∀ m env, P m env → env ≤ env₀)
     (m env) (H : AddQuot1 name kind ci' P m env) : env ≤ env₀ :=
-  let ⟨_, _, _, _, h2, h3⟩ := H
+  let ⟨_, _, _, _, _, h2, h3⟩ := H
   .trans (VEnv.addConst_le h2) (H1 _ _ h3)
 
 def AddQuot (m₁ m₂ : ConstMap) (env₁ env₂ : VEnv) : Prop :=
@@ -77,27 +73,22 @@ nonrec theorem AddInduct.to_addInduct
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | empty : TrEnv' {} false .empty
-  | block :
-    ¬isAsSafeAs safety ci →
-    env.addConst ci.name none = some env' →
-    TrEnv' C Q env →
-    TrEnv' (C.insert ci.name ci) Q env'
   | axiom :
     TrConstant safety env (.axiomInfo ci) ci' →
-    ci'.WF env →
-    env.addConst ci.name (some ci') = some env' →
+    C.find? ci.name = none → ci'.WF env →
+    env.addConst ci.name ci' = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.axiomInfo ci)) Q env'
   | defn {ci' : VDefVal} :
     TrDefVal safety env (.defnInfo ci) ci' →
-    ci'.WF env →
-    env.addConst ci.name (some ci'.toVConstant) = some env' →
+    C.find? ci.name = none → ci'.WF env →
+    env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
   | opaque {ci' : VDefVal} :
     TrDefVal safety env (.opaqueInfo ci) ci' →
-    ci'.WF env →
-    env.addConst ci.name (some ci'.toVConstant) = some env' →
+    C.find? ci.name = none → ci'.WF env →
+    env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.opaqueInfo ci)) Q env'
   | quot :
@@ -117,17 +108,14 @@ def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :
 theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   induction H with
   | empty => exact ⟨_, .empty⟩
-  | block _ h _ ih =>
-    have ⟨_, H⟩ := ih
-    exact ⟨_, H.decl <| .block h⟩
-  | «axiom» _ h1 h2 _ ih =>
+  | «axiom» _ _ h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .axiom (ci := ⟨_, _⟩) h1 h2⟩
-  | defn h1 h2 h3 _ ih =>
+  | defn h1 _ h2 h3 _ ih =>
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .def h2 (this ▸ h3)⟩
-  | «opaque» h1 h2 h3 _ ih =>
+  | «opaque» h1 _ h2 h3 _ ih =>
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .opaque h2 (this ▸ h3)⟩

@@ -206,7 +206,7 @@ structure Typing where
   sort : u.WF univs → Γ ⊢ .sort u : .sort u.succ
   sortDF : u.WF univs → v.WF univs → u ≈ v → Γ ⊢ .sort u ≡ .sort v
   constDF :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF univs) → (∀ l ∈ ls', l.WF univs) →
     ls.length = ci.uvars → List.Forall₂ (· ≈ ·) ls ls' →
     Γ ⊢ .const c ls ≡ .const c ls'
@@ -217,7 +217,7 @@ structure Typing where
     A::Γ ⊢ body : .sort v → A::Γ ⊢ body ≡ body' →
     Γ ⊢ .forallE A body ≡ .forallE A' body'
   const :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF univs) → ls.length = ci.uvars →
     Γ ⊢ .const c ls : ci.type.instL ls
   app : Γ ⊢ f : .forallE A B → Γ ⊢ a : A → Γ ⊢ .app f a : .inst B a
@@ -241,7 +241,7 @@ structure Typing where
   bvar_inv : Γ ⊢ .bvar i : V → ∃ A, Lookup Γ i A
   sort_inv : Γ ⊢ .sort u : V → u.WF univs
   const_inv : Γ ⊢ .const c ls : V →
-    ∃ ci, env.constants c = some (some ci) ∧ (∀ l ∈ ls, l.WF univs) ∧ ls.length = ci.uvars
+    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF univs) ∧ ls.length = ci.uvars
   forallE_inv : Γ ⊢ .forallE A B : V → ∃ u v, Γ ⊢ A : .sort u ∧ A::Γ ⊢ B : .sort v
   app_inv : Γ ⊢ .app f a : V → ∃ A B, Γ ⊢ f : .forallE A B ∧ Γ ⊢ a : A
   lam_inv : Γ ⊢ .lam A e : V → ∃ u B, Γ ⊢ A : .sort u ∧ A::Γ ⊢ e : B
@@ -317,7 +317,7 @@ inductive NormalEq : List VExpr → VExpr → VExpr → Prop where
   | refl : Γ ⊢ e : A → Γ ⊢ e ≡ₚ e
   | sortDF : l₁.WF TY.univs → l₂.WF TY.univs → l₁ ≈ l₂ → Γ ⊢ .sort l₁ ≡ₚ .sort l₂
   | constDF :
-    TY.env.constants c = some (some ci) →
+    TY.env.constants c = some ci →
     (∀ l ∈ ls, l.WF TY.univs) →
     (∀ l ∈ ls', l.WF TY.univs) →
     ls.length = ci.uvars →

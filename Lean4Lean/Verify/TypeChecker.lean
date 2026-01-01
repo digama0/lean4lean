@@ -14,7 +14,9 @@ structure VEnvs.WF (env : Environment) (ves : VEnvs) where
   tr : TrEnv safety env (ves.venv safety)
   hasPrimitives : VEnv.HasPrimitives (ves.venv safety)
   safePrimitives : env.find? n = some ci →
-    Environment.primitives.contains n → isAsSafeAs .safe ci ∧ ci.levelParams = []
+    Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
+  mono : safety ≤ safety' → ves.venv safety' ≤ ves.venv safety
+
 
 namespace TypeChecker
 open Inner

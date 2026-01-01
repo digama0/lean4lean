@@ -12,6 +12,14 @@ open scoped List
 theorem fvarsIn_iff : FVarsIn P e ↔ (∀ fv ∈ e.fvarsList, P fv) ∧ FVarsIn (fun _ => True) e := by
   induction e <;> simp [FVarsIn, Expr.fvarsList, *] <;> grind
 
+theorem fvarsIn_iff_hasMVar : FVarsIn (fun _ => True) e ↔ e.hasMVar = false := by
+  rw [Expr.hasMVar, ← Expr.hasExprMVar, ← Expr.hasLevelMVar]; simp
+  induction e <;> simp [FVarsIn, Expr.hasExprMVar', Expr.hasLevelMVar', and_assoc, and_left_comm, *]
+
+theorem fvarsList_eq_nil {e : Expr} : e.fvarsList = [] ↔ e.hasFVar = false := by
+  rw [Expr.hasFVar_eq]
+  induction e <;> simp [Expr.fvarsList, Expr.hasFVar', and_assoc, *]
+
 theorem FVarsIn.mp (H : ∀ fv, P fv → Q fv → R fv) :
     ∀ {e}, FVarsIn P e → FVarsIn Q e → FVarsIn R e
   | .bvar _, l, _ | .sort .., l, _ | .const .., l, _ | .lit .., l, _ => l

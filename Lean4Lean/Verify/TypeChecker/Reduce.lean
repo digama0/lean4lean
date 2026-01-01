@@ -43,8 +43,8 @@ theorem reduceBinNatOpG.WF {guard} [DecidableRel guard] {c : VContext}
   cases (rawNatLitExt?.WF h b2).2
   split <;> [exact .pure nofun; rename_i h]
   refine .pure ?_; rintro _ ⟨⟩; refine ⟨fun _ _ _ => trivial, ?_⟩
-  have ⟨ci, c1⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
-  have ⟨c2, c3⟩ := c.safePrimitives c1 hprim
+  have ⟨ci, c1, _⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
+  have ⟨_, c3⟩ := c.safePrimitives c1 hprim
   have ⟨_, d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1
   simp [c3] at d2; simp [← d2] at h3; simp [h3] at h2; subst h2
   refine ⟨_, (TrExprS.natLit c.hasPrimitives hn _).1, ?_⟩
@@ -71,8 +71,8 @@ theorem reduceBinNatPred.WF {c : VContext}
   refine (whnf.WF hb).bind fun b₁ _ _ ⟨b1, _, b2, b3⟩ => ?_
   split <;> [rename_i v2 h; exact .pure nofun]; cases (rawNatLitExt?.WF h b2).2
   refine .pure ?_; rintro _ ⟨⟩; refine ⟨fun _ _ _ => .boolLit, ?_⟩
-  have ⟨ci, c1⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
-  have ⟨c2, c3⟩ := c.safePrimitives c1 hprim
+  have ⟨ci, c1, _⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
+  have ⟨_, c3⟩ := c.safePrimitives c1 hprim
   have ⟨_, d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1
   simp [c3] at d2; simp [← d2] at h3; simp [h3] at h2; subst h2
   have := heval ⟨_, h1⟩ v1 v2 |>.instL (U' := c.lparams.length) (ls := []) nofun
@@ -106,7 +106,7 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
     split <;> [rename_i n h; exact hP ▸ .pure nofun]
     obtain ⟨hn, rfl⟩ := rawNatLitExt?.WF h a2
     refine hP ▸ .pure ?_; rintro _ ⟨⟩; refine ⟨fun _ _ _ => trivial, ?_⟩
-    have ⟨ci, c1⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
+    have ⟨ci, c1, _⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
     have ⟨c2, c3⟩ := c.safePrimitives c1 <| hprims.2 (by simp [prims])
     have ⟨d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1; cases h2
     refine have ⟨p1, p2⟩ := TrExprS.natLit c.hasPrimitives hn _; ⟨_, p1, ?_⟩
