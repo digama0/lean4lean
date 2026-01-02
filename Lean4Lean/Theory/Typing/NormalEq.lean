@@ -475,7 +475,7 @@ theorem NormalEq.instN_r (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : Typing.
     have hA := h1.instN W h₀
     exact .forallEDF hA (TY.refl hA) (ih1 W h1) (h2.instN W.succ h₀) (ih2 W.succ h2)
 
-variable (TY : Typing) in
+variable {TY : Typing} in
 theorem NormalEq.defeqDFC (W : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
     (H : NormalEq TY Γ₁ e1 e2) : NormalEq TY Γ₂ e1 e2 := by
   induction H generalizing Γ₂ with
@@ -501,7 +501,7 @@ theorem NormalEq.defeqDFC (W : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
       (TY.hasType_DFC W h2) (TY.hasType_DFC W h3)
 
 theorem NormalEq.defeq_l (W : TY.IsDefEq Γ A A') (H : NormalEq TY (A::Γ) e1 e2) :
-    NormalEq TY (A'::Γ) e1 e2 := defeqDFC TY (.succ .zero W) H
+    NormalEq TY (A'::Γ) e1 e2 := defeqDFC (.succ .zero W) H
 
 theorem NormalEq.weakN_inv_DFC (W : Ctx.LiftN n k Γ Γ₂) (W₂ : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
     (H : NormalEq TY Γ₁ (e1.liftN n k) (e2.liftN n k)) : NormalEq TY Γ e1 e2 := by

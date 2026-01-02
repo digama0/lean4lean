@@ -32,15 +32,15 @@ inductive ParRed : List VExpr → VExpr → VExpr → Prop where
   | extra : TY.Pat p r → p.Matches e m1 m2 → r.2.OK (TY.IsDefEq Γ) m1 m2 →
     (∀ a, Γ ⊢ m2 a ≫ m2' a) → Γ ⊢ e ≫ r.1.apply m1 m2'
 
-def IsNeutral (Γ : List VExpr) (e : VExpr) : Prop :=
-  (∀ A e₁ e₂, e ≠ .app (.lam A e₁) e₂) ∧
-  (∀ p r m1 m2, TY.Pat p r → p.Matches e m1 m2 → ¬r.2.OK (TY.IsDefEq Γ) m1 m2)
+def NonNeutral (TY : Typing) (Γ : List VExpr) (e : VExpr) : Prop :=
+  (∃ A e₁ e₂, e = .app (.lam A e₁) e₂) ∨
+  (∃ p r m1 m2, TY.Pat p r ∧ p.Matches e m1 m2 ∧ r.2.OK (TY.IsDefEq Γ) m1 m2)
 
 inductive CParRed : List VExpr → VExpr → VExpr → Prop where
   | bvar : Γ ⊢ .bvar i ⋙ .bvar i
   | sort : Γ ⊢ .sort u ⋙ .sort u
-  | const : IsNeutral TY Γ (.const c ls) → Γ ⊢ .const c ls ⋙ .const c ls
-  | app : IsNeutral TY Γ (.app f a) → Γ ⊢ f ⋙ f' → Γ ⊢ a ⋙ a' → Γ ⊢ .app f a ⋙ .app f' a'
+  | const : ¬NonNeutral TY Γ (.const c ls) → Γ ⊢ .const c ls ⋙ .const c ls
+  | app : ¬NonNeutral TY Γ (.app f a) → Γ ⊢ f ⋙ f' → Γ ⊢ a ⋙ a' → Γ ⊢ .app f a ⋙ .app f' a'
   | lam : Γ ⊢ A ⋙ A' → A::Γ ⊢ body ⋙ body' → Γ ⊢ .lam A body ⋙ .lam A' body'
   | forallE : Γ ⊢ A ⋙ A' → A::Γ ⊢ B ⋙ B' → Γ ⊢ .forallE A B ⋙ .forallE A' B'
   | beta : A::Γ ⊢ e₁ ⋙ e₁' → Γ ⊢ e₂ ⋙ e₂' → Γ ⊢ .app (.lam A e₁) e₂ ⋙ e₁'.inst e₂'
@@ -156,9 +156,155 @@ theorem ParRed.apply_pat {p : Pattern} (r : p.RHS) {m1 m2 m3}
   | .app f a => exact .app (apply_pat f H) (apply_pat a H)
   | .var f => exact H _
 
+theorem Pattern.RHS.apply_liftN {p : Pattern} (r : p.RHS) {m1 m2} :
+    (r.apply m1 m2).liftN k n = r.apply m1 (fun a => (m2 a).liftN k n) := by
+  induction r with simp! [*]
+  | fixed _ _ h => exact instL_liftN.symm.trans ((h.liftN_eq (Nat.zero_le _)).symm ▸ rfl)
+
+-- theorem IsDefEq.applyL {p : Pattern} (r : p.RHS) {m1 m1' m2}
+--     (H : ∀ a, List.Forall₂ (· ≈ ·) (m1 a) (m1' a))
+--     (H2 : TY.HasType Γ (r.apply m1 m2) A) :
+--     TY.IsDefEq Γ (r.apply m1 m2) (r.apply m1' m2) := by
+--   match r with
+--   | .fixed .. =>
+--     dsimp [Pattern.RHS.apply]
+--     exact TY.hasType_instL _ _
+--   | .app f a => exact .app (apply_pat f H) (apply_pat a H)
+--   | .var f => exact H _
+
+theorem ParRed.weakN_inv (W : Ctx.LiftN n k Γ Γ')
+    (H : ParRed TY Γ' (e1.liftN n k) e2') :
+    ∃ e2, ParRed TY Γ e1 e2 ∧ e2' = e2.liftN n k := by
+  generalize eq : e1.liftN n k = e1' at H
+  induction H generalizing e1 Γ k with
+  | bvar => cases e1 <;> cases eq; exact ⟨_, .bvar, rfl⟩
+  | sort => cases e1 <;> cases eq; exact ⟨_, .sort, rfl⟩
+  | const => cases e1 <;> cases eq; exact ⟨_, .const, rfl⟩
+  | app h1 h2 ih1 ih2 =>
+    cases e1 <;> cases eq
+    obtain ⟨_, a1, rfl⟩ := ih1 W rfl
+    obtain ⟨_, b1, rfl⟩ := ih2 W rfl
+    exact ⟨_, .app a1 b1, rfl⟩
+  | lam h1 h2 ih1 ih2 =>
+    cases e1 <;> cases eq
+    obtain ⟨_, a1, rfl⟩ := ih1 W rfl
+    obtain ⟨_, b1, rfl⟩ := ih2 W.succ rfl
+    exact ⟨_, .lam a1 b1, rfl⟩
+  | forallE h1 h2 ih1 ih2 =>
+    cases e1 <;> cases eq
+    obtain ⟨_, a1, rfl⟩ := ih1 W rfl
+    obtain ⟨_, b1, rfl⟩ := ih2 W.succ rfl
+    exact ⟨_, .forallE a1 b1, rfl⟩
+  | beta h1 h2 ih1 ih2 =>
+    cases e1 <;> injection eq
+    rename_i f a eq eq2; cases eq2
+    cases f <;> cases eq
+    obtain ⟨_, a1, rfl⟩ := ih1 W.succ rfl
+    obtain ⟨_, b1, rfl⟩ := ih2 W rfl
+    exact ⟨_, .beta a1 b1, (liftN_inst_hi ..).symm⟩
+  | @extra p r e m1 m2 Γ' m2' h1 h2 h3 h4 ih =>
+    suffices ∃ m3 m3' : _ → _, p.Matches e1 m1 m3 ∧
+        (∀ a, ParRed TY Γ (m3 a) (m3' a)) ∧
+        (∀ a, m2 a = (m3 a).liftN n k) ∧
+        (∀ a, m2' a = (m3' a).liftN n k) by
+      let ⟨m3, m3', a1, a2, a3, a4⟩ := this
+      refine ⟨_, .extra h1 a1 (h3.map fun _ _ h => ?_) a2,
+        .trans (by congr; funext; apply a4) r.1.apply_liftN.symm⟩
+      rw [(funext a3 : m2 = _), ← Pattern.RHS.apply_liftN, ← Pattern.RHS.apply_liftN] at h
+      exact (TY.isDefEq_weakN_iff W).1 h
+    clear h1 h3 r
+    induction h2 generalizing e1 with
+    | const => cases e1 <;> cases eq; exact ⟨_, nofun, .const, nofun, nofun, nofun⟩
+    | var h1 ih1 =>
+      cases e1 <;> cases eq
+      have ⟨_, _, a1, a2, a3, a4⟩ := ih1 (h4 <| some ·) (ih <| some ·) rfl
+      have ⟨_, b2, b4⟩ := ih none W rfl
+      exact ⟨_, Option.rec _ _, .var a1, Option.rec b2 a2, Option.rec rfl a3, Option.rec b4 a4⟩
+    | app h1 h2 ih1 ih2 =>
+      cases e1 <;> cases eq
+      have ⟨_, _, a1, a2, a3, a4⟩ := ih1 (h4 <| .inl ·) (ih <| .inl ·) rfl
+      have ⟨_, _, b1, b2, b3, b4⟩ := ih2 (h4 <| .inr ·) (ih <| .inr ·) rfl
+      exact ⟨_, Sum.rec _ _, .app a1 b1, Sum.rec a2 b2, Sum.rec a3 b3, Sum.rec a4 b4⟩
+
 theorem NormalEq.parRed (H1 : NormalEq TY Γ e₁ e₂) (H2 : ParRed TY Γ e₂ e₂') :
     ∃ e₁', ParRed TY Γ e₁ e₁' ∧ NormalEq TY Γ e₁' e₂' := by
-  sorry
+  induction H1 generalizing e₂' with
+  | refl l1 => exact ⟨_, H2, .refl (H2.hasType l1)⟩
+  | sortDF l1 l2 l3 =>
+    cases H2 with
+    | sort => exact ⟨_, .sort, .sortDF l1 l2 l3⟩
+    | extra r1 r2 => cases r2
+  | constDF l1 l2 l3 l4 l5 =>
+    cases H2 with
+    | const => exact ⟨_, .const, .constDF l1 l2 l3 l4 l5⟩
+    | extra r1 r2 r3 r4 =>
+      cases r2
+      sorry
+      -- exact ⟨_, .extra r1 .const (r3.map fun _ _ h => _) _, _⟩
+  | appDF l1 l2 l3 l4 l5 l6 ih1 ih2 =>
+    cases H2 with
+    | app r1 r2 =>
+      let ⟨_, a1, a2⟩ := ih1 r1
+      let ⟨_, b1, b2⟩ := ih2 r2
+      exact ⟨_, .app a1 b1,
+        .appDF (a1.hasType l1) (r1.hasType l2) (b1.hasType l3) (r2.hasType l4) a2 b2⟩
+    | beta r1 r2 =>
+      let ⟨_, a1, a2⟩ := ih1 (.lam .rfl r1)
+      let ⟨_, b1, b2⟩ := ih2 r2
+      refine ⟨_, .app a1 b1, sorry⟩
+    | extra r1 r2 r3 r4 =>
+      sorry
+  | lamDF l1 l2 l3 l4 ih1 ih2 =>
+    cases H2 with
+    | lam r1 r2 =>
+      let ⟨_, a1, a2⟩ := ih1 r1
+      have ⟨_, h1⟩ := TY.has_type l4.defeq
+      have h2 := TY.defeq_l l4.defeq h1
+      have W := TY.trans l3.symm.defeq l2
+      replace r2 := r2.defeqDFC (.succ .zero W) <| TY.hasType_DFC (.succ .zero (TY.symm W)) h2
+      let ⟨_, b1, b2⟩ := ih2 r2
+      have := r1.defeq (TY.defeq_l (TY.symm W) l1)
+      exact ⟨_, .lam a1 (b1.defeqDFC (.succ .zero (TY.symm l2)) h1),
+        .lamDF l1 (TY.trans a2.defeq <| TY.trans (TY.symm this) W) a2 b2⟩
+    | extra _ r2 => cases r2
+  | forallEDF l1 l2 l3 l4 l5 ih1 ih2 =>
+    cases H2 with
+    | forallE r1 r2 =>
+      let ⟨_, a1, a2⟩ := ih1 r1
+      have h2 := TY.defeq_l l5.defeq l4
+      have W := TY.trans l3.symm.defeq l2
+      replace r2 := r2.defeqDFC (.succ .zero W) <| TY.hasType_DFC (.succ .zero (TY.symm W)) h2
+      let ⟨_, b1, b2⟩ := ih2 r2
+      have := r1.defeq (TY.defeq_l (TY.symm W) l1)
+      exact ⟨_, .forallE a1 (b1.defeqDFC (.succ .zero (TY.symm l2)) l4),
+        .forallEDF l1 (TY.trans a2.defeq <| TY.trans (TY.symm this) W) a2 (b1.hasType l4) b2⟩
+    | extra _ r2 => cases r2
+  | etaL l1 l2 ih1 =>
+    let ⟨_, a1, a2⟩ := ih1 (.app (.weakN .one H2) .bvar)
+    exact ⟨_, .lam .rfl a1, .etaL (H2.hasType l1) a2⟩
+  | @etaR _ e' _ _ _ l1 l2 ih1 =>
+    cases H2 with
+    | lam r1 r2 =>
+      let ⟨_, a1, a2⟩ := ih1 r2
+      generalize eq : e'.lift = el at a1
+      cases a1 with
+      | app b1 b2 =>
+        cases b2 with | bvar => ?_ | extra _ h => cases h
+        subst eq; obtain ⟨_, b1', rfl⟩ := b1.weakN_inv .one
+        have ⟨_, c1⟩ := TY.is_type l1
+        have ⟨_, _, c1, c2⟩ := TY.forallE_inv c1
+        exact ⟨_, b1', (a2.defeqDFC (.succ .zero (r1.defeq c1))).etaR
+          (b1'.hasType (TY.defeq_r (TY.forallEDF c1 (r1.defeq c1) c2 (TY.refl c2)) l1))⟩
+      | beta b1 b2 =>
+        cases b2 with | bvar => ?_ | extra _ h => cases h
+        cases e' <;> cases eq
+        obtain ⟨_, b1', rfl⟩ := b1.weakN_inv (.succ .one)
+        rw [instN_bvar0] at a2
+        sorry
+      | extra =>
+        sorry
+    | extra _ r2 => cases r2
+  | _ => sorry
 
 theorem CParRed.toParRed (H : CParRed TY Γ e e') : ParRed TY Γ e e' := by
   induction H with
@@ -173,49 +319,41 @@ theorem CParRed.toParRed (H : CParRed TY Γ e e') : ParRed TY Γ e e' := by
 
 theorem CParRed.exists (H : TY.HasType Γ e A) : ∃ e', CParRed TY Γ e e' := by
   induction e using VExpr.brecOn generalizing Γ A with | _ e e_ih => ?_
-  have neut e
-      (H' : TY.HasType Γ e A)
-      (e_ih : VExpr.below (motive := fun {e} =>
-        ∀ {Γ A}, TY.HasType Γ e A → ∃ e', CParRed TY Γ e e') e)
-      (hn : IsNeutral TY Γ e → ∃ e', CParRed TY Γ e e') : ∃ e', CParRed TY Γ e e' := by
-    by_cases h : ∃ A e₁ e₂, e = .app (.lam A e₁) e₂
-    · obtain ⟨A, e, a, rfl⟩ := h
-      have ⟨_, _, hf, ha⟩ := TY.app_inv H'
+  revert e_ih; change let motive := ?_; ∀ _: e.below (motive := motive), _; intro motive e_ih
+  have neut {e} (H' : TY.HasType Γ e A) (e_ih : e.below (motive := motive)) :
+      NonNeutral TY Γ e → ∃ e', CParRed TY Γ e e' := by
+    rintro (⟨A, e, a, rfl⟩ | ⟨p, r, m1, m2, h1, hp2, hp3⟩)
+    · have ⟨_, _, hf, ha⟩ := TY.app_inv H'
       have ⟨_, _, _, he⟩ := TY.lam_inv hf
       have ⟨_, he⟩ := e_ih.1.2.2.1 he
       have ⟨_, ha⟩ := e_ih.2.1 ha
       exact ⟨_, .beta he ha⟩
-    by_cases h' : ∃ p r m1 m2, TY.Pat p r ∧ p.Matches e m1 m2 ∧ r.2.OK (TY.IsDefEq Γ) m1 m2
-    · let ⟨p, r, m1, m2, h1, hp2, hp3⟩ := h'
-      suffices ∃ m3 : p.Path.2 → VExpr, ∀ a, CParRed TY Γ (m2 a) (m3 a) from
+    · suffices ∃ m3 : p.Path.2 → VExpr, ∀ a, CParRed TY Γ (m2 a) (m3 a) from
         let ⟨_, h3⟩ := this; ⟨_, .extra h1 hp2 hp3 h3⟩
-      clear H hn h h' r h1 hp3
+      clear H r h1 hp3
       induction p generalizing e A with
       | const => exact ⟨nofun, nofun⟩
       | app f a ih1 ih2 =>
         let .app hm1 hm2 := hp2
         have ⟨_, _, H1, H2⟩ := TY.app_inv H'
-        have ⟨m2l, hl⟩ := ih1 _ H1 e_ih.1.2 _ _ hm1
-        have ⟨m2r, hr⟩ := ih2 _ H2 e_ih.2.2 _ _ hm2
+        have ⟨m2l, hl⟩ := ih1 H1 e_ih.1.2 _ _ hm1
+        have ⟨m2r, hr⟩ := ih2 H2 e_ih.2.2 _ _ hm2
         exact ⟨Sum.elim m2l m2r, Sum.rec hl hr⟩
       | var _ ih =>
         let .var hm1 := hp2
         have ⟨_, _, H1, H2⟩ := TY.app_inv H'
-        have ⟨m2l, hl⟩ := ih _ H1 e_ih.1.2 _ _ hm1
+        have ⟨m2l, hl⟩ := ih H1 e_ih.1.2 _ _ hm1
         have ⟨e', hs⟩ := e_ih.2.1 H2
         exact ⟨Option.rec e' m2l, Option.rec hs hl⟩
-    · exact hn ⟨
-        fun _ _ _ hn => h ⟨_, _, _, hn⟩,
-        fun _ _ _ _ h1 h2 h3 => h' ⟨_, _, _, _, h1, h2, h3⟩⟩
   cases e with
   | bvar i => exact ⟨_, .bvar⟩
   | sort => exact ⟨_, .sort⟩
-  | const n ls => exact neut _ H e_ih fun hn => ⟨_, .const hn⟩
+  | const n ls => exact Classical.byCases (neut H e_ih) fun hn => ⟨_, .const hn⟩
   | app ih1 ih2 =>
     have ⟨_, _, hf, ha⟩ := TY.app_inv H
     have ⟨_, h1⟩ := e_ih.1.1 hf
     have ⟨_, h2⟩ := e_ih.2.1 ha
-    exact neut _ H e_ih fun hn => ⟨_, .app hn h1 h2⟩
+    exact Classical.byCases (neut H e_ih) fun hn => ⟨_, .app hn h1 h2⟩
   | lam ih1 ih2 =>
     have ⟨_, _, hA, he⟩ := TY.lam_inv H
     have ⟨_, h1⟩ := e_ih.1.1 hA
@@ -243,32 +381,29 @@ theorem ParRed.triangle (H1 : TY.HasType Γ e A) (H : ParRed TY Γ e e') (H2 : C
   | const hn =>
     cases H with
     | const => exact ⟨_, .rfl, .refl H1⟩
-    | extra h1 h2 h3 => cases hn.2 _ _ _ _ h1 h2 h3
+    | extra h1 h2 h3 => cases hn (.inr ⟨_, _, _, _, h1, h2, h3⟩)
   | app hn _ _ ih1 ih2 =>
     have ⟨_, _, l1, l2⟩ := TY.app_inv H1
-    obtain ⟨⟨hl, e_ih1 : VExpr.below ..⟩, ⟨hr, e_ih2 : VExpr.below ..⟩⟩ := id e_ih
     cases H with
     | app r1 r2 =>
-      let ⟨_, p1, n1⟩ := ih1 l1 r1 e_ih1; let ⟨_, p2, n2⟩ := ih2 l2 r2 e_ih2
+      let ⟨_, p1, n1⟩ := ih1 l1 r1 e_ih.1.2; let ⟨_, p2, n2⟩ := ih2 l2 r2 e_ih.2.2
       have o1 := p1.hasType (r1.hasType l1); have o2 := p2.hasType (r2.hasType l2)
       exact ⟨_, .app p1 p2, .appDF o1 (TY.defeq_l n1.defeq o1) o2 (TY.defeq_l n2.defeq o2) n1 n2⟩
-    | extra h1 h2 h3 => cases hn.2 _ _ _ _ h1 h2 h3
-    | beta => cases hn.1 _ _ _ rfl
+    | extra h1 h2 h3 => cases hn (.inr ⟨_, _, _, _, h1, h2, h3⟩)
+    | beta => cases hn (.inl ⟨_, _, _, rfl⟩)
   | lam _ _ ih1 ih2 =>
     have ⟨_, _, l1, l2⟩ := TY.lam_inv H1
-    obtain ⟨⟨hl, e_ih1 : VExpr.below ..⟩, ⟨hr, e_ih2 : VExpr.below ..⟩⟩ := e_ih
     cases H with
     | lam r1 r2 =>
-      let ⟨_, p1, n1⟩ := ih1 l1 r1 e_ih1; let ⟨_, p2, n2⟩ := ih2 l2 r2 e_ih2
+      let ⟨_, p1, n1⟩ := ih1 l1 r1 e_ih.1.2; let ⟨_, p2, n2⟩ := ih2 l2 r2 e_ih.2.2
       exact ⟨_, .lam p1 (p2.defeqDFC (.succ .zero (r1.defeq l1)) (r2.hasType l2)),
         .lamDF l1 (TY.symm <| TY.trans (r1.defeq l1) (p1.defeq (r1.hasType l1))) n1 n2⟩
     | extra h1 h2 => cases h2
   | forallE _ _ ih1 ih2 =>
     have ⟨_, _, l1, l2⟩ := TY.forallE_inv H1
-    obtain ⟨⟨hl, e_ih1 : VExpr.below ..⟩, ⟨hr, e_ih2 : VExpr.below ..⟩⟩ := e_ih
     cases H with
     | forallE r1 r2 =>
-      let ⟨_, p1, n1⟩ := ih1 l1 r1 e_ih1; let ⟨_, p2, n2⟩ := ih2 l2 r2 e_ih2
+      let ⟨_, p1, n1⟩ := ih1 l1 r1 e_ih.1.2; let ⟨_, p2, n2⟩ := ih2 l2 r2 e_ih.2.2
       exact ⟨_, .forallE p1 (p2.defeqDFC (.succ .zero (r1.defeq l1)) (r2.hasType l2)),
         .forallEDF l1 (TY.symm <| TY.trans (r1.defeq l1) (p1.defeq (r1.hasType l1)))
           n1 (p2.hasType (r2.hasType l2)) n2⟩
@@ -278,7 +413,7 @@ theorem ParRed.triangle (H1 : TY.HasType Γ e A) (H : ParRed TY Γ e e') (H2 : C
     have ⟨_, _, lA, le⟩ := TY.lam_inv lf
     have hw := (TY.forallE_defInv (TY.uniq lf (TY.lam lA le))).1
     have la' := TY.defeq_r hw la
-    obtain ⟨⟨-, ⟨hA, e_ih1 : VExpr.below ..⟩, ⟨he, e_ih2 : VExpr.below ..⟩⟩,
+    obtain ⟨⟨-, ⟨-, e_ih1 : VExpr.below ..⟩, ⟨he, e_ih2 : VExpr.below ..⟩⟩,
       ⟨ha, e_ih3 : VExpr.below ..⟩⟩ := e_ih
     cases H with
     | app rf ra =>
