@@ -226,6 +226,10 @@ structure Typing where
   beta : A::Γ ⊢ e : B → Γ ⊢ e' : A → Γ ⊢ .app (.lam A e) e' ≡ e.inst e'
   eta : Γ ⊢ e : .forallE A B → Γ ⊢ .lam A (.app e.lift (.bvar 0)) ≡ e
   proofIrrel : Γ ⊢ p : .sort .zero → Γ ⊢ h : p → Γ ⊢ h' : p → Γ ⊢ h ≡ h'
+  extraDF : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
+    Γ ⊢ df.lhs.instL ls ≡ df.rhs.instL ls
+  extra : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
+    Γ ⊢ df.lhs.instL ls : df.type.instL ls
   isDefEq_weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     Γ' ⊢ e1.liftN n k ≡ e2.liftN n k ↔ Γ ⊢ e1 ≡ e2
   hasType_weakN_iff (W : Ctx.LiftN n k Γ Γ') : Γ' ⊢ e.liftN n k : A.liftN n k ↔ Γ ⊢ e : A
@@ -234,6 +238,10 @@ structure Typing where
     (H : Γ₁ ⊢ e1 ≡ e2) (h₀ : Γ₀ ⊢ e₀ : A₀) : Γ ⊢ e1.inst e₀ k ≡ e2.inst e₀ k
   hasType_instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
     (H : Γ₁ ⊢ e1 : A) (h₀ : Γ₀ ⊢ e₀ : A₀) : Γ ⊢ e1.inst e₀ k : A.inst e₀ k
+  isDefEq_instL (hls : ∀ l ∈ ls, l.WF U')
+    (H : Γ ⊢ e1 ≡ e2) : Γ.map (VExpr.instL ls) ⊢ e1.instL ls ≡ e2.instL ls
+  hasType_instL (hls : ∀ l ∈ ls, l.WF U')
+    (H : Γ ⊢ e : A) : Γ.map (VExpr.instL ls) ⊢ e.instL ls : A.instL ls
   isDefEq_DFC : IsDefEqCtx IsDefEq Γ₀ Γ₁ Γ₂ → Γ₁ ⊢ e1 ≡ e2 → Γ₂ ⊢ e1 ≡ e2
   hasType_DFC : IsDefEqCtx IsDefEq Γ₀ Γ₁ Γ₂ → Γ₁ ⊢ e : A → Γ₂ ⊢ e : A
   has_type : Γ ⊢ e₁ ≡ e₂ → ∃ A, Γ ⊢ e₁ : A
@@ -251,9 +259,12 @@ structure Typing where
   -- univ_defInv : Γ ⊢ .sort u ≡ .sort v → u ≈ v
   forallE_defInv : Γ ⊢ .forallE A B ≡ .forallE A' B' → Γ ⊢ A ≡ A' ∧ A::Γ ⊢ B ≡ B'
   pat_uniq : Pat p₁ r → Pat p₂ r' → Subpattern p₃ p₁ → p₂.inter p₃ = some p₄ →
-    p₁ = p₂ ∧ p₂ = p₃ ∧ HEq r r'
+    p₁ = p₂ ∧ p₂ = p₃ ∧ r ≍ r'
   pat_wf : Pat p r → p.Matches e m1 m2 → Γ ⊢ e : A →
     r.2.OK (IsDefEq Γ) m1 m2 → Γ ⊢ e ≡ r.1.apply m1 m2
+  extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
+    ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEq Γ) m1 m2 ∧
+    df.rhs.instL ls = r.1.apply m1 m2
 
 variable {TY : Typing}
 
