@@ -19,7 +19,7 @@ globs = ["Lean4Lean.Verify.*"]
 
 [[lean_lib]]
 name = "Lean4Lean.Experimental"
-globs = ["Lean4Lean.Experimental.*"]
+globs = ["Lean4Lean.Experimental.+"]
 
 [[lean_exe]]
 name = "lean4lean"
