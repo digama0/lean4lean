@@ -93,8 +93,15 @@ theorem max_self : max a a ≈ a := by simp [equiv_def, eval]
 theorem zero_imax : imax zero a ≈ a := by
   simp [equiv_def, eval, Nat.imax, eq_comm (b := 0)]
 
+theorem imax_zero : imax a zero ≈ zero := by simp [equiv_def, eval, Nat.imax]
+
 theorem imax_self : imax a a ≈ a := by
   simp [equiv_def, eval, Nat.imax, eq_comm (b := 0)]
+
+theorem imax_eq_zero : imax a b ≈ zero ↔ b ≈ zero := by
+  simp [equiv_def, eval, Nat.imax]
+  refine ⟨fun H ls => ?_, fun H ls hn => nomatch hn (H ls)⟩
+  exact Decidable.byContradiction fun h => h (H ls h).2
 
 def IsNeverZero (a : VLevel) : Prop := ∀ ls, a.eval ls ≠ 0
 

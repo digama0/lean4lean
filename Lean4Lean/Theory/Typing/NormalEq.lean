@@ -242,6 +242,8 @@ structure Typing where
     (H : Γ ⊢ e1 ≡ e2) : Γ.map (VExpr.instL ls) ⊢ e1.instL ls ≡ e2.instL ls
   hasType_instL (hls : ∀ l ∈ ls, l.WF U')
     (H : Γ ⊢ e : A) : Γ.map (VExpr.instL ls) ⊢ e.instL ls : A.instL ls
+  instL_congr : (∀ l ∈ ls, l.WF univs) → (∀ l ∈ ls', l.WF univs) → List.Forall₂ (· ≈ ·) ls ls' →
+    Γ ⊢ e : A → Γ.map (VExpr.instL ls) ⊢ e.instL ls ≡ e.instL ls'
   isDefEq_DFC : IsDefEqCtx IsDefEq Γ₀ Γ₁ Γ₂ → Γ₁ ⊢ e1 ≡ e2 → Γ₂ ⊢ e1 ≡ e2
   hasType_DFC : IsDefEqCtx IsDefEq Γ₀ Γ₁ Γ₂ → Γ₁ ⊢ e : A → Γ₂ ⊢ e : A
   has_type : Γ ⊢ e₁ ≡ e₂ → ∃ A, Γ ⊢ e₁ : A
@@ -256,8 +258,9 @@ structure Typing where
   uniq : Γ ⊢ e : A₁ → Γ ⊢ e : A₂ → Γ ⊢ A₁ ≡ A₂
   defeq_l : Γ ⊢ e₁ ≡ e₂ → Γ ⊢ e₁ : A → Γ ⊢ e₂ : A
   defeq_r : Γ ⊢ A₁ ≡ A₂ → Γ ⊢ e : A₁ → Γ ⊢ e : A₂
-  -- univ_defInv : Γ ⊢ .sort u ≡ .sort v → u ≈ v
+  univ_defInv : Γ ⊢ .sort u ≡ .sort v → u ≈ v
   forallE_defInv : Γ ⊢ .forallE A B ≡ .forallE A' B' → Γ ⊢ A ≡ A' ∧ A::Γ ⊢ B ≡ B'
+  pat_not_var : ¬Pat (.var p) r
   pat_uniq : Pat p₁ r → Pat p₂ r' → Subpattern p₃ p₁ → p₂.inter p₃ = some p₄ →
     p₁ = p₂ ∧ p₂ = p₃ ∧ r ≍ r'
   pat_wf : Pat p r → p.Matches e m1 m2 → Γ ⊢ e : A →
@@ -267,6 +270,11 @@ structure Typing where
     df.rhs.instL ls = r.1.apply m1 m2
 
 variable {TY : Typing}
+
+theorem Typing.symm_ctx (H : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂) : IsDefEqCtx TY.IsDefEq Γ₀ Γ₂ Γ₁ := by
+  induction H with
+  | zero => exact .zero
+  | succ h1 h2 ih => exact .succ ih (TY.isDefEq_DFC h1 (TY.symm h2))
 
 theorem Typing.IsDefEq.weakN (W : Ctx.LiftN n k Γ Γ') :
     TY.IsDefEq Γ e1 e2 → TY.IsDefEq Γ' (e1.liftN n k) (e2.liftN n k) := (TY.isDefEq_weakN_iff W).2
@@ -340,7 +348,7 @@ inductive NormalEq : List VExpr → VExpr → VExpr → Prop where
     Γ ⊢ f₁ ≡ₚ f₂ → Γ ⊢ a₁ ≡ₚ a₂ →
     Γ ⊢ .app f₁ a₁ ≡ₚ .app f₂ a₂
   | lamDF :
-    Γ ⊢ A : .sort u → Γ ⊢ A₁ ≡ A → Γ ⊢ A₁ ≡ₚ A₂ →
+    Γ ⊢ A : .sort u → Γ ⊢ A₁ ≡ A → Γ ⊢ A₂ ≡ A →
     A::Γ ⊢ body₁ ≡ₚ body₂ →
     Γ ⊢ .lam A₁ body₁ ≡ₚ .lam A₂ body₂
   | forallEDF :
@@ -367,10 +375,10 @@ theorem NormalEq.defeq (H : NormalEq TY Γ e1 e2) : TY.IsDefEq Γ e1 e2 := by
   | sortDF h1 h2 h3 => exact TY.sortDF h1 h2 h3
   | appDF hf₁ _ ha₁ _ _ _ ih1 ih2 => exact TY.appDF hf₁ ih1 ha₁ ih2
   | constDF h1 h2 h3 h4 h5 => exact TY.constDF h1 h2 h3 h4 h5
-  | lamDF hA hA₁ _ _ ihA ihB =>
+  | lamDF hA hA₁ hA₂ _ ihB =>
     have ⟨_, hB⟩ := TY.has_type ihB
     exact TY.trans (TY.symm <| TY.lamDF hA (TY.symm hA₁) (TY.refl hB))
-      (TY.lamDF hA (TY.trans (TY.symm hA₁) ihA) ihB)
+      (TY.lamDF hA (TY.symm hA₂) ihB)
   | forallEDF hA hA₁ _ hB₁ _ ihA ihB =>
     exact TY.trans (TY.symm <| TY.forallEDF hA (TY.symm hA₁) hB₁ (TY.refl hB₁))
       (TY.forallEDF hA (TY.trans (TY.symm hA₁) ihA) hB₁ ihB)
@@ -391,7 +399,7 @@ theorem NormalEq.symm (H : NormalEq TY Γ e1 e2) : NormalEq TY Γ e2 e1 := by
   | constDF h1 h2 h3 h4 h5 =>
     exact .constDF h1 h3 h2 (h5.length_eq.symm.trans h4) (h5.flip.imp (fun _ _ h => h.symm))
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 => exact .appDF h2 h1 h4 h3 ih1 ih2
-  | lamDF h1 h2 _ _ ih1 ih2 => exact .lamDF h1 (TY.trans ih1.defeq h2) ih1 ih2
+  | lamDF h1 h2 h3 _ ih1 => exact .lamDF h1 h3 h2 ih1
   | forallEDF h1 h2 _ h4 h5 ih1 ih2 =>
     exact .forallEDF h1 (TY.trans ih1.defeq h2) ih1 (TY.defeq_l h5.defeq h4) ih2
   | etaL h1 _ ih => exact .etaR h1 ih
@@ -406,8 +414,7 @@ theorem NormalEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : NormalEq TY Γ e1 e2) :
   | constDF h1 h2 h3 h4 h5 => exact .constDF h1 h2 h3 h4 h5
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
     exact .appDF (h1.weakN W) (h2.weakN W) (h3.weakN W) (h4.weakN W) (ih1 W) (ih2 W)
-  | lamDF h1 h2 _ _ ih1 ih2 =>
-    exact .lamDF (h1.weakN W) (h2.weakN W) (ih1 W) (ih2 W.succ)
+  | lamDF h1 h2 h3 _ ih1 => exact .lamDF (h1.weakN W) (h2.weakN W) (h3.weakN W) (ih1 W.succ)
   | forallEDF h1 h2 _ h4 _ ih1 ih2 =>
     exact .forallEDF (h1.weakN W) (h2.weakN W) (ih1 W) (h4.weakN W.succ) (ih2 W.succ)
   | etaL h1 _ ih =>
@@ -430,8 +437,8 @@ theorem NormalEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : NormalEq 
   | constDF h1 h2 h3 h4 h5 => exact .constDF h1 h2 h3 h4 h5
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
     exact .appDF (h1.instN W h₀) (h2.instN W h₀) (h3.instN W h₀) (h4.instN W h₀) (ih1 W) (ih2 W)
-  | lamDF h1 h2 _ _ ih1 ih2 =>
-    exact .lamDF (h1.instN W h₀) (h2.instN W h₀) (ih1 W) (ih2 W.succ)
+  | lamDF h1 h2 h3 _ ih1 =>
+    exact .lamDF (h1.instN W h₀) (h2.instN W h₀) (h3.instN W h₀) (ih1 W.succ)
   | forallEDF h1 h2 _ h4 _ ih1 ih2 =>
     exact .forallEDF (h1.instN W h₀) (h2.instN W h₀) (ih1 W) (h4.instN W.succ h₀) (ih2 W.succ)
   | etaL h1 _ ih =>
@@ -469,7 +476,7 @@ theorem NormalEq.instN_r (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : Typing.
   | lam A body ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := TY.lam_inv H
     have hA := h1.instN W h₀
-    exact .lamDF hA (TY.refl hA) (ih1 W h1) (ih2 W.succ h2)
+    exact .lamDF hA (TY.refl hA) (ih1 W h1).symm.defeq (ih2 W.succ h2)
   | forallE A B ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := TY.forallE_inv H
     have hA := h1.instN W h₀
@@ -485,8 +492,9 @@ theorem NormalEq.defeqDFC (W : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
     exact .appDF (TY.hasType_DFC W h1) (TY.hasType_DFC W h2)
       (TY.hasType_DFC W h3) (TY.hasType_DFC W h4) (ih1 W) (ih2 W)
-  | lamDF h1 h2 _ _ ih1 ih2 =>
-    exact .lamDF (TY.hasType_DFC W h1) (TY.isDefEq_DFC W h2) (ih1 W) (ih2 (W.succ (TY.refl h1)))
+  | lamDF h1 h2 h3 _ ih1 =>
+    exact .lamDF (TY.hasType_DFC W h1) (TY.isDefEq_DFC W h2) (TY.isDefEq_DFC W h3)
+      (ih1 (W.succ (TY.refl h1)))
   | forallEDF h1 h2 _ h4 _ ih1 ih2 =>
     exact .forallEDF (TY.hasType_DFC W h1) (TY.isDefEq_DFC W h2) (ih1 W)
       (TY.hasType_DFC (W.succ (TY.refl h1)) h4) (ih2 (W.succ (TY.refl h1)))
@@ -535,12 +543,13 @@ theorem NormalEq.weakN_inv_DFC (W : Ctx.LiftN n k Γ Γ₂) (W₂ : IsDefEqCtx T
       (TY.trans (TY.uniq (l1.weakN W) h1) (TY.uniq h2 (r1.weakN W)))
     exact .appDF (TY.defeq_r this l1) r1
       (TY.defeq_r (TY.forallE_defInv this).1 l2) r2 (ih1 W W₂ rfl rfl) (ih2 W W₂ rfl rfl)
-  | lamDF h1 h2 _ _ ih1 ih2 =>
+  | lamDF h1 h2 h3 _ ih1 =>
     cases e1 <;> cases eq1
     cases e2 <;> cases eq2
     have := (TY.hasType_weakN_iff (A := .sort ..) W).1 <|
       TY.hasType_DFC W₂ (TY.defeq_l (TY.symm h2) h1)
-    exact .lamDF this (TY.refl this) (ih1 W W₂ rfl rfl) (ih2 W.succ (W₂.succ (TY.symm h2)) rfl rfl)
+    have h5 := (TY.isDefEq_weakN_iff W).1 <| TY.isDefEq_DFC W₂ (TY.trans h3 (TY.symm h2))
+    exact .lamDF this (TY.refl this) h5 (ih1 W.succ (W₂.succ (TY.symm h2)) rfl rfl)
   | forallEDF h1 h2 _ h4 _ ih1 ih2 =>
     cases e1 <;> cases eq1
     cases e2 <;> cases eq2
@@ -615,19 +624,21 @@ theorem NormalEq.trans : NormalEq TY Γ e1 e2 → NormalEq TY Γ e2 e3 → Norma
     .appDF l1 (TY.defeq_r (TY.uniq r1 l2) r2) l3
       (TY.defeq_r (TY.uniq r3 l4) r4) (NormalEq.trans l5 r5) (NormalEq.trans l6 r6)
   | .lamDF l1 l2 l3 l4, .lamDF _ r2 r3 r4 =>
-    have r4' := r4.defeq_l (TY.trans (TY.symm (TY.trans l3.defeq r2)) l2)
-    .lamDF l1 l2 (NormalEq.trans l3 r3) (NormalEq.trans l4 r4')
+    have aa := TY.trans (TY.symm r2) l3
+    .lamDF l1 l2 (TY.trans r3 aa) (NormalEq.trans l4 (r4.defeq_l aa))
   | .forallEDF l1 l2 l3 l4 l5, .forallEDF _ r2 r3 r4 r5 =>
     have r5' := r5.defeq_l (TY.trans (TY.symm (TY.trans l3.defeq r2)) l2)
     .forallEDF l1 l2 (NormalEq.trans l3 r3) l4 (NormalEq.trans l5 r5')
   | .etaR l1 ih, .lamDF _ r2 r3 r4 =>
     have ⟨_, _, hA, hB⟩ := let ⟨_, h⟩ := TY.is_type l1; TY.forallE_inv h
-    .etaR (TY.defeq_r (TY.forallEDF hA r3.defeq hB (TY.refl hB)) l1)
-      (NormalEq.trans (ih.defeq_l r3.defeq) (r4.defeq_l (TY.trans (TY.symm r2) r3.defeq)))
+    have eq := TY.trans r2 (TY.symm r3)
+    .etaR (TY.defeq_r (TY.forallEDF hA eq hB (TY.refl hB)) l1)
+      (NormalEq.trans (ih.defeq_l eq) (r4.defeq_l (TY.symm r3)))
   | .lamDF _ l2 l3 l4, .etaL r1 ih =>
     have ⟨_, _, hA, hB⟩ := let ⟨_, h⟩ := TY.is_type r1; TY.forallE_inv h
-    .etaL (TY.defeq_r (TY.forallEDF hA l3.symm.defeq hB (TY.refl hB)) r1)
-      (NormalEq.trans (l4.defeq_l (TY.symm l2)) (ih.defeq_l l3.symm.defeq))
+    have eq := TY.trans l3 (TY.symm l2)
+    .etaL (TY.defeq_r (TY.forallEDF hA eq hB (TY.refl hB)) r1)
+      (NormalEq.trans (l4.defeq_l (TY.symm l2)) (ih.defeq_l eq))
   | H1@(.etaR l1 ihl), .etaL r1 ihr => by
     have := NormalEq.trans ihl ihr
     generalize eq : e1.lift = e1' at this
