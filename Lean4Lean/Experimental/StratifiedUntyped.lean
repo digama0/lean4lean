@@ -17,7 +17,7 @@ variable (IsDefEqU1 : List VExpr → VExpr → VExpr → Prop) in
 inductive HasTypeU1 : List VExpr → VExpr → VExpr → Prop where
   | bvar : Lookup Γ i A → Γ ⊢ .bvar i : A
   | const :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF uvars) →
     ls.length = ci.uvars →
     Γ ⊢ .const c ls : ci.type.instL ls

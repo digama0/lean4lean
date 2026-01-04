@@ -11,7 +11,7 @@ structure VEnv'.VDefEq extends Lean4Lean.VDefEq where
   level : VLevel
 
 @[ext] structure VEnv' where
-  constants : Name → Option (Option VEnv'.VConstant)
+  constants : Name → Option VEnv'.VConstant
   defeqs : VEnv'.VDefEq → Prop
 
 namespace VEnv'
@@ -23,7 +23,7 @@ def empty : VEnv' where
 instance : EmptyCollection VEnv' := ⟨.empty⟩
 
 protected def out (env : VEnv') : VEnv where
-  constants c := (env.constants c).map (·.map (·.toVConstant))
+  constants c := (env.constants c).map (·.toVConstant)
   defeqs df := ∃ df', env.defeqs df' ∧ df = df'.toVDefEq
 
 @[simp] theorem empty_out : (∅ : VEnv').out = ∅ := by
@@ -62,7 +62,7 @@ inductive IsDefEqStrong : VCtx → VExpr → VExpr → VExpr → VLevel → Prop
     l.WF uvars → l'.WF uvars → l ≈ l' →
     Γ ⊢ .sort l ≡ .sort l' : .sort (.succ l) : .succ (.succ l)
   | constDF :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF uvars) →
     (∀ l ∈ ls', l.WF uvars) →
     ls.length = ci.uvars →
@@ -139,19 +139,19 @@ def VConstant.WF (env : VEnv') (ci : VConstant) : Prop := env.IsType ci.uvars []
 def VDefEq.WF (env : VEnv') (df : VDefEq) : Prop :=
   env.HasType df.uvars [] df.lhs df.type df.level ∧ env.HasType df.uvars [] df.rhs df.type df.level
 
-def addConst (env : VEnv') (name : Name) (ci : Option VConstant) : Option VEnv' :=
+def addConst (env : VEnv') (name : Name) (ci : VConstant) : Option VEnv' :=
   match env.constants name with
   | some _ => none
   | none => some { env with constants := fun n => if name = n then some ci else env.constants n }
 
 theorem addConst_out {env : VEnv'} (H : env.addConst n ci = some env₂) :
-    env.out.addConst n (ci.map (·.toVConstant)) = some env₂.out := by
+    env.out.addConst n ci.toVConstant = some env₂.out := by
   revert H; simp [addConst, VEnv.addConst, VEnv'.out]
   cases env.constants n <;> simp
   rintro rfl; simp; ext x; split <;> simp
 
-theorem constants_out {env : VEnv'} (H : env.constants n = some (some ci)) :
-    env.out.constants n = some (some ci.toVConstant) := by simp [VEnv'.out, H]
+theorem constants_out {env : VEnv'} (H : env.constants n = some ci) :
+    env.out.constants n = some ci.toVConstant := by simp [VEnv'.out, H]
 
 theorem defeqs_out {env : VEnv'} (H : env.defeqs df) :
     env.out.defeqs df.toVDefEq := ⟨_, H, rfl⟩
@@ -222,18 +222,18 @@ theorem VDefEq.WF.out {ci : VDefEq} (H : ci.WF env) : ci.toVDefEq.WF env.out :=
 inductive Ordered : VEnv' → Prop where
   | empty : Ordered ∅
   | const :
-    Ordered env → (∀ ci, oci = some ci → ci.WF env) →
-    env.addConst n oci = some env' → Ordered env'
+    Ordered env → ci.WF env →
+    env.addConst n ci = some env' → Ordered env'
   | defeq : Ordered env → df.WF env → Ordered (env.addDefEq df)
 
 theorem Ordered.out (H : Ordered env) : env.out.Ordered := by
   induction H with
   | empty => simp; exact .empty
-  | const h1 h2 h3 ih => exact .const ih (by simp; exact fun _ h => (h2 _ h).out) (addConst_out h3)
+  | const h1 h2 h3 ih => exact .const ih h2.out (addConst_out h3)
   | defeq h1 h2 ih => exact addDefEq_out ▸ .defeq ih h2.out
 
 def OnTypes (env : VEnv') (P : Nat → VExpr → VExpr → VLevel → Prop) : Prop :=
-  (∀ {n ci}, env.constants n = some (some ci) →
+  (∀ {n ci}, env.constants n = some ci →
     P ci.uvars ci.type (.sort ci.level) (.succ ci.level)) ∧
   (∀ {df}, env.defeqs df → P df.uvars df.lhs df.type df.level ∧ P df.uvars df.rhs df.type df.level)
 

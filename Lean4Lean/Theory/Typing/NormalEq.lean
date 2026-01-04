@@ -72,6 +72,11 @@ theorem Pattern.Matches.uniq {p : Pattern} {e : VExpr} {m1 m2 m1' m2'}
   · next ih _ h => simp [ih h]
   · next ih1 ih2 _ _ _ _ h1 h2 => simp [ih1 h1, ih2 h2]
 
+def Pattern.OnArgs (P : VExpr → Prop) : Pattern → Prop
+  | .const .. => True
+  | .var f => f.OnArgs P
+  | .app f a => f.OnArgs P ∧ a.OnArgs P ∧ ∀ e m1 m2, a.Matches e m1 m2 → P e
+
 inductive Pattern.RHS (p : Pattern) where
   | fixed (e : p.Path.1) (c : VExpr) (_ : c.Closed)
   | app (f a : RHS p)
@@ -268,6 +273,8 @@ structure Typing where
   extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEq Γ) m1 m2 ∧
     df.rhs.instL ls = r.1.apply m1 m2
+  pat_onArgs : Pat p r → p.Matches e m1 m2 → Γ ⊢ e : A → r.2.OK (IsDefEq Γ) m1 m2 →
+    p.OnArgs fun a => (∀ A B, ¬Γ ⊢ a : .forallE A B) ∧ (∀ p, Γ ⊢ a : p → ¬Γ ⊢ p : .sort .zero)
 
 variable {TY : Typing}
 

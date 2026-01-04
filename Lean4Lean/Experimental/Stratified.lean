@@ -30,7 +30,7 @@ variable (IsDefEq1 : List VExpr → VExpr → VExpr → VExpr → Prop) in
 inductive HasType1 : List VExpr → VExpr → VExpr → Prop where
   | bvar : Lookup Γ i A → Γ ⊢ .bvar i : A
   | const :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF uvars) →
     ls.length = ci.uvars →
     Γ ⊢ .const c ls : ci.type.instL ls
@@ -48,7 +48,7 @@ inductive IsDefEq1 : List VExpr → VExpr → VExpr → VExpr → Prop where
   | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
   | trans : Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
   | constDF :
-    env.constants c = some (some ci) →
+    env.constants c = some ci →
     (∀ l ∈ ls, l.WF uvars) →
     (∀ l ∈ ls', l.WF uvars) →
     ls.length = ci.uvars →
