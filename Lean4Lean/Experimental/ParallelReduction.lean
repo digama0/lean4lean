@@ -1,29 +1,6 @@
 import Lean4Lean.Theory.Typing.Strong
 import Lean4Lean.Theory.Typing.NormalEq
 
-inductive ReflTransGen (R : α → α → Prop) (a : α) : α → Prop where
-  | rfl : ReflTransGen R a a
-  | tail : ReflTransGen R a b → R b c → ReflTransGen R a c
-
-inductive ReflTransGen' (R : α → α → Prop) (c : α) : α → Prop where
-  | rfl : ReflTransGen' R c c
-  | head : R a b → ReflTransGen' R c b → ReflTransGen' R c a
-
-theorem ReflTransGen.trans
-    (H1 : ReflTransGen R a b) (H2 : ReflTransGen R b c) : ReflTransGen R a c := by
-  induction H2 with
-  | rfl => exact H1
-  | tail h1 h2 ih => exact ih.tail h2
-
-@[elab_as_elim] theorem ReflTransGen.headIndOn {P : (a : α) → ReflTransGen R a z → Prop}
-    (rfl : P z .rfl)
-    (head : ∀ {x y} (h1 : R x y) (h2 : ReflTransGen R y z),
-      P y h2 → P x (.trans (.tail .rfl h1) h2))
-    (H : ReflTransGen R a z) : P a H := by
-  induction H with
-  | rfl => exact rfl
-  | tail h1 h2 ih => exact ih (head h2 .rfl rfl) fun a1 a2 => head a1 (.tail a2 h2)
-
 namespace Lean4Lean
 
 open VExpr

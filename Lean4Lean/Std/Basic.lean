@@ -73,6 +73,9 @@ theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → le
   | _, _, Forall₂.nil => rfl
   | _, _, Forall₂.cons _ h₂ => congrArg Nat.succ (Forall₂.length_eq h₂)
 
+theorem List.forall₂_eq {l₁ l₂ : List α} : Forall₂ Eq l₁ l₂ ↔ l₁ = l₂ :=
+  ⟨fun h => by induction h <;> simp_all, (· ▸ .rfl fun _ _ => rfl)⟩
+
 theorem List.Forall₂.append_of_left : ∀ {l₁ l₂ r₁ r₂}, length l₁ = length l₂ →
     (Forall₂ R (l₁ ++ r₁) (l₂ ++ r₂) ↔ Forall₂ R l₁ l₂ ∧ Forall₂ R r₁ r₂)
   | [], [], _, _, _ => by simp
@@ -150,6 +153,29 @@ theorem List.mapM_eq_some {f : α → Option β} {l : List α} {l' : List β} :
 @[simp] theorem Option.orElse_eq_none {a : Option α} {b : Unit → Option α} :
     a.orElse b = none ↔ a = none ∧ b () = none := by
   cases a <;> simp [Option.orElse]
+
+inductive ReflTransGen (R : α → α → Prop) (a : α) : α → Prop where
+  | rfl : ReflTransGen R a a
+  | tail : ReflTransGen R a b → R b c → ReflTransGen R a c
+
+inductive ReflTransGen' (R : α → α → Prop) (c : α) : α → Prop where
+  | rfl : ReflTransGen' R c c
+  | head : R a b → ReflTransGen' R c b → ReflTransGen' R c a
+
+theorem ReflTransGen.trans
+    (H1 : ReflTransGen R a b) (H2 : ReflTransGen R b c) : ReflTransGen R a c := by
+  induction H2 with
+  | rfl => exact H1
+  | tail h1 h2 ih => exact ih.tail h2
+
+@[elab_as_elim] theorem ReflTransGen.headIndOn {P : (a : α) → ReflTransGen R a z → Prop}
+    (rfl : P z .rfl)
+    (head : ∀ {x y} (h1 : R x y) (h2 : ReflTransGen R y z),
+      P y h2 → P x (.trans (.tail .rfl h1) h2))
+    (H : ReflTransGen R a z) : P a H := by
+  induction H with
+  | rfl => exact rfl
+  | tail h1 h2 ih => exact ih (head h2 .rfl rfl) fun a1 a2 => head a1 (.tail a2 h2)
 
 instance [BEq α] [PartialEquivBEq α] [BEq β] [PartialEquivBEq β] : PartialEquivBEq (α × β) where
   symm := by simp [(· == ·)]; grind [BEq.symm]

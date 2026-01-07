@@ -604,6 +604,24 @@ theorem liftVar_consN_skipN : (consN (skipN refl n) k).liftVar i = liftVar n i k
 theorem liftVar_depth_zero (H : depth l = 0) : l.liftVar n = n := by
   induction l generalizing n <;> [skip; skip; cases n] <;> simp_all [depth]
 
+def Fixes : Nat → Lift → Prop
+  | 0,   _       => True
+  | _,   .refl   => True
+  | _+1, .skip _ => False
+  | n+1, .cons l => Fixes n l
+
+theorem Fixes.zero : Fixes 0 ρ := by simp [Fixes]
+
+theorem Fixes.liftVar_eq {ρ : Lift} (H : ρ.Fixes k) (h2 : i < k) : ρ.liftVar i = i := by
+  induction ρ generalizing i k with
+  | refl => rfl
+  | skip => let k+1 := k; cases H
+  | cons ρ ih =>
+    let k+1 := k
+    cases i with
+    | zero => rfl
+    | succ k => exact congrArg Nat.succ <| ih H (Nat.lt_of_succ_lt_succ h2)
+
 end Lift
 
 namespace VExpr
@@ -626,3 +644,9 @@ theorem lift'_depth_zero {e : VExpr} (H : l.depth = 0) : e.lift' l = e := by
   induction e generalizing l <;> simp_all [Lift.liftVar_depth_zero]
 
 @[simp] theorem lift'_refl {e : VExpr} : e.lift' .refl = e := lift'_depth_zero rfl
+
+theorem ClosedN.lift'_eq (self : ClosedN e k) (h : ρ.Fixes k) : lift' e ρ = e := by
+  induction e generalizing k ρ with (simp [ClosedN] at self; simp [*])
+  | bvar i => exact h.liftVar_eq self
+  | app _ _ ih1 ih2 => exact ⟨ih1 self.1 h, ih2 self.2 h⟩
+  | lam _ _ ih1 ih2 | forallE _ _ ih1 ih2 => exact ⟨ih1 self.1 h, ih2 self.2 h⟩
