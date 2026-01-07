@@ -19,12 +19,12 @@ inductive ParRed : List VExpr → VExpr → VExpr → Prop where
   | lam : Γ ⊢ A ≫ A' → A::Γ ⊢ body ≫ body' → Γ ⊢ .lam A body ≫ .lam A' body'
   | forallE : Γ ⊢ A ≫ A' → A::Γ ⊢ B ≫ B' → Γ ⊢ .forallE A B ≫ .forallE A' B'
   | beta : A::Γ ⊢ e₁ ≫ e₁' → Γ ⊢ e₂ ≫ e₂' → Γ ⊢ .app (.lam A e₁) e₂ ≫ e₁'.inst e₂'
-  | extra : TY.Pat p r → p.Matches e m1 m2 → r.2.OK (TY.IsDefEq Γ) m1 m2 →
+  | extra : TY.Pat p r → p.Matches e m1 m2 → r.2.OK (TY.IsDefEqU Γ) m1 m2 →
     (∀ a, Γ ⊢ m2 a ≫ m2' a) → Γ ⊢ e ≫ r.1.apply m1 m2'
 
 def NonNeutral (TY : Typing) (Γ : List VExpr) (e : VExpr) : Prop :=
   (∃ A e₁ e₂, e = .app (.lam A e₁) e₂) ∨
-  (∃ p r m1 m2, TY.Pat p r ∧ p.Matches e m1 m2 ∧ r.2.OK (TY.IsDefEq Γ) m1 m2)
+  (∃ p r m1 m2, TY.Pat p r ∧ p.Matches e m1 m2 ∧ r.2.OK (TY.IsDefEqU Γ) m1 m2)
 
 inductive CParRed : List VExpr → VExpr → VExpr → Prop where
   | bvar : Γ ⊢ .bvar i ⋙ .bvar i
@@ -34,7 +34,7 @@ inductive CParRed : List VExpr → VExpr → VExpr → Prop where
   | lam : Γ ⊢ A ⋙ A' → A::Γ ⊢ body ⋙ body' → Γ ⊢ .lam A body ⋙ .lam A' body'
   | forallE : Γ ⊢ A ⋙ A' → A::Γ ⊢ B ⋙ B' → Γ ⊢ .forallE A B ⋙ .forallE A' B'
   | beta : A::Γ ⊢ e₁ ⋙ e₁' → Γ ⊢ e₂ ⋙ e₂' → Γ ⊢ .app (.lam A e₁) e₂ ⋙ e₁'.inst e₂'
-  | extra : TY.Pat p r → p.Matches e m1 m2 → r.2.OK (TY.IsDefEq Γ) m1 m2 →
+  | extra : TY.Pat p r → p.Matches e m1 m2 → r.2.OK (TY.IsDefEqU Γ) m1 m2 →
     (∀ a, Γ ⊢ m2 a ⋙ m2' a) → Γ ⊢ e ⋙ r.1.apply m1 m2'
 
 end
@@ -90,7 +90,7 @@ theorem ParRed.instN (W : Ctx.InstN Γ₀ a1 A₀ k Γ₁ Γ)
     rw [Pattern.RHS.instN_apply]
     exact .extra h1 (Pattern.matches_instN h2) (h3.instN W H₀') (fun a => ih _ W)
 
-theorem ParRed.defeq (H : ParRed TY Γ e e') (he : TY.HasType Γ e A) : TY.IsDefEq Γ e e' := by
+theorem ParRed.defeq (H : ParRed TY Γ e e') (he : TY.HasType Γ e A) : TY.IsDefEqU Γ e e' := by
   induction H generalizing A with
   | bvar | sort | const => exact TY.refl he
   | app _ _ ih1 ih2 =>
@@ -116,7 +116,7 @@ theorem ParRed.defeq (H : ParRed TY Γ e e') (he : TY.HasType Γ e A) : TY.IsDef
 theorem ParRed.hasType (H : ParRed TY Γ e e') (he : TY.HasType Γ e A) : TY.HasType Γ e' A :=
   TY.defeq_l (H.defeq he) he
 
-theorem ParRed.defeqDFC (W : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
+theorem ParRed.defeqDFC (W : IsDefEqCtx TY.IsDefEqU Γ₀ Γ₁ Γ₂)
     (h : TY.HasType Γ₁ e1 A) (H : ParRed TY Γ₁ e1 e2) : ParRed TY Γ₂ e1 e2 := by
   induction H generalizing Γ₂ A with
   | bvar => exact .bvar
@@ -136,7 +136,7 @@ theorem ParRed.defeqDFC (W : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
     have ⟨_, _, hA, hb⟩ := TY.lam_inv hf
     exact .beta (ih1 (W.succ (TY.refl hA)) hb) (ih2 W ha)
   | @extra p r e m1 m2 Γ m2' h1 h2 h3 _ ih =>
-    exact .extra h1 h2 (h3.map fun a b h => TY.isDefEq_DFC W h) fun a =>
+    exact .extra h1 h2 (h3.map fun a b h => TY.isDefEqU_DFC W h) fun a =>
       let ⟨_, h⟩ := h2.hasType h a; ih a W h
 
 theorem ParRed.apply_pat {p : Pattern} (r : p.RHS) {m1 m2 m3}
@@ -151,10 +151,10 @@ theorem Pattern.RHS.apply_liftN {p : Pattern} (r : p.RHS) {m1 m2} :
   induction r with simp! [*]
   | fixed _ _ h => exact instL_liftN.symm.trans ((h.liftN_eq (Nat.zero_le _)).symm ▸ rfl)
 
--- theorem IsDefEq.applyL {p : Pattern} (r : p.RHS) {m1 m1' m2}
+-- theorem IsDefEqU.applyL {p : Pattern} (r : p.RHS) {m1 m1' m2}
 --     (H : ∀ a, List.Forall₂ (· ≈ ·) (m1 a) (m1' a))
 --     (H2 : TY.HasType Γ (r.apply m1 m2) A) :
---     TY.IsDefEq Γ (r.apply m1 m2) (r.apply m1' m2) := by
+--     TY.IsDefEqU Γ (r.apply m1 m2) (r.apply m1' m2) := by
 --   match r with
 --   | .fixed .. =>
 --     dsimp [Pattern.RHS.apply]
@@ -201,7 +201,7 @@ theorem ParRed.weakN_inv (W : Ctx.LiftN n k Γ Γ')
       refine ⟨_, .extra h1 a1 (h3.map fun _ _ h => ?_) a2,
         .trans (by congr; funext; apply a4) r.1.apply_liftN.symm⟩
       rw [(funext a3 : m2 = _), ← Pattern.RHS.apply_liftN, ← Pattern.RHS.apply_liftN] at h
-      exact (TY.isDefEq_weakN_iff W).1 h
+      exact (TY.isDefEqU_weakN_iff W).1 h
     clear h1 h3 r
     induction h2 generalizing e1 with
     | const => cases e1 <;> cases eq; exact ⟨_, nofun, .const, nofun, nofun, nofun⟩
@@ -353,7 +353,7 @@ theorem ParRed.triangle (H1 : TY.HasType Γ e A) (H : ParRed TY Γ e e') (H2 : C
         (∀ a, NormalEq TY Γ (m3' a) (m2' a))) ∨
       (∃ p₁ e₁' e₁ m1₁ m2₁, Subpattern p₁ p ∧ (p₁ = p → e₁ = e ∧ e₁' = e' ∧ m1₁ ≍ m1 ∧ m2₁ ≍ m2) ∧
         p₁.Matches e₁ m1₁ m2₁ ∧ ∃ p' r m1 m2 m2',
-        TY.Pat p' r ∧ p'.Matches e₁ m1 m2 ∧ r.2.OK (TY.IsDefEq Γ) m1 m2 ∧
+        TY.Pat p' r ∧ p'.Matches e₁ m1 m2 ∧ r.2.OK (TY.IsDefEqU Γ) m1 m2 ∧
         (∀ a, ParRed TY Γ (m2 a) (m2' a)) ∧ e₁' = r.1.apply m1 m2') := by
       clear l1 l3 l4 r
       induction H generalizing p A with
@@ -439,12 +439,12 @@ theorem ParRedS.hasType (H : ParRedS TY Γ e e') : TY.HasType Γ e A → TY.HasT
   | rfl => exact id
   | tail h1 h2 ih => exact h2.hasType ∘ ih
 
-theorem ParRedS.defeq (H : ParRedS TY Γ e e') (h : TY.HasType Γ e A) : TY.IsDefEq Γ e e' := by
+theorem ParRedS.defeq (H : ParRedS TY Γ e e') (h : TY.HasType Γ e A) : TY.IsDefEqU Γ e e' := by
   induction H with
   | rfl => exact TY.refl h
   | tail h1 h2 ih => refine TY.trans ih (h2.defeq (hasType h1 h))
 
-theorem ParRedS.defeqDFC (W : IsDefEqCtx TY.IsDefEq Γ₀ Γ₁ Γ₂)
+theorem ParRedS.defeqDFC (W : IsDefEqCtx TY.IsDefEqU Γ₀ Γ₁ Γ₂)
     (h : TY.HasType Γ₁ e1 A) (H : ParRedS TY Γ₁ e1 e2) : ParRedS TY Γ₂ e1 e2 := by
   induction H with
   | rfl => exact .rfl
@@ -542,7 +542,7 @@ theorem hasType_app_bvar0
   have : A.lift.lam (e.lift.lift.app (bvar 0)) =
       (A.lam (e.lift.app (bvar 0))).lift := by
     simp [VExpr.liftN, liftN'_liftN_lo, liftN_liftN]
-  have := (TY.isDefEq_weakN_iff .one).1 (this ▸ TY.eta c1)
+  have := (TY.isDefEqU_weakN_iff .one).1 (this ▸ TY.eta c1)
   have ⟨_, f1⟩ := TY.has_type this
   have ⟨_, _, f2, f3⟩ := TY.lam_inv f1
   exact ⟨_, TY.defeq_l this (TY.lam f2 f3)⟩
@@ -589,8 +589,8 @@ theorem ParRedExt.parRed_beta :
       have b2 := TY.defeq_r (TY.sortDF b3 (by trivial) (VLevel.imax_eq_zero.1 this)) b2
       have ⟨_, _, c1, c2⟩ := TY.lam_inv a3
       have ⟨u1, u2⟩ := TY.forallE_defInv (TY.trans (TY.uniq (TY.lam c1 c2) a3) hf)
-      exact ⟨_, .rfl, .proofIrrel (TY.hasType_instN .zero b2 H2) (TY.app H1 H2)
-        (TY.hasType_instN .zero (TY.defeq_r u2 c2) (TY.defeq_r (TY.symm u1) H2))⟩
+      exact ⟨_, .rfl, .proofIrrel (TY.isDefEq_instN .zero b2 H2) (TY.app H1 H2)
+        (TY.isDefEq_instN .zero (TY.defeq_r u2 c2) (TY.defeq_r (TY.symm u1) H2))⟩
   generalize eq : l.apply .. = s at h1
   cases h1 with
   | @refl _ _ B H =>
@@ -603,7 +603,7 @@ theorem ParRedExt.parRed_beta :
       simp [instN_bvar0] at h ⊢; exact .refl (h.hasType H)
     | lift l =>
       let A::Γ := Γ
-      have ⟨_, a1⟩ := TY.hasTypeU_weakN_inv .one H
+      have ⟨_, a1⟩ := TY.isDefEq_weakN_inv .one H
       have ⟨_, a2, a3⟩ := ih _ (by simp [meas]) l (by simpa [depth] using W) a1 rfl
       exact ⟨_, .weakN .one a2, .weakN .one a3⟩
     | app l =>
@@ -659,22 +659,22 @@ theorem ParRedExt.parRed_beta :
       exact TY.defeq_l this a3
     | lift l ih =>
       let A::Γ := Γ
-      have ⟨_, b1⟩ := TY.hasTypeU_weakN_inv .one a3
-      have u1 := TY.uniq a3 ((TY.hasType_weakN_iff .one).2 b1)
-      have := (TY.hasType_weakN_iff (A := sort _) .one).1 (TY.defeq_l u1 a1)
+      have ⟨_, b1⟩ := TY.isDefEq_weakN_inv .one a3
+      have u1 := TY.uniq a3 ((TY.isDefEq_weakN_iff .one).2 b1)
+      have := (TY.isDefEq_weakN_iff (A := sort _) .one).1 (TY.defeq_l u1 a1)
       have := ih (Nat.le_of_succ_le_succ W) this b1
-      exact TY.defeq_r (TY.symm u1) ((TY.hasType_weakN_iff .one).2 this)
+      exact TY.defeq_r (TY.symm u1) ((TY.isDefEq_weakN_iff .one).2 this)
     | app l ih =>
       let A::Γ := Γ
       let ⟨_, b1⟩ := hasType_app_bvar0 a3
-      have H := TY.uniq a3 (TY.app ((TY.hasType_weakN_iff .one).2 b1) (TY.bvar .zero))
+      have H := TY.uniq a3 (TY.app ((TY.isDefEq_weakN_iff .one).2 b1) (TY.bvar .zero))
       simp [instN_bvar0] at H
       have ⟨_, _, b2, b3⟩ := have ⟨_, b2⟩ := TY.is_type b1; TY.forallE_inv b2
       have wf := let ⟨_, h⟩ := TY.is_type b2; TY.sort_inv h
       have := TY.forallE b2 (TY.defeq_l H a1)
       have := TY.defeq_r (TY.sortDF (by exact ⟨wf, ⟨⟩⟩) (by trivial) VLevel.imax_zero) this
       have := ih (Nat.le_of_succ_le_succ W) this b1
-      have := TY.app ((TY.hasType_weakN_iff .one).2 this) (TY.bvar .zero)
+      have := TY.app ((TY.isDefEq_weakN_iff .one).2 this) (TY.bvar .zero)
       simp [instN_bvar0] at this
       exact TY.defeq_r (TY.symm H) this
   | _ => cases l.is_app eq
@@ -716,7 +716,7 @@ theorem NormalEq.parRed (H1 : NormalEq TY Γ e₁ e₂) (H2 : ParRed TY Γ e₂ 
     | lam r1 r2 =>
       have ⟨_, h1⟩ := TY.has_type l4.defeq
       have h2 := TY.defeq_l l4.defeq h1
-      replace r2 := r2.defeqDFC (.succ .zero l3) <| TY.hasType_DFC (.succ .zero (TY.symm l3)) h2
+      replace r2 := r2.defeqDFC (.succ .zero l3) <| TY.isDefEq_DFC (.succ .zero (TY.symm l3)) h2
       let ⟨_, b1, b2⟩ := ih1 r2
       exact ⟨_, .lam .rfl (b1.defeqDFC (.succ .zero (TY.symm l2)) h1),
         .lamDF l1 l2 (TY.trans (TY.symm (r1.defeq (TY.defeq_l (TY.symm l3) l1))) l3) b2⟩
@@ -727,7 +727,7 @@ theorem NormalEq.parRed (H1 : NormalEq TY Γ e₁ e₂) (H2 : ParRed TY Γ e₂ 
       let ⟨_, a1, a2⟩ := ih1 r1
       have h2 := TY.defeq_l l5.defeq l4
       have W := TY.trans l3.symm.defeq l2
-      replace r2 := r2.defeqDFC (.succ .zero W) <| TY.hasType_DFC (.succ .zero (TY.symm W)) h2
+      replace r2 := r2.defeqDFC (.succ .zero W) <| TY.isDefEq_DFC (.succ .zero (TY.symm W)) h2
       let ⟨_, b1, b2⟩ := ih2 r2
       have := r1.defeq (TY.defeq_l (TY.symm W) l1)
       exact ⟨_, .forallE a1 (b1.defeqDFC (.succ .zero (TY.symm l2)) l4),
@@ -743,7 +743,7 @@ theorem NormalEq.parRed (H1 : NormalEq TY Γ e₁ e₂) (H2 : ParRed TY Γ e₂ 
       have ⟨_, c1⟩ := TY.is_type l1
       have ⟨_, _, c1, c2⟩ := TY.forallE_inv c1
       suffices
-          (∃ A', ParRedS TY Γ e (A'.lam t) ∧ TY.IsDefEq Γ A' A) ∨
+          (∃ A', ParRedS TY Γ e (A'.lam t) ∧ TY.IsDefEqU Γ A' A) ∨
           (∃ e', ParRedS TY Γ e e' ∧ t = .app (.lift e') (.bvar 0)) by
         obtain ⟨_, h1, h2⟩ | ⟨_, h, rfl⟩ := this
         · exact ⟨_, h1, .lamDF c1 h2 (TY.symm (r1.defeq c1)) a2⟩
@@ -757,7 +757,7 @@ theorem NormalEq.parRed (H1 : NormalEq TY Γ e₁ e₂) (H2 : ParRed TY Γ e₂ 
       obtain ⟨_, h1, h2⟩ | ⟨e', h, rfl⟩ := ih l1 rfl
       · have ⟨_, _, d1, d2⟩ := TY.lam_inv (h1.hasType l1)
         exact .inl ⟨_, h1.tail <| .lam .rfl (a1.defeqDFC (.succ .zero (TY.symm h2))
-          (TY.hasType_DFC (.succ .zero h2) d2)), h2⟩
+          (TY.isDefEq_DFC (.succ .zero h2) d2)), h2⟩
       generalize eq : e'.lift = e1 at a1
       cases a1 with
       | app b1 b2 =>
@@ -817,7 +817,7 @@ theorem Typing.CRDefEq.normalEq (H : NormalEq TY Γ e₁ e₂) : TY.CRDefEq Γ e
 theorem Typing.CRDefEq.refl (H : TY.HasType Γ e A) : TY.CRDefEq Γ e e :=
   .normalEq (.refl H)
 
-theorem Typing.CRDefEq.defeq : TY.CRDefEq Γ e₁ e₂ → TY.IsDefEq Γ e₁ e₂
+theorem Typing.CRDefEq.defeq : TY.CRDefEq Γ e₁ e₂ → TY.IsDefEqU Γ e₁ e₂
   | ⟨⟨_, h1⟩, ⟨_, h2⟩, _, _, h3, h4, h5⟩ =>
     TY.trans (h3.defeq h1) <| TY.trans h5.defeq (TY.symm (h4.defeq h2))
 
@@ -832,7 +832,7 @@ theorem Typing.CRDefEq.trans : TY.CRDefEq Γ e₁ e₂ → TY.CRDefEq Γ e₂ e�
     exact ⟨l1, r2, _, _, .trans l3 a1, .trans r4 b1, a2.trans <| m3.trans b2.symm⟩
 
 theorem VEnv.IsDefEq.toTyping (H : TY.env.IsDefEq TY.univs Γ e₁ e₂ A) :
-    TY.IsDefEq Γ e₁ e₂ ∧ TY.HasType Γ e₁ A := by
+    TY.IsDefEqU Γ e₁ e₂ ∧ TY.HasType Γ e₁ A := by
   induction H with
   | bvar h => exact ⟨TY.refl (TY.bvar h), TY.bvar h⟩
   | symm _ ih => exact ⟨TY.symm ih.1, TY.defeq_l ih.1 ih.2⟩
@@ -845,12 +845,12 @@ theorem VEnv.IsDefEq.toTyping (H : TY.env.IsDefEq TY.univs Γ e₁ e₂ A) :
   | defeqDF h1 h2 ih1 ih2 => exact ⟨ih2.1, TY.defeq_r ih1.1 ih2.2⟩
   | beta h1 h2 ih1 ih2 =>
     have h := TY.beta ih1.2 ih2.2
-    exact ⟨h, TY.defeq_l (TY.symm h) (TY.hasType_instN .zero ih1.2 ih2.2)⟩
+    exact ⟨h, TY.defeq_l (TY.symm h) (TY.isDefEq_instN .zero ih1.2 ih2.2)⟩
   | eta h1 ih1 => have h := TY.eta ih1.2; exact ⟨h, TY.defeq_l (TY.symm h) ih1.2⟩
   | proofIrrel h1 h2 h3 ih1 ih2 ih3 => exact ⟨TY.proofIrrel ih1.2 ih2.2 ih3.2, ih2.2⟩
   | extra h1 h2 h3 => exact ⟨TY.extraDF h1 h2 h3, TY.extra h1 h2 h3⟩
 
-theorem VEnv.IsDefEq.church_rosser
+theorem VEnv.IsDefEqU.church_rosser
     (H : TY.env.IsDefEq TY.univs Γ e₁ e₂ A) : TY.CRDefEq Γ e₁ e₂ := by
   have mk {Γ e₁ e₂ A e₁' e₂'} (H : TY.env.IsDefEq TY.univs Γ e₁ e₂ A)
       (h1 : ParRedS TY Γ e₁ e₁') (h2 : ParRedS TY Γ e₂ e₂') (h3 : NormalEq TY Γ e₁' e₂') :
@@ -891,7 +891,7 @@ theorem VEnv.IsDefEq.church_rosser
   | eta h1 ih1 =>
     have := h1.toTyping.2
     exact .normalEq <| .etaL this <| .refl <|
-      TY.app ((TY.hasType_weakN_iff .one).2 this) (TY.bvar .zero)
+      TY.app ((TY.isDefEq_weakN_iff .one).2 this) (TY.bvar .zero)
   | proofIrrel h1 h2 h3 ih1 ih2 ih3 =>
     exact .normalEq <| .proofIrrel h1.toTyping.2 h2.toTyping.2 h3.toTyping.2
   | @extra _ _ Γ h1 h2 h3 =>
