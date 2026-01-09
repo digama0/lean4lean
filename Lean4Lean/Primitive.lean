@@ -10,8 +10,8 @@ deriving instance ToExpr for LevelMVarId
 deriving instance ToExpr for Level
 deriving instance ToExpr for MVarId
 deriving instance ToExpr for BinderInfo
-deriving instance ToExpr for String.Pos
-deriving instance ToExpr for Substring
+deriving instance ToExpr for String.Pos.Raw
+deriving instance ToExpr for Substring.Raw
 deriving instance ToExpr for SourceInfo
 deriving instance ToExpr for Syntax
 deriving instance ToExpr for DataValue
@@ -326,7 +326,7 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     _ ← checkType e
     unless ← isDefEq (mkApp3 bitwise' f n m) e do fail
   | ``Nat.land =>
-    unless env.contains ``Nat.bitwise && env.contains ``and && v.levelParams.isEmpty do fail
+    unless env.contains ``Nat.bitwise && v.levelParams.isEmpty do fail
     -- land : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
     let .app (.const ``Nat.bitwise []) and := v.value | fail
@@ -334,7 +334,7 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← defeq1 (and fal x) fal do fail
     unless ← defeq1 (and tru x) x do fail
   | ``Nat.lor =>
-    unless env.contains ``Nat.bitwise && env.contains ``or && v.levelParams.isEmpty do fail
+    unless env.contains ``Nat.bitwise && v.levelParams.isEmpty do fail
     -- lor : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
     let .app (.const ``Nat.bitwise []) or := v.value | fail
@@ -365,10 +365,28 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     let shr := mkApp2 v.value
     unless ← defeq1 (shr x zero) x do fail
     unless ← defeq2 (shr x (succ y)) (div (shr x y) two) do fail
+  | ``Char.ofNat =>
+    unless env.contains ``Nat && v.levelParams.isEmpty do fail
+    -- Char : Type
+    _ ← ensureType q(Char)
+    -- @Char.ofNat : Nat → Char
+    unless ← isDefEq v.type q(Nat → Char) do fail
+  | ``String.ofList =>
+    unless v.levelParams.isEmpty do fail
+    -- Char : Type
+    _ ← ensureType q(Char)
+    -- List Char : Type
+    _ ← ensureType q(List Char)
+    -- @List.nil.{0} Char : List Char
+    unless ← isDefEq (← checkType q(List.nil (α := Char))) q(List Char) do fail
+    -- @List.cons.{0} Char : Char → List Char → List Char
+    unless ← isDefEq (← checkType q(List.cons (α := Char))) q(Char → List Char → List Char) do fail
+    -- String.ofList : List Char → String
+    unless ← isDefEq v.type q(List Char → String) do fail
   | _ => return false
   return true
 
-def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams : Nat)
+def checkPrimitiveInductive (_env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe : Bool) : Except Exception Bool := do
   unless !isUnsafe && lparams.isEmpty && nparams == 0 do return false
   let [type] := types | return false
@@ -383,28 +401,5 @@ def checkPrimitiveInductive (env : Environment) (lparams : List Name) (nparams :
       ⟨``Nat.zero, .const ``Nat []⟩,
       ⟨``Nat.succ, .forallE _ (.const ``Nat []) (.const ``Nat []) _⟩
     ] := type.ctors | fail
-  | ``String =>
-    let [⟨``String.mk,
-      .forallE _ (.app (.const ``List [.zero]) (.const ``Char [])) (.const ``String []) _
-    ⟩] := type.ctors | fail
-    M.run env (safety := .safe) (lctx := {}) (lparams := []) do
-      -- We need the following definitions for `strLitToConstructor` to work:
-      -- Nat : Type (this is primitive so checking for existence suffices)
-      unless env.contains ``Nat do fail
-      -- Char : Type
-      _ ← ensureType q(Char)
-      -- List Char : Type
-      let listchar := q(List Char)
-      _ ← ensureType listchar
-      -- @List.nil.{0} Char : List Char
-      let listNil := q(List.nil (α := Char))
-      unless ← isDefEq (← checkType listNil) q(List Char) do fail
-      -- @List.cons.{0} Char : Char → List Char → List Char
-      let listCons := q(List.cons (α := Char))
-      unless ← isDefEq (← checkType listCons) q(Char → List Char → List Char) do fail
-      -- String.mk : List Char → String (already checked)
-      -- @Char.ofNat : Nat → Char
-      let charOfNat := q(Char.ofNat)
-      unless ← isDefEq (← checkType charOfNat) q(Nat → Char) do fail
   | _ => return false
   return true

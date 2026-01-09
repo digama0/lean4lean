@@ -160,25 +160,15 @@ partial def replayConstant (name : Name) : M Unit := do
     -- Check that this name is still pending: a mutual block may have taken care of it.
     if (← get).pending.contains name then
       match ci with
-      | .defnInfo   info =>
-        addDecl (Declaration.defnDecl   info)
-      | .thmInfo    info =>
-        addDecl (Declaration.thmDecl    info)
-      | .axiomInfo  info =>
-        addDecl (Declaration.axiomDecl  info)
-      | .opaqueInfo info =>
-        addDecl (Declaration.opaqueDecl info)
+      | .defnInfo   info => addDecl (.defnDecl   info)
+      | .thmInfo    info => addDecl (.thmDecl    info)
+      | .axiomInfo  info => addDecl (.axiomDecl  info)
+      | .opaqueInfo info => addDecl (.opaqueDecl info)
       | .inductInfo info =>
         let lparams := info.levelParams
         let nparams := info.numParams
         let all ← info.all.mapM fun n => do pure <| (← read).newConstants[n]!
         for o in all do
-          -- There is exactly one awkward special case here:
-          -- `String` is a primitive type, which depends on `Char.ofNat` to exist
-          -- because the kernel treats the existence of the `String` type as license
-          -- to use string literals, which use `Char.ofNat` internally. However
-          -- this definition is not transitively reachable from the declaration of `String`.
-          if o.name == ``String then replayConstant ``Char.ofNat
           modify fun s =>
             { s with remaining := s.remaining.erase o.name, pending := s.pending.erase o.name }
         let ctorInfo ← all.mapM fun ci => do
@@ -192,7 +182,7 @@ partial def replayConstant (name : Name) : M Unit := do
           { name := ci.name
             type := ci.type
             ctors := ctors.map fun ci => { name := ci.name, type := ci.type } }
-        addDecl (Declaration.inductDecl lparams nparams types false)
+        addDecl (.inductDecl lparams nparams types false)
       -- We postpone checking constructors,
       -- and at the end make sure they are identical
       -- to the constructors generated when we replay the inductives.
@@ -201,8 +191,7 @@ partial def replayConstant (name : Name) : M Unit := do
       -- Similarly we postpone checking recursors.
       | .recInfo info =>
         modify fun s => { s with postponedRecursors := s.postponedRecursors.insert info.name }
-      | .quotInfo _ =>
-        addDecl (Declaration.quotDecl)
+      | .quotInfo _ => addDecl .quotDecl
       modify fun s => { s with pending := s.pending.erase name }
 
 /-- Replay a set of constants one at a time. -/
@@ -219,7 +208,7 @@ def checkPostponedConstructors : M Unit := do
   for ctor in (← get).postponedConstructors do
     match (← get).env.constants.find? ctor, (← read).newConstants[ctor]? with
     | some (.ctorInfo info), some (.ctorInfo info') =>
-      if ! (info == info') then throw <| IO.userError s!"Invalid constructor {ctor}"
+      unless info == info' do throw <| IO.userError s!"Invalid constructor {ctor}"
     | _, _ => throw <| IO.userError s!"No such constructor {ctor}"
 
 /--
@@ -230,7 +219,7 @@ def checkPostponedRecursors : M Unit := do
   for ctor in (← get).postponedRecursors do
     match (← get).env.constants.find? ctor, (← read).newConstants[ctor]? with
     | some (.recInfo info), some (.recInfo info') =>
-      if ! (info == info') then throw <| IO.userError s!"Invalid recursor {ctor}"
+      unless info == info' do throw <| IO.userError s!"Invalid recursor {ctor}"
     | _, _ => throw <| IO.userError s!"No such recursor {ctor}"
 
 /--

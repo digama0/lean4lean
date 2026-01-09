@@ -50,11 +50,11 @@ theorem Closed.natLitToConstructor : Closed (.natLitToConstructor n) k := by
 
 theorem FVarsIn.strLitToConstructor : FVarsIn P (.strLitToConstructor s) := by
   simp [FVarsIn, String.foldr_eq, Expr.strLitToConstructor]
-  induction s.data <;> simp [*, FVarsIn, Level.hasMVar']
+  induction s.toList <;> simp [*, FVarsIn, Level.hasMVar']
 
 theorem Closed.strLitToConstructor : Closed (.strLitToConstructor s) k := by
   simp [Closed, String.foldr_eq, Expr.strLitToConstructor]
-  induction s.data <;> simp [*, Closed]
+  induction s.toList <;> simp [*, Closed]
 
 theorem FVarsIn.toConstructor : ∀ {l : Literal}, FVarsIn P l.toConstructor
   | .natVal _ => .natLitToConstructor
@@ -581,7 +581,7 @@ theorem TrExprS.weakFV' (W : VLCtx.FVLift' Δ Δ' dk n k) (hΔ' : Δ'.WF env Us.
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     have h1 := h1.weak' henv W.toCtx
     exact .letE h1 (ih1 W hΔ') (ih2 W hΔ') (ih3 (W.cons_bvar _) ⟨hΔ', nofun, h1⟩)
-  | lit _ ih => exact .lit (ih W hΔ')
+  | lit h1 _ ih => exact .lit h1 (ih W hΔ')
   | mdata _ ih => exact .mdata (ih W hΔ')
   | proj _ h2 ih => exact .proj (ih W hΔ') (h2.weak' W.toCtx)
 
@@ -618,8 +618,8 @@ theorem TrExprS.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
     exact .forallE (h1.weakN henv W.toCtx) (h2.weakN henv W.toCtx.succ) (ih1 W) (ih2 (W.cons _))
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     exact .letE (h1.weakN henv W.toCtx) (ih1 W) (ih2 W) (ih3 (W.cons _))
-  | lit _ ih =>
-    refine .lit (Expr.liftLooseBVars_eq_self ?_ ▸ ih W :)
+  | lit h1 _ ih =>
+    refine .lit h1 (Expr.liftLooseBVars_eq_self ?_ ▸ ih W :)
     exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (h2.weakN W.toCtx)
@@ -643,6 +643,11 @@ theorem TrProj.defeqDFC (henv : VEnv.WF env) (hΓ : env.IsDefEqCtx U [] Γ₁ Γ
     ∃ e', TrProj Γ₂ s i e₂ e' := sorry
 
 variable! {env env' : VEnv} (henv : env ≤ env') in
+nonrec theorem VEnv.ContainsLits.mono : ∀ {l}, env.ContainsLits l → env'.ContainsLits l
+  | .natVal _, ⟨_, H⟩ => ⟨_, henv.1 H⟩
+  | .strVal _, ⟨⟨_, H1⟩, ⟨_, H2⟩⟩ => ⟨⟨_, henv.1 H1⟩, ⟨_, henv.1 H2⟩⟩
+
+variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem TrExprS.mono (H : TrExprS env Us Δ e e') : TrExprS env' Us Δ e e' := by
   induction H with
   | bvar h1 => exact .bvar h1
@@ -653,7 +658,7 @@ theorem TrExprS.mono (H : TrExprS env Us Δ e e') : TrExprS env' Us Δ e e' := b
   | lam h1 _ _ ih1 ih2 => exact .lam (h1.mono henv) ih1 ih2
   | forallE h1 h2 _ _ ih1 ih2 => exact .forallE (h1.mono henv) (h2.mono henv) ih1 ih2
   | letE h1 _ _ _ ih1 ih2 ih3 => exact .letE (h1.mono henv) ih1 ih2 ih3
-  | lit _ ih => refine .lit ih
+  | lit h1 _ ih => refine .lit (h1.mono henv) ih
   | mdata _ ih => exact .mdata ih
   | proj _ h2 ih => exact .proj ih h2
 
@@ -820,7 +825,7 @@ theorem TrExprS.wf (H : TrExprS env Us Δ e e') : VExpr.WF env Us.length Δ.toCt
     refine ⟨_, h1'.lam h2'⟩
   | forallE h1 h2 => have ⟨_, h1'⟩ := h1; have ⟨_, h2'⟩ := h2; exact ⟨_, h1'.forallE h2'⟩
   | letE h1 _ _ _ _ _ ih3 => exact ih3 ⟨hΔ, nofun, h1⟩
-  | lit _ ih | mdata _ ih => exact ih hΔ
+  | lit _ _ ih | mdata _ ih => exact ih hΔ
   | proj _ h2 ih => exact h2.wf (ih hΔ)
 
 variable! (henv : Ordered env) {Us : List Name} (hΔ : VLCtx.WF env Us.length Δ) in
@@ -880,7 +885,7 @@ theorem TrExprS.uniq (H1 : TrExprS env Us Δ₁ e e₁) (H2 : TrExprS env Us Δ�
     have ⟨_, hb⟩ := l1.isType henv hΓ
     refine ih4 (hΔ.cons nofun ?_) r4
     exact .vlet (ih3 hΔ r3 |>.of_l henv hΓ l1) (ih2 hΔ r2 |>.of_l henv hΓ hb)
-  | lit _ ih1 => let .lit r1 := H2; exact ih1 hΔ r1
+  | lit _ _ ih1 => let .lit _ r2 := H2; exact ih1 hΔ r2
   | mdata _ ih1 => let .mdata r1 := H2; exact ih1 hΔ r1
   | proj _ l2 ih1 => let .proj r1 r2 := H2; exact l2.uniq henv hΔ.defeqCtx r2 (ih1 hΔ r1)
 
@@ -943,7 +948,7 @@ theorem TrExprS.defeqDFC (H : TrExprS env Us Δ₁ e e₁) : ∃ e₂, TrExprS e
     have h1 := h1.defeqU_l henv (hΔ.symm henv).wf t3
     have h1 := h1.defeqU_r henv (hΔ.symm henv).wf t2
     exact ⟨_, .letE h1 h2' h3' h4'⟩
-  | lit _ ih1 => let ⟨_, h1⟩ := ih1 hΔ; exact ⟨_, .lit h1⟩
+  | lit h1 _ ih1 => let ⟨_, h2⟩ := ih1 hΔ; exact ⟨_, .lit h1 h2⟩
   | mdata _ ih1 => let ⟨_, h1⟩ := ih1 hΔ; exact ⟨_, .mdata h1⟩
   | proj h1 h2 ih1 =>
     let ⟨_, h1'⟩ := ih1 hΔ
@@ -1006,8 +1011,9 @@ theorem TrExpr.letE (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
   let ⟨_, h4'⟩ := s4.uniq henv hΔΔ s4'
   ⟨_, .letE h1' s2 s3 s4', _, h4'.symm.trans_l henv hΔ h4⟩
 
-theorem TrExpr.lit (h : TrExpr env Us Δ l.toConstructor e') : TrExpr env Us Δ (.lit l) e' :=
-  let ⟨_, s2, h2⟩ := h; ⟨_, .lit s2, h2⟩
+theorem TrExpr.lit (h1 : env.ContainsLits l)
+    (h : TrExpr env Us Δ l.toConstructor e') : TrExpr env Us Δ (.lit l) e' :=
+  let ⟨_, s2, h2⟩ := h; ⟨_, .lit h1 s2, h2⟩
 
 theorem TrExpr.mdata (h : TrExpr env Us Δ e e') : TrExpr env Us Δ (.mdata d e) e' :=
   let ⟨_, s2, h2⟩ := h; ⟨_, .mdata s2, h2⟩
@@ -1085,7 +1091,7 @@ theorem TrExprS.weakFV'_inv (henv : VEnv.WF env)
     have h1 := HasType.weak'_iff henv hΔ₂.toCtx W.toCtx
       |>.1 ((htt.defeqDF hvv).hasType.2.defeqDFC henv hΔ.defeqCtx)
     exact ⟨_, .letE h1 ih1 ih2 ih3⟩
-  | lit _ ih => let ⟨_, ih⟩ := ih W hΔ .toConstructor .toConstructor; exact ⟨_, .lit ih⟩
+  | lit h1 _ ih => let ⟨_, ih⟩ := ih W hΔ .toConstructor .toConstructor; exact ⟨_, .lit h1 ih⟩
   | mdata _ ih => let ⟨_, ih⟩ := ih W hΔ hc hv; exact ⟨_, .mdata ih⟩
   | proj h1 h2 ih =>
     have hΔ₂ := (hΔ.symm henv).wf
@@ -1166,8 +1172,8 @@ theorem TrExprS.instN (W : VLCtx.InstN Δ₀ e₀' A₀ dk k Δ₁ Δ) (H : TrEx
       (ih1 W) (ih2 (W.succ (d := .vlam _)))
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     exact .letE (h1.instN henv W.toCtx t₀) (ih1 W) (ih2 W) (ih3 (W.succ (d := .vlet ..)))
-  | lit _ ih =>
-    refine .lit (Expr.instantiate1'_eq_self ?_ ▸ ih W :)
+  | lit h1 _ ih =>
+    refine .lit h1 (Expr.instantiate1'_eq_self ?_ ▸ ih W :)
     exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (h2.instN W.toCtx)
@@ -1256,8 +1262,8 @@ theorem TrExprS.instN_let (W : VLCtx.InstLet Δ₀ e₀' A₀ dk k Δ₁ Δ) (H 
       (ih1 W) (ih2 (W.succ (d := .vlam _)))
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     exact .letE (W.toCtx ▸ h1) (ih1 W) (ih2 W) (ih3 (W.succ (d := .vlet ..)))
-  | lit _ ih =>
-    refine .lit (Expr.instantiate1'_eq_self ?_ ▸ ih W :)
+  | lit h1 _ ih =>
+    refine .lit h1 (Expr.instantiate1'_eq_self ?_ ▸ ih W :)
     exact Closed.toConstructor.looseBVarRange_le
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (W.toCtx ▸ h2)
@@ -1448,7 +1454,7 @@ theorem substParams_wf (red) (H : VLevel.ofLevel ps u = some u') :
       exact ⟨_, ⟨_, a1, _, b1, rfl⟩, VLevel.imax_congr a2 b2⟩
   | param x =>
     obtain ⟨H, rfl⟩ := H; subst eqF; simp
-    have := List.idxOf_eq_idxOf? x ps; revert this
+    have := List.idxOf_eq_getD_idxOf? x ps; unfold Option.getD at this; revert this
     split <;> simp [*, Nat.ne_of_lt, VLevel.inst]; rintro rfl; clear ‹_› eq
     generalize List.idxOf x ps = n at *
     rw [List.mapM_eq_some] at Hls
@@ -1505,8 +1511,8 @@ theorem TrExprS.instL (H : TrExprS env ps Δ e e') :
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     exact .letE henv (hΔ.instL Hls')
       (VLCtx.instL_toCtx _ ▸ h1.instL Hls') (ih1 hΔ) (ih2 hΔ) (ih3 ⟨hΔ, nofun, eq' ▸ h1⟩)
-  | lit _ ih =>
-    refine .lit (Expr.instantiateLevelParamsCore_eq_self ?_ ▸ ih hΔ :)
+  | lit h1 _ ih =>
+    refine .lit h1 (Expr.instantiateLevelParamsCore_eq_self ?_ ▸ ih hΔ :)
     exact Literal.toConstructor_hasLevelParam
   | mdata _ ih => exact .mdata (ih hΔ)
   | proj _ h2 ih =>
@@ -1546,8 +1552,8 @@ theorem TrExprS.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H :
     exact .forallE (W.toCtx ▸ h1) (W.toCtx ▸ h2) (ih1 W) (ih2 W.succ)
   | letE h1 _ _ _ ih1 ih2 ih3 =>
     exact .letE (W.toCtx ▸ h1) (ih1 W) (ih2 W) (ih3 W.succ)
-  | lit _ ih =>
-    exact .lit (FVarsIn.toConstructor.abstract_eq_self .toConstructor ▸ ih W)
+  | lit h1 _ ih =>
+    exact .lit h1 (FVarsIn.toConstructor.abstract_eq_self .toConstructor ▸ ih W)
   | mdata _ ih => exact .mdata (ih W)
   | proj _ h2 ih => exact .proj (ih W) (W.toCtx ▸ h2)
 
@@ -1575,7 +1581,7 @@ theorem TrExprS.IsUnique.natLitToConstructor : ∀ {n : Nat}, IsUnique (.natLitT
 
 theorem TrExprS.IsUnique.strLitToConstructor {s : String} : IsUnique (.strLitToConstructor s) := by
   refine ⟨⟨⟩, ?_⟩; simp [String.foldr_eq]
-  induction s.data with simp
+  induction s.toList with simp
   | nil => exact ⟨⟨⟩, ⟨⟩⟩
   | cons _ _ ih => exact ⟨⟨⟨⟨⟩, ⟨⟩⟩, ⟨⟨⟩, ⟨⟩⟩⟩, ih⟩
 
@@ -1614,7 +1620,7 @@ theorem TrExprS.unique' (hΔ : IsUniqueCtx Δ₁ Δ₂) (H : IsUnique e)
   | lam _ _ _ ih1 ih2
   | forallE _ _ _ _ ih1 ih2 => cases ih1 hΔ H.1 ‹_›; cases ih2 (hΔ.cons .vlam) H.2 ‹_›; rfl
   | letE _ _ _ _ _ ih1 ih2 => cases ih1 hΔ H.1 ‹_›; cases ih2 (hΔ.cons .vlet) H.2 ‹_›; rfl
-  | lit _ ih => exact ih hΔ .toConstructor ‹_›
+  | lit _ _ ih => exact ih hΔ .toConstructor ‹_›
   | mdata _ ih => exact ih hΔ H ‹_›
   | proj => cases H
 
@@ -1663,29 +1669,15 @@ theorem VExpr.WF.boolLit_has_type (wf : env.Ordered) (henv : env.HasPrimitives)
   | false => cases henv.boolFalse h1; exact .const h1 h2 h3
   | true => cases henv.boolTrue h1; exact .const h1 h2 h3
 
-theorem TrExprS.lit_has_type (wf : env.Ordered) (henv : env.HasPrimitives)
-    (H : TrExprS env Us Δ (.lit l) e') : env.contains l.typeName := by
-  match l with
-  | .natVal n =>
-    induction n generalizing e' with
-    | zero =>
-      let .lit H := H
-      let .const H .. := H
-      have ⟨_, H⟩ := wf.constWF (henv.natZero H ▸ H)
-      have ⟨_, H, _⟩ := H.const_inv wf trivial
-      exact ⟨_, H⟩
-    | succ _ ih =>
-      let .lit H1 := H
-      let .app _ _ _ H1 := H1
-      exact ih H1
-  | .strVal s =>
-    let .lit H := H
-    let .app _ _ H _ := H
-    let .const H .. := H
-    let ⟨_, H⟩ := wf.constWF (henv.stringMk H ▸ H)
-    let ⟨H1, _, H⟩ := H.forallE_inv wf
-    let ⟨_, H, _⟩ := H.const_inv wf (by exact ⟨trivial, H1⟩)
-    exact ⟨_, H⟩
+theorem TrExprS.lit_has_type (H : TrExprS env Us Δ (.lit l) e') : env.ContainsLits l :=
+  let .lit H _ := H; H
+
+theorem TrExprS.nat_of_natZero (wf : env.Ordered) (henv : env.HasPrimitives)
+    (H : TrExprS env Us Δ .natZero e') : env.contains ``Nat := by
+  let .const H .. := H
+  have ⟨_, H⟩ := henv.natZero H ▸ wf.constWF H
+  have ⟨_, H, _⟩ := H.const_inv wf (by trivial)
+  exact ⟨_, H⟩
 
 theorem TrExprS.natZero (henv : env.HasPrimitives) (H : env.contains ``Nat) :
     TrExprS env Us Δ .natZero .natZero ∧ env.HasType Us.length Δ.toCtx .natZero .nat := by
@@ -1710,41 +1702,41 @@ theorem TrExprS.natLit (henv : env.HasPrimitives) (H : env.contains ``Nat) (n) :
     TrExprS env Us Δ (.lit (.natVal n)) (.natLit n) ∧
     env.HasType Us.length Δ.toCtx (.natLit n) .nat := by
   induction n with
-  | zero => exact let ⟨h1, h2⟩ := natZero henv H; ⟨.lit h1, h2⟩
-  | succ n ih => exact let ⟨h1, h2⟩ := natSucc henv H; ⟨.lit (.app h2 ih.2 h1 ih.1), .app h2 ih.2⟩
+  | zero => exact let ⟨h1, h2⟩ := natZero henv H; ⟨.lit H h1, h2⟩
+  | succ n ih => exact let ⟨h1, h2⟩ := natSucc henv H; ⟨.lit H (.app h2 ih.2 h1 ih.1), .app h2 ih.2⟩
 
 @[simp] theorem VExpr.instL_natLit : (VExpr.natLit n).instL ls = VExpr.natLit n := by
   induction n <;> simp [*, natLit, instL]
 
-theorem TrExprS.stringMk (henv : env.HasPrimitives) (H : env.contains ``String) :
-    TrExprS env Us Δ (.const ``String.mk []) .stringMk ∧
-    env.HasType Us.length Δ.toCtx .stringMk (.forallE .listChar .string) := by
-  let ⟨⟨_, H⟩, _⟩ := henv.string H
-  cases henv.stringMk H
+theorem TrExprS.stringOfList (henv : env.HasPrimitives) (H : env.contains ``String.ofList) :
+    TrExprS env Us Δ (.const ``String.ofList []) .stringOfList ∧
+    env.HasType Us.length Δ.toCtx .stringOfList (.forallE .listChar .string) := by
+  let ⟨_, H⟩ := H
+  cases (henv.stringOfList H).1
   exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
-theorem TrExprS.charOfNat (wf : env.Ordered) (henv : env.HasPrimitives)
-    (H : env.contains ``String) :
+theorem TrExprS.charOfNat (henv : env.HasPrimitives) (H : env.contains ``Char.ofNat) :
     TrExprS env Us Δ (.const ``Char.ofNat []) .charOfNat ∧
     env.HasType Us.length Δ.toCtx .charOfNat (.forallE .nat .char) := by
-  let ⟨_, _, _, H⟩ := henv.string H
-  let ⟨_, H1, _, H3⟩ := H.const_inv wf trivial
-  exact ⟨.const H1 rfl H3, (H.instL (ls := []) nofun).weak0 wf⟩
+  let ⟨_, H⟩ := H
+  cases henv.charOfNat H
+  exact ⟨.const H rfl rfl, .const H nofun rfl⟩
 
-theorem VEnv.HasPrimitives.nat_of_string (wf : Ordered env) (henv : env.HasPrimitives)
-    (H : env.contains ``String) : env.contains ``Nat := by
-  let ⟨_, _, _, H⟩ := henv.string H
-  let ⟨_, H⟩ := H.isType wf trivial
+theorem VEnv.HasPrimitives.nat_of_charOfNat (wf : Ordered env) (henv : env.HasPrimitives)
+    (H : env.contains ``Char.ofNat) : env.contains ``Nat := by
+  let ⟨_, H⟩ := H
+  have ⟨_, H⟩ := wf.constWF (henv.charOfNat H ▸ H)
   let ⟨⟨_, H⟩, _⟩ := H.forallE_inv wf
   let ⟨_, H, _⟩ := H.const_inv wf trivial
   exact ⟨_, H⟩
 
-theorem TrExprS.listChar (wf : env.Ordered) (henv : env.HasPrimitives) (H : env.contains ``String) :
+theorem TrExprS.listChar (wf : env.Ordered) (henv : env.HasPrimitives)
+    (H : env.contains ``String.ofList) :
     TrExprS env Us Δ (.app (.const ``List [.zero]) (.const ``Char [])) .listChar ∧
     env.IsType Us.length Δ.toCtx .listChar := by
-  let ⟨⟨_, H⟩, _⟩ := henv.string H
-  let ⟨_, H⟩ := wf.constWF (henv.stringMk H ▸ H)
-  let ⟨⟨_, H⟩, _⟩ := H.forallE_inv wf
+  let ⟨_, H⟩ := H
+  let ⟨_, H, _⟩ := henv.stringOfList H
+  let ⟨_, H⟩ := H.isType wf (by trivial)
   refine ⟨?_, _, (H.instL (ls := []) nofun).weak0 wf⟩
   let ⟨_, _, A, B⟩ := H.app_inv wf trivial
   let ⟨_, A1, _, A3⟩ := A.const_inv wf trivial
@@ -1753,10 +1745,11 @@ theorem TrExprS.listChar (wf : env.Ordered) (henv : env.HasPrimitives) (H : env.
     (.const A1 rfl A3) (.const B1 rfl B3)
 
 theorem TrExprS.listCharNil (wf : env.Ordered) (henv : env.HasPrimitives)
-    (H : env.contains ``String) :
+    (H : env.contains ``String.ofList) :
     TrExprS env Us Δ (.app (.const ``List.nil [.zero]) (.const ``Char [])) .listCharNil ∧
     env.HasType Us.length Δ.toCtx .listCharNil .listChar := by
-  let ⟨_, H, _⟩ := henv.string H
+  let ⟨_, H⟩ := H
+  let ⟨_, H, _⟩ := henv.stringOfList H
   refine ⟨?_, (H.instL (ls := []) nofun).weak0 wf⟩
   let ⟨_, _, A, B⟩ := H.app_inv wf trivial
   let ⟨_, A1, _, A3⟩ := A.const_inv wf trivial
@@ -1765,11 +1758,12 @@ theorem TrExprS.listCharNil (wf : env.Ordered) (henv : env.HasPrimitives)
     (.const A1 rfl A3) (.const B1 rfl B3)
 
 theorem TrExprS.listCharCons (wf : env.Ordered) (henv : env.HasPrimitives)
-    (H : env.contains ``String) :
+    (H : env.contains ``String.ofList) :
     TrExprS env Us Δ (.app (.const ``List.cons [.zero]) (.const ``Char [])) .listCharCons ∧
     env.HasType Us.length Δ.toCtx .listCharCons
       (.forallE .char <| .forallE .listChar .listChar) := by
-  let ⟨_, _, H, _⟩ := henv.string H
+  let ⟨_, H⟩ := H
+  let ⟨_, _, H⟩ := henv.stringOfList H
   refine ⟨?_, (H.instL (ls := []) nofun).weak0 wf⟩
   let ⟨_, _, A, B⟩ := H.app_inv wf trivial
   let ⟨_, A1, _, A3⟩ := A.const_inv wf trivial
@@ -1778,7 +1772,7 @@ theorem TrExprS.listCharCons (wf : env.Ordered) (henv : env.HasPrimitives)
     (.const A1 rfl A3) (.const B1 rfl B3)
 
 theorem TrExprS.listCharLit (wf : env.Ordered) (henv : env.HasPrimitives)
-    (H : env.contains ``String) (s : List Char) :
+    (H : env.ContainsLits (.strVal l)) (s : List Char) :
     TrExprS env Us Δ (s.foldr
       (init := .app (.const ``List.nil [.zero]) (.const ``Char []))
       (fun c e => .app (.app
@@ -1786,25 +1780,25 @@ theorem TrExprS.listCharLit (wf : env.Ordered) (henv : env.HasPrimitives)
         (.app (.const ``Char.ofNat []) (.lit (.natVal c.toNat)))) e)) (.listCharLit s) ∧
     env.HasType Us.length Δ.toCtx (.listCharLit s) .listChar := by
   induction s with
-  | nil => exact TrExprS.listCharNil wf henv H
+  | nil => exact TrExprS.listCharNil wf henv H.2
   | cons x _ ih =>
-    have a := TrExprS.listCharCons wf henv H (Us := Us) (Δ := Δ)
-    have b := TrExprS.charOfNat wf henv H (Us := Us) (Δ := Δ)
-    have c := TrExprS.natLit henv (henv.nat_of_string wf H) (Us := Us) (Δ := Δ) (n := x.toNat)
+    have a := TrExprS.listCharCons wf henv H.2 (Us := Us) (Δ := Δ)
+    have b := TrExprS.charOfNat henv H.1 (Us := Us) (Δ := Δ)
+    have c := TrExprS.natLit henv (henv.nat_of_charOfNat wf H.1) (Us := Us) (Δ := Δ) (n := x.toNat)
     have d1 := b.1.app b.2 c.2 c.1; have d2 := b.2.app c.2
     have e1 := a.1.app a.2 d2 d1; have e2 := a.2.app d2
     exact ⟨e1.app e2 ih.2 ih.1, e2.app ih.2⟩
 
 theorem TrExprS.trLiteral (wf : env.Ordered) (henv : env.HasPrimitives)
-    (l) (H : env.contains l.typeName) :
+    (l) (H : env.ContainsLits l) :
     TrExprS env Us Δ (.lit l) (.trLiteral l) ∧
     env.HasType Us.length Δ.toCtx (.trLiteral l) (.const l.typeName []) := by
   match l with
   | .natVal n => exact TrExprS.natLit henv H _
   | .strVal s =>
-    have a := TrExprS.stringMk henv H (Us := Us) (Δ := Δ)
-    have b := TrExprS.listCharLit wf henv H (Us := Us) (Δ := Δ) s.data
-    exact ⟨.lit (.app a.2 b.2 a.1 (String.foldr_eq .. ▸ b.1)), a.2.app b.2⟩
+    have a := TrExprS.stringOfList henv H.2 (Us := Us) (Δ := Δ)
+    have b := TrExprS.listCharLit wf henv H (Us := Us) (Δ := Δ) s.toList
+    exact ⟨.lit H (.app a.2 b.2 a.1 (String.foldr_eq .. ▸ b.1)), a.2.app b.2⟩
 
 def VLocalDecl.ClosedN : VLocalDecl → (k : Nat := 0) → Prop
   | .vlam A, k => A.ClosedN k

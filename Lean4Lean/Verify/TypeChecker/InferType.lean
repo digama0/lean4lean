@@ -399,12 +399,12 @@ theorem inferProj.WF
     (inferProj st i e ety).WF c s fun ty _ =>
       ∃ ty', c.TrTyping (.proj st i e) ty e' ty' := sorry
 
-theorem literal_typeName_is_primitive {l : Literal} :
-    Environment.primitives.contains l.typeName := by
+theorem literal_is_primitive (H : n = ``Nat ∨ n = ``Char.ofNat ∨ n = ``String.ofList)  :
+    Environment.primitives.contains n := by
   simp [Environment.primitives, NameSet.ofList]
-  cases l <;> simp +decide [Literal.typeName, NameSet.contains]
+  obtain rfl|rfl|rfl := H <;> simp +decide [NameSet.contains]
 
-theorem infer_literal {c : VContext} (H : c.venv.contains l.typeName) :
+theorem infer_literal {c : VContext} (H : c.venv.ContainsLits l) :
     c.TrTyping (.lit l) l.type (.trLiteral l) (.const l.typeName []) := by
   refine
     have := TrExprS.trLiteral c.Ewf c.hasPrimitives l H
@@ -446,14 +446,21 @@ theorem inferType'.WF
     · exact { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
     · exact { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
   unfold F1; refine .get ?_; split
-  · extract_lets n G1; split
+  · extract_lets G1; split <;> [split; skip]
     · refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h => ?_
       have ⟨_, h, _⟩ := c.trenv.find? h <|
-        (c.safePrimitives h literal_typeName_is_primitive).1 ▸ DefinitionSafety.le_safe
-      simp [n, G1]; exact hF (infer_literal ⟨_, h⟩)
+        (c.safePrimitives h (literal_is_primitive (.inl rfl))).1 ▸ DefinitionSafety.le_safe
+      exact hF (infer_literal ⟨_, h⟩)
+    · refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h1 => ?_
+      refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h2 => ?_
+      have ⟨_, h1, _⟩ := c.trenv.find? h1 <|
+        (c.safePrimitives h1 (literal_is_primitive (.inr (.inl rfl)))).1 ▸ DefinitionSafety.le_safe
+      have ⟨_, h2, _⟩ := c.trenv.find? h2 <|
+        (c.safePrimitives h2 (literal_is_primitive (.inr (.inr rfl)))).1 ▸ DefinitionSafety.le_safe
+      exact hF (infer_literal ⟨⟨_, h1⟩, ⟨_, h2⟩⟩)
     · rename_i h; have ⟨_, h⟩ := hinf (by simpa using h)
-      have := h.lit_has_type c.Ewf c.hasPrimitives
-      simp [n, G1]; exact hF (infer_literal this)
+      have := h.lit_has_type
+      simp [G1]; exact hF (infer_literal this)
   · refine (inferType'.WF (by exact h1) ?_).bind fun _ _ _ ⟨_, _, hb, h1, h⟩ => ?_
     · exact fun h => let ⟨_, .mdata h⟩ := hinf h; ⟨_, h⟩
     exact hF ⟨hb, .mdata h1, h⟩

@@ -522,12 +522,13 @@ def ParRedExt.meas : ParRedExt → Nat
   | .lift l => l.meas + 1
   | .app l => l.meas + 2
 
-theorem ParRedExt.is_app {l : ParRedExt} (H : l.apply (.app f a) = e') :
-    match e' with | .app .. => True | _ => False := by
+def IsApp := fun | VExpr.app .. => True | _ => False
+
+theorem ParRedExt.isApp {l : ParRedExt} (H : l.apply (.app f a) = e') : IsApp e' := by
   induction l generalizing e' with simp [apply] at H
   | lift l ih =>
-    specialize ih rfl; split at ih <;> cases ih <;>
-    · rename_i h1 _; cases h1 ▸ H; trivial
+    specialize ih rfl; unfold IsApp at ih; split at ih <;> cases ih <;>
+    · rename_i h1; cases h1 ▸ H; trivial
   | _ => subst H; trivial
 
 theorem hasType_app_bvar0
@@ -677,7 +678,7 @@ theorem ParRedExt.parRed_beta :
       have := TY.app ((TY.isDefEq_weakN_iff .one).2 this) (TY.bvar .zero)
       simp [instN_bvar0] at this
       exact TY.defeq_r (TY.symm H) this
-  | _ => cases l.is_app eq
+  | _ => cases l.isApp eq
 
 theorem NormalEq.parRed (H1 : NormalEq TY Γ e₁ e₂) (H2 : ParRed TY Γ e₂ e₂') :
     ∃ e₁', ParRedS TY Γ e₁ e₁' ∧ NormalEq TY Γ e₁' e₂' := by

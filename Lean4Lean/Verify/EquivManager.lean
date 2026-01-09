@@ -110,7 +110,7 @@ theorem RelevantEq.uniq (eq : RelevantEq e₁ e₂)
     have ⟨_, hb⟩ := l1.isType henv hΓ
     refine ih4 (hΔ.cons nofun ?_) eq3 r4
     exact .vlet (ih3 hΔ eq2 r3 |>.of_l henv hΓ l1) (ih2 hΔ eq1 r2 |>.of_l henv hΓ hb)
-  | lit _ ih1 => cases eq; let .lit r1 := H2; exact ih1 hΔ .rfl r1
+  | lit _ _ ih1 => cases eq; let .lit _ r2 := H2; exact ih1 hΔ .rfl r2
   | mdata _ ih1 => let .mdata eq := eq; let .mdata r1 := H2; exact ih1 hΔ eq r1
   | proj _ l2 ih1 =>
     let .proj eq := eq; let .proj r1 r2 := H2

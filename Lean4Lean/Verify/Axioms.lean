@@ -77,18 +77,6 @@ axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Exp
   mkAppRangeAux n args i e =
     if i < n then mkAppRangeAux n args (i + 1) (mkApp e args[i]!) else e
 
-namespace Substring
-
-/-- info: false -/
-#guard_msgs in #eval let s : Substring := ⟨"", ⟨1⟩, 0⟩; s == s
-
-/-- This is not true, as demonstrated above; it fails on substrings with bad UTF-8. (lean4#10511)
-However, this is likely to be fixed by fixing `Substring` rather than changing invariants to
-avoid it, so we make this assumption on the hope that it gets fixed upstream. -/
-@[instance] axiom beq_refl (s : Substring) : s == s
-
-end Substring
-
 namespace Syntax
 
 def structEq' : Syntax → Syntax → Bool

@@ -226,10 +226,11 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
     return r
   let r ← match e with
     | .lit l =>
-      let c := l.typeName
       if !inferOnly then
-        _ ← (← getEnv).get c
-      pure (mkConst c)
+        match l with
+        | .natVal _ => _ ← (← getEnv).get ``Nat
+        | .strVal _ => _ ← (← getEnv).get ``Char.ofNat; _ ← (← getEnv).get ``String.ofList
+      pure (mkConst l.typeName)
     | .mdata _ e => inferType' e inferOnly
     | .proj s idx e => inferProj s idx e (← inferType' e inferOnly)
     | .fvar n => inferFVar (← readThe Context) n
@@ -283,7 +284,7 @@ def whnfFVar (e : Expr) (cheapRec cheapProj : Bool) : RecM Expr := do
 def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
   let mut c ← (if cheapProj then whnfCore struct cheapRec cheapProj else whnf struct)
   if let .lit (.strVal s) := c then
-    c := .strLitToConstructor s
+    c ← whnf (.strLitToConstructor s)
   c.withApp fun mk args => do
   let .const mkC _ := mk | return none
   let env ← getEnv
@@ -633,7 +634,7 @@ def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := loop tn sn 1000 
 def tryStringLitExpansionCore (t s : Expr) : RecM LBool := do
   let .lit (.strVal st) := t | return .undef
   let .app sf _ := s | return .undef
-  unless sf == .const ``String.mk [] do return .undef
+  unless sf == .const ``String.ofList [] do return .undef
   toLBoolM <| isDefEqCore (.strLitToConstructor st) s
 
 def tryStringLitExpansion (t s : Expr) : RecM LBool := do

@@ -6,7 +6,7 @@ import Batteries.Tactic.SeqFocus
 
 open Std
 
-attribute [simp] Option.bind_eq_some List.filterMap_cons
+attribute [simp] Option.bind_eq_some_iff List.filterMap_cons
 
 protected theorem Nat.le_iff_exists_add {a b : Nat} : a ≤ b ↔ ∃ c, b = a + c :=
   ⟨fun h => ⟨_, (Nat.add_sub_cancel' h).symm⟩, fun ⟨_, h⟩ => h ▸ Nat.le_add_right ..⟩
@@ -122,7 +122,7 @@ theorem List.idxOf_eq_length_iff [BEq α] [LawfulBEq α]
   | nil => exact iff_of_true rfl not_mem_nil
   | cons b l ih =>
     simp only [length, mem_cons, idxOf_cons]
-    rw [cond_eq_if]
+    rw [cond_eq_ite]
     split <;> rename_i h <;> simp at h
     · exact iff_of_false (by rintro ⟨⟩) fun H => H <| Or.inl h.symm
     · simp only [Ne.symm h, false_or]

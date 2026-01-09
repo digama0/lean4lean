@@ -66,6 +66,10 @@ def VLCtx.WF.fvwf : ∀ {Δ}, VLCtx.WF env U Δ → Δ.FVWF
 
 def TrProj : ∀ (Γ : List VExpr) (structName : Name) (idx : Nat) (e : VExpr), VExpr → Prop := sorry
 
+def VEnv.ContainsLits (env : VEnv) : Literal → Prop
+  | .natVal _ => env.contains ``Nat
+  | .strVal _ => env.contains ``Char.ofNat ∧ env.contains ``String.ofList
+
 variable (env : VEnv) (Us : List Name) in
 inductive TrExprS : VLCtx → Expr → VExpr → Prop
   | bvar : Δ.find? (.inl i) = some (e, A) → TrExprS Δ (.bvar i) e
@@ -94,7 +98,7 @@ inductive TrExprS : VLCtx → Expr → VExpr → Prop
     TrExprS Δ ty ty' → TrExprS Δ val val' →
     TrExprS ((none, .vlet ty' val') :: Δ) body body' →
     TrExprS Δ (.letE name ty val body nd) body'
-  | lit : TrExprS Δ l.toConstructor e → TrExprS Δ (.lit l) e
+  | lit : env.ContainsLits l → TrExprS Δ l.toConstructor e → TrExprS Δ (.lit l) e
   | mdata : TrExprS Δ e e' → TrExprS Δ (.mdata d e) e'
   | proj : TrExprS Δ e e' → TrProj Δ.toCtx s i e' e'' → TrExprS Δ (.proj s i e) e''
 
@@ -117,7 +121,7 @@ def VExpr.natLit : Nat → VExpr
 
 def VExpr.char : VExpr := .const ``Char []
 def VExpr.string : VExpr := .const ``String []
-def VExpr.stringMk : VExpr := .const ``String.mk []
+def VExpr.stringOfList : VExpr := .const ``String.ofList []
 def VExpr.listChar : VExpr := .app (.const ``List [.zero]) .char
 def VExpr.listCharNil : VExpr := .app (.const ``List.nil [.zero]) .char
 def VExpr.listCharCons : VExpr := .app (.const ``List.cons [.zero]) .char
@@ -128,7 +132,7 @@ def VExpr.listCharLit : List Char → VExpr
 
 def VExpr.trLiteral : Literal → VExpr
   | .natVal n => .natLit n
-  | .strVal s => .app .stringMk (.listCharLit s.data)
+  | .strVal s => .app .stringOfList (.listCharLit s.toList)
 
 def VEnv.ReflectsNatNatNat (env : VEnv) (fc : Name) (f : Nat → Nat → Nat) :=
   env.contains fc →
@@ -160,9 +164,9 @@ structure VEnv.HasPrimitives (env : VEnv) : Prop where
   natXor : env.ReflectsNatNatNat ``Nat.xor Nat.xor
   natShiftLeft : env.ReflectsNatNatNat ``Nat.shiftLeft Nat.shiftLeft
   natShiftRight : env.ReflectsNatNatNat ``Nat.shiftRight Nat.shiftRight
-  string : env.contains ``String → env.contains ``String.mk ∧
+  charOfNat : env.constants ``Char.ofNat = some ci →
+    ci = { uvars := 0, type := .forallE .nat .char }
+  stringOfList : env.constants ``String.ofList = some ci →
+    ci = { uvars := 0, type := .forallE .listChar .string } ∧
     env.HasType 0 [] .listCharNil .listChar ∧
-    env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar) ∧
-    env.HasType 0 [] .charOfNat (.forallE .nat .char)
-  stringMk : env.constants ``String.mk = some ci →
-    ci = { uvars := 0, type := .forallE .listChar .string }
+    env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar)

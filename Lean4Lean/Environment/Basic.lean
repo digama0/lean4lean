@@ -38,7 +38,7 @@ def primitives : NameSet := .ofList [
   ``Nat.gcd, ``Nat.mod, ``Nat.div, ``Nat.beq, ``Nat.ble,
   ``Nat.bitwise, ``Nat.land, ``Nat.lor, ``Nat.xor,
   ``Nat.shiftLeft, ``Nat.shiftRight,
-  ``String, ``String.mk]
+  ``String.ofList, ``Char.ofNat]
 
 /--
 Returns true iff `constName` is a non-recursive inductive datatype that has only one constructor and no indices.
@@ -59,7 +59,7 @@ def checkName (env : Environment) (n : Name)
       throw <| .other s!"unexpected use of primitive name {n}"
 
 open private subsumesInfo Kernel.Environment.mk moduleNames moduleNameMap parts toEffectiveImport
-  from Lean.Environment
+  interpData? from Lean.Environment
 
 def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
   Kernel.Environment.mk
@@ -82,7 +82,7 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
     (trustLevel : UInt32 := 0) : Except Exception Environment := do
   let modules := (moduleNames s).filterMap ((moduleNameMap s)[·]?)
   let moduleData ← modules.mapM fun mod => do
-    let some data := mod.mainModule? |
+    let some data := interpData? mod .private |
       throw <| .other s!"missing data file for module {mod.module}"
     return data
   let numPrivateConsts := moduleData.foldl (init := 0) fun numPrivateConsts data => Id.run do
@@ -97,9 +97,9 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
         privateConstantMap := constantMap'
         if let some cinfoPrev := cinfoPrev? then
           -- Recall that the map has not been modified when `cinfoPrev? = some _`.
-          if subsumesInfo cinfo cinfoPrev then
+          if subsumesInfo privateConstantMap cinfo cinfoPrev then
             privateConstantMap := privateConstantMap.insert cname cinfo
-          else if !subsumesInfo cinfoPrev cinfo then
+          else if !subsumesInfo privateConstantMap cinfoPrev cinfo then
             throwAlreadyImported s const2ModIdx modIdx cname
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
     for cname in data.extraConstNames do

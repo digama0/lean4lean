@@ -1,7 +1,6 @@
 import Batteries.Data.List.Basic
 import Lean4Lean.Environment.Basic
 import Lean4Lean.TypeChecker
-import Lean4Lean.Stream
 
 namespace Lean4Lean
 open Lean hiding Environment Exception

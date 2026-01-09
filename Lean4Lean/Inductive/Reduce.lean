@@ -67,7 +67,8 @@ def inductiveReduceRec [Monad m] (env : Environment) (e : Expr)
   if info.k then
     major ← toCtorWhenK env whnf inferType isDefEq info major
   match ← whnf major with
-  | .lit l => major := l.toConstructor
+  | .lit (.natVal n) => major := .natLitToConstructor n
+  | .lit (.strVal s) => major ← whnf (.strLitToConstructor s)
   | e => major ← toCtorWhenStruct env whnf inferType info.getMajorInduct e
   let some rule := getRecRuleFor info major | return none
   let majorArgs := major.getAppArgs

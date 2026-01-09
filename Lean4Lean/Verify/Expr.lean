@@ -101,17 +101,33 @@ theorem DefinitionSafety.le_antisymm {a b : DefinitionSafety} : a ≤ b → b �
 namespace Substring
 
 open private substrEq.loop from Init.Data.String.Basic in
-nonrec theorem beq_symm {s t : Substring} : s == t → t == s := by
-  let ⟨s, ⟨b⟩, e⟩ := s
-  let ⟨s2, ⟨b2⟩, e2⟩ := t
-  simp +contextual [(· == ·), Substring.beq, Substring.bsize, String.substrEq]
+theorem beq_refl (s : Substring.Raw) : s == s := by
+  simp [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq]
+  let rec loop {s i n} : substrEq.loop s s i i n := by
+    unfold substrEq.loop; simp [Decidable.or_iff_not_imp_left]
+    intro h1
+    have := Char.utf8Size_pos (String.Pos.Raw.get s i)
+    exact loop
+  termination_by n.byteIdx - i.byteIdx
+  refine ⟨?_, loop⟩
+  obtain h | h := Nat.le_or_le s.repair.startPos.byteIdx s.repair.stopPos.byteIdx
+  · rw [Nat.add_sub_cancel' h]
+    apply String.Pos.Raw.IsValid.le_rawEndPos
+    simp [Substring.Raw.repair]; split <;> simp [*]
+  · simp [Nat.sub_eq_zero_of_le h]
+    apply String.Pos.Raw.IsValid.le_rawEndPos
+    simp [Substring.Raw.repair]; split <;> simp [*]
+
+open private substrEq.loop from Init.Data.String.Basic in
+theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
+  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq]
   let rec loop {s s' b b' i n} :
       substrEq.loop s s' ⟨b + i⟩ ⟨b' + i⟩ ⟨b + n⟩ ↔
       substrEq.loop s' s ⟨b' + i⟩ ⟨b + i⟩ ⟨b' + n⟩ := by
     unfold substrEq.loop; simp [beq_comm, Decidable.or_iff_not_imp_left]
     refine imp_congr_right fun h1 => and_congr_right fun h2 => ?_
-    simp [h2, instHAddPosChar, Nat.add_assoc]
-    have := Char.utf8Size_pos (s'.get ⟨b'+i⟩)
+    simp [h2, String.instHAddRawChar, Nat.add_assoc]
+    have := Char.utf8Size_pos (String.Pos.Raw.get s' ⟨b'+i⟩)
     exact Bool.eq_iff_iff.2 loop
   termination_by b + n - (b + i)
   intro h1 h2 h3
@@ -119,11 +135,11 @@ nonrec theorem beq_symm {s t : Substring} : s == t → t == s := by
   simp [loop]
 
 open private substrEq.loop from Init.Data.String.Basic in
-nonrec theorem beq_trans {s t : Substring} : s == t → t == u → s == u := by
-  let ⟨s, ⟨b⟩, e⟩ := s
-  let ⟨s2, ⟨b2⟩, e2⟩ := t
-  let ⟨s3, ⟨b3⟩, e3⟩ := u
-  simp +contextual [(· == ·), Substring.beq, Substring.bsize, String.substrEq]
+theorem beq_trans {s t : Substring.Raw} : s == t → t == u → s == u := by
+  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq]
+  let ⟨s, ⟨b⟩, e⟩ := s.repair
+  let ⟨s2, ⟨b2⟩, e2⟩ := t.repair
+  let ⟨s3, ⟨b3⟩, e3⟩ := u.repair
   intro h1 h2 h3 h4 h5 h6 h7 h8
   constructor; · omega
   simp [h5] at h4
@@ -133,14 +149,14 @@ nonrec theorem beq_trans {s t : Substring} : s == t → t == u → s == u := by
        substrEq.loop s₂ s₃ ⟨b₂ + i⟩ ⟨b₃ + i⟩ ⟨b₂ + n⟩) := by
     unfold substrEq.loop; simp [Decidable.or_iff_not_imp_left]
     refine fun h1 => imp_congr_right fun h => ?_; let ⟨h1, h2⟩ := h1 h
-    simp [h1]; intro h3; simp [h1, h3, instHAddPosChar, Nat.add_assoc] at h2 ⊢
-    have := Char.utf8Size_pos (s₃.get ⟨b₃+i⟩)
+    simp [h1]; intro h3; simp [h1, h3, String.instHAddRawChar, Nat.add_assoc] at h2 ⊢
+    have := Char.utf8Size_pos (String.Pos.Raw.get s₃ ⟨b₃+i⟩)
     refine Bool.eq_iff_iff.2 (loop h2)
   termination_by n - i
   have loop := @loop (i := 0) (h := h4); simp at loop
   simpa [loop] using h8
 
-instance : EquivBEq Substring where
+instance : EquivBEq Substring.Raw where
   symm := beq_symm
   trans := beq_trans
   rfl := beq_refl _
@@ -228,9 +244,8 @@ theorem toConstructor_hasLevelParam :
   cases l with simp [Literal.toConstructor]
   | natVal n => cases n <;> simp [natLitToConstructor, hasLevelParam', natZero, natSucc]
   | strVal s =>
-    let ⟨l⟩ := s
     simp [strLitToConstructor, hasLevelParam', String.foldr_eq]
-    induction l <;> simp_all [hasLevelParam', Level.hasParam']
+    induction s.toList <;> simp_all [hasLevelParam', Level.hasParam']
 
 protected theorem beq_iff_eq {m n : Literal} : m == n ↔ m = n := by
   cases m <;> cases n <;> simp! [(· == ·)]

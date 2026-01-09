@@ -407,16 +407,16 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
 theorem isNatZero_wf {c : VContext} (H : isNatZero e) (h : c.TrExprS e e') : e' = .natZero := by
   have h1 : c.TrExprS (.lit (.natVal 0)) e' := by
     simp [isNatZero] at H; obtain H|H := H
-    · exact .lit (h.eqv H)
+    · have := h.eqv H; exact .lit (this.nat_of_natZero c.Ewf c.hasPrimitives) this
     · split at H <;> [exact h; cases H]
-  have := TrExprS.lit_has_type c.Ewf c.hasPrimitives (l := .natVal 0) h1
+  have := TrExprS.lit_has_type (l := .natVal 0) h1
   exact h1.unique (by trivial) (TrExprS.natLit c.hasPrimitives this 0).1
 
 theorem isNatSuccOf?_wf {c : VContext} (H : isNatSuccOf? e = some e₁)
     (h : c.TrExprS e e') : ∃ x, c.TrExprS e₁ x ∧ e' = .app .natSucc x := by
   unfold isNatSuccOf? at H; split at H <;> cases H
   · rename_i n
-    have := TrExprS.lit_has_type c.Ewf c.hasPrimitives (l := .natVal (n+1)) h
+    have := TrExprS.lit_has_type (l := .natVal (n+1)) h
     refine ⟨_, (TrExprS.natLit c.hasPrimitives this n).1, ?_⟩
     exact h.unique (by trivial) (TrExprS.natLit c.hasPrimitives this (n+1)).1
   · let .app a1 a2 a3 a4 := h
@@ -475,7 +475,7 @@ theorem tryStringLitExpansionCore.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (tryStringLitExpansionCore e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
   unfold tryStringLitExpansionCore; iterate 3 split <;> [skip; exact .pure nofun]
-  let .lit he₁ := he₁
+  let .lit _ he₁ := he₁
   exact .toLBoolM <| isDefEqCore.WF he₁ he₂
 
 theorem tryStringLitExpansion.WF {c : VContext} {s : VState}
