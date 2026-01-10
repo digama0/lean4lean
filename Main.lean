@@ -7,6 +7,7 @@ import Lean.CoreM
 import Lean.Util.FoldConsts
 import Lean4Lean.Environment
 import Lake.Load.Manifest
+import Export.Parse
 
 namespace Lean
 
@@ -305,11 +306,30 @@ You can also use `lake exe lean4lean --fresh Mathlib.Data.Nat.Basic` to replay a
 but this can only be used on a single file.
 -/
 unsafe def main (args : List String) : IO UInt32 := do
-  initSearchPath (← findSysroot)
   let (flags, args) := args.partition fun s => s.startsWith "-"
   let verbose := "-v" ∈ flags || "--verbose" ∈ flags
   let fresh : Bool := "--fresh" ∈ flags
   let compare : Bool := "--compare" ∈ flags
+  let readImport : Bool := "--import" ∈ flags
+  if readImport then
+    if fresh then
+      throw <| IO.userError s!"--import and --fresh cannot be used together"
+    if compare then
+      throw <| IO.userError s!"--import and --compare cannot be used together"
+    let [inputPath] := args |
+      throw <| IO.userError s!"--import expect a single file"
+    let handle ← IO.FS.Handle.mk inputPath .read
+    let solution ← Export.parseStream (.ofHandle handle)
+    let mut env ← Lean.mkEmptyEnvironment
+    let mut constMap := solution.constMap
+    -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
+    -- multiple times leads to errors.
+    constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
+    let (n, _) ← replay { newConstants := constMap, verbose, compare } env.toKernelEnv none
+    println! "checked {n} declarations"
+    return 0
+
+  initSearchPath (← findSysroot)
   let targets ← do
     match args with
     | [] => pure [← getCurrentModule]

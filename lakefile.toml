@@ -6,6 +6,11 @@ name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
 rev = "v4.26.0"
 
+[[require]]
+scope = "leanprover"
+name = "lean4export"
+rev = "joachim_parse_fixes"
+
 [[lean_lib]]
 name = "Lean4Lean"
 
