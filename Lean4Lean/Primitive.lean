@@ -28,19 +28,23 @@ structure Reflection where
   toDec : Expr
 
 def Reflection.defn₁ : Reflection where
-  type := q(fun p b => (b = true → p) ∧ (¬b = true → ¬p))
-  ofTrue := q(fun p (H : (true = true → p) ∧ (¬true = true → ¬p)) => H.1 rfl)
-  ofFalse := q(fun p (H : (false = true → p) ∧ (¬false = true → ¬p)) => H.2 Bool.noConfusion)
-  toDec := q(fun p b (H : (b = true → p) ∧ (¬b = true → ¬p)) =>
-    if h : b = true then isTrue (H.1 h) else isFalse (H.2 h))
+  type := q(fun p b => ∀ {q : Prop}, ((b = true → p) → (¬b = true → ¬p) → q) → q)
+  ofTrue := q(fun p (H : ∀ {q : Prop}, ((true = true → p) → (¬true = true → ¬p) → q) → q) =>
+    H fun h _ => h rfl)
+  ofFalse := q(fun p (H : ∀ {q : Prop}, ((false = true → p) → (¬false = true → ¬p) → q) → q) =>
+    H fun _ h => h Bool.noConfusion)
+  toDec := q(fun p b (H : ∀ {q : Prop}, ((b = true → p) → (¬b = true → ¬p) → q) → q) =>
+    if h : b = true then isTrue (H fun h' _ => h' h) else isFalse (H fun _ h' => h' h))
 
 def Reflection.defn₂ : Reflection where
-  type := q(fun p b => (b = true → p) ∧ (b = false → ¬p))
-  ofTrue := q(fun p (H : (true = true → p) ∧ (true = false → ¬p)) => H.1 rfl)
-  ofFalse := q(fun p (H : (false = true → p) ∧ (false = false → ¬p)) => H.2 rfl)
-  toDec := q(fun p b (H : (b = true → p) ∧ (b = false → ¬p)) =>
+  type := q(fun p b => ∀ {q : Prop}, ((b = true → p) → (b = false → ¬p) → q) → q)
+  ofTrue := q(fun p (H : ∀ {q : Prop}, ((true = true → p) → (true = false → ¬p) → q) → q) =>
+    H fun h _ => h rfl)
+  ofFalse := q(fun p (H : ∀ {q : Prop}, ((false = true → p) → (false = false → ¬p) → q) → q) =>
+    H fun _ h => h rfl)
+  toDec := q(fun p b (H : ∀ {q : Prop}, ((b = true → p) → (b = false → ¬p) → q) → q) =>
     b.casesOn (motive := fun b' => b = b' → Decidable p)
-      (fun h => isFalse (H.2 h)) (fun h => isTrue (H.1 h)) rfl)
+      (fun h => isFalse (H fun _ h' => h' h)) (fun h => isTrue (H fun h' _ => h' h)) rfl)
 
 def Reflection.check (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
   unless ← isDefEq (← checkType r.type) q(Prop → Bool → Prop) do fail
@@ -60,8 +64,8 @@ def Condition.natLE : Condition where
   impl := .reflectNatNat
     (asBool := q(Nat.ble))
     (reflect := .defn₁)
-    (proof := q(fun n m =>
-      And.intro (@Nat.le_of_ble_eq_true n m) (@Nat.not_le_of_not_ble_eq_true n m)))
+    (proof := q(fun n m {q : Prop} (H : _ → _ → q) =>
+      H (@Nat.le_of_ble_eq_true n m) (@Nat.not_le_of_not_ble_eq_true n m)))
 
 def Condition.natEq : Condition where
   prop := q(@Eq Nat)
@@ -69,7 +73,8 @@ def Condition.natEq : Condition where
   impl := .reflectNatNat
     (asBool := q(Nat.beq))
     (reflect := .defn₂)
-    (proof := q(fun n m => And.intro (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m)))
+    (proof := q(fun n m {q : Prop} (H : _ → _ → q) =>
+      H (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m)))
 
 def Condition.bool : Condition where
   prop := q(fun x : Bool => x = true)
