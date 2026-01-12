@@ -31,11 +31,17 @@ namespace Normalize
 
 local instance : Ord Name := ⟨Name.cmp⟩
 
+/-- represents v+n -/
 structure VarNode where
   var : Name
   offset : Nat
   deriving BEq, Ord, Repr
 
+/-- An key-value pair `vs => { path, const, var }` in NormLevel represents
+the max of `C(vs, const)` and `V(vs, v, n)` for each `v+n ∈ var`, using the `C` and `V` sublevel
+functions from <https://lmf.cnrs.fr/downloads/Perso/long.pdf>.
+The `path` assists in ensuring the invariant that for each suffix `vs' <:+ path`,
+`vs'` is also in the `NormLevel` map. -/
 structure Node where
   path : List Name := []
   const : Nat := 0
@@ -98,10 +104,8 @@ def normalizeAux (l : Level) (path : List Name) (k : Nat) (acc : NormLevel) : No
   | .succ u => normalizeAux u path (k+1) acc
   | .max u v => normalizeAux u path k acc |> normalizeAux v path k
   | .imax u (.succ v) => normalizeAux u path k acc |> normalizeAux v path (k+1)
-  | .imax u (.max v w) =>
-    normalizeAux (.imax u v) path k acc |> normalizeAux (.imax u w) path k
-  | .imax u (.imax v w) =>
-    normalizeAux (.imax u w) path k acc |> normalizeAux (.imax v w) path k
+  | .imax u (.max v w) => normalizeAux (.imax u v) path k acc |> normalizeAux (.imax u w) path k
+  | .imax u (.imax v w) => normalizeAux (.imax u w) path k acc |> normalizeAux (.imax v w) path k
   | .imax u (.param v) =>
     match orderedInsert Name.cmp v path with
     | some path' => acc.addNode v path' |> normalizeAux u path' k
@@ -163,7 +167,7 @@ def NormLevel.le (l₁ l₂ : NormLevel) : Bool :=
     l₂.any fun p₂ n₂ =>
       (!n₂.var.isEmpty || n₁.var.isEmpty) &&
       subset compare p₂ p₁ &&
-      (n₂.const ≤ n₁.const || n₂.var.any (n₂.const ≤ ·.offset + 1)) &&
+      (n₁.const ≤ n₂.const || n₂.var.any (n₁.const ≤ ·.offset + 1)) &&
       leVars n₁.var n₂.var
 
 def NormLevel.buildPaths : StateM NormLevel Unit := do
@@ -249,6 +253,12 @@ def geq' (u v : Level) : Bool := (Normalize.normalize v).le (Normalize.normalize
 --   Elab.Command.runTermElabM fun _ => do
 --     logInfo m!"{normalize' (← Elab.Term.elabLevel l)}"
 --     -- logInfo m!"{repr <| Normalize.normalize (← Elab.Term.elabLevel l) }"
+
+-- local elab "normalize " l:level " ≤ " l':level : command => do
+--   Elab.Command.runTermElabM fun _ => do
+--     logInfo m!"{geq' (← Elab.Term.elabLevel l') (← Elab.Term.elabLevel l)}"
+--     -- logInfo m!"{repr <| Normalize.normalize (← Elab.Term.elabLevel l)}"
+--     -- logInfo m!"{repr <| Normalize.normalize (← Elab.Term.elabLevel l')}"
 
 -- universe u v w
 -- /-- info: max 1 u -/
