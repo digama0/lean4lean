@@ -847,7 +847,7 @@ variable! (henv : Ordered env)
 theorem IsDefEq.isType' (hΓ : OnCtx Γ (env.IsType U)) (H : env.IsDefEq U Γ e1 e2 A) :
     env.IsType U Γ A := by
   induction H with
-  | bvar h => exact .lookup henv hΓ  h
+  | bvar h => exact .lookup henv hΓ h
   | proofIrrel h1 => exact ⟨_, h1⟩
   | extra h1 h2 =>
     have ⟨_, _, _, h⟩ := envIH.2 h1
