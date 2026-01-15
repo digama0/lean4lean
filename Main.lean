@@ -311,6 +311,9 @@ unsafe def main (args : List String) : IO UInt32 := do
     -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
     -- multiple times leads to errors.
     constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
+    if constMap.contains `WellFounded.Nat.fix && constMap.contains `Nat.gcd then
+      println! "post v4.26 prelude detected, declining"
+      return 2
     let (n, _) ← replay { newConstants := constMap, verbose, compare } (.empty .anonymous) none
     println! "checked {n} declarations"
     return 0
