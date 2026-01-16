@@ -144,6 +144,12 @@ deriving instance BEq for ConstructorVal
 deriving instance BEq for RecursorRule
 deriving instance BEq for RecursorVal
 
+def Lean.Expr.hasStrLit (e : Expr) : Bool :=
+  e.find? (isStringLit) |>.isSome
+
+def Lean.ConstantInfo.hasStrLit (ci : ConstantInfo) : Bool :=
+  ci.type.hasStrLit || ci.value?.any (·.hasStrLit)
+
 mutual
 /--
 Check if a `Name` still needs to be processed (i.e. is in `remaining`).
@@ -157,7 +163,15 @@ and add it to the environment.
 partial def replayConstant (name : Name) : M Unit := do
   if ← isTodo name then
     let some ci := (← read).newConstants[name]? | unreachable!
-    replayConstants ci.getUsedConstants
+    let mut usedConstants := ci.getUsedConstants
+    -- We want `String.ofList` to be available when encountering string literals.
+    -- Presumably faster to first check if we already have it, before traversing
+    -- the declaration
+    unless (← get).env.contains ``String.ofList do
+      if ci.hasStrLit then
+        usedConstants := usedConstants.insert ``String.ofList
+        usedConstants := usedConstants.insert ``Char.ofNat
+    replayConstants usedConstants
     -- Check that this name is still pending: a mutual block may have taken care of it.
     if (← get).pending.contains name then
       match ci with
@@ -311,7 +325,7 @@ unsafe def main (args : List String) : IO UInt32 := do
     -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
     -- multiple times leads to errors.
     constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
-    if constMap.contains `WellFounded.Nat.fix && constMap.contains `Nat.gcd then
+    if constMap.contains `WellFounded.Nat.fix && (constMap.contains `Nat.gcd || constMap.contains `Nat.bitwise) then
       println! "post v4.26 prelude detected, declining"
       return 2
     let (n, _) ← replay { newConstants := constMap, verbose, compare } (.empty .anonymous) none
