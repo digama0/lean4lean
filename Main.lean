@@ -7,6 +7,7 @@ import Lean.CoreM
 import Lean.Util.FoldConsts
 import Lean4Lean.Environment
 import Lake.Load.Manifest
+import Export.Parse
 
 namespace Lean
 
@@ -143,6 +144,12 @@ deriving instance BEq for ConstructorVal
 deriving instance BEq for RecursorRule
 deriving instance BEq for RecursorVal
 
+def Lean.Expr.hasStrLit (e : Expr) : Bool :=
+  e.find? (isStringLit) |>.isSome
+
+def Lean.ConstantInfo.hasStrLit (ci : ConstantInfo) : Bool :=
+  ci.type.hasStrLit || ci.value?.any (·.hasStrLit)
+
 mutual
 /--
 Check if a `Name` still needs to be processed (i.e. is in `remaining`).
@@ -156,7 +163,15 @@ and add it to the environment.
 partial def replayConstant (name : Name) : M Unit := do
   if ← isTodo name then
     let some ci := (← read).newConstants[name]? | unreachable!
-    replayConstants ci.getUsedConstants
+    let mut usedConstants := ci.getUsedConstants
+    -- We want `String.ofList` to be available when encountering string literals.
+    -- Presumably faster to first check if we already have it, before traversing
+    -- the declaration
+    unless (← get).env.contains ``String.ofList do
+      if ci.hasStrLit then
+        usedConstants := usedConstants.insert ``String.ofList
+        usedConstants := usedConstants.insert ``Char.ofNat
+    replayConstants usedConstants
     -- Check that this name is still pending: a mutual block may have taken care of it.
     if (← get).pending.contains name then
       match ci with
@@ -222,16 +237,6 @@ def checkPostponedRecursors : M Unit := do
       unless info == info' do throw <| IO.userError s!"Invalid recursor {ctor}"
     | _, _ => throw <| IO.userError s!"No such recursor {ctor}"
 
-/--
-Check that at the end of (any) file, the quotient module is initialized by the end.
-(It will already be initialized at the beginning, unless this is the very first file,
-`Init.Core`, which is responsible for initializing it.)
-This is needed because it is an assumption in `finalizeImport`.
--/
-def checkQuotInit : M Unit := do
-  unless (← get).env.quotInit do
-    throw <| IO.userError s!"initial import (Init.Core) didn't initialize quotient module"
-
 /-- "Replay" some constants into an `Environment`, sending them to the kernel for checking. -/
 def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
     IO (Nat × Environment) := do
@@ -250,7 +255,6 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
           replayConstant n
       checkPostponedConstructors
       checkPostponedRecursors
-      checkQuotInit
   return (s.numAdded, s.env)
 
 open private ImportedModule.mk from Lean.Environment in
@@ -305,11 +309,30 @@ You can also use `lake exe lean4lean --fresh Mathlib.Data.Nat.Basic` to replay a
 but this can only be used on a single file.
 -/
 unsafe def main (args : List String) : IO UInt32 := do
-  initSearchPath (← findSysroot)
   let (flags, args) := args.partition fun s => s.startsWith "-"
   let verbose := "-v" ∈ flags || "--verbose" ∈ flags
   let fresh : Bool := "--fresh" ∈ flags
   let compare : Bool := "--compare" ∈ flags
+  let readImport : Bool := "--import" ∈ flags
+  if readImport then
+    if fresh then
+      throw <| IO.userError s!"--import and --fresh cannot be used together"
+    let [inputPath] := args |
+      throw <| IO.userError s!"--import expect a single file"
+    let handle ← IO.FS.Handle.mk inputPath .read
+    let solution ← Export.parseStream (.ofHandle handle)
+    let mut constMap := solution.constMap
+    -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
+    -- multiple times leads to errors.
+    constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
+    if constMap.contains `WellFounded.Nat.fix && (constMap.contains `Nat.gcd || constMap.contains `Nat.bitwise) then
+      println! "post v4.26 prelude detected, declining"
+      return 2
+    let (n, _) ← replay { newConstants := constMap, verbose, compare } (.empty .anonymous) none
+    println! "checked {n} declarations"
+    return 0
+
+  initSearchPath (← findSysroot)
   let targets ← do
     match args with
     | [] => pure [← getCurrentModule]
