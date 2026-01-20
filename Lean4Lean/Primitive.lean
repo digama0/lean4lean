@@ -283,9 +283,9 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    withLocalDecl `n q(Nat) .default fun n => do
     withLocalDecl `m q(Nat) .default fun m => do
-    let gcd' ← unfoldWellFounded v.value #[n, m] q(type_of% Nat.gcd.eq_def) fail
+    withLocalDecl `n q(Nat) .default fun n => do
+    let gcd' ← unfoldWellFounded v.value #[m, n] q(type_of% Nat.gcd.eq_def) fail
     let gcd' := mkApp2 gcd'
     let gcd := mkApp2 v.value
     unless ← isDefEq (gcd' zero m) m do fail
@@ -408,3 +408,14 @@ def checkPrimitiveInductive (_env : Environment) (lparams : List Name) (nparams 
     ] := type.ctors | fail
   | _ => return false
   return true
+
+-- Self-test to ensure that the primitives check at compile time
+run_meta
+  let env ← Lean.getEnv
+  for c in Environment.primitives do
+    match env.find? c with
+    | some (.defnInfo v) =>
+      let (.true, _) ← Elab.Term.TermElabM.run (checkPrimitiveDef { v with })
+        | throwError "{v.name}"
+    | some (.inductInfo _) | some (.ctorInfo _) => pure ()
+    | r => throwError "unexpected primitive: {r.map (·.name)}"
