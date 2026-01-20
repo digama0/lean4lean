@@ -59,7 +59,7 @@ def checkName (env : Environment) (n : Name)
       throw <| .other s!"unexpected use of primitive name {n}"
 
 open private subsumesInfo Kernel.Environment.mk moduleNames moduleNameMap parts toEffectiveImport
-  interpData? from Lean.Environment
+  getData? from Lean.Environment
 
 def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
   Kernel.Environment.mk
@@ -82,31 +82,31 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
     (trustLevel : UInt32 := 0) : Except Exception Environment := do
   let modules := (moduleNames s).filterMap ((moduleNameMap s)[·]?)
   let moduleData ← modules.mapM fun mod => do
-    let some data := interpData? mod .private |
+    let some data := getData? mod .private |
       throw <| .other s!"missing data file for module {mod.module}"
     return data
-  let numPrivateConsts := moduleData.foldl (init := 0) fun numPrivateConsts data => Id.run do
-    numPrivateConsts + data.constants.size + data.extraConstNames.size
-  let mut const2ModIdx := .emptyWithCapacity (capacity := numPrivateConsts)
-  let mut privateConstantMap := .emptyWithCapacity (capacity := numPrivateConsts)
-  for h : modIdx in [0:moduleData.size] do
+  let numConsts := moduleData.foldl (init := 0) fun numConsts data => Id.run do
+    numConsts + data.constants.size
+  let mut const2ModIdx := .emptyWithCapacity (capacity := numConsts)
+  let mut constantMap := .emptyWithCapacity (capacity := numConsts)
+  for h : modIdx in *...moduleData.size do
     let data := moduleData[modIdx]
     for cname in data.constNames, cinfo in data.constants do
-      match privateConstantMap.getThenInsertIfNew? cname cinfo with
+      match constantMap.getThenInsertIfNew? cname cinfo with
       | (cinfoPrev?, constantMap') =>
-        privateConstantMap := constantMap'
+        constantMap := constantMap'
         if let some cinfoPrev := cinfoPrev? then
           -- Recall that the map has not been modified when `cinfoPrev? = some _`.
-          if subsumesInfo privateConstantMap cinfo cinfoPrev then
-            privateConstantMap := privateConstantMap.insert cname cinfo
-          else if !subsumesInfo privateConstantMap cinfoPrev cinfo then
+          if subsumesInfo constantMap cinfo cinfoPrev then
+            constantMap := constantMap.insert cname cinfo
+          else if !subsumesInfo constantMap cinfoPrev cinfo then
             throwAlreadyImported s const2ModIdx modIdx cname
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
     for cname in data.extraConstNames do
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
 
   return Kernel.Environment.mk
-    (constants := SMap.fromHashMap privateConstantMap false)
+    (constants := SMap.fromHashMap constantMap false)
     (quotInit := !imports.isEmpty) -- We assume `Init.Prelude` initializes quotient module
     (diagnostics := {})
     (const2ModIdx := const2ModIdx)
