@@ -173,6 +173,76 @@ def unfoldWellFounded (e : Expr) (fvs : Array Expr) (eq_def : Expr) (fail : ∀ 
   unless ← isDefEq (e1.app wfn') rhs do fail
   return (← getLCtx).mkLambda fvs rhs
 
+def lambdaTelescope (e : Expr) (k : Array Expr → Expr → M α) : M α := loop #[] e where
+  loop fvars
+  | .lam x dom body bi =>
+    let d := dom.instantiateRev fvars
+    withLocalDecl x bi d fun fv => do
+      let fvars := fvars.push fv
+      loop fvars body
+  | e => k fvars (e.instantiateRev fvars)
+
+def forallTelescope (e : Expr) (k : Array Expr → Expr → M α) : M α := loop #[] e where
+  loop fvars
+  | .forallE x dom body bi =>
+    let d := dom.instantiateRev fvars
+    withLocalDecl x bi d fun fv => do
+      let fvars := fvars.push fv
+      loop fvars body
+  | e => k fvars (e.instantiateRev fvars)
+
+def unfoldNatWellFounded (e : Expr) (fvs : Array Expr) (eq_def : Expr) (fail : ∀ {α}, M α) : M Expr := do
+  let succ := mkApp q(Nat.succ)
+  let defeq1 a b := isDefEq (.arrow q(Nat) a) (.arrow q(Nat) b)
+  let x := .bvar 0
+  let .app (.app _ lhs) rhs := eq_def.getForallBody.instantiateRev fvs | fail
+  let orig := lhs.getAppFn
+  let rhs := rhs.replace fun e' => if e' == orig then some e else none
+  let e1 ← whnfCore (mkAppN e fvs) -- get _unary
+  let e1 ← unfoldDefinition e1 -- get fix
+  (← whnfCore e1).withApp fun fix args => do
+  let .const ``WellFounded.Nat.fix [_, _] := fix | fail
+  let #[α,motive,f,F,a₀] := args | fail
+  let fixFn := mkAppN fix #[α,motive,f,F]
+  withLocalDecl `a .default (← inferType a₀) fun a => do
+  -- prove |- fix α motive f F a ≡ go α motive f F (eager (f a)) a [proof]
+  let e1 ← unfoldDefinition (.app fixFn a) -- get fix.go
+  let e1 ← whnfCore e1
+  e1.withApp fun fixGo args => do
+    let #[α',motive',f',F',fuel,a',_] := args | fail
+    unless (α, motive, f, F, a) == (α', motive', f', F', a') do fail
+    let .app eager n := fuel | fail
+    unless ← isDefEq n (succ (.app f a)) do fail
+    -- prove |- eager n = if beq n n = true then n else n
+    unless (← getEnv).contains ``Nat.beq do fail
+    let c := Condition.bool; c.check (fail) (ite := true)
+    unless ← defeq1 (mkApp eager x) (c.ite q(Nat) #[mkApp2 (.const ``Nat.beq []) x x] x x) do fail
+    -- prove |- go α motive f F (succ t) x hfuel ≡ F x fun y hy => go α motive f F t y [proof]
+    let go' ← unfoldDefinition fixGo -- get fix
+    lambdaTelescope go' fun fvs go' => do
+    let #[_,_,_,F,t] := fvs | fail
+    let .app natRec t' := go' | fail
+    unless !natRec.containsFVar t.fvarId! && t == t' do fail
+    _ ← checkType (succ t)
+    let gor ← whnfCore (.app natRec (succ t))
+    lambdaTelescope gor fun fvs gor => do
+    let #[x,_] := fvs | fail
+    let .app Fx ih := gor | fail
+    unless .app F x == Fx do fail
+    lambdaTelescope ih fun fvs ih => do
+    let #[y,_] := fvs | fail
+    let .app ih _ := ih | fail
+    unless ih == .app (.app natRec t) y do fail
+  -- prove |- rhs ≡ F x fun y _ => fix α motive f F y
+  let .forallE _ dom _ _ ← inferType (.app F a₀) | fail
+  let ih' ← forallTelescope dom fun fvs _ => do
+    let #[y,_] := fvs | fail
+    return (← getLCtx).mkLambda fvs (.app fixFn y)
+  have rhs' := mkApp2 F a₀ ih'
+  _ ← checkType rhs'
+  unless ← isDefEq rhs rhs' do fail
+  return (← getLCtx).mkLambda fvs rhs
+
 def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
   let tru := q(true)
@@ -285,7 +355,7 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
     withLocalDecl `m .default q(Nat) fun m => do
     withLocalDecl `n .default q(Nat) fun n => do
-    let gcd' ← unfoldWellFounded v.value #[m, n] q(type_of% Nat.gcd.eq_def) fail
+    let gcd' ← unfoldNatWellFounded v.value #[m, n] q(type_of% Nat.gcd.eq_def) fail
     let gcd' := mkApp2 gcd'
     let gcd := mkApp2 v.value
     unless ← isDefEq (gcd' zero m) m do fail
@@ -315,7 +385,7 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     withLocalDecl `f .default q(Bool → Bool → Bool) fun f => do
     withLocalDecl `n .default q(Nat) fun n => do
     withLocalDecl `m .default q(Nat) fun m => do
-    let bitwise' ← unfoldWellFounded v.value #[f, n, m] q(type_of% Nat.bitwise.eq_def) fail
+    let bitwise' ← unfoldNatWellFounded v.value #[f, n, m] q(type_of% Nat.bitwise.eq_def) fail
     let bitwise := mkApp3 v.value
     let c := Condition.natEq; c.check fail (ite := true)
     let bc := Condition.bool; bc.check fail (ite := true)
