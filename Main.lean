@@ -285,8 +285,7 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let checkQuot := newConstants.contains `Quot
-  let (n, env') ← replay { newConstants, verbose, compare, checkQuot } env
+  let (n, env') ← replay { newConstants, verbose, compare } env
   (Environment.ofKernelEnv env').freeRegions
   region.free
   pure n
@@ -341,7 +340,7 @@ unsafe def main (args : List String) : IO UInt32 := do
     -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
     -- multiple times leads to errors.
     constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
-    let (n, _) ← replay { newConstants := constMap, verbose, compare } (.empty .anonymous) none
+    let (n, _) ← replay { newConstants := constMap, verbose, compare, checkQuot := false } (.empty .anonymous) none
     println! "checked {n} declarations"
     return 0
 
