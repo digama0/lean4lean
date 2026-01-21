@@ -53,6 +53,7 @@ structure Context where
   newConstants : Std.HashMap Name ConstantInfo
   verbose := false
   compare := false
+  checkQuot := true
 
 structure State where
   env : Environment
@@ -61,6 +62,7 @@ structure State where
   postponedConstructors : NameSet := {}
   postponedRecursors : NameSet := {}
   numAdded : Nat := 0
+  hasStrings := false
 
 abbrev M := ReaderT Context <| StateRefT State IO
 
@@ -144,8 +146,7 @@ deriving instance BEq for ConstructorVal
 deriving instance BEq for RecursorRule
 deriving instance BEq for RecursorVal
 
-def Lean.Expr.hasStrLit (e : Expr) : Bool :=
-  e.find? (isStringLit) |>.isSome
+def Lean.Expr.hasStrLit (e : Expr) : Bool := (e.find? isStringLit).isSome
 
 def Lean.ConstantInfo.hasStrLit (ci : ConstantInfo) : Bool :=
   ci.type.hasStrLit || ci.value?.any (·.hasStrLit)
@@ -167,18 +168,21 @@ partial def replayConstant (name : Name) : M Unit := do
     -- We want `String.ofList` to be available when encountering string literals.
     -- Presumably faster to first check if we already have it, before traversing
     -- the declaration
-    unless (← get).env.contains ``String.ofList do
+    unless (← get).hasStrings do
       if ci.hasStrLit then
         usedConstants := usedConstants.insert ``String.ofList
         usedConstants := usedConstants.insert ``Char.ofNat
+        modify ({· with hasStrings := true })
     replayConstants usedConstants
     -- Check that this name is still pending: a mutual block may have taken care of it.
     if (← get).pending.contains name then
+      let addDeclAt (d : Declaration) :=
+        try addDecl d catch e => throw <| IO.userError s!"at {name}: {e.toString}"
       match ci with
-      | .defnInfo   info => addDecl (.defnDecl   info)
-      | .thmInfo    info => addDecl (.thmDecl    info)
-      | .axiomInfo  info => addDecl (.axiomDecl  info)
-      | .opaqueInfo info => addDecl (.opaqueDecl info)
+      | .defnInfo   info => addDeclAt (.defnDecl   info)
+      | .thmInfo    info => addDeclAt (.thmDecl    info)
+      | .axiomInfo  info => addDeclAt (.axiomDecl  info)
+      | .opaqueInfo info => addDeclAt (.opaqueDecl info)
       | .inductInfo info =>
         let lparams := info.levelParams
         let nparams := info.numParams
@@ -197,7 +201,7 @@ partial def replayConstant (name : Name) : M Unit := do
           { name := ci.name
             type := ci.type
             ctors := ctors.map fun ci => { name := ci.name, type := ci.type } }
-        addDecl (.inductDecl lparams nparams types false)
+        addDeclAt (.inductDecl lparams nparams types false)
       -- We postpone checking constructors,
       -- and at the end make sure they are identical
       -- to the constructors generated when we replay the inductives.
@@ -206,7 +210,7 @@ partial def replayConstant (name : Name) : M Unit := do
       -- Similarly we postpone checking recursors.
       | .recInfo info =>
         modify fun s => { s with postponedRecursors := s.postponedRecursors.insert info.name }
-      | .quotInfo _ => addDecl .quotDecl
+      | .quotInfo _ => addDeclAt .quotDecl
       modify fun s => { s with pending := s.pending.erase name }
 
 /-- Replay a set of constants one at a time. -/
@@ -237,6 +241,16 @@ def checkPostponedRecursors : M Unit := do
       unless info == info' do throw <| IO.userError s!"Invalid recursor {ctor}"
     | _, _ => throw <| IO.userError s!"No such recursor {ctor}"
 
+/--
+Check that at the end of (any) file, the quotient module is initialized by the end.
+(It will already be initialized at the beginning, unless this is the very first file,
+`Init.Core`, which is responsible for initializing it.)
+This is needed because it is an assumption in `finalizeImport`.
+-/
+def checkQuotInit : M Unit := do
+  unless (← get).env.quotInit do
+    throw <| IO.userError s!"initial import (Init.Prelude) didn't initialize quotient module"
+
 /-- "Replay" some constants into an `Environment`, sending them to the kernel for checking. -/
 def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
     IO (Nat × Environment) := do
@@ -255,6 +269,7 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
           replayConstant n
       checkPostponedConstructors
       checkPostponedRecursors
+      if (← read).checkQuot then checkQuotInit
   return (s.numAdded, s.env)
 
 open private ImportedModule.mk from Lean.Environment in
@@ -270,15 +285,16 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let (n, env') ← replay { newConstants, verbose, compare } env
+  let checkQuot := newConstants.contains `Quot
+  let (n, env') ← replay { newConstants, verbose, compare, checkQuot } env
   (Environment.ofKernelEnv env').freeRegions
   region.free
   pure n
 
 unsafe def replayFromFresh (module : Name)
     (verbose := false) (compare := false) (decl : Option Name := none) : IO Nat := do
-  Lean.withImportModules #[] {} (trustLevel := 0) fun env => do
-    let ctx := { newConstants := env.constants.map₁, verbose, compare }
+  Lean.withImportModules #[module] {} (trustLevel := 0) fun env => do
+    let ctx := { newConstants := env.constants.map₁, verbose, compare, checkQuot := false }
     Prod.fst <$> replay ctx (.empty module) decl
 
 /-- Read the name of the main module from the `lake-manifest`. -/
@@ -325,9 +341,6 @@ unsafe def main (args : List String) : IO UInt32 := do
     -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
     -- multiple times leads to errors.
     constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
-    if constMap.contains `WellFounded.Nat.fix && (constMap.contains `Nat.gcd || constMap.contains `Nat.bitwise) then
-      println! "post v4.26 prelude detected, declining"
-      return 2
     let (n, _) ← replay { newConstants := constMap, verbose, compare } (.empty .anonymous) none
     println! "checked {n} declarations"
     return 0
@@ -352,7 +365,10 @@ unsafe def main (args : List String) : IO UInt32 := do
           targetModules := targetModules.insert m
           found := true
     if not found then
-      throw <| IO.userError s!"Could not find any oleans for: {target}"
+      throw <| IO.userError <| match args with
+      | [] => s!"Could not infer main module (tried {target}). \
+        Use `lake exe lean4lean <target>` instead"
+      | _ => s!"Could not find any oleans for: {target}"
   let mut n := 0
   if fresh then
     if targetModules.length != 1 then

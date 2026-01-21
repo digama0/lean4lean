@@ -125,7 +125,7 @@ def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let d := dom.instantiateRev fvars
     if !inferOnly then
       _ ← ensureSortCore (← inferType d inferOnly) d
-    withLocalDecl name d bi fun fv => do
+    withLocalDecl name bi d fun fv => do
       let fvars := fvars.push fv
       loop fvars body
   | e => do
@@ -139,7 +139,7 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
     let d := dom.instantiateRev fvars
     let t1 ← ensureSortCore (← inferType d inferOnly) d
     let us := us.push t1.sortLevel!
-    withLocalDecl name d bi fun fv =>
+    withLocalDecl name bi d fun fv =>
       loop (fvars.push fv) us body
   | e => do
     let r ← inferType (e.instantiateRev fvars) inferOnly
@@ -266,7 +266,7 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
 def whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
   fun m => m.whnfCore e cheapRec cheapProj
 
-def reduceRecursor (e : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
+def reduceRecursor (e : Expr) (cheapRec := false) (cheapProj := false) : RecM (Option Expr) := do
   let env ← getEnv
   if env.quotInit then
     if let some r ← quotReduceRec e whnf then
@@ -454,7 +454,7 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
       pure (some sType)
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev subst)
-      withLocalDecl name sType bi fun fv => do
+      withLocalDecl name bi sType fun fv => do
         isDefEqLambda tBody sBody (subst.push fv)
     else
       isDefEqLambda tBody sBody (subst.push default)
@@ -470,7 +470,7 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
       pure (some sType)
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev subst)
-      withLocalDecl name sType bi fun fv =>
+      withLocalDecl name bi sType fun fv =>
         isDefEqForall tBody sBody (subst.push fv)
     else
       isDefEqForall tBody sBody (subst.push default)
@@ -719,6 +719,10 @@ instance : MonadLift RecM Elab.Term.TermElabM := ⟨RecM.runTermElab⟩
 
 def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 
+def whnfCore (e : Expr) : M Expr := (Inner.whnfCore e).run
+
+def unfoldDefinition (e : Expr) : M Expr := return (Inner.unfoldDefinition (← getEnv) e).getD e
+
 def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
 def checkType (e : Expr) : M Expr := (Inner.inferType e (inferOnly := false)).run
@@ -737,7 +741,7 @@ def etaExpand (e : Expr) : M Expr :=
   let rec loop fvars
   | .lam name dom body bi => do
     let d := dom.instantiateRev fvars
-    withLocalDecl name d bi fun fv => do
+    withLocalDecl name bi d fun fv => do
       let fvars := fvars.push fv
       loop fvars body
   | it => do
@@ -747,7 +751,7 @@ def etaExpand (e : Expr) : M Expr :=
     | 0, _ => throw .deepRecursion
     | fuel + 1, .forallE name dom body bi => do
       let d := dom.instantiateRev fvars
-      withLocalDecl name d bi fun arg => do
+      withLocalDecl name bi d fun arg => do
         let fvars := fvars.push arg
         let args := args.push arg
         loop2 fvars args fuel <| ← whnf <| body.instantiate1 arg

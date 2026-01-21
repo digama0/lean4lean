@@ -425,7 +425,7 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
     (hs : s₀ ≤ s)
     (H : ∀ id cwf' s', s₀ ≤ s' → ¬s.ngen.Reserves id →
       WF (c.withMLC (.vlam id name ty ty' bi m) (wf := cwf')) s' (f (.fvar id)) Q) :
-    (withLocalDecl name ty bi f).WF (c.withMLC m) s Q := by
+    (withLocalDecl name bi ty f).WF (c.withMLC m) s Q := by
   intro _ mwf wf a s' e
   let id := s.ngen.curr
   have h0 := s.ngen.next_reserves_self
