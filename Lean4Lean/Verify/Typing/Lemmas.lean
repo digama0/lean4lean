@@ -49,11 +49,11 @@ theorem Closed.natLitToConstructor : Closed (.natLitToConstructor n) k := by
   cases n <;> simp [Closed, Expr.natLitToConstructor, Expr.natZero, Expr.natSucc]
 
 theorem FVarsIn.strLitToConstructor : FVarsIn P (.strLitToConstructor s) := by
-  simp [FVarsIn, String.foldr_eq, Expr.strLitToConstructor]
+  simp [FVarsIn, Expr.strLitToConstructor]
   induction s.toList <;> simp [*, FVarsIn, Level.hasMVar']
 
 theorem Closed.strLitToConstructor : Closed (.strLitToConstructor s) k := by
-  simp [Closed, String.foldr_eq, Expr.strLitToConstructor]
+  simp [Closed, Expr.strLitToConstructor]
   induction s.toList <;> simp [*, Closed]
 
 theorem FVarsIn.toConstructor : ∀ {l : Literal}, FVarsIn P l.toConstructor
@@ -1580,7 +1580,7 @@ theorem TrExprS.IsUnique.natLitToConstructor : ∀ {n : Nat}, IsUnique (.natLitT
   | _+1 => ⟨⟨⟩, ⟨⟩⟩
 
 theorem TrExprS.IsUnique.strLitToConstructor {s : String} : IsUnique (.strLitToConstructor s) := by
-  refine ⟨⟨⟩, ?_⟩; simp [String.foldr_eq]
+  refine ⟨⟨⟩, ?_⟩
   induction s.toList with simp
   | nil => exact ⟨⟨⟩, ⟨⟩⟩
   | cons _ _ ih => exact ⟨⟨⟨⟨⟩, ⟨⟩⟩, ⟨⟨⟩, ⟨⟩⟩⟩, ih⟩
