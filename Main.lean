@@ -276,7 +276,15 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let mFile ← findOLean module
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
-  let (mod, region) ← readModuleData mFile
+  let mut fnames := #[mFile]
+  let sFile := OLeanLevel.server.adjustFileName mFile
+  if (← sFile.pathExists) then
+    fnames := fnames.push sFile
+    let pFile := OLeanLevel.private.adjustFileName mFile
+    if (← pFile.pathExists) then
+      fnames := fnames.push pFile
+  let parts ← readModuleDataParts fnames
+  let some (mod, _) := parts[parts.size - 1]? | unreachable! -- load private module data
   let (_, s) ← (importModulesCore mod.imports).run
   let env ← match Kernel.Environment.finalizeImport s mod.imports module 0 with
     | .ok env => pure env
@@ -286,7 +294,7 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
     newConstants := newConstants.insert name ci
   let (n, env') ← replay { newConstants, verbose, compare } env
   (Environment.ofKernelEnv env').freeRegions
-  region.free
+  parts.forM fun (_, region) => region.free
   pure n
 
 unsafe def replayFromFresh (module : Name)

@@ -418,7 +418,6 @@ def reduceNat (e : Expr) : RecM (Option Expr) := do
     if f == ``Nat.shiftRight then return ← reduceBinNatOp Nat.shiftRight a b
   return none
 
-
 def whnf' (e : Expr) : RecM Expr := do
   -- Do not cache easy cases
   match e with
@@ -440,7 +439,7 @@ def whnf' (e : Expr) : RecM Expr := do
     if let some t ← reduceNat t then return t
     let some t := unfoldDefinition env t | return t
     loop t fuel
-  let r ← loop e 1000
+  let r ← loop e <| if (← readThe Context).eagerReduce then 10000 else 1000
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
@@ -710,7 +709,7 @@ def Methods.withFuel : Nat → Methods
       whnf := fun e => whnf' e (withFuel n)
       inferType := fun e i => inferType' e i (withFuel n) }
 
-def RecM.run (x : RecM α) : M α := x (Methods.withFuel 1000)
+def RecM.run (x : RecM α) : M α := x (Methods.withFuel 10000)
 
 def RecM.runTermElab (x : RecM α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α :=
   x.run.runTermElab safety
