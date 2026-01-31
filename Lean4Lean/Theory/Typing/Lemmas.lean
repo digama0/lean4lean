@@ -546,6 +546,10 @@ theorem IsDefEqU.weak (H : env.IsDefEqU U Γ e1 e2) :
     env.IsDefEqU U (B::Γ) e1.lift e2.lift := let ⟨_, H⟩ := H; ⟨_, H.weak henv⟩
 
 variable! (henv : Ordered env) in
+theorem IsDefEqU.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEqU U Γ e1 e2) :
+    env.IsDefEqU U Γ' (e1.liftN n k) (e2.liftN n k) := let ⟨_, H⟩ := H; ⟨_, H.weakN henv W⟩
+
+variable! (henv : Ordered env) in
 theorem IsDefEq.weakR (hΓ : CtxClosed Γ) (H : env.IsDefEq U Γ e1 e2 A) (Γ') :
     env.IsDefEq U (Γ ++ Γ') e1 e2 A := by
   have ⟨h1, h2, h3⟩ := H.closedN' henv.closed hΓ
@@ -583,6 +587,10 @@ variable! (henv : Ordered env) in
 theorem IsType.weak' (W : Ctx.Lift' l Γ Γ') (H : env.IsType U Γ A) :
     env.IsType U Γ' (A.lift' l) := let ⟨_, h⟩ := H; ⟨_, h.weak' henv W⟩
 
+variable! (henv : Ordered env) in
+theorem IsDefEqU.weak' (W : Ctx.Lift' n Γ Γ') (H : env.IsDefEqU U Γ e1 e2) :
+    env.IsDefEqU U Γ' (e1.lift' n) (e2.lift' n) := let ⟨_, H⟩ := H; ⟨_, H.weak' henv W⟩
+
 theorem IsType.lookup (henv : Ordered env) (h : OnCtx Γ (IsType env U)) (hL : Lookup Γ n A) :
     env.IsType U Γ A := h.lookup hL <| .weakN henv .one
 
@@ -619,6 +627,11 @@ theorem IsType.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.IsType 
 theorem IsDefEqU.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.IsDefEqU U Γ e1 e2) :
     env.IsDefEqU U' (Γ.map (VExpr.instL ls)) (e1.instL ls) (e2.instL ls) :=
   let ⟨_, h⟩ := H; ⟨_, h.instL hls⟩
+
+theorem _root_.Lean4Lean.OnCtx.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') :
+  ∀ {Γ}, OnCtx Γ (env.IsType U) → OnCtx (Γ.map (VExpr.instL ls)) (env.IsType U')
+  | [], _ => trivial
+  | _::_, ⟨H1, H2⟩ => ⟨H1.instL hls, IsType.instL hls H2⟩
 
 variable! (henv : Ordered env) (h₀ : env.HasType U Γ₀ e₀ A₀) in
 theorem IsDefEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : env.IsDefEq U Γ₁ e1 e2 A) :
@@ -667,6 +680,10 @@ theorem HasType.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e�
 theorem IsType.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
     (H : env.IsType U Γ₁ A) (h₀ : env.HasType U Γ₀ e₀ A₀) :
     env.IsType U Γ (A.inst e₀ k) := let ⟨_, h⟩ := H; ⟨_, h.instN henv W h₀⟩
+
+theorem IsDefEqU.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
+    (H : env.IsDefEqU U Γ₁ e1 e2) (h₀ : env.HasType U Γ₀ e₀ A₀) :
+    env.IsDefEqU U Γ (e1.inst e₀ k) (e2.inst e₀ k) := let ⟨_, h⟩ := H; ⟨_, h.instN henv h₀ W⟩
 
 theorem IsDefEq.defeqDF_l' (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
     (h2 : env.IsDefEq U (Δ++A::Γ) e1 e2 B) : env.IsDefEq U (Δ++A'::Γ) e1 e2 B := by

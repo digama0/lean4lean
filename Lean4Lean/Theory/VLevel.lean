@@ -13,6 +13,8 @@ inductive VLevel where
 
 namespace VLevel
 
+instance : Inhabited VLevel := ⟨.zero⟩
+
 variable (n : Nat) in
 def WF : VLevel → Prop
   | .zero => True
@@ -80,7 +82,7 @@ theorem max_congr (h₁ : a₁ ≈ b₁) (h₂ : a₂ ≈ b₂) : max a₁ a₂ 
 theorem imax_congr (h₁ : a₁ ≈ b₁) (h₂ : a₂ ≈ b₂) : imax a₁ a₂ ≈ imax b₁ b₂ := by
   simp_all [equiv_def, eval]
 
-theorem max_comm : max a b ≈ max b a := by   simp [equiv_def, eval, Nat.max_comm]
+theorem max_comm : max a b ≈ max b a := by simp [equiv_def, eval, Nat.max_comm]
 
 theorem LE.max_eq_left (h : b.LE a) : max a b ≈ a := by
   simp [equiv_def, eval, Nat.max_eq_left (h _)]
