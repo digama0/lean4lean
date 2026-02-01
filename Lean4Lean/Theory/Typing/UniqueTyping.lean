@@ -38,15 +38,14 @@ theorem IsDefEq.uniq (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     intro (.const b1 b2 b3 b4); cases a1.symm.trans b1
     replace le₁ := Nat.sub_le_sub_right le₁ 1
     exact ⟨_, a4.hasType, _, rfl, a4.mono le₁, a4.mono le₁⟩
-  | app a1 a2 a3 a4 a5 a6 a7 ih1 ih2 ih3 ih4 ih5 =>
-    intro (.app b1 b2 b3 b4 b5 b6 b7)
-    have ⟨_, c1, _, c2, c3, c4⟩ := ih3 n IH hΓ (Nat.le_of_succ_le le₁) (Nat.le_of_succ_le le₂) b5
-    have ⟨⟨_, d1, d2⟩, _, d3, d4, d5⟩ := IsDefEqU.forallE_inv_stratified henv hΓ ⟨_, c1⟩ c3 c4
+  | app _ a2 a3 a4 _ a6 a7 _ _ ih3 =>
+    intro (.app _ _ b3 b4 b5 _ b7)
+    have ⟨_, c1, _, _, c3, c4⟩ := ih3 n IH hΓ (Nat.le_of_succ_le le₁) (Nat.le_of_succ_le le₂) b5
+    have ⟨_, _, d3, d4, d5⟩ := IsDefEqU.forallE_inv_stratified henv hΓ ⟨_, c1⟩ c3 c4
     let n+1 := n
     replace le₁ := Nat.le_of_succ_le_succ le₁
     replace le₂ := Nat.le_of_succ_le_succ le₂
     have e1 := have ⟨_, h⟩ := a3.hasType.isType henv hΓ; h.sort_inv henv
-    have e2 := have ⟨_, h⟩ := b3.hasType.isType henv hΓ; h.sort_inv henv
     refine have hΓ₁ := ⟨hΓ, _, a3.hasType⟩
       have ⟨_, h, _⟩ := IH _ (Nat.lt_succ_self _) hΓ₁ le₁ (Nat.le_refl _) a4 d4; ?_
     have e3 := IsDefEqU.sort_inv henv hΓ₁ ⟨_, h⟩
@@ -56,7 +55,7 @@ theorem IsDefEq.uniq (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     have e5 := IsDefEqU.sort_inv henv hΓ₂ ⟨_, h⟩
     exact ⟨_, .defeqDF (.sortDF e4 a2 e3.symm) (d3.instN henv a6.hasType .zero), _,
       e3.trans e5.symm, a7.mono le₁, b7.mono le₂⟩
-  | lam a1 a2 a3 a4 ih1 ih2 ih3 ih4 =>
+  | lam a1 a2 _ a4 _ _ ih3 =>
     intro (.lam b1 b2 b3 b4)
     have ⟨_, c1, _, c2, c3, c4⟩ := ih3 n IH ⟨hΓ, _, a1.hasType⟩
       (Nat.le_of_succ_le le₁) (Nat.le_of_succ_le le₂) b3
@@ -73,7 +72,7 @@ theorem IsDefEq.uniq (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     have e3 := IsDefEqU.sort_inv henv hΓ' ⟨_, h⟩
     exact ⟨_, .forallEDF a1.hasType (.defeqDF (.symm <| .sortDF f1 f2 e2) c1),
       _, VLevel.imax_congr e1 (e2.trans <| c2.trans e3.symm), a4.mono le₁, b4.mono le₂⟩
-  | forallE a1 a2 a3 a4 ih1 ih2 =>
+  | forallE a1 a2 a3 a4 =>
     intro (.forallE b1 b2 b3 b4)
     let n+1 := n
     replace le₁ := Nat.le_of_succ_le_succ le₁
@@ -82,7 +81,6 @@ theorem IsDefEq.uniq (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     have e1 := IsDefEqU.sort_inv henv hΓ ⟨_, h⟩
     refine have hΓ' := ⟨hΓ, _, a3.hasType⟩
       have ⟨_, h, _⟩ := IH _ (Nat.lt_succ_self _) hΓ' le₁ le₂ a4 b4; ?_
-    have f1 := h.sort_inv_l henv; have f2 := h.sort_inv_r henv
     have e2 := IsDefEqU.sort_inv henv hΓ' ⟨_, h⟩
     have := VLevel.imax_congr e1 e2
     exact ⟨_, .sortDF ⟨a1, a2⟩ ⟨b1, b2⟩ this, _, rfl,
@@ -104,10 +102,10 @@ theorem IsDefEq.uniq (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
       exact ⟨_, c1.trans (.defeqDF (.symm <| .sortDF e2 b1 eq) b2), _, eq, c3, b4.mono le₂⟩
   | @defeq Γ A' A u n' _ a1 a2 a3 a4 a5 ih1 ih2 ih' =>
     intro H2
-    have ⟨u₁, c1, u₂, c2, c3, c4⟩ := ih' _ IH hΓ (Nat.le_of_succ_le le₁) le₂ H2
+    have ⟨_, c1, u₂, c2, c3, c4⟩ := ih' _ IH hΓ (Nat.le_of_succ_le le₁) le₂ H2
     let n+1 := n
     replace le₁ := Nat.le_of_succ_le_succ le₁
-    have ⟨v₁, d1, v₂, _⟩ := IH _ (Nat.lt_succ_self _) hΓ le₁ (Nat.le_refl _) a3 c3
+    have ⟨_, d1, _, _⟩ := IH _ (Nat.lt_succ_self _) hΓ le₁ (Nat.le_refl _) a3 c3
     have e1 := IsDefEqU.sort_inv henv hΓ ⟨_, d1⟩
     have e2 := have ⟨_, h⟩ := c3.hasType.isType henv hΓ; h.sort_inv henv
     have eq : u ≈ u₂ := e1.trans c2
@@ -126,15 +124,19 @@ theorem isDefEq_iff (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U)) :
 
 theorem IsDefEq.trans_r (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     (h₁ : env.IsDefEq U Γ e₁ e₂ A) (h₂ : env.IsDefEq U Γ e₂ e₃ B) :
-    env.IsDefEq U Γ e₁ e₃ B := by
-  have ⟨_, h⟩ := h₁.uniq henv hΓ h₂
-  exact .trans (.defeqDF h h₁) h₂
+    env.IsDefEq U Γ e₁ e₃ B := have ⟨_, h⟩ := h₁.uniq henv hΓ h₂; .trans (.defeqDF h h₁) h₂
 
 theorem IsDefEq.trans_l (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     (h₁ : env.IsDefEq U Γ e₁ e₂ A) (h₂ : env.IsDefEq U Γ e₂ e₃ B) :
-    env.IsDefEq U Γ e₁ e₃ A := by
-  have ⟨_, h⟩ := h₁.uniq henv hΓ h₂
-  exact h₁.trans (.defeqDF (.symm h) h₂)
+    env.IsDefEq U Γ e₁ e₃ A := have ⟨_, h⟩ := h₁.uniq henv hΓ h₂; h₁.trans (.defeqDF (.symm h) h₂)
+
+theorem IsDefEq.transU_r (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
+    (h₁ : env.IsDefEqU U Γ e₁ e₂) (h₂ : env.IsDefEq U Γ e₂ e₃ A) :
+    env.IsDefEq U Γ e₁ e₃ A := have ⟨_, h₁⟩ := h₁; .trans_r henv hΓ h₁ h₂
+
+theorem IsDefEq.transU_l (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
+    (h₁ : env.IsDefEq U Γ e₁ e₂ A) (h₂ : env.IsDefEqU U Γ e₂ e₃) :
+    env.IsDefEq U Γ e₁ e₃ A := have ⟨_, h₂⟩ := h₂; .trans_l henv hΓ h₁ h₂
 
 theorem IsDefEqU.defeqDF (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     (h₁ : env.IsDefEqU U Γ A B) (h₂ : env.IsDefEq U Γ e₁ e₂ A) :

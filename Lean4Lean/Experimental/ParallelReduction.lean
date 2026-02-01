@@ -1,6 +1,8 @@
 import Lean4Lean.Theory.Typing.Strong
 import Lean4Lean.Theory.Typing.NormalEq
 
+-- TODO: remove, this is now part of ChurchRosser.lean
+
 namespace Lean4Lean
 
 open VExpr

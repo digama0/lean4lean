@@ -688,110 +688,6 @@ theorem IsDefEq.strong (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U))
   H.strong' henv henv.strong (.strong henv hΓ)
 
 variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem IsDefEq.app_inv'
-    (H : env.IsDefEq U Γ e1 e2 V) (eq : e1 = .app f a ∨ e2 = .app f a) :
-    ∃ A B, env.HasType U Γ f (.forallE A B) ∧ env.HasType U Γ a A := by
-  have H' := H.strong henv hΓ; clear H hΓ
-  induction H' with
-  | symm _ ih => exact ih eq.symm
-  | trans _ _ ih1 ih2
-  | proofIrrel _ _ _ _ ih1 ih2
-  | extra _ _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 =>
-    obtain eq | eq := eq <;> [exact ih1 (.inl eq); exact ih2 (.inr eq)]
-  | appDF _ _ _ _ h1 h2 =>
-    obtain ⟨⟨⟩⟩ | ⟨⟨⟩⟩ := eq
-    · exact ⟨_, _, h1.defeq.hasType.1, h2.defeq.hasType.1⟩
-    · exact ⟨_, _, h1.defeq.hasType.2, h2.defeq.hasType.2⟩
-  | defeqDF _ _ _ _ ih2 => exact ih2 eq
-  | beta _ _ hA _ he he' _ _ _ _ _ _ _ ihee =>
-    obtain ⟨⟨⟩⟩ | eq := eq
-    · exact ⟨_, _, .lam hA.defeq he.defeq, he'.defeq⟩
-    · exact ihee (.inl eq)
-  | eta _ _ _ _ _ _ _ _ _ _ _ ih =>
-    obtain ⟨⟨⟩⟩ | eq := eq
-    exact ih (.inl eq)
-  | _ => nomatch eq
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem HasType.app_inv (H : env.HasType U Γ (.app f a) V) :
-    ∃ A B, env.HasType U Γ f (.forallE A B) ∧ env.HasType U Γ a A :=
-  H.app_inv' henv hΓ (.inl rfl)
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem _root_.Lean4Lean.VExpr.WF.app_inv (H : VExpr.WF env U Γ (.app f a)) :
-    ∃ A B, env.HasType U Γ f (.forallE A B) ∧ env.HasType U Γ a A :=
-  let ⟨_, H⟩ := H; HasType.app_inv henv hΓ H
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem IsDefEq.lam_inv'
-    (H : env.IsDefEq U Γ e1 e2 V) (eq : e1 = .lam A body ∨ e2 = .lam A body) :
-    env.IsType U Γ A ∧ body.WF env U (A::Γ) := by
-  have H' := H.strong henv hΓ; clear H hΓ
-  induction H' with
-  | symm _ ih => exact ih eq.symm
-  | trans _ _ ih1 ih2
-  | proofIrrel _ _ _ _ ih1 ih2
-  | extra _ _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 =>
-    obtain eq | eq := eq <;> [exact ih1 (.inl eq); exact ih2 (.inr eq)]
-  | lamDF _ _ h1 _ _ h4 h5 =>
-    obtain ⟨⟨⟩⟩ | ⟨⟨⟩⟩ := eq
-    · exact ⟨⟨_, h1.defeq.hasType.1⟩, _, h4.defeq.hasType.1⟩
-    · exact ⟨⟨_, h1.defeq.hasType.2⟩, _, h5.defeq.hasType.2⟩
-  | defeqDF _ _ _ _ ih2 => exact ih2 eq
-  | beta _ _ _ _ _ _ _ _ _ _ _ _ _ ihee =>
-    obtain ⟨⟨⟩⟩ | eq := eq
-    exact ihee (.inl eq)
-  | eta _ _ hA _ _ _ he' _ _ _ _ ih =>
-    obtain ⟨⟨⟩⟩ | eq := eq
-    · exact ⟨⟨_, hA.defeq.hasType.1⟩, _, he'.defeq.hasType.1.app (.bvar .zero)⟩
-    · exact ih (.inl eq)
-  | _ => nomatch eq
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem HasType.lam_inv (H : env.HasType U Γ (.lam A body) V) :
-    env.IsType U Γ A ∧ body.WF env U (A::Γ) :=
-  H.lam_inv' henv hΓ (.inl rfl)
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem _root_.Lean4Lean.VExpr.WF.lam_inv (H : VExpr.WF env U Γ (.lam A body)) :
-    env.IsType U Γ A ∧ body.WF env U (A::Γ) :=
-  let ⟨_, H⟩ := H; HasType.lam_inv henv hΓ H
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem IsDefEq.const_inv'
-    (H : env.IsDefEq U Γ e1 e2 V) (eq : e1 = .const c ls ∨ e2 = .const c ls) :
-    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars := by
-  have H' := H.strong henv hΓ; clear H hΓ
-  induction H' with
-  | symm _ ih => exact ih eq.symm
-  | trans _ _ ih1 ih2
-  | proofIrrel _ _ _ _ ih1 ih2
-  | extra _ _ _ _ _ _ _ _ _ _ _ _ ih1 ih2 =>
-    obtain eq | eq := eq <;> [exact ih1 (.inl eq); exact ih2 (.inr eq)]
-  | constDF h1 h2 h3 h4 h5 _ _ =>
-    obtain ⟨⟨⟩⟩ | ⟨⟨⟩⟩ := eq
-    · exact ⟨_, h1, h2, h4⟩
-    · exact ⟨_, h1, h3, h5.length_eq.symm.trans h4⟩
-  | defeqDF _ _ _ _ ih2 => exact ih2 eq
-  | beta _ _ _ _ _ _ _ _ _ _ _ _ _ ihee =>
-    obtain ⟨⟨⟩⟩ | eq := eq
-    exact ihee (.inl eq)
-  | eta _ _ _ _ _ _ _ _ _ _ _ ih =>
-    obtain ⟨⟨⟩⟩ | eq := eq
-    exact ih (.inl eq)
-  | _ => nomatch eq
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem HasType.const_inv (H : env.HasType U Γ (.const c ls) V) :
-    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
-  H.const_inv' henv hΓ (.inl rfl)
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
-theorem _root_.Lean4Lean.VExpr.WF.const_inv (H : VExpr.WF env U Γ (.const c ls)) :
-    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
-  let ⟨_, H⟩ := H; HasType.const_inv henv hΓ H
-
-variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.eqUpToLevels (H : env.IsDefEq U Γ e1 e2 A)
     (H1 : EqUpToLevels U e2 e2') : env.IsDefEq U Γ e1 e2' A :=
   have W := .strong' henv henv.strong hΓ
@@ -865,6 +761,57 @@ theorem HasTypeStrong.refl {env : VEnv}
 
 theorem HasTypeStrong.hasType {env : VEnv}
     (H : env.HasTypeStrong U Γ e A b) :  env.HasType U Γ e A := H.refl.defeq.hasType.1
+
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem HasType.app_inv (H : env.HasType U Γ (.app f a) V) :
+    ∃ A B, env.HasType U Γ f (.forallE A B) ∧ env.HasType U Γ a A := by
+  replace H := (H.strong henv hΓ).hasType'.1
+  generalize eq : true = b, eq' : f.app a = e' at H
+  induction H with cases eq
+  | defeq _ _ _ _ _ _ _ ih => exact ih hΓ rfl eq'
+  | base H =>
+    subst eq'; let .app _ _ _ _ _ h1 h2 _ := H; exact ⟨_, _, h1.hasType, h2.hasType⟩
+
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.app_inv (H : VExpr.WF env U Γ (.app f a)) :
+    ∃ A B, env.HasType U Γ f (.forallE A B) ∧ env.HasType U Γ a A :=
+  let ⟨_, H⟩ := H; HasType.app_inv henv hΓ H
+
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem HasType.lam_inv (H : env.HasType U Γ (.lam A body) V) :
+    env.IsType U Γ A ∧ body.WF env U (A::Γ) := by
+  replace H := (H.strong henv hΓ).hasType'.1
+  generalize eq : true = b, eq' : A.lam body = e' at H
+  induction H with cases eq
+  | defeq _ _ _ _ _ _ _ ih => exact ih hΓ rfl eq'
+  | base H => subst eq'; let .lam _ _ h1 _ h2 _ := H; exact ⟨⟨_, h1.hasType⟩, _, h2.hasType⟩
+
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.lam_inv (H : VExpr.WF env U Γ (.lam A body)) :
+    env.IsType U Γ A ∧ body.WF env U (A::Γ) :=
+  let ⟨_, H⟩ := H; HasType.lam_inv henv hΓ H
+
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem HasType.const_inv (H : env.HasType U Γ (.const c ls) V) :
+    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars := by
+  replace H := (H.strong henv hΓ).hasType'.1
+  generalize eq : true = b, eq' : VExpr.const c ls = e' at H
+  induction H with cases eq
+  | defeq _ _ _ _ _ _ _ ih => exact ih hΓ rfl eq'
+  | base H => subst eq'; let .const h1 h2 h3 .. := H; exact ⟨_, h1, h2, h3⟩
+
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem _root_.Lean4Lean.VExpr.WF.const_inv (H : VExpr.WF env U Γ (.const c ls)) :
+    ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF U) ∧ ls.length = ci.uvars :=
+  let ⟨_, H⟩ := H; HasType.const_inv henv hΓ H
+
+variable! (henv : Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+theorem HasType.bvar_inv (H : env.HasType U Γ (.bvar i) V) : ∃ A, Lookup Γ i A := by
+  replace H := (H.strong henv hΓ).hasType'.1
+  generalize eq : true = b, eq' : VExpr.bvar i = e' at H
+  induction H with cases eq
+  | defeq _ _ _ _ _ _ _ ih => exact ih hΓ rfl eq'
+  | base H => subst eq'; let .bvar h1 .. := H; exact ⟨_, h1⟩
 
 set_option hygiene false
 local notation:65 Γ " ⊢ " e " : " A:36 => HasType env U Γ e A

@@ -312,9 +312,13 @@ theorem IsDefEqCtx.isSuffix : IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → Γ₀ <:+ �
     let ⟨h1, h2⟩ := h.isSuffix
     ⟨h1.trans (List.suffix_cons _ _), h2.trans (List.suffix_cons _ _)⟩
 
-theorem IsDefEqCtx.isType : IsDefEqCtx env U [] Γ₁ Γ₂ → OnCtx Γ₁ (env.IsType U)
-  | .zero => ⟨⟩
-  | .succ h1 h2 => ⟨h1.isType, _, h2.hasType.1⟩
+variable! (H₀ : OnCtx Γ₀ (IsType env U)) in
+theorem IsDefEqCtx.isType' : IsDefEqCtx env U Γ₀ Γ₁ Γ₂ → OnCtx Γ₁ (env.IsType U)
+  | .zero => H₀
+  | .succ h1 h2 => ⟨h1.isType', _, h2.hasType.1⟩
+
+theorem IsDefEqCtx.isType (H : IsDefEqCtx env U [] Γ₁ Γ₂) : OnCtx Γ₁ (env.IsType U) :=
+  H.isType' (by trivial)
 
 theorem IsDefEqCtx.refl : ∀ {Γ}, OnCtx Γ (env.IsType U) → IsDefEqCtx env U [] Γ Γ
   | [], _ => .zero
@@ -684,6 +688,13 @@ theorem IsType.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀
 theorem IsDefEqU.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
     (H : env.IsDefEqU U Γ₁ e1 e2) (h₀ : env.HasType U Γ₀ e₀ A₀) :
     env.IsDefEqU U Γ (e1.inst e₀ k) (e2.inst e₀ k) := let ⟨_, h⟩ := H; ⟨_, h.instN henv h₀ W⟩
+
+theorem _root_.Lean4Lean.Ctx.InstN.wf (henv : Ordered env) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
+    (h₀ : env.HasType U Γ₀ e₀ A₀) (H : OnCtx Γ₁ (env.IsType U)) :
+    OnCtx Γ₀ (env.IsType U) ∧ OnCtx Γ (env.IsType U) := by
+  induction W with
+  | zero => exact ⟨H.1, H.1⟩
+  | succ W ih => let ⟨h1, h2⟩ := ih H.1; exact ⟨h1, h2, .instN henv W H.2 h₀⟩
 
 theorem IsDefEq.defeqDF_l' (henv : Ordered env) (h1 : env.IsDefEq U Γ A A' (.sort u))
     (h2 : env.IsDefEq U (Δ++A::Γ) e1 e2 B) : env.IsDefEq U (Δ++A'::Γ) e1 e2 B := by
