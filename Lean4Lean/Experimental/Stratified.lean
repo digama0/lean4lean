@@ -105,7 +105,7 @@ theorem IsDefEq.induction1
     exact ⟨.defeq (hdf ih1.2.2) ih2.1, .defeq (hdf ih1.2.2) ih2.2.1, .defeqDF (hdf ih1.2.2) ih2.2.2⟩
   | beta _ _ _ _ _ _ _ _ ihA _ ihe ihe' _ ihee =>
     exact ⟨.app (.lam ihA.1 ihe.1) ihe'.1, ihee.1, .beta (hty ihe.1) (hty ihe'.1)⟩
-  | eta _ _ _ _ _ _ _ ihA _ _ ihe ihe' =>
+  | eta _ _ _ _ _ _ _ _ ihA _ _ ihe ihe' =>
     have := HasType1.app ihe'.1 (.bvar .zero)
     rw [instN_bvar0] at this
     exact ⟨.lam ihA.1 this, ihe.1, .eta (hty ihe.1)⟩
