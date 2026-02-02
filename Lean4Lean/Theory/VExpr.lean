@@ -645,8 +645,111 @@ theorem lift'_depth_zero {e : VExpr} (H : l.depth = 0) : e.lift' l = e := by
 
 @[simp] theorem lift'_refl {e : VExpr} : e.lift' .refl = e := lift'_depth_zero rfl
 
+theorem lift_eq_lift' {e : VExpr} : e.lift = e.lift' (.skip .refl) := by
+  rw [lift, ← lift'_consN_skipN]; rfl
+
+@[simp] theorem instL_lift' : (lift' e ρ).instL ls = lift' (e.instL ls) ρ := by
+  cases e <;> simp [lift', instL, instL_lift']
+
 theorem ClosedN.lift'_eq (self : ClosedN e k) (h : ρ.Fixes k) : lift' e ρ = e := by
   induction e generalizing k ρ with (simp [ClosedN] at self; simp [*])
   | bvar i => exact h.liftVar_eq self
   | app _ _ ih1 ih2 => exact ⟨ih1 self.1 h, ih2 self.2 h⟩
   | lam _ _ ih1 ih2 | forallE _ _ ih1 ih2 => exact ⟨ih1 self.1 h, ih2 self.2 h⟩
+
+def Subst := Nat → VExpr
+
+def Subst.Depth (σ : Subst) (n n' : Nat) := ∀ i, σ (i + n') = .bvar (i + n)
+
+def Subst.lift (σ : Subst) : Subst
+  | 0 => .bvar 0
+  | i+1 => (σ i).lift
+
+def Subst.liftN (σ : Subst) : Nat → Subst
+  | 0 => σ
+  | k+1 => (σ.liftN k).lift
+
+def subst : VExpr → Subst → VExpr
+  | .bvar i, σ => σ i
+  | .sort u, _ => .sort u
+  | .const c us, _ => .const c us
+  | .app fn arg, σ => .app (fn.subst σ) (arg.subst σ)
+  | .lam ty body, σ => .lam (ty.subst σ) (body.subst σ.lift)
+  | .forallE ty body, σ => .forallE (ty.subst σ) (body.subst σ.lift)
+
+def Subst.lift_r (σ : Subst) (ρ : Lift) : Subst := fun x => (σ x).lift' ρ
+def Subst.lift_l (ρ : Lift) (σ : Subst) : Subst := fun x => σ (ρ.liftVar x)
+
+theorem Subst.lift_l_lift {σ : Subst} {ρ} : (σ.lift_l ρ).lift = σ.lift.lift_l ρ.cons := by
+  funext i; cases i <;> simp! [lift_l]
+
+theorem Subst.lift_r_lift {σ : Subst} {ρ} : (σ.lift_r ρ).lift = σ.lift.lift_r ρ.cons := by
+  funext i; cases i <;> simp! [lift, lift_r, ← lift'_comp, lift_eq_lift']
+
+theorem subst_lift' {e : VExpr} : (e.lift' ρ).subst σ = subst e (.lift_l ρ σ) := by
+  induction e generalizing ρ σ <;> simp! [*, Subst.lift_l_lift]; rfl
+
+theorem lift'_subst {e : VExpr} : (e.subst σ).lift' ρ = subst e (.lift_r σ ρ) := by
+  induction e generalizing ρ σ <;> simp! [*, Subst.lift_r, Subst.lift_r_lift]
+
+def Subst.id : Subst := .bvar
+def Subst.head (σ : Subst) : VExpr := σ 0
+def Subst.tail (σ : Subst) : Subst := fun n => σ (n+1)
+
+theorem Subst.Depth.id : Subst.id.Depth 0 0 := fun _ => rfl
+
+@[simp] theorem id_lift : Subst.id.lift = Subst.id := by
+  funext i; cases i <;> simp [Subst.id, Subst.lift, liftN]
+
+@[simp] theorem subst_id {e : VExpr} : e.subst .id = e := by
+  induction e <;> simp! [*, id_lift]; rfl
+
+def Subst.cons (σ : Subst) (e : VExpr) : Subst
+  | 0 => e
+  | i+1 => σ i
+
+abbrev Subst.one (e : VExpr) : Subst := .cons .id e
+
+theorem Subst.Depth.one : (Subst.one e).Depth 0 1 := .id
+
+def _root_.Lean4Lean.Lift.inv : Lift → Subst
+  | .refl => .id
+  | .skip ρ => ρ.inv.cons default
+  | .cons ρ => ρ.inv.lift
+
+theorem lift_l_inv {ρ : Lift} : .lift_l ρ ρ.inv = Subst.id := by
+  funext i; simp [Subst.lift_l, Subst.id]
+  induction ρ generalizing i with
+  | refl => rfl
+  | skip ρ ih => simp [Lift.inv, Subst.cons, ih]
+  | cons ρ ih => cases i <;> simp [Lift.inv, Subst.lift, ih, lift_eq_lift']
+
+theorem lift'_inj {e e' : VExpr} {ρ : Lift} : e.lift' ρ = e'.lift' ρ ↔ e = e' :=
+  ⟨(by simpa [subst_lift', lift_l_inv] using congrArg (·.subst ρ.inv) ·), (· ▸ rfl)⟩
+
+theorem instN_eq (e a : VExpr) : e.inst a k = e.subst (.liftN (.one a) k) := by
+  induction e generalizing k with simp_all [inst, subst, Subst.liftN] | bvar i
+  induction k generalizing i <;> cases i <;> simp [Subst.liftN, Subst.lift, Subst.cons, Subst.id, *]
+
+theorem inst_eq (e a : VExpr) : e.inst a = e.subst (.one a) := instN_eq ..
+
+def Subst.trunc (σ : Subst) (n n' : Nat) : Subst :=
+  fun i => if n' ≤ i then .bvar (i - n' + n) else σ i
+
+theorem Subst.lift_r_comm (σ : Subst) (ρ : Lift) (H : Subst.Depth σ 0 n) :
+    σ.lift_r ρ = .lift_l (ρ.consN n) ((σ.lift_r ρ).trunc 0 n) := by
+  funext i; simp [Subst.lift_l, Subst.lift_r, Subst.trunc]
+  have : (ρ.consN n).liftVar i = if n ≤ i then ρ.liftVar (i-n) + n else i := by
+    clear H; induction n generalizing i <;> [skip; cases i] <;> simp! [*]; split <;> rfl
+  rw [this]; split <;> simp
+  have := H (i - n); rw [Nat.sub_add_cancel ‹_›] at this; simp [this]
+
+theorem lift_r_one (e : VExpr) (ρ : Lift) :
+    (Subst.one e).lift_r ρ = .lift_l ρ.cons (Subst.one (e.lift' ρ)) := by
+  refine (Subst.lift_r_comm (Subst.one e) ρ .one).trans ?_; congr 1
+  funext i; simp [Subst.trunc]
+  cases i <;> simp [Subst.one, Subst.cons, Subst.lift_r, Subst.id]
+
+theorem lift'_inst_hi (e1 e2 : VExpr) (ρ : Lift) :
+    lift' (e1.inst e2) ρ = (lift' e1 ρ.cons).inst (lift' e2 ρ) := by
+  simp [subst_lift', lift'_subst, lift_r_one, inst_eq]

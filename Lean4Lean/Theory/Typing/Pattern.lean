@@ -9,11 +9,19 @@ inductive Pattern where
   | app (f a : Pattern)
   | var (f : Pattern)
 
+def Pattern.varN (p : Pattern) : Nat → Pattern
+  | 0 => p
+  | n+1 => (p.varN n).var
+
 inductive Subpattern (p : Pattern) : Pattern → Prop where
   | refl : Subpattern p p
   | appL : Subpattern p f → Subpattern p (.app f a)
   | appR : Subpattern p a → Subpattern p (.app f a)
   | varL : Subpattern p f → Subpattern p (.var f)
+
+def Subpattern.varN (h : Subpattern p f) : ∀ {n}, Subpattern p (.varN f n)
+  | 0 => h
+  | _+1 => .varL (.varN h)
 
 theorem Subpattern.trans {p₁ p₂ p₃} (H₁ : Subpattern p₁ p₂) (H₂ : Subpattern p₂ p₃) : Subpattern p₁ p₃ := by
   induction H₂ with
@@ -42,6 +50,9 @@ def Pattern.inter : Pattern → Pattern → Option Pattern
   | _, _ => none
 
 theorem Pattern.inter_self (p : Pattern) : p.inter p = some p := by induction p <;> simp [*, inter]
+
+theorem Pattern.inter_comm (p q : Pattern) : p.inter q = q.inter p := by
+  induction p generalizing q <;> cases q <;> simp [*, eq_comm, inter] <;> split <;> simp [*]
 
 inductive Pattern.LE : Pattern → Pattern → Prop where
   | refl : LE p p
@@ -87,16 +98,20 @@ def Pattern.RHS.apply {p : Pattern}
   | .var path => m2 path
   | .app f a => .app (f.apply m1 m2) (a.apply m1 m2)
 
+theorem Pattern.RHS.lift'_apply {p : Pattern} {m1 m2} (r : p.RHS) :
+    (r.apply m1 m2).lift' ρ = (r.apply m1 fun x => (m2 x).lift' ρ) := by
+  induction r <;> simp [*, apply, lift', ← instL_lift']
+  rw [ClosedN.lift'_eq ‹_› (by trivial)]
+
 theorem Pattern.RHS.liftN_apply {p : Pattern} {m1 m2} (r : p.RHS) :
     (r.apply m1 m2).liftN n k = (r.apply m1 fun x => (m2 x).liftN n k) := by
-  induction r <;> simp [*, apply, liftN, ← instL_liftN]
-  rw [ClosedN.liftN_eq ‹_› (Nat.zero_le _)]
+  simp [← lift'_consN_skipN, lift'_apply]
 
-theorem Pattern.matches_liftN {p : Pattern} {e : VExpr} {m1 m2'} :
-    p.Matches (e.liftN n k) m1 m2' ↔
-    ∃ m2, p.Matches e m1 m2 ∧ ∀ x, m2' x = (m2 x).liftN n k := by
+theorem Pattern.matches_lift' {p : Pattern} {e : VExpr} {m1 m2'} :
+    p.Matches (e.lift' ρ) m1 m2' ↔
+    ∃ m2, p.Matches e m1 m2 ∧ ∀ x, m2' x = (m2 x).lift' ρ := by
   constructor
-  · intro h; generalize eq : e.liftN n k = e' at h
+  · intro h; generalize eq : e.lift' ρ = e' at h
     induction h generalizing e with
     | const => cases e <;> cases eq; exact ⟨_, .const, nofun⟩
     | var _ ih =>
@@ -119,6 +134,10 @@ theorem Pattern.matches_liftN {p : Pattern} {e : VExpr} {m1 m2'} :
     | app _ _ ih1 ih2 =>
       have := (ih1 (h2 <| .inl ·)).app (ih2 (h2 <| .inr ·))
       rwa [(_ : m2' = _)]; ext (_|_) <;> rfl
+
+theorem Pattern.matches_liftN {p : Pattern} {e : VExpr} {m1 m2'} :
+    p.Matches (e.liftN n k) m1 m2' ↔ ∃ m2, p.Matches e m1 m2 ∧ ∀ x, m2' x = (m2 x).liftN n k := by
+  simp only [← lift'_consN_skipN]; exact p.matches_lift'
 
 theorem Pattern.RHS.instN_apply {p : Pattern} {m1 m2} (r : p.RHS) :
     (r.apply m1 m2).inst e₀ k = (r.apply m1 fun x => (m2 x).inst e₀ k) := by
@@ -175,6 +194,13 @@ theorem Pattern.matches_inter {p q : Pattern} {e : VExpr} :
     · next ihf _ _ _ _ _ hf =>
       have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
       exact ⟨⟨_, _, .var hf⟩, ⟨_, _, .var hf'⟩⟩
+
+theorem Pattern.matches_determ
+    (h1 : Matches p e m1 m2) (h2 : Matches p e m1' m2') : m1 = m1' ∧ m2 = m2' := by
+  induction h1 with
+  | const => let .const := h2; simp
+  | app l1 l2 ih1 ih2 => let .app r1 r2 := h2; simp [ih1 r1, ih2 r2]
+  | var l1 ih1 => let .var r1 := h2; simp [ih1 r1]
 
 def Pattern.Check.OK (defeq : VExpr → VExpr → Prop) {p : Pattern}
     (m1 : p.Path.1 → List VLevel) (m2 : p.Path.2 → VExpr) : p.Check → Prop

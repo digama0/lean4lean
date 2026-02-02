@@ -7,22 +7,37 @@ namespace VEnv
 
 open VExpr
 
+inductive SimplePattern where
+  | iota (recursor : Name) (major : Nat) (constr : Name) (args : Nat)
+  | defn (head : Name)
+
+def SimplePattern.toPattern : SimplePattern → Pattern
+  | .defn c => .const c
+  | .iota r m c n => .app (.varN (.const r) m) (.varN (.const c) n)
+
 class Params where
   env : VEnv
   henv : env.WF
   univs : Nat
   Pat : (p : Pattern) → p.RHS × p.Check → Prop
-  pat_not_var : ¬Pat (.var p) r
+  pat_simple : Pat p r → ∃ sp : SimplePattern, p = sp.toPattern
   pat_uniq : Pat p₁ r → Pat p₂ r' → Subpattern p₃ p₁ → p₂.inter p₃ = some p₄ →
     p₁ = p₂ ∧ p₂ = p₃ ∧ r ≍ r'
   pat_wf : Pat p r → p.Matches e m1 m2 → HasType env univs Γ e A →
     r.2.OK (IsDefEqU env univs Γ) m1 m2 → IsDefEqU env univs Γ e (r.1.apply m1 m2)
+  pat_app_l : Pat p r → Subpattern (.app p₁ p₂) p → ¬Subpattern (.app p₃ p₄) p₁
+  pat_app_l_uniq : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
+    Subpattern (.app p₁' p₂') p' → Subpattern (.var p₃) p₁ → p₁'.inter p₃ = none
+  pat_app_uniq : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
+    Subpattern (.app p₁' p₂') p' → Subpattern p₃ p₁ → Subpattern p₃' p₂' → p₃.inter p₃' = none
   extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
     df.rhs.instL ls = r.1.apply m1 m2
 
 variable [Params]
 open Params
+
+theorem Params.pat_not_var : ¬Pat (.var p) r := (nomatch pat_simple ·)
 
 local notation:65 Γ " ⊢ " e " : " A:36 => HasType env univs Γ e A
 local notation:65 Γ " ⊢ " e1 " ≡ " e2:36 " : " A:36 => IsDefEq env univs Γ e1 e2 A
@@ -595,10 +610,27 @@ theorem ParRed.apply_pat {p : Pattern} (r : p.RHS) {m1 m2 m3}
   | .var f => exact H _
 
 omit [Params] in
+theorem _root_.Lean4Lean.Pattern.RHS.apply_lift' {p : Pattern} (r : p.RHS) {m1 m2} :
+    (r.apply m1 m2).lift' ρ = r.apply m1 (fun a => (m2 a).lift' ρ) := by
+  induction r with simp! [*]
+  | fixed _ _ h => exact instL_lift'.symm.trans ((h.lift'_eq trivial).symm ▸ rfl)
+
+omit [Params] in
 theorem _root_.Lean4Lean.Pattern.RHS.apply_liftN {p : Pattern} (r : p.RHS) {m1 m2} :
     (r.apply m1 m2).liftN k n = r.apply m1 (fun a => (m2 a).liftN k n) := by
-  induction r with simp! [*]
-  | fixed _ _ h => exact instL_liftN.symm.trans ((h.liftN_eq (Nat.zero_le _)).symm ▸ rfl)
+  simp [← lift'_consN_skipN, Pattern.RHS.apply_lift']
+
+variable! (hΓ : OnCtx Γ (IsType env univs)) in
+theorem HasType.matches_inv {p : Pattern} {m1 m2} (H : Γ ⊢ e : A)
+    (H2 : p.Matches e m1 m2) : ∀ a, ∃ A, Γ ⊢ m2 a : A := by
+  induction H2 generalizing A with
+  | const => nofun
+  | app _ _ ih1 ih2 =>
+    have ⟨_, _, hf, ha⟩ := H.app_inv henv hΓ
+    rintro (h|h) <;> [exact ih1 hf h; exact ih2 ha h]
+  | var _ ih1 =>
+    have ⟨_, _, hf, ha⟩ := H.app_inv henv hΓ
+    rintro (_|h) <;> [exact ⟨_, ha⟩; exact ih1 hf h]
 
 -- theorem IsDefEqU.applyL {p : Pattern} (r : p.RHS) {m1 m1' m2}
 --     (H : ∀ a, List.Forall₂ (· ≈ ·) (m1 a) (m1' a))
@@ -812,13 +844,10 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
   | @extra p r e m1 m2 Γ m2' l1 l2 l3 l4 ih =>
     have :
       (∃ m3 m3' : p.Path.snd → VExpr, p.Matches e' m1 m3 ∧
-        (∀ a, Γ ⊢ m2 a ≫ m3 a) ∧
-        (∀ a, Γ ⊢ m3 a ≫ m3' a) ∧
-        (∀ a, Γ ⊢ m3' a ≡ₚ m2' a)) ∨
+        (∀ a, Γ ⊢ m2 a ≫ m3 a) ∧ (∀ a, Γ ⊢ m3 a ≫ m3' a) ∧ (∀ a, Γ ⊢ m3' a ≡ₚ m2' a)) ∨
       (∃ p₁ e₁' e₁ m1₁ m2₁, Subpattern p₁ p ∧ (p₁ = p → e₁ = e ∧ e₁' = e' ∧ m1₁ ≍ m1 ∧ m2₁ ≍ m2) ∧
         p₁.Matches e₁ m1₁ m2₁ ∧ ∃ p' r m1 m2 m2',
-        Pat p' r ∧ p'.Matches e₁ m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
-        (∀ a, Γ ⊢ m2 a ≫ m2' a) ∧ e₁' = r.1.apply m1 m2') := by
+        Pat p' r ∧ p'.Matches e₁ m1 m2 ∧ (∀ a, Γ ⊢ m2 a ≫ m2' a) ∧ e₁' = r.1.apply m1 m2') := by
       clear l1 l3 l4 r
       induction H generalizing p A with
       | const =>
@@ -849,9 +878,9 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
               exact .inl ⟨_, Sum.elim _ _, .app f1 a1,
                 (·.casesOn f2 a2), (·.casesOn f3 a3), (·.casesOn f4 a4)⟩
       | beta _ _ => cases l2 with | var h | app h => cases h
-      | @extra _ _ _ _ _ _ _ r1 r2 r3 r4 =>
+      | @extra _ _ _ _ _ _ _ r1 r2 _ r4 =>
         exact .inr ⟨_, _, _, _, _, .refl, fun _ => ⟨rfl, rfl, .rfl, .rfl⟩,
-          l2, _, _, _, _, _, r1, r2, r3, r4, rfl⟩
+          l2, _, _, _, _, _, r1, r2, r4, rfl⟩
       | _ => cases l2
     match this with
     | .inl ⟨m3, m3', h1, h2, h3, h4⟩ =>
@@ -861,7 +890,7 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
       refine ⟨_, .trans
         (.symm <| .apply_pat hΓ (fun _ _ h => ⟨_, (h2 _).defeq hΓ h⟩) h1.hasType.1)
         (.trans h1 <| .apply_pat hΓ (fun _ _ h => ⟨_, (h2 _).defeq hΓ h⟩) h1.hasType.2)⟩
-    | .inr ⟨_, _, _, _, _, h1, h2, l2', _, _, _, _, m3, r1, r2, r3, r4, e⟩ =>
+    | .inr ⟨_, _, _, _, _, h1, h2, l2', _, _, _, _, m3, r1, r2, r4, e⟩ =>
       obtain ⟨_, -, -, hr, -⟩ := Pattern.matches_inter.1 ⟨⟨_, _, r2⟩, ⟨_, _, l2'⟩⟩
       obtain ⟨rfl, rfl, ⟨⟩⟩ := pat_uniq l1 r1 h1 hr
       obtain ⟨rfl, rfl, ⟨⟩, ⟨⟩⟩ := h2 rfl; subst e
@@ -870,7 +899,7 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
         let ⟨m3', h3, h4⟩ := this
         refine ⟨_, ?h3, .apply_pat hΓ (fun a _ _ => h4 a) ((?h3).hasType hΓ (H.hasType hΓ H1))⟩
         exact .apply_pat _ h3
-      clear H r l1 l2 l3 l4 this h1 h2 r1 r2 r3 hr
+      clear H r l1 l2 l3 l4 this h1 h2 r1 r2 hr
       induction l2' generalizing A with
       | const => exact ⟨nofun, nofun, nofun⟩
       | app _ _ ih1 ih2 =>
