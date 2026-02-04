@@ -4,7 +4,12 @@ defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verif
 [[require]]
 name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
-rev = "v4.26.0"
+rev = "v4.27.0-rc1"
+
+[[require]]
+scope = "leanprover"
+name = "lean4export"
+rev = "joachim_parse_fixes"
 
 [[lean_lib]]
 name = "Lean4Lean"

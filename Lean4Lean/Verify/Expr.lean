@@ -244,7 +244,7 @@ theorem toConstructor_hasLevelParam :
   cases l with simp [Literal.toConstructor]
   | natVal n => cases n <;> simp [natLitToConstructor, hasLevelParam', natZero, natSucc]
   | strVal s =>
-    simp [strLitToConstructor, hasLevelParam', String.foldr_eq]
+    simp [strLitToConstructor, hasLevelParam']
     induction s.toList <;> simp_all [hasLevelParam', Level.hasParam']
 
 protected theorem beq_iff_eq {m n : Literal} : m == n ↔ m = n := by
