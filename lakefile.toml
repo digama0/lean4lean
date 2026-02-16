@@ -9,7 +9,7 @@ rev = "v4.29.0"
 [[require]]
 scope = "leanprover"
 name = "lean4export"
-rev = "joachim_parse_fixes"
+rev = "master"
 
 [[lean_lib]]
 name = "Lean4Lean"
