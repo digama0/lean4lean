@@ -210,7 +210,9 @@ partial def replayConstant (name : Name) : M Unit := do
       -- Similarly we postpone checking recursors.
       | .recInfo info =>
         modify fun s => { s with postponedRecursors := s.postponedRecursors.insert info.name }
-      | .quotInfo _ => addDeclAt .quotDecl
+      | .quotInfo _ =>
+        replayConstant ``Eq
+        addDeclAt .quotDecl
       modify fun s => { s with pending := s.pending.erase name }
 
 /-- Replay a set of constants one at a time. -/
