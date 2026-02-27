@@ -102,55 +102,48 @@ theorem Lookup.uniq (hA : Lookup Γ i A) (hB : Lookup Γ i B) : A = B :=
   | .zero, .zero => rfl
   | .succ hA, .succ hB => Lookup.uniq hA hB ▸ rfl
 
+theorem Lookup.weak' (W : Ctx.Lift' ρ Γ Γ') (H : Lookup Γ i A) :
+    Lookup Γ' (ρ.liftVar i) (A.lift' ρ) := by
+  induction W generalizing i A with
+  | refl => simp; exact H
+  | skip W ih => have' := (ih H).succ; rwa [VExpr.lift_eq_lift', ← VExpr.lift'_comp] at this
+  | cons W ih =>
+    cases H with
+    | zero => refine' cast _ Lookup.zero; congr 1; simp [VExpr.lift_eq_lift', ← VExpr.lift'_comp]
+    | succ H => refine' cast _ (ih H).succ; congr 1; simp [VExpr.lift_eq_lift', ← VExpr.lift'_comp]
+
 theorem Lookup.weakN (W : Ctx.LiftN n k Γ Γ') (H : Lookup Γ i A) :
     Lookup Γ' (liftVar n i k) (A.liftN n k) := by
-  induction W generalizing i A with
-  | zero As =>
-    rw [liftVar_base, Nat.add_comm]
-    subst n
-    induction As with simp [*]
-    | cons _ _ ih => rw [liftN_succ]; exact .succ ih
-  | @succ k _ _ _ _ ih =>
-    match H with
-    | .zero => rw [liftVar_zero, ← lift_liftN']; exact .zero
-    | .succ H => rw [liftVar_succ, ← lift_liftN']; exact (ih H).succ
+  simp [← Lift.liftVar_consN_skipN, ← VExpr.lift'_consN_skipN]
+  exact H.weak' (Ctx.liftN_iff_lift'.1 W)
+
+theorem Lookup.weakU_inv (W : Ctx.Lift' ρ Γ Γ')
+    (H : Lookup Γ' (ρ.liftVar i) A') : ∃ A, A' = A.lift' ρ ∧ Lookup Γ i A := by
+  induction W generalizing i A' with
+  | refl => simpa using H
+  | @skip ρ W _ _ _ ih =>
+    simp at H; let .succ H := H
+    obtain ⟨_, rfl, h2⟩ := ih H; refine ⟨_, ?_, h2⟩
+    rw [VExpr.lift_eq_lift', ← VExpr.lift'_comp]; rfl
+  | @cons ρ Γ Δ B W ih =>
+    cases i with
+    | zero => cases H; exact ⟨_, by simp [VExpr.lift_eq_lift', ← VExpr.lift'_comp], .zero⟩
+    | succ i =>
+      let .succ (ty := C) H := H
+      obtain ⟨C, rfl, h⟩ := ih H
+      refine ⟨_, ?_, .succ h⟩
+      simp [VExpr.lift_eq_lift', ← VExpr.lift'_comp]
+
+theorem Lookup.weak'_iff (W : Ctx.Lift' ρ Γ Γ') :
+    Lookup Γ' (ρ.liftVar i) (A.lift' ρ) ↔ Lookup Γ i A := by
+  refine ⟨fun H => ?_, fun H => H.weak' W⟩
+  let ⟨_, h1, h2⟩ := H.weakU_inv W
+  exact VExpr.lift'_inj.1 h1 ▸ h2
 
 theorem Lookup.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     Lookup Γ' (liftVar n i k) (A.liftN n k) ↔ Lookup Γ i A := by
-  refine ⟨fun H => ?_, fun H => H.weakN W⟩
-  induction W generalizing i A with
-  | zero As =>
-    rw [liftVar_base, Nat.add_comm] at H
-    subst n
-    induction As with simp at H
-    | nil => exact H
-    | cons A As ih =>
-      rw [liftN_succ] at H
-      generalize eq : lift (liftN ..) = A' at H
-      obtain _|H := H; cases liftN_inj.1 eq
-      exact ih H
-  | @succ k _ _ _ _ ih =>
-    generalize eA : liftN n A (k+1) = A' at H
-    cases i with
-    | zero =>
-      simp at H; let .zero := H
-      rw [lift, liftN'_comm (h := Nat.zero_le _), Nat.add_comm 1, liftN_inj] at eA
-      subst A; exact .zero
-    | succ i =>
-      simp at H; let .succ H := H
-      obtain ⟨_, rfl, rfl⟩ := of_liftN_eq_liftN (k2 := 0) eA
-      exact .succ (ih H)
-
-theorem Lookup.weak'_iff (W : Ctx.Lift' l Γ Γ') :
-    Lookup Γ' (l.liftVar i) (A.lift' l) ↔ Lookup Γ i A := by
-  generalize e : l.depth = n
-  induction n generalizing l Γ' with
-  | zero => rw [Lift.liftVar_depth_zero e, VExpr.lift'_depth_zero e, W.depth_zero e]
-  | succ n ih =>
-    obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
-    have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
-    rw [Lift.consN_skip_eq, Lift.liftVar_comp, ← Lift.skipN_one, Lift.liftVar_consN_skipN,
-      lift'_comp, lift'_consN_skipN, weakN_iff W2, ih W1 Lift.depth_consN]
+  simp [← Lift.liftVar_consN_skipN, ← VExpr.lift'_consN_skipN]
+  exact weak'_iff (Ctx.liftN_iff_lift'.1 W)
 
 theorem Lookup.instL : Lookup Γ i A → Lookup (Γ.map (VExpr.instL ls)) i (A.instL ls)
   | .zero => instL_liftN ▸ .zero

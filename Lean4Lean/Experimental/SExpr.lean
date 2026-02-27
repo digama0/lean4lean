@@ -48,6 +48,8 @@ def inst (ls : List SLevel) (l : SLevel) : SLevel := by
     rw [← List.forall₂_eq, List.forall₂_map_left_iff, List.forall₂_map_right_iff]
     exact h3.imp fun _ _ h => congrFun h.2 _
 
+theorem succ_inj : succ l = succ l' → l = l' := sorry
+
 end SLevel
 
 inductive SExpr where
@@ -134,6 +136,10 @@ def Subst := Nat → SExpr
 
 def Subst.Depth (σ : Subst) (n n' : Nat) := ∀ i, σ (i + n') = .bvar (i + n)
 
+def Subst.Fixes (σ : Subst) (n : Nat) := ∀ i < n, σ i = .bvar i
+
+theorem Subst.Fixes.zero : Fixes σ 0 := nofun
+
 theorem Subst.Depth.add {σ : Subst} (H : σ.Depth n n') : σ.Depth (n + k) (n' + k) :=
   fun i => cast (by congr 2 <;> omega) <| H (k + i)
 
@@ -143,6 +149,10 @@ def Subst.lift (σ : Subst) : Subst
 
 theorem Subst.Depth.lift {σ : Subst} (H : σ.Depth n n') : σ.lift.Depth (n + 1) (n' + 1) :=
   fun i => by simp [Subst.lift, H i]; rfl
+
+theorem Subst.Fixes.lift {σ : Subst} (H : σ.Fixes n) : σ.lift.Fixes (n + 1) := fun
+  | 0, _ => rfl
+  | n+1, h => by simp [Subst.lift, H _ (Nat.lt_of_succ_lt_succ h)]
 
 def Subst.id : Subst := .bvar
 def Subst.head (σ : Subst) : SExpr := σ 0
@@ -167,15 +177,15 @@ def Subst.trunc (σ : Subst) (n n' : Nat) : Subst :=
 theorem Subst.Depth.trunc {σ : Subst} : (σ.trunc n n').Depth n n' := by
   intro i; simp [Subst.trunc]
 
-def _root_.Lean4Lean.Lift.inv : Lift → Subst
+def _root_.Lean4Lean.Lift.invS : Lift → Subst
   | .refl => .id
-  | .skip ρ => ρ.inv.cons default
-  | .cons ρ => ρ.inv.lift
+  | .skip ρ => ρ.invS.cons default
+  | .cons ρ => ρ.invS.lift
 
-theorem Subst.Depth.inv : ∀ (ρ : Lift), ρ.inv.Depth ρ.dom ρ.size
+theorem Subst.Depth.invS : ∀ (ρ : Lift), ρ.invS.Depth ρ.dom ρ.size
   | .refl => .id
-  | .skip l => (inv l).cons
-  | .cons l => (inv l).lift
+  | .skip l => (invS l).cons
+  | .cons l => (invS l).lift
 
 @[simp] theorem Subst.head_cons : (cons σ e).head = e := rfl
 @[simp] theorem Subst.tail_cons : (cons σ e).tail = σ := rfl
@@ -191,12 +201,15 @@ theorem Subst.lift_l_lift {σ : Subst} {ρ} : (σ.lift_l ρ).lift = σ.lift.lift
 theorem Subst.lift_r_lift {σ : Subst} {ρ} : (σ.lift_r ρ).lift = σ.lift.lift_r ρ.cons := by
   funext i; cases i <;> simp! [lift_r, ← lift'_comp]
 
-theorem lift_l_inv {ρ : Lift} : .lift_l ρ ρ.inv = Subst.id := by
+theorem lift_l_inv {ρ : Lift} : .lift_l ρ ρ.invS = Subst.id := by
   funext i; simp [Subst.lift_l, Subst.id]
   induction ρ generalizing i with
   | refl => rfl
-  | skip ρ ih => simp [Lift.inv, Subst.cons, ih]
-  | cons ρ ih => cases i <;> simp [Lift.inv, Subst.lift, ih]
+  | skip ρ ih => simp [Lift.invS, Subst.cons, ih]
+  | cons ρ ih => cases i <;> simp [Lift.invS, Subst.lift, ih]
+
+@[simp] theorem instL_lift' : (lift' e ρ).instL ls = lift' (e.instL ls) ρ := by
+  cases e <;> simp [lift', instL, instL_lift']
 
 def _root_.Lean4Lean.Lift.toSubst (ρ : Lift) : Subst := .lift_l ρ .id
 
@@ -226,13 +239,21 @@ theorem lift'_subst {e : SExpr} : (e.subst σ).lift' ρ = subst e (.lift_r σ ρ
   induction e generalizing ρ σ <;> simp! [*, Subst.lift_r, Subst.lift_r_lift]
 
 theorem lift'_inj {e e' : SExpr} {ρ : Lift} : e.lift' ρ = e'.lift' ρ ↔ e = e' :=
-  ⟨(by simpa [subst_lift', lift_l_inv] using congrArg (·.subst ρ.inv) ·), (· ▸ rfl)⟩
+  ⟨(by simpa [subst_lift', lift_l_inv] using congrArg (·.subst ρ.invS) ·), (· ▸ rfl)⟩
 
 theorem subst_toSubst {e : SExpr} : subst e ρ.toSubst = lift' e ρ := by
   simp [Lift.toSubst, ← subst_lift']
 
-theorem subst_lift'_inv {e : SExpr} {ρ : Lift} : (e.lift' ρ).subst ρ.inv = e := by
+theorem subst_lift'_inv {e : SExpr} {ρ : Lift} : (e.lift' ρ).subst ρ.invS = e := by
   rw [subst_lift', lift_l_inv, subst_id]
+
+nonrec def Subst.instL (ls : List SLevel) (σ : Subst) : Subst := instL ls ∘ σ
+
+theorem Subst.instL_lift {σ : Subst} : (σ.instL ls).lift = σ.lift.instL ls := by
+  funext i; obtain _|i := i <;> simp [Subst.instL, lift, SExpr.instL]
+
+@[simp] theorem instL_subst : (subst e σ).instL ls = subst (e.instL ls) (σ.instL ls) := by
+  cases e <;> simp [subst, instL, instL_subst, Subst.instL_lift] <;> simp [Subst.instL]
 
 def Subst.comp (σ σ' : Subst) : Subst := fun x => (σ x).subst σ'
 
@@ -261,9 +282,15 @@ theorem Subst.Depth.lift_r {σ : Subst}
     (H : σ.Depth ρ.dom n) : (Subst.lift_r σ ρ).Depth ρ.size n := by
   rw [lift_r_eq]; exact .comp (.toSubst _) H
 
+theorem ClosedN.subst_eq {e : SExpr} (self : ClosedN e k) (h : σ.Fixes k) : e.subst σ = e := by
+  induction e generalizing k σ with (simp [ClosedN] at self; simp [*, SExpr.subst])
+  | bvar i => exact h _ self
+  | app _ _ _ ih1 ih2 => exact ⟨ih1 self.1 h, ih2 self.2 h⟩
+  | lam _ _ ih1 ih2 | forallE _ _ ih1 ih2 => exact ⟨ih1 self.1 h, ih2 self.2 h.lift⟩
+
 def inst (e a : SExpr) : SExpr := e.subst (.one a)
 
-def Skips (e : SExpr) (ρ : Lift) : Prop := lift' (e.subst ρ.inv) ρ = e
+def Skips (e : SExpr) (ρ : Lift) : Prop := lift' (e.subst ρ.invS) ρ = e
 
 theorem Skips.lift (e : SExpr) (ρ : Lift) : Skips (e.lift' ρ) ρ := by
   rw [Skips, subst_lift'_inv]
@@ -281,11 +308,11 @@ theorem skips_iff {e : SExpr} {ρ : Lift} : Skips e ρ ↔ Skips' e ρ := by
   | lam _ _ ih1 ih2 | forallE _ _ ih1 ih2 => exact and_congr ih1 (@ih2 ρ.cons)
   | bvar i =>
     constructor <;> [intro h; intro ⟨j, h⟩]
-    · refine (?_ : have := (match ρ.inv i with | SExpr.bvar .. => True | _ => True); _); split
+    · refine (?_ : have := (match ρ.invS i with | SExpr.bvar .. => True | _ => True); _); split
       · rename_i eq; cases eq ▸ h; exact ⟨_, rfl⟩
-      · suffices ρ.inv i = default by cases this ▸ h
+      · suffices ρ.invS i = default by cases this ▸ h
         clear h; rename_i h
-        induction ρ generalizing i <;> simp [Lift.inv, Subst.id] at * <;>
+        induction ρ generalizing i <;> simp [Lift.invS, Subst.id] at * <;>
           cases i <;> simp [Subst.cons, Subst.lift] at *
         case skip.succ ih i => exact ih _ h
         case cons.succ ih i => rw [ih i fun j h' => h _ (by rw [h']; rfl)]; rfl
@@ -347,6 +374,12 @@ theorem lift_inst (e : SExpr) : e.lift.inst e' = e := by
 theorem lift'_inst_hi (e1 e2 : SExpr) (ρ : Lift) :
     lift' (e1.inst e2) ρ = (lift' e1 ρ.cons).inst (lift' e2 ρ) := by
   simp [inst, subst_lift', lift'_subst, lift_r_one]
+
+theorem subst_inst {e : SExpr} : (e.inst a).subst σ = (e.subst σ.lift).inst (a.subst σ) := by
+  rw [SExpr.inst, SExpr.inst, subst_subst, subst_subst]; congr 1
+  funext i; obtain _|i := i <;> simp [Subst.comp, Subst.lift, SExpr.subst]
+  · simp [Subst.one, Subst.cons]
+  · rw [← SExpr.inst, lift_inst]; rfl
 
 inductive Ctx.Lift' : Lift → List SExpr → List SExpr → Prop where
   | refl : Ctx.Lift' .refl Γ Γ
@@ -530,13 +563,15 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
   | extra : env.defeqs df → ls.length = df.uvars →
     Γ ⊢ .instL ls (.mk df.lhs) ≡ .instL ls (.mk df.rhs) : .instL ls (.mk df.type)
 
+theorem IsDefEq.isType : Γ ⊢ e1 ≡ e2 : A → ∃ u, Γ ⊢ A : .sort u := sorry
+
 def Ctx.WF : List SExpr → Prop
   | [] => True
   | A::Γ => WF Γ ∧ ∃ u, Γ ⊢ A : .sort u
 scoped notation:65 "⊢ " Γ:36 => Ctx.WF Γ
 
 variable (HasType : List SExpr → SExpr → SExpr → Prop)
-inductive Ctx.Subst : List SExpr → SExpr.Subst → List SExpr → Prop where
+inductive Ctx.Subst (Γ : List SExpr) : SExpr.Subst → List SExpr → Prop where
   | nil : Ctx.Subst Γ σ []
   | cons : Ctx.Subst Γ σ.tail Δ → HasType Γ σ.head (A.subst σ.tail) → Ctx.Subst Γ σ (A::Δ)
 
@@ -550,8 +585,15 @@ theorem Ctx.Subst.tail (H : Ctx.Subst HasType Γ σ (A::Δ)) : Ctx.Subst HasType
 theorem Ctx.Subst.cons' (H1 : Ctx.Subst HasType Γ σ Δ) (H2 : HasType Γ e (A.subst σ)) :
     Ctx.Subst HasType Γ (σ.cons e) (A::Δ) := .cons H1 H2
 
-theorem Ctx.Subst.lift_r (H1 : Ctx.Subst HasType Γ σ Θ) (H2 : Ctx.Lift' ρ Δ Θ) :
-    Ctx.Subst HasType Γ (σ.lift_r ρ) Δ := sorry
+theorem Ctx.Subst.lift_r (H1 : Ctx.Subst HasType Θ σ Γ) (H2 : Ctx.Lift' ρ Θ Δ) :
+    Ctx.Subst HasType Δ (σ.lift_r ρ) Γ := sorry
+
+theorem Ctx.Subst.lift (bvar : ∀ {Γ i A}, Lookup Γ i A → HasType Γ (bvar i) A)
+    (H : Ctx.Subst HasType Γ σ Δ) : Ctx.Subst HasType (A.subst σ :: Γ) σ.lift (A :: Δ) := by
+  have : σ.lift.tail = σ.lift_r (.skip .refl) := by
+    funext i; simp [SExpr.Subst.tail, SExpr.Subst.lift, SExpr.Subst.lift_r]
+  refine .cons (this ▸ .lift_r H .one) (this ▸ bvar ?_)
+  rw [← lift'_subst, ← SExpr.lift]; exact .zero
 
 theorem Ctx.Subst.id : Ctx.Subst HasType Γ .id Γ := sorry
 theorem Ctx.Subst.one (H : HasType Γ e A) : Ctx.Subst HasType Γ (.one e) (A::Γ) :=
@@ -644,6 +686,9 @@ theorem WithLift.weak'
 theorem IsDefEqLift.weak' : Ctx.Lift' ρ Γ Δ → Γ ⊢ e1 ≡ e2 :↑ A →
     Δ ⊢ e1.lift' ρ ≡ e2.lift' ρ :↑ A.lift' ρ := WithLift.weak' IsDefEq.weak'
 
+theorem IsDefEqLift.subst : Ctx.Subst HasType Δ σ Γ → Γ ⊢ e1 ≡ e2 :↑ A →
+    Δ ⊢ e1.subst σ ≡ e2.subst σ :↑ A.subst σ := sorry
+
 theorem WithLift.weak'_inv (W : Ctx.Lift' ρ Γ Δ)
     (H : WithLift DefEq Δ (e1.lift' ρ) (e2.lift' ρ) (A.lift' ρ)) : WithLift DefEq Γ e1 e2 A where
   defeq' Δ' ρ' _ _ _ W' := by
@@ -709,6 +754,12 @@ inductive WHRed (Γ : List SExpr) : SExpr → SExpr → Prop where
   | extra : Pat p r → p.MatchesS e m1 m2 → (dfs : List _).map (·.2) = r.2.defeqsS m1 m2 →
     (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b :↑ A) → Γ ⊢ e ⤳ r.1.applyS m1 m2
 
+theorem WHRed.subst (W : Ctx.Subst HasType Δ σ Γ) :
+    Γ ⊢ e1 ⤳ e2 → Δ ⊢ e1.subst σ ⤳ e2.subst σ
+  | .app h1 => .app (h1.subst W)
+  | .beta => subst_inst ▸ .beta
+  | .extra h1 h2 h3 h4 => sorry
+
 theorem WHRed.weak' (W : Ctx.Lift' ρ Γ Γ') :
     Γ ⊢ e1 ⤳ e2 → Γ' ⊢ e1.lift' ρ ⤳ e2.lift' ρ
   | .app h1 => .app (h1.weak' W)
@@ -751,6 +802,14 @@ theorem WHRed.determ (H1 : Γ ⊢ e ⤳ e₁) (H2 : Γ ⊢ e ⤳ e₂) : e₁ = 
 
 def WHRedS (Γ : List SExpr) : SExpr → SExpr → Prop := ReflTransGen (WHRed Γ)
 scoped notation:65 Γ " ⊢ " e1 " ⤳* " e2:36 => WHRedS Γ e1 e2
+
+theorem WHRedS.subst (W : Ctx.Subst HasType Δ σ Γ) (H : Γ ⊢ e1 ⤳* e2) :
+    Δ ⊢ e1.subst σ ⤳* e2.subst σ := by
+  induction H with
+  | rfl => exact .rfl
+  | tail _ h2 ih => exact .tail ih (h2.subst W)
+
+theorem WHRedS.defeq (H : Γ ⊢ e1 ⤳* e2) (he : Γ ⊢ e1 : A) : Γ ⊢ e1 ≡ e2 : A := sorry
 
 theorem WHRedS.weak' (W : Ctx.Lift' ρ Γ Δ) (H : Γ ⊢ e1 ⤳* e2) :
     Δ ⊢ e1.lift' ρ ⤳* e2.lift' ρ := by
@@ -829,6 +888,8 @@ inductive InferType : List SExpr → SExpr → SExpr → Prop where
   | forallE : Γ ⊢ A ▷ U → Γ ⊢ U ⤳* .sort u →
     A::Γ ⊢ B ▷ V → A::Γ ⊢ V ⤳* .sort v → Γ ⊢ .forallE A B ▷ .sort (.imax u v)
 
+theorem InferType.hasType (H : Γ ⊢ e ▷ A) : Γ ⊢ e : A := sorry
+
 theorem InferType.determ (H1 : Γ ⊢ e ▷ A) (H2 : Γ ⊢ e ▷ A') : A = A' := by
   induction H1 generalizing A' with
   | bvar h1 => cases H2 with | bvar h2 => exact h1.determ h2
@@ -880,8 +941,30 @@ theorem InferType.weak'_inv (W : Ctx.Lift' ρ Γ Δ) (H : Δ ⊢ e.lift' ρ ▷ 
   obtain ⟨_, h1, h2⟩ := H.weakU_inv W
   exact SExpr.lift'_inj.1 h1 ▸ h2
 
+theorem InferType.subst (W : Ctx.Subst InferType Δ σ Γ)
+    (H : Γ ⊢ e ▷ A) : Δ ⊢ e.subst σ ▷ A.subst σ := by
+  induction H generalizing Δ σ with
+  | @bvar Γ i A h =>
+    simp [SExpr.subst]
+    induction W generalizing i A with | nil | @cons Γ σ B W h' ih <;> cases h
+    case zero => rw [SExpr.lift, SExpr.subst_lift']; exact h'
+    case succ i C h => rw [SExpr.lift, SExpr.subst_lift']; exact ih h
+  | sort => exact .sort
+  | const h1 h2 =>
+    rw [(henv.closedC h1).mkS.instL.subst_eq .zero]
+    exact .const h1 h2
+  | app h1 h2 h3 ih => exact subst_inst ▸ .app (ih W) (h2.subst W) (h3.subst W)
+  | lam h1 h2 ih => exact .lam (h1.subst W) (ih (W.lift .bvar))
+  | forallE h1 h2 h3 h4 ih1 ih2 =>
+    exact .forallE (ih1 W) (h2.subst W) (ih2 (W.lift .bvar)) (h4.subst (W.lift .bvar))
+
+theorem InferType.inst (H₀ : Γ ⊢ a ▷ A₀) (H : A₀::Γ ⊢ e ▷ A) :
+    Γ ⊢ e.inst a ▷ A.inst a := .subst (.one H₀) H
+
 def InferTypeS (Γ : List SExpr) (e A : SExpr) := ∃ A', Γ ⊢ e ▷ A' ∧ Γ ⊢ A' ⤳* A
 scoped notation:65 Γ " ⊢ " e1 " ▷* " e2:36 => InferTypeS Γ e1 e2
+
+theorem InferTypeS.hasType : Γ ⊢ e ▷* A → Γ ⊢ e : A := sorry
 
 theorem WHRedS.inferType
     (H1 : Γ ⊢ e ⤳* e₁) (W1 : WHNF Γ e₁)
@@ -895,6 +978,8 @@ theorem WHRedS.inferType
     cases H2 using ReflTransGen.headIndOn with
     | rfl => cases W2 _ l1
     | head r1 r2 => cases l1.determ r1; exact ih r2 W2
+
+theorem WHRedS.parRedS (H : Γ ⊢ e ⤳* e') : Γ ⊢ e ≫* e' := sorry
 
 theorem InferTypeS.determ
     (H1 : Γ ⊢ e ▷* A) (W1 : WHNF Γ A)
@@ -911,20 +996,6 @@ theorem InferTypeS.weakU_inv (W : Ctx.Lift' ρ Γ Δ) (H : Δ ⊢ e.lift' ρ ▷
   obtain ⟨_, rfl, a1⟩ := h1.weakU_inv W
   obtain ⟨_, rfl, a2⟩ := h2.weakU_inv W
   exact ⟨_, rfl, _, a1, a2⟩
-
-theorem InferType.subst (W : Ctx.Subst InferType Δ σ Γ)
-    (H : Γ ⊢ e ▷ A) : Δ ⊢ e.subst σ ▷ A.subst σ := by
-  induction H with
-  | @bvar _ i _ h =>
-    simp [SExpr.subst]
-    induction W generalizing i with | nil | cons W h' ih <;> cases h
-    case zero => rw [SExpr.lift, SExpr.subst_lift']; exact h'
-    case succ h => stop rw [SExpr.lift, SExpr.subst_lift']; exact ih h.succ
-  | sort => sorry
-  | const => sorry
-  | app => sorry
-  | lam => sorry
-  | forallE => sorry
 
 scoped notation:65 Γ " ⊢ " e1 " ≡ₚ " e2 " : " A:36 => NormalEq Γ e1 e2 A
 inductive NormalEq : List SExpr → SExpr → SExpr → SExpr → Prop where
@@ -1023,9 +1094,15 @@ theorem CRDefEq.symm : Γ ⊢ e₁ ≫≪ e₂ : A → Γ ⊢ e₂ ≫≪ e₁ :
 theorem CRDefEq.trans : Γ ⊢ e₁ ≫≪ e₂ : A → Γ ⊢ e₂ ≫≪ e₃ : A → Γ ⊢ e₁ ≫≪ e₃ : A
   | ⟨l1, _, _, l3, l4, l5⟩, ⟨r1, _, _, r3, r4, r5⟩ => sorry
 
+theorem CRDefEq.defeqDF : Γ ⊢ e₁ ≫≪ e₂ : A → Γ ⊢ A ≡ B : .sort u → Γ ⊢ e₁ ≫≪ e₂ : B
+  | ⟨l1, _, _, l3, l4, l5⟩, H => ⟨H.defeqDF l1, _, _, l3, l4, l5.defeqDF H⟩
+
 theorem CRDefEq.weak' (W : Ctx.Lift' ρ Γ Γ') :
     Γ ⊢ e1 ≫≪ e2 : A → Γ' ⊢ e1.lift' ρ ≫≪ e2.lift' ρ : A.lift' ρ
   | ⟨h1, _, _, h3, h4, h5⟩ => ⟨h1.weak' W, _, _, h3.weak' W, h4.weak' W, h5.weak' W⟩
+
+theorem WHRedS.crDefEq (H1 : Γ ⊢ e1 : A) (H2 : Γ ⊢ e1 ⤳* e2) : Γ ⊢ e1 ≫≪ e2 : A :=
+  ⟨H2.defeq H1, _, _, H2.parRedS, .rfl, .refl (H2.defeq H1).hasType.2⟩
 
 nonrec theorem CRDefEqLift.symm : Γ ⊢ e1 ≫≪ e2 :↑ A → Γ ⊢ e2 ≫≪ e1 :↑ A := .symm .symm
 
@@ -1035,3 +1112,13 @@ theorem CRDefEqLift.left (H : Γ ⊢ e1 ≫≪ e2 :↑ A) : Γ ⊢ e1 :↑ A := 
 
 nonrec theorem CRDefEqLift.refl (H : Γ ⊢ e :↑ A) : Γ ⊢ e ≫≪ e :↑ A :=
   .refl (.refl <| H.left' · · ·)
+
+theorem InferType.whRed (H1 : Γ ⊢ e ⤳ e') (H2 : Γ ⊢ e ▷ A) : Γ ⊢ e' ▷ A := by
+  induction H1 generalizing A with
+  | app h1 ih => let .app r1 r2 r3 := H2; exact .app (ih r1) r2 r3
+  | beta =>
+    let .app a1 a2 a3 := H2
+    let .lam b1 b2 := a1
+    cases WHNF.forallE.whRedS a2
+    exact .inst sorry b2
+  | extra => sorry
