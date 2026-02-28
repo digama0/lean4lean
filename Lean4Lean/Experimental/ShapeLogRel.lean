@@ -154,6 +154,11 @@ omit [Params] in
 @[simp] theorem Shape.bot_le : Shape.bot ≤ (s : Shape n) := by cases n <;> rfl
 
 omit [Params] in
+theorem ShapeFun.LE.def {f f' : ShapeFun n} : ShapeFun.LE f f' ↔
+    ∀ x y:Shape n, (x, y) ∈ f → ∃ x' y':Shape n, (x', y') ∈ f' ∧ x' ≤ x ∧ y ≤ y' := by
+  simp [LE, ble]; rfl
+
+omit [Params] in
 theorem Shape.LE.def {s s' : Shape (n + 1)} : s ≤ s' ↔
     match s, s' with
     | .bot, _ => True
@@ -178,6 +183,10 @@ theorem Shape.LE.rfl {s : Shape n} : s ≤ s := by
 omit [Params] in
 theorem Shape.le_bot {s : Shape n} : s ≤ .bot ↔ s = .bot :=
   ⟨(by cases n <;> cases s <;> first | rfl | cases ·), (· ▸ LE.rfl)⟩
+
+omit [Params] in
+theorem Shape.le_sort {s : Shape n} : s ≤ .sort ↔ s = .bot ∨ s = .sort := by
+  cases n <;> simp [sort, bot, (· ≤ ·), Shape.LE] <;> cases s <;> simp [ble]
 
 def ShapeFun.lift (lift : α → β) (x : List (α × α)) : List (β × β) :=
   x.map fun (a, b) => (lift a, lift b)
@@ -353,6 +362,9 @@ def ShapeFun.app (s : ShapeFun n) (a : Shape n) : Shape n :=
 theorem ShapeFun.app_mono_l {f f' : ShapeFun n} : f.LE f' → ∀ a, f.app a ≤ f'.app a :=
   sorry
 
+theorem ShapeFun.app_mono_r {f : ShapeFun n} : a ≤ a' → f.app a ≤ f.app a' :=
+  sorry
+
 def Shape.app : Shape (n + 1) → Shape n → Shape n
   | .lam f, x => ShapeFun.app f x
   | _, _ => .bot
@@ -412,12 +424,21 @@ theorem Shape.HasType.isType {m a : Shape n} (h : HasType m a) : HasType a .sort
   | sort | forallE => exact unfold_iff.2 .sort
   | lam h1 h2 => exact unfold_iff.2 <| .forallE h1 h2
 
-def Shape.HasType.mono_r {m a a' : Shape n} (ha : a ≤ a') : HasType a' .sort → HasType m a → HasType m a' := sorry
-def Shape.HasType.mono_l {m m' a : Shape n} (le : m ≤ m') : HasType m' a → HasType m a := sorry
+theorem Shape.HasType.mono_r {m a a' : Shape n} (ha : a ≤ a') :
+    HasType a' .sort → HasType m a → HasType m a' := sorry
 
-def Shape.HasType.lam_app
+theorem Shape.HasType.lam_app
     (H : ∀ x y, (x, y) ∈ (f : ShapeFun n) → HasType x a ∧ HasType y (ShapeFun.app b x))
     (ht : HasType x a) : HasType (ShapeFun.app f x) (ShapeFun.app b x) := sorry
+
+theorem Shape.HasType.pi_app
+    (H : ∀ x y, (x, y) ∈ (b : ShapeFun n) → HasType x a ∧ HasType y .sort)
+    (ht : HasType x a) : HasType (ShapeFun.app f x) .sort := sorry
+
+theorem Shape.HasType.maximal
+    (H : ∀ x y, (x, y) ∈ (f : ShapeFun n) → HasType x a ∧ HasType y (ShapeFun.app b x))
+    (ha : a ≤ a') (ht : HasType x' a') :
+    ∃ x, HasType x a ∧ x ≤ x' ∧ ShapeFun.app f x = ShapeFun.app f x' := sorry
 
 def ShapeFun.WF (WF : Shape n → Bool) (f : ShapeFun n) : Bool :=
   (f.attach.all fun ⟨(x, y), _⟩ => WF x && WF y) && f.any (·.1 ≤ .bot) &&
@@ -430,280 +451,205 @@ def Shape.WF : ∀ {n}, Shape n → Bool
   | _+1, .forallE s f => s.WF && ShapeFun.WF WF f
   | _+1, .lam f => ShapeFun.WF WF f
 
-@[ext] structure Classifier' (n : Nat) where
-  DefEq' : SExpr → SExpr → Shape n → Prop
-  mono' : p ≤ p' → DefEq' e e' p' → DefEq' e e' p
-
-abbrev Classifier (_Γ : List SExpr) (_A _B : SExpr) (_k : Shape n) := Classifier' n
-
-def Classifier.true : Classifier Γ A B k := ⟨fun _ _ _ => True, fun _ _ => trivial⟩
-
--- def Classifier.DefEq (C : Classifier Γ A B (n := n) k) (a b : SExpr) (p : Shape n) : Prop :=
---   CheckType Γ a A ∧ CheckType Γ b B ∧ CRDefEq Γ a b A ∧ C.DefEq' a b p
-
--- theorem Classifier.DefEq.mono {C : Classifier Γ A B k}
---     (le : p ≤ p') : C.DefEq a b p' → C.DefEq a b p
---   | ⟨h1, h2, h3, h4⟩ => ⟨h1, h2, h3, C.mono' le h4⟩
-
-structure Classifier.LE (C C' : Classifier Γ A B k) : Prop where
-  mono' : C.DefEq' a b p → C'.DefEq' a b p
-  mono'_r : C.DefEq' a b p → C'.DefEq' a b p
-instance : LE (Classifier Γ A B n) := ⟨Classifier.LE⟩
-
--- theorem Classifier.LE.rfl {C : Classifier Γ A B n} : C ≤ C where mono' := id
-
--- theorem Classifier.LE.mono {C C' : Classifier Γ A B n} (H : C ≤ C') :
---     C.DefEq a b p → C'.DefEq a b p
---   | ⟨h1, h2, h3, h4⟩ => ⟨h1, h2, h3, H.mono' h4⟩
-
--- structure LogRelK (Γ : List SExpr) (A B : SExpr) (n : Nat) where
---   TypeEq' (u : SLevel) : Classifier Γ A B n → Prop
-abbrev LogRelK (Γ : List SExpr) (A B : SExpr) (k : Shape n) :=
-  SLevel → Classifier Γ A B k → Prop
-
 structure LogRelBase (Γ : List SExpr) (n : Nat) where
-  DefEq' (M N A : SExpr) (m a : Shape n) : SLevel → Prop
+  DefEq' (M N A : SExpr) (m a : Shape n) : Prop
 
-def LogRelBase.DefEq (R : LogRelBase Γ n) (M N A : SExpr) (m a : Shape n) (u : SLevel) : Prop :=
-  Shape.HasType m a ∧ CRDefEq Γ M N A ∧ CheckType Γ M A u ∧ CheckType Γ N A u ∧
-    InferTypeS Γ A (.sort u) ∧ R.DefEq' M N A m a u
+def LogRelBase.DefEq (R : LogRelBase Γ n) (M N A : SExpr) (m a : Shape n) : Prop :=
+  Shape.HasType m a ∧ Γ ⊢ M ≡ N : A
+    -- ∧ CheckType Γ M A u ∧ CheckType Γ N A u ∧ InferTypeS Γ A (.sort u)
+    ∧ R.DefEq' M N A m a
 
 structure LogRel (Γ : List SExpr) (n : Nat) extends LogRelBase Γ n where
-  isType : toLogRelBase.DefEq M N A m a u → DefEq' A A (.sort u) a .sort u.succ
-  left : DefEq' M N A m a u → DefEq' M M A m a u
-  symm : DefEq' M N A m a u → DefEq' N M A m a u
-  trans : DefEq' M₁ M₂ A m a u → DefEq' M₂ M₃ A m a u → DefEq' M₁ M₃ A m a u
-  defeqDF : toLogRelBase.DefEq A B (.sort u) a .sort u.succ →
-    DefEq' M N A m a u → DefEq' M N B m a u
-  defeqL : Γ ⊢ M ≫≪ M' : A → DefEq' M N A m a u → DefEq' M' N A m a u
-  mono'_r : m'.HasType a → m ≤ m' → DefEq' M N A m' a u → DefEq' M N A m a u
-  mono'_l_1 : m.HasType a → a ≤ a' →
-    toLogRelBase.DefEq A A (.sort u) a' .sort u.succ → DefEq' M N A m a u → DefEq' M N A m a' u
-  mono'_l_2 : m.HasType a → a ≤ a' → DefEq' M N A m a' u → DefEq' M N A m a u
-
--- def LogRel.DefEq (R : LogRel Γ n) (M N A : SExpr) (m a : Shape n) : Prop :=
---   R.toLogRelBase.
+  isType : toLogRelBase.DefEq M N A m a → Γ ⊢ A ≡ A : .sort u → DefEq' A A (.sort u) a .sort
+  left : DefEq' M N A m a → DefEq' M M A m a
+  symm : DefEq' M N A m a → DefEq' N M A m a
+  trans : DefEq' M₁ M₂ A m a → DefEq' M₂ M₃ A m a → DefEq' M₁ M₃ A m a
+  defeqDF : toLogRelBase.DefEq A B (.sort u) a .sort →
+    DefEq' M N A m a → DefEq' M N B m a
+  mono'_2 : m.HasType a → m ≤ m' → a ≤ a' →
+    toLogRelBase.DefEq A A (.sort u) a' .sort → DefEq' M N A m' a' → DefEq' M N A m a
+  mono'_r_1 : m.HasType a → a ≤ a' →
+    toLogRelBase.DefEq A A (.sort u) a' .sort → DefEq' M N A m a → DefEq' M N A m a'
 
 theorem LogRelBase.DefEq.isType {R : LogRel Γ n}
-    (H : R.DefEq M N A m a u) : R.DefEq A A (.sort u) a .sort u.succ :=
-  have ⟨h1, h2, h3, h4, ⟨_, h5, a1⟩, h6⟩ := H
-  have a2 := ⟨_, h5, a1.defeq sorry, _, _, a1.parRedS, .rfl, .refl .sort⟩
-  have ⟨_, _, h3', _⟩ := h3
-  ⟨h1.isType, .refl h3'.hasType.2, a2, a2, ⟨_, .sort, .rfl⟩, R.isType H⟩
+    (H : R.DefEq M N A m a) : ∃ u, R.DefEq A A (.sort u) a .sort :=
+  have ⟨h1, h2, _⟩ := H
+  have ⟨_, h2'⟩ := h2.isType
+  ⟨_, h1.isType, h2', R.isType H h2'⟩
 
-theorem LogRelBase.DefEq.mono_r {R : LogRel Γ n}
-    (le : m ≤ m') : R.DefEq M N A m' a u → R.DefEq M N A m a u
-  | ⟨h1, h2, h3, h4, h5, h6⟩ => ⟨h1.mono_l le, h2, h3, h4, h5, R.mono'_r h1 le h6⟩
+theorem LogRelBase.DefEq.mono_2 {R : LogRel Γ n}
+    (hm : m.HasType a) (le1 : m ≤ m') (le2 : a ≤ a') (hA : R.DefEq A A (.sort u) a' .sort) :
+    R.DefEq M N A m' a' → R.DefEq M N A m a
+  | ⟨_, h2, h3⟩ => ⟨hm, h2, R.mono'_2 hm le1 le2 hA h3⟩
 
 theorem LogRelBase.DefEq.mono_l {R : LogRel Γ n}
-    (ha : a ≤ a') (ht' : m.HasType a')
-    (hA : R.DefEq A A (.sort u) a' .sort u.succ) : R.DefEq M N A m a u → R.DefEq M N A m a' u
-  | ⟨ht, h2, h3, h4, h5, h6⟩ => ⟨ht', h2, h3, h4, h5, R.mono'_l_1 ht ha hA h6⟩
+    (hm : m.HasType .sort) (le : m ≤ m') (H : R.DefEq M N A m' .sort) : R.DefEq M N A m .sort :=
+  let ⟨_, h⟩ := H.isType; h.mono_2 hm le .rfl H
 
-theorem LogRelBase.DefEq.left {R : LogRel Γ n} : R.DefEq M N A m a u → R.DefEq M M A m a u
-  | ⟨h1, ⟨a1, _, _, a2, _, a3⟩, h3, _, h5, h6⟩ =>
-    ⟨h1, ⟨a1.hasType.1, _, _, a2, a2, .refl a3.defeq.hasType.1⟩, h3, h3, h5, R.left h6⟩
+theorem LogRelBase.DefEq.mono_r_1 {R : LogRel Γ n}
+    (ha : a ≤ a') (hA : R.DefEq A A (.sort u) a' .sort) : R.DefEq M N A m a → R.DefEq M N A m a'
+  | ⟨ht, h2, h3⟩ => ⟨.mono_r ha hA.1 ht, h2, R.mono'_r_1 ht ha hA h3⟩
 
-theorem LogRelBase.DefEq.symm {R : LogRel Γ n} : R.DefEq M N A m a u → R.DefEq N M A m a u
-  | ⟨h1, ⟨a1, _, _, a2, a3, a4⟩, h3, h4, h5, h6⟩ =>
-    ⟨h1, ⟨a1.symm, _, _, a3, a2, a4.symm⟩, h4, h3, h5, R.symm h6⟩
+theorem LogRelBase.DefEq.mono_r_2 {R : LogRel Γ n}
+    (ht : m.HasType a) (ha : a ≤ a') (H : R.DefEq M N A m a') : R.DefEq M N A m a :=
+  let ⟨_, h⟩ := H.isType; h.mono_2 ht .rfl ha H
+
+theorem LogRelBase.DefEq.left {R : LogRel Γ n} : R.DefEq M N A m a → R.DefEq M M A m a
+  | ⟨h1, h2, h6⟩ => ⟨h1, h2.hasType.1, R.left h6⟩
+
+theorem LogRelBase.DefEq.symm {R : LogRel Γ n} : R.DefEq M N A m a → R.DefEq N M A m a
+  | ⟨h1, h2, h6⟩ => ⟨h1, h2.symm, R.symm h6⟩
 
 theorem LogRelBase.DefEq.trans {R : LogRel Γ n} :
-    R.DefEq M₁ M₂ A m a u → R.DefEq M₂ M₃ A m a v → u = v ∧ R.DefEq M₁ M₃ A m a u
-  | ⟨a1, a2, a3, a4, a5, a6⟩, ⟨b1, b2, b3, b4, b5, b6⟩ => by
-    cases a5.determ .sort b5 .sort
-    exact ⟨rfl, a1, a2.trans b2, a3, b4, a5, R.trans a6 b6⟩
-
-theorem LogRelBase.DefEq.trans_sort {R : LogRel Γ n} :
-    R.DefEq M₁ M₂ (.sort u) m a u.succ → R.DefEq M₂ M₃ (.sort v) m a v.succ →
-    u = v ∧ R.DefEq M₁ M₃ (.sort u) m a u.succ
-  | ⟨a1, a2, a3, a4, a5, a6⟩, ⟨b1, b2, b3, b4, b5, b6⟩ => by
-    cases a4.sort.determ .sort b3.sort .sort
-    exact ⟨rfl, a1, a2.trans b2, a3, b4, a5, R.trans a6 b6⟩
+    R.DefEq M₁ M₂ A m a → R.DefEq M₂ M₃ A m a → R.DefEq M₁ M₃ A m a
+  | ⟨a1, a2, a3⟩, ⟨_, b2, b3⟩ => ⟨a1, a2.trans b2, R.trans a3 b3⟩
 
 theorem LogRelBase.DefEq.defeqDF {R : LogRel Γ n}
-    (hA : R.DefEq A B (.sort u) a .sort u.succ) : R.DefEq M N A m a u → R.DefEq M N B m a u
-  | ⟨ht, h2, h3, h4, _, h6⟩ =>
-    let ⟨_, a2, _, a4, _⟩ := hA
-    ⟨ht, h2.defeqDF a2.defeq, h3.defeqDF a2, h4.defeqDF a2, a4.sort, R.defeqDF hA h6⟩
+    (hA : R.DefEq A B (.sort u) a .sort) : R.DefEq M N A m a → R.DefEq M N B m a
+  | ⟨ht, h2, h6⟩ =>
+    let ⟨_, a2, _⟩ := hA
+    -- have ⟨_, a4⟩ := R.sort_r a3
+    have ⟨_, b1⟩ := a2.isType
+    ⟨ht, .defeqDF (b1.defeqDF a2) h2, R.defeqDF hA h6⟩
 
-theorem LogRelBase.DefEq.defeqL {R : LogRel Γ n}
-    (H : Γ ⊢ M ≫≪ M' : A) : R.DefEq M N A m a u → R.DefEq M' N A m a u
-  | ⟨ht, h2, h3, h4, h5, h6⟩ =>
-    ⟨ht, H.symm.trans h2, sorry, h4, h5, R.defeqL H h6⟩
+theorem LogRel.mono_r {R : LogRel Γ n}
+    (ht : m.HasType a) (hA : R.DefEq A A (.sort u) a' .sort) (ha : a ≤ a') :
+    R.DefEq M N A m a ↔ R.DefEq M N A m a' := ⟨.mono_r_1 ha hA, .mono_r_2 ht ha⟩
 
-theorem LogRelBase.DefEq.defeqLL {R : LogRel Γ n}
-    (H1 : Γ ⊢ M ≫≪ M' : A) (H2 : Γ ⊢ N ≫≪ N' : A)
-    (H3 : R.DefEq M N A m a u) : R.DefEq M' N' A m a u :=
-   H3.defeqL H1 |>.symm.defeqL H2 |>.symm
-
-theorem LogRel.mono_l {R : LogRel Γ n}
-    (ht : m.HasType a) (hA : R.DefEq A A (.sort u) a' .sort u.succ) (ha : a ≤ a') :
-    R.DefEq M N A m a u ↔ R.DefEq M N A m a' u :=
-  ⟨.mono_l ha (.mono_r ha hA.1 ht) hA, fun ⟨_, h2, h3, h4, h5, h6⟩ =>
-    ⟨ht, h2, h3, h4, h5, R.mono'_l_2 ht ha h6⟩⟩
-
--- inductive TypeEq1 (TypeEq : ∀ Γ A B, LogRel Γ A B n) {Γ A B j} :
---     SExpr → SExpr → Classifier Γ A B n → Prop
---   | sort : TypeEq1 TypeEq (.sort u) (.sort u) {
---       DefEq' a b p := ∃ C, ((TypeEq Γ a b).R p).TypeEq' u j C
---       mono' := sorry }
---   -- | forallE : TypeEq1 TypeEq (.forallE u) (.forallE u) {
---   --     DefEq' p a b := ∃ C, (TypeEq Γ p a b).TypeEq' u j C }
-
--- def LogRelK.bot : LogRelK Γ A B k :=
---   fun _ C => C = ⟨fun _ _ _ => True, fun _ _ => trivial⟩
-
--- -- def LogRelK.false : LogRelK Γ A B n := { TypeEq' _ _ _ := False, mono' := nofun }
-
--- def LogRelK.sort (IH : ∀ Γ A B, LogRel Γ A B n) : LogRelK Γ A B (n := n+1) .sort :=
---   fun _ C => ∃ v, WHRedS Γ A (.sort v) ∧ WHRedS Γ B (.sort v) ∧ C = {
---     DefEq' a b p := ∃ C, ∃ q : Shape n, p ≤ q.lift ∧ (IH Γ a b).TypeEq' q v C
---     mono' le := fun ⟨_, _, h1, h2⟩ => ⟨_, _, Shape.LE.trans le h1, h2⟩ }
---   -- mono' le := by
---   --   rintro ⟨_, h1, h2, rfl⟩; refine ⟨_, ⟨_, h1.mono le, h2.mono le, rfl⟩, ?_⟩
---   --   intro _ _ _ ⟨_, _, h3, h4⟩
---   --   let ⟨_, a1, _⟩ := ((TypeEq ..).R _).mono' le h4; exact ⟨_, _, h3, a1⟩
-
--- def LogRelK.forallE (IH : ∀ Γ A B, LogRel Γ A B n)
---     (kA : Shape n) (kB : ShapeFun n) : LogRelK Γ A B (n := n + 1) (.forallE kA kB) :=
---   fun _ C => ∃ A₁ A₂ B₁ B₂ CA, ∃ CB : ∀ _ _ _, _,
---     WHRedS Γ A (.forallE A₁ A₂) ∧ WHRedS Γ B (.forallE B₁ B₂) ∧
---     (IH Γ A₁ B₁).TypeEq kA CA ∧
---     (∀ a b p, CA.DefEq a b p → (IH (A₁::Γ) A₂ B₂).TypeEq (kB.app p) (CB a b p)) ∧
---     C = {
---       DefEq' f g p := ∀ a b p', CA.DefEq a b p' → (CB a b p').DefEq (f.app a) (g.app b) (p.app p')
---       mono' le H a b p' h1 := (H a b p' h1).mono (Shape.app_mono_l le _) }
-
-omit [Params] in
-theorem pull_exists {a : Prop} {p : α → Prop} (z : α) : (a → ∃ b, p b) ↔ ∃ b, a → p b := by
-  refine ⟨fun H => ?_, fun ⟨_, h⟩ a => ⟨_, h a⟩⟩
-  by_cases h : a <;> simp [h] <;> [exact H h; exact ⟨z, trivial⟩]
-
-def TypeEq0.DefEqTy (Γ : List SExpr) (M N : SExpr) (l : SLevel) (m : Shape 0) : Prop :=
+def TypeEq0.DefEqTy (Γ : List SExpr) (M N : SExpr) (m : Shape 0) : Prop :=
   match m with
   | .bot => True
-  | .sort => ∃ u, l = u.succ ∧ WHRedS Γ M (.sort u) ∧ WHRedS Γ N (.sort u)
+  | .sort => ∃ u, WHRedS Γ M (.sort u) ∧ WHRedS Γ N (.sort u)
 
 def TypeEqS.DefEqTy (IH : LogRel Γ n)
-    (Γ : List SExpr) (M N : SExpr) (l : SLevel) (m : Shape (n+1)) : Prop :=
+    (Γ : List SExpr) (M N : SExpr) (m : Shape (n+1)) : Prop :=
   match m with
   | .bot => True
-  | .sort => ∃ u, l = u.succ ∧ WHRedS Γ M (.sort u) ∧ WHRedS Γ N (.sort u)
+  | .sort => ∃ u, WHRedS Γ M (.sort u) ∧ WHRedS Γ N (.sort u)
   | .forallE m₁ m₂ =>
     ∃ M₁ M₂ N₁ N₂, WHRedS Γ M (.forallE M₁ M₂) ∧ WHRedS Γ N (.forallE N₁ N₂) ∧
-    ∃ u v, l = u.imax v ∧ IH.DefEq M₁ N₁ (.sort u) m₁ .sort u.succ ∧
-    (∀ {{a b p}}, IH.DefEq a b M₁ p m₁ u →
-      IH.DefEq (M₂.inst a) (M₂.inst b) (.sort v) (ShapeFun.app m₂ p) .sort v.succ ∧
-      IH.DefEq (N₂.inst a) (N₂.inst b) (.sort v) (ShapeFun.app m₂ p) .sort v.succ) ∧
-    (∀ {{a p}}, IH.DefEq a a M₁ p m₁ u →
-      IH.DefEq (M₂.inst a) (N₂.inst a) (.sort v) (ShapeFun.app m₂ p) .sort v.succ)
+    ∃ u v, IH.DefEq M₁ N₁ (.sort u) m₁ .sort ∧ M₁::Γ ⊢ M₂ ≡ N₂ : sort v ∧
+    (∀ {{a b p}}, IH.DefEq a b M₁ p m₁ →
+      IH.DefEq (M₂.inst a) (M₂.inst b) (.sort v) (ShapeFun.app m₂ p) .sort ∧
+      IH.DefEq (N₂.inst a) (N₂.inst b) (.sort v) (ShapeFun.app m₂ p) .sort) ∧
+    (∀ {{a p}}, IH.DefEq a a M₁ p m₁ →
+      IH.DefEq (M₂.inst a) (N₂.inst a) (.sort v) (ShapeFun.app m₂ p) .sort)
   | _ => False
 
 def TypeEqS.DefEqForall (IH : LogRel Γ n) (M N A₁ A₂ : SExpr) (m : Shape (n+1))
-    (a₁ : Shape n) (a₂ : ShapeFun n) (u v : SLevel) : Prop :=
+    (a₁ : Shape n) (a₂ : ShapeFun n) : Prop :=
   match m with
   | .bot => True
   | .lam m =>
-    (∀ {{a b p}}, IH.DefEq a b A₁ p a₁ u →
-      IH.DefEq (M.inst a) (M.inst b) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p) v ∧
-      IH.DefEq (N.inst a) (N.inst b) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p) v) ∧
-    (∀ {{a p}}, IH.DefEq a a A₁ p a₁ u →
-      IH.DefEq (M.inst a) (N.inst a) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p) v)
+    (∀ {{a b p}}, IH.DefEq a b A₁ p a₁ →
+      IH.DefEq (M.inst a) (M.inst b) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p) ∧
+      IH.DefEq (N.inst a) (N.inst b) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p)) ∧
+    (∀ {{a p}}, IH.DefEq a a A₁ p a₁ →
+      IH.DefEq (M.inst a) (N.inst a) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p))
   | _ => False
 
-def TypeEqS.DefEq' (IH : LogRel Γ n) (M N A : SExpr) (m a : Shape (n+1))
-    (l : SLevel) : Prop :=
+def TypeEqS.DefEq' (IH : LogRel Γ n) (M N A : SExpr) (m a : Shape (n+1)) : Prop :=
   match a with
   | .bot => True
-  | .sort => ∃ u, l = u.succ ∧ WHRedS Γ A (.sort u) ∧ DefEqTy IH Γ M N u m
-  | .forallE a₁ a₂ => ∃ A₁ A₂ u v, l = u.imax v ∧ WHRedS Γ A (.forallE A₁ A₂) ∧
-    IH.DefEq A₁ A₁ (.sort u) a₁ .sort u.succ ∧ A₁::Γ ⊢ A₂ ▷* sort v ∧
-    (∀ {{a b p}}, IH.DefEq a b A₁ p a₁ u →
-      IH.DefEq (A₂.inst a) (A₂.inst b) (.sort v) (ShapeFun.app a₂ p) .sort v.succ) ∧
-    DefEqForall IH M N A₁ A₂ m a₁ a₂ u v
+  | .sort => ∃ u, WHRedS Γ A (.sort u) ∧ DefEqTy IH Γ M N m
+  | .forallE a₁ a₂ => ∃ A₁ A₂ u v, WHRedS Γ A (.forallE A₁ A₂) ∧
+    IH.DefEq A₁ A₁ (.sort u) a₁ .sort ∧ A₁::Γ ⊢ A₂ : sort v ∧
+    (∀ {{a b p}}, IH.DefEq a b A₁ p a₁ →
+      IH.DefEq (A₂.inst a) (A₂.inst b) (.sort v) (ShapeFun.app a₂ p) .sort) ∧
+    DefEqForall IH M N A₁ A₂ m a₁ a₂
   | _ => False
 
-def TypeEq0.DefEq' (Γ : List SExpr) (M N A : SExpr) (m a : Shape 0) (l : SLevel) : Prop :=
+def TypeEq0.DefEq' (Γ : List SExpr) (M N A : SExpr) (m a : Shape 0) : Prop :=
   match a with
   | .bot => True
-  | .sort => ∃ u, l = u.succ ∧ WHRedS Γ A (.sort u) ∧ DefEqTy Γ M N u m
+  | .sort => ∃ u, WHRedS Γ A (.sort u) ∧ DefEqTy Γ M N m
 
 def TypeEq0 : LogRel Γ 0 := by
   refine {
     DefEq' := TypeEq0.DefEq' Γ
-    isType {M N A m a u} h1 := ?_
-    left {M N A m a u} h1 := ?_
-    symm {M N A m a u} h1 := ?_
-    trans {M₁ M₂ A m a u M₃} := ?_
+    isType {M N A m a u} h1 hA := ?_
+    left {M N A m a} h1 := ?_
+    symm {M N A m a} h1 := ?_
+    trans {M₁ M₂ A m a M₃} := ?_
     defeqDF {A B u a M N m} hA := ?_
-    defeqL {M M' A N m a u} := ?_
-    mono'_r {m m' M N A a u} h1 := ?_
-    mono'_l_1 {a a' A u M N m} h1 := ?_
-    mono'_l_2 {a a' M N A m u} h1 := ?_ }
-  · let ⟨h1, h2, h3, h4, h5, h6⟩ := h1
+    mono'_2 {m m' a a' A U M N} h1 hm ha hA := ?_
+    mono'_r_1 {a a' A U M N m} h1 le hA := ?_ }
+  · let ⟨h1, h2, h6⟩ := h1
     simp [TypeEq0.DefEq'] at h6; split at h6
-    · exact ⟨_, rfl, .rfl, trivial⟩
-    · obtain ⟨v, rfl, h1, h2⟩ := h6; exact ⟨_, rfl, .rfl, _, rfl, h1, h1⟩
+    · exact ⟨_, .rfl, trivial⟩
+    · obtain ⟨⟨v, h1⟩, h2⟩ := h6; exact ⟨_, .rfl, _, h1, h1⟩
   · dsimp [TypeEq0.DefEq'] at h1 ⊢; split at h1
     · trivial
-    · let ⟨_, h1, h2, h3⟩ := h1; refine ⟨_, h1, h2, ?_⟩
+    · let ⟨_, h1, h3⟩ := h1; refine ⟨_, h1, ?_⟩
       dsimp [TypeEq0.DefEqTy] at h3 ⊢; split at h3
       · trivial
-      · let ⟨h1, h2, h3, _⟩ := h3; exact ⟨h1, h2, h3, h3⟩
+      · let ⟨h1, h3, _⟩ := h3; exact ⟨h1, h3, h3⟩
   · dsimp [TypeEq0.DefEq'] at h1 ⊢; split at h1
     · trivial
-    · let ⟨_, h1, h2, h3⟩ := h1; refine ⟨_, h1, h2, ?_⟩
+    · let ⟨_, h1, h3⟩ := h1; refine ⟨_, h1, ?_⟩
       dsimp [TypeEq0.DefEqTy] at h3 ⊢; split at h3
       · trivial
-      · let ⟨h1, h2, h3, h4⟩ := h3; exact ⟨h1, h2, h4, h3⟩
+      · let ⟨h1, h3, h4⟩ := h3; exact ⟨h1, h4, h3⟩
   · dsimp [TypeEq0.DefEq']; split
     · simp
-    · rintro ⟨_, rfl, a1, a2⟩ ⟨_, eq, -, b2⟩; cases SLevel.succ_inj eq; refine ⟨_, rfl, a1, ?_⟩
+    · rintro ⟨_, a1, a2⟩ ⟨_, -, b2⟩; refine ⟨_, a1, ?_⟩
       revert a2 b2; dsimp [TypeEq0.DefEqTy]; split
       · simp
-      · rintro ⟨_, rfl, a1, -⟩ ⟨_, eq, -, b2⟩; cases SLevel.succ_inj eq; refine ⟨_, rfl, a1, b2⟩
-  · obtain ⟨A1, A2, A3, A4, A5, A6⟩ := hA
+      · rintro ⟨_, a1, a2⟩ ⟨_, b1, b2⟩; cases a2.determ .sort b1 .sort; exact ⟨_, a1, b2⟩
+  · obtain ⟨A1, A2, A6⟩ := hA
     dsimp [TypeEq0.DefEq']; split
-    · simp
-    · rintro ⟨u, rfl, a1, a2⟩
-      exact ⟨_, rfl, A2.symm.trans (a1.crDefEq A2.1.hasType.1) |>.reduce_sort, a2⟩
-  · sorry
-  · sorry
-  · sorry
-  · sorry
+    · trivial
+    · rintro ⟨u, a1, a2⟩
+      let ⟨_, _, _, _, b3⟩ := A6
+      exact ⟨_, b3, a2⟩
+  · obtain ⟨A1, A2, _, A3, A4⟩ := hA
+    cases h1.unfold with
+    | bot h1 =>
+      cases A1.unfold with
+      | bot => cases Shape.le_bot.1 ha; exact fun _ => trivial
+      | sort =>
+        obtain rfl|rfl := Shape.le_sort.1 ha <;> [exact fun _ => trivial; skip]
+        exact fun ⟨_, h, _⟩ => ⟨_, h, trivial⟩
+    | sort =>
+      cases m' <;> cases hm
+      cases a' <;> cases ha
+      exact id
+  · obtain ⟨A1, A2, _, A3, A4⟩ := hA
+    cases A1.unfold with
+    | bot => cases Shape.le_bot.1 le; exact id
+    | sort =>
+      obtain rfl|rfl := Shape.le_sort.1 le <;> [rintro -; exact id]
+      cases h1.unfold; have ⟨_, h, _⟩ := A4; exact ⟨_, h, ⟨⟩⟩
 
 def TypeEqS (IH : LogRel Γ n) : LogRel Γ (n + 1) := by
   refine {
     DefEq' := TypeEqS.DefEq' IH
-    isType {M N A m a u} h1 := ?_
-    left {M N A m a u} h1 := ?_
-    symm {M N A m a u} h1 := ?_
-    trans {M₁ M₂ A m a u M₃} := ?_
+    isType {M N A m a u} h1 hA := ?_
+    left {M N A m a} h1 := ?_
+    symm {M N A m a} h1 := ?_
+    trans {M₁ M₂ A m a M₃} := ?_
     defeqDF {A B u a M N m} hA := ?_
-    defeqL {M M' A N m a u} := ?_
-    mono'_r {m m' M N A a u} h1 := ?_
-    mono'_l_1 {a a' A u M N m} h1 := ?_
-    mono'_l_2 {a a' M N A m u} h1 := ?_ }
-  · let ⟨h1, h2, h3, h4, h5, h6⟩ := h1
+    mono'_2 {m m' a a' A U M N} h1 hm ha hA := ?_
+    mono'_r_1 {a a' A U M N m} h1 le hA := ?_ }
+  · let ⟨h1, h2, h6⟩ := h1
     simp [TypeEqS.DefEq'] at h6; split at h6
-    · exact ⟨_, rfl, .rfl, trivial⟩
-    · obtain ⟨v, rfl, h1, h2⟩ := h6; exact ⟨_, rfl, .rfl, _, rfl, h1, h1⟩
-    · obtain ⟨_, _, _, _, rfl, h1, h2, _, h4, _⟩ := h6
-      exact ⟨_, rfl, .rfl, _, _, _, _, h1, h1, _, _, rfl, h2,
+    · exact ⟨_, .rfl, trivial⟩
+    · obtain ⟨⟨v, h1⟩, h2⟩ := h6; exact ⟨_, .rfl, _, h1, h1⟩
+    · obtain ⟨_, _, h1, ⟨_, h2⟩, _, h3, h4, _⟩ := h6
+      exact ⟨_, .rfl, _, _, _, _, h1, h1, _, _, h2, h3,
         fun _ _ _ a1 => ⟨h4 a1, h4 a1⟩, fun _ _ a1 => h4 a1⟩
     · cases h6
   · dsimp [TypeEqS.DefEq'] at h1 ⊢; split at h1
     · trivial
-    · let ⟨_, h1, h2, h3⟩ := h1; refine ⟨_, h1, h2, ?_⟩
+    · let ⟨_, h1, h3⟩ := h1; refine ⟨_, h1, ?_⟩
       dsimp [TypeEqS.DefEqTy] at h3 ⊢; split at h3
       · trivial
-      · let ⟨h1, h2, h3, _⟩ := h3; exact ⟨h1, h2, h3, h3⟩
-      · let ⟨_, _, _, _, h1, h2, _, _, h3, h4, h5, h6⟩ := h3
-        exact ⟨_, _, _, _, h1, h1, _, _, h3, h4.left,
+      · let ⟨h1, h3, _⟩ := h3; exact ⟨h1, h3, h3⟩
+      · let ⟨_, _, _, _, h1, _, _, h3, h4, h4', h5, h6⟩ := h3
+        exact ⟨_, _, _, _, h1, h1, _, h3, h4.left, h4'.hasType.1,
           fun a b p a1 => ⟨(h5 a1).1, (h5 a1).1⟩, fun a p a1 => (h5 a1).1⟩
       · cases h3
-    · let ⟨_, _, _, _, h1, h2, h3, h4, h5, h6⟩ := h1; refine ⟨_, _, _, _, h1, h2, h3, h4, h5, ?_⟩
+    · let ⟨_, _, _, _, h1, h3, h4, h5, h6⟩ := h1; refine ⟨_, _, _, _, h1, h3, h4, h5, ?_⟩
       dsimp [TypeEqS.DefEqForall] at h6 ⊢; split at h6
       · trivial
       · exact ⟨fun a b p a1 => ⟨(h6.1 a1).1, (h6.1 a1).1⟩, fun a p a1 => (h6.1 a1).1⟩
@@ -711,16 +657,16 @@ def TypeEqS (IH : LogRel Γ n) : LogRel Γ (n + 1) := by
     · cases h1
   · dsimp [TypeEqS.DefEq'] at h1 ⊢; split at h1
     · trivial
-    · let ⟨_, h1, h2, h3⟩ := h1; refine ⟨_, h1, h2, ?_⟩
+    · let ⟨_, h1, h3⟩ := h1; refine ⟨_, h1, ?_⟩
       dsimp [TypeEqS.DefEqTy] at h3 ⊢; split at h3
       · trivial
-      · let ⟨h1, h2, h3, h4⟩ := h3; exact ⟨h1, h2, h4, h3⟩
+      · let ⟨h1, h3, h4⟩ := h3; exact ⟨h1, h4, h3⟩
       · let ⟨B, F, B', F', h1, h2, _, _, h3, h4, h5, h6⟩ := h3
-        refine ⟨_, _, _, _, h2, h1, _, _, h3, h4.symm, ?_, ?_⟩
-        · exact fun a b p a1 => (h5 (.defeqDF h4.symm a1)).symm
-        · exact fun a p a1 => (h6 (.defeqDF h4.symm a1)).symm
+        refine ⟨_, _, _, _, h2, h1, _, _, h3.symm, h3.2.1.defeqDF_l h4.symm, ?_, ?_⟩
+        · exact fun a b p a1 => (h5 (.defeqDF h3.symm a1)).symm
+        · exact fun a p a1 => (h6 (.defeqDF h3.symm a1)).symm
       · cases h3
-    · let ⟨_, _, _, _, h1, h2, h3, h4, h5, h6⟩ := h1; refine ⟨_, _, _, _, h1, h2, h3, h4, h5, ?_⟩
+    · let ⟨_, _, _, _, h1, h2, h3, h4, h6⟩ := h1; refine ⟨_, _, _, _, h1, h2, h3, h4, ?_⟩
       dsimp [TypeEqS.DefEqForall] at h6 ⊢; split at h6
       · trivial
       · exact ⟨fun a b p a1 => (h6.1 a1).symm, fun a p a1 => (h6.2 a1).symm⟩
@@ -728,130 +674,112 @@ def TypeEqS (IH : LogRel Γ n) : LogRel Γ (n + 1) := by
     · cases h1
   · dsimp [TypeEqS.DefEq']; split
     · simp
-    · rintro ⟨_, rfl, a1, a2⟩ ⟨_, eq, -, b2⟩; cases SLevel.succ_inj eq; refine ⟨_, rfl, a1, ?_⟩
+    · rintro ⟨_, a1, a2⟩ ⟨_, -, b2⟩; refine ⟨_, a1, ?_⟩
       revert a2 b2; dsimp [TypeEqS.DefEqTy]; split
       · simp
-      · rintro ⟨_, rfl, a1, -⟩ ⟨_, eq, -, b2⟩; cases SLevel.succ_inj eq; refine ⟨_, rfl, a1, b2⟩
-      · rintro ⟨_, _, _, _, a1', a2, _, _, rfl, a4, a5, a6⟩
-               ⟨_, _, _, _, b1, b2, _, _, _, b4, b5, b6⟩
+      · rintro ⟨_, a1, a2⟩ ⟨_, b1, b2⟩; cases a2.determ .sort b1 .sort; exact ⟨_, a1, b2⟩
+      · rintro ⟨B, F, B', F', a1', a2, u, v, a4, a4', a5, a6⟩
+               ⟨B₁, F₁, B₂, F₂, b1, b2, u', v', b4, b4', b5, b6⟩
         cases a2.determ .forallE b1 .forallE
-        obtain ⟨rfl, c4⟩ := a4.trans_sort b4
-        refine ⟨_, _, _, _, a1', b2, _, _, rfl, c4, fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩ <;>
-          obtain ⟨rfl, -⟩ := (a5 c1).2.symm.trans_sort (b5 (.defeqDF a4 c1)).1
+        replace b4' := a4.2.1.symm.defeqDF_l b4'
+        cases a4.2.1.uniq_sort b4.2.1; cases a4'.uniq_sort b4'
+        obtain c4 := a4.trans b4
+        refine ⟨_, _, _, _, a1', b2, _, v, a4.trans b4, a4'.trans b4',
+          fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩
         · exact ⟨(a5 c1).1, (b5 (.defeqDF a4 c1)).2⟩
-        · exact ((a6 c1).trans (b6 (.defeqDF a4 c1))).2
+        · exact (a6 c1).trans (b6 (.defeqDF a4 c1))
       · nofun
-    · rintro ⟨_, _, _, _, rfl, a1, a2, a3, a4, a5⟩ ⟨_, _, _, _, -, b1, b2, b3, b4, b5⟩
+    · rintro ⟨_, _, u, v, a1, a2, a3, a4, a5⟩ ⟨_, _, u', v', b1, b2, b3, b4, b5⟩
       cases a1.determ .forallE b1 .forallE
-      obtain ⟨rfl, -⟩ := a2.trans_sort b2
-      cases a3.determ .sort b3 .sort
-      refine ⟨_, _, _, _, rfl, a1, a2, a3, a4, ?_⟩
+      cases a2.2.1.uniq_sort b2.2.1; cases a3.uniq_sort b3
+      refine ⟨_, _, _, _, a1, a2, a3, a4, ?_⟩
       revert a5 b5; dsimp [TypeEqS.DefEqForall]; split
       · simp
       · intro ⟨a5, a6⟩ ⟨b5, b6⟩
-        exact ⟨fun _ _ _ c1 => ⟨(a5 c1).1, (b5 c1).2⟩, fun _ _ c1 => (a6 c1).trans (b6 c1) |>.2⟩
+        exact ⟨fun _ _ _ c1 => ⟨(a5 c1).1, (b5 c1).2⟩, fun _ _ c1 => (a6 c1).trans (b6 c1)⟩
       · nofun
     · nofun
-  · obtain ⟨A1, A2, A3, A4, A5, A6⟩ := hA
+  · obtain ⟨A1, A2, A6⟩ := hA
     dsimp [TypeEqS.DefEq']; split
-    · simp
-    · rintro ⟨u, rfl, a1, a2⟩
-      exact ⟨_, rfl, A2.symm.trans (a1.crDefEq A2.1.hasType.1) |>.reduce_sort, a2⟩
-    · rintro ⟨_, _, _, _, rfl, a1, a2, a3, a4, a5⟩
-      have H := A2.symm.trans (a1.crDefEq A2.1.hasType.1)
-      have ⟨_, _, b1⟩ := H.reduce_forallE
-      have ⟨b2, b3⟩ := H.symm.trans (b1.crDefEq H.1.hasType.1)
-        |>.forallE_inv a2.2.1.defeq a3.hasType
-      exact ⟨_, _, _, _, rfl, b1, a2.defeqLL b2 b2, sorry, sorry, sorry⟩
-      -- cases a1.determ .forallE b1 .forallE
-      -- obtain ⟨rfl, -⟩ := a2.trans_sort b2
-      -- cases a3.determ .sort b3 .sort
-      stop
-      refine ⟨_, _, _, _, rfl, a1, a2, a3, a4, ?_⟩
-      revert a5 b5; dsimp [TypeEqS.DefEqForall]; split
+    · trivial
+    · rintro ⟨u, a1, a2⟩
+      let ⟨_, _, _, _, b3⟩ := A6
+      exact ⟨_, b3, a2⟩
+    · rename_i b f; rintro ⟨B₁, F₁, _, _, a1, a2, a3, a4, a5⟩
+      let ⟨_, b1, B₁', F₁', B₂, F₂, b2, b3, _, _, b4, b4', b5, b6⟩ := A6
+      cases a1.determ .forallE b2 .forallE
+      refine ⟨_, _, _, _, b3, b4.symm.left, b4.2.1.defeqDF_l b4'.hasType.2,
+        fun _ _ _ c1 => (b5 (.defeqDF b4.symm c1)).2, ?_⟩
+      revert a5; dsimp [TypeEqS.DefEqForall]; split
       · simp
-      · intro ⟨a5, a6⟩ ⟨b5, b6⟩
-        exact ⟨fun _ _ _ c1 => ⟨(a5 c1).1, (b5 c1).2⟩, fun _ _ c1 => (a6 c1).trans (b6 c1) |>.2⟩
+      · refine fun ⟨d1, d2⟩ => ⟨fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩ <;>
+          have c2 := b4.symm.defeqDF c1
+        · exact ⟨.defeqDF (b6 c2.left) (d1 c2).1, .defeqDF (b6 c2.left) (d1 c2).2⟩
+        · exact .defeqDF (b6 c2) (d2 c2)
       · nofun
     · nofun
-  stop
-  · cases h1.unfold with
-    | bot => simp [Shape.le_bot]; rintro rfl; exact id
-    | sort =>
-      cases m <;> simp [Shape.LE.def]
-      · exact fun ⟨_, h1, h2, _⟩ => ⟨_, h1, h2, trivial⟩
-      · exact id
-    | @forallE n m₁' m₂' =>
-      cases m with (rw [Shape.LE.def]; simp)
-      | bot => exact fun ⟨_, h1, h2, _⟩ => ⟨_, h1, h2, trivial⟩
-      | forallE m₁ m₂ =>
-        rintro h1 h2 ⟨_, rfl, h3, M₁, M₂, N₁, N₂, h4, h5, _, _, rfl, h6, h7⟩
-        refine ⟨_, rfl, h3, _, _, _, _, h4, h5, _, _, rfl, h6.mono_r h1, fun _ _ _ a1 => ?_⟩
-        exact (h7 (.mono_r h1 (.mono_r h1 h6.1 a1.1) _ a1)).mono_r (ShapeFun.app_mono_l h2 _)
-    | @lam _ f' a₁ a₂ h2 =>
-      cases m with (rw [Shape.LE.def]; simp)
-      | bot =>
-        rintro ⟨_, _, _, _, rfl, h1, h3, h4, h5, _⟩
-        exact ⟨_, _, _, _, rfl, h1, h3, h4, h5, trivial⟩
-      | lam f =>
-        rintro h1 ⟨_, _, _, _, rfl, h3, h4, h5, h6, h7⟩
-        refine ⟨_, _, _, _, rfl, h3, h4, h5, h6, fun _ _ _ a1 => ?_⟩
-        exact (h7 a1).mono_r (ShapeFun.app_mono_l h1 _)
-  · cases h1.unfold with
-    | bot h2 =>
-      simp [Shape.LE.def]; split
-      · rintro - ⟨h1, -, h3⟩ -
-        cases a' with
-        | bot => trivial
-        | sort =>
-          simp [TypeEqS.DefEq', TypeEqS.DefEqTy]
-          done
-
-      · exact fun _ => id
-      · rintro ⟨h1, h2⟩ ⟨_, _, h3, ⟨_, h4⟩, ⟨_, h5, h6⟩, h7⟩
-        refine ⟨_, _, h3, ⟨_, h4.mono_r h1⟩, ⟨_, h5, fun a b p a1 => ?_⟩, trivial⟩
-        exact (h6 (a1.mono_l h1)).mono_r (ShapeFun.app_mono_l h2 _)
-      · nofun
-      · nofun
-    | sort | forallE => cases a' <;> simp [Shape.LE.def]; exact id
-    | @lam _ a₁ a₂ f' b1 b2 b3 =>
-      cases a' <;> simp [Shape.LE.def]
-      intro h1 h2 ⟨_, _, h3, ⟨_, h4⟩, ⟨_, h5, h6⟩, h7⟩
-      refine ⟨_, _, h3, ⟨_, h4.mono_r h1⟩, ⟨_, h5, fun a b p a1 => ?_⟩, fun a b p a1 => ?_⟩
-      · exact (h6 (a1.mono_l h1)).mono_r (ShapeFun.app_mono_l h2 _)
-      · exact (IH _).mono_l (Shape.HasType.lam_app b3 a1.1) (ShapeFun.app_mono_l h2 _)
-          |>.2 (h7 (a1.mono_l h1))
-  · --rintro h0
+  · obtain ⟨A1, A2, _, A3, A4⟩ := hA
     cases h1.unfold with
-    | bot =>
-      simp [Shape.LE.def]; split
-      · exact fun _ _ => trivial
-      · exact fun _ => id
-      · rintro ⟨h1, h2⟩ ⟨_, _, _, _, rfl, a1, a2, a3, a4, a5⟩
-        refine ⟨_, _, _, _, rfl, a1, a2.mono_r h1, a3, fun a b p b1 => ?_, trivial⟩
-        exact (a4 (b1.mono_l h1 (.mono_r h1 a2.1 b1.1))).mono_r (ShapeFun.app_mono_l h2 _)
-      · nofun
-      · nofun
-    | sort | forallE => cases a' <;> simp [Shape.LE.def]; exact id
-    | lam _ _ c3 =>
-      cases a' <;> simp [Shape.LE.def]
-      rintro h1 h2 ⟨_, _, _, _, rfl, a1, a2, a3, a4, a5⟩
-      refine ⟨_, _, _, _, rfl, a1, a2.mono_r h1, a3, fun a b p b1 => ?_, fun a b p b1 => ?_⟩
-        <;> have b1' := b1.mono_l h1 (.mono_r h1 a2.1 b1.1)
-      · exact (a4 b1').mono_r (ShapeFun.app_mono_l h2 _)
-      · exact (IH _).mono_l (Shape.HasType.lam_app c3 b1.1)
-          (a4 b1').1 (ShapeFun.app_mono_l h2 _) |>.2 (a5 b1')
-  · exact (⟨_, .rfl, ·⟩)
-  · rintro u C h1 h2 ⟨A₁, A₂, B₁, B₂, CA, CB, h3, h4, h5, h6, rfl⟩
-    let ⟨CA', a1, a2⟩ := h5.mono h1
-    have this a b p h := (h6 a b p h).mono (ShapeFun.app_mono_l h2 _)
-    conv at this => enter [a, b, p]; rw [pull_exists Classifier.true]
-    simp only [Classical.skolem] at this; let ⟨CB', (hf : ∀ a b p, _)⟩ := this; clear this h6
-    refine ⟨_, _, _, _, _, _, _, CB', h3, h4, a2, fun a b p h => by
-      refine (hf _ _ _ _).2
-      done
-      , rfl⟩
-    simp
+    | bot h1 =>
+      cases A1.unfold with
+      | bot => cases Shape.le_bot.1 ha; exact fun _ => trivial
+      | sort =>
+        obtain rfl|rfl := Shape.le_sort.1 ha <;> [exact fun _ => trivial; skip]
+        exact fun ⟨_, h, _⟩ => ⟨_, h, trivial⟩
+      | forallE a1 a2 =>
+        cases a with simp [Shape.LE.def] at ha | bot => exact fun _ => trivial | forallE
+        have .forallE a3 a4 := h1.unfold; intro ⟨_, _, _, _, b1, b2, b3, b4, b5⟩
+        refine ⟨_, _, _, _, b1, .mono_l a3 ha.1 b2, b3, fun _ _ _ c1 => ?_, ⟨⟩⟩
+        exact (b4 (b2.mono_r_1 ha.1 c1)).mono_l (.pi_app a4 c1.1) (ShapeFun.app_mono_l ha.2 _)
+    | sort =>
+      cases m' <;> simp [Shape.LE.def] at hm
+      cases a' <;> simp [Shape.LE.def] at ha
+      exact id
+    | forallE c1 c2 =>
+      cases m' <;> simp [Shape.LE.def] at hm
+      cases a' <;> simp [Shape.LE.def] at ha
+      intro ⟨_, a3, _, _, _, _, a4, a5, _, _, a6, a7, a8, a9⟩
+      refine ⟨_, a3, _, _, _, _, a4, a5, _, _, a6.mono_l c1 hm.1, a7,
+        fun _ _ _ d => ?_, fun _ _ d => ?_⟩ <;>
+        have ⟨d1, d2⟩ := a8 (.mono_r_1 hm.1 a6.left d)
+      · exact have d3 := .pi_app c2 d.1; have d4 := ShapeFun.app_mono_l hm.2 _
+          ⟨d1.mono_l d3 d4, d2.mono_l d3 d4⟩
+      · exact (a9 (a6.left.mono_r_1 hm.1 d)).mono_l (.pi_app c2 d.1) (ShapeFun.app_mono_l hm.2 _)
+    | lam c1 c2 c3 =>
+      cases m' <;> simp [Shape.LE.def] at hm
+      cases a' <;> simp [Shape.LE.def] at ha
+      rintro ⟨_, _, _, _, a1, a2, a3, a4, a5, a6⟩
+      refine ⟨_, _, _, _, a1, .mono_l c1 ha.1 a2, a3,
+        fun _ _ _ d => ?_, fun _ _ _ d => ?_, fun _ _ d => ?_⟩
+      · exact .mono_l (.pi_app c2 d.1) (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d))
+      · have ⟨a7, a8⟩ := a5 (.mono_r_1 ha.1 a2 d)
+        exact
+          have h1 := .lam_app c3 d.1; have h2 := ShapeFun.app_mono_l hm _
+          have h3 := ShapeFun.app_mono_l ha.2 _; have h4 := a4 (.mono_r_1 ha.1 a2 d.left)
+          ⟨.mono_2 h1 h2 h3 h4 a7, .mono_2 h1 h2 h3 h4 a8⟩
+      · exact .mono_2 (.lam_app c3 d.1) (ShapeFun.app_mono_l hm _)
+          (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d.left)) (a6 (.mono_r_1 ha.1 a2 d))
+  · obtain ⟨A1, A2, _, A3, A4⟩ := hA
+    cases A1.unfold with
+    | bot => cases Shape.le_bot.1 le; exact id
+    | sort =>
+      obtain rfl|rfl := Shape.le_sort.1 le <;> [rintro -; exact id]
+      cases h1.unfold; have ⟨_, h, _⟩ := A4; exact ⟨_, h, ⟨⟩⟩
+    | forallE a1 a2 =>
+      have ⟨_, _, _, _, A4, A5, _, _, A6, A7, A8, A9⟩ := A4
+      refine fun h2 => ⟨_, _, _, _, A4, A6.left, A7.hasType.1, fun _ _ _ c1 => (A8 c1).1, ?_⟩
+      cases a with simp [Shape.LE.def] at le | bot => cases h1.unfold; trivial | forallE
+      cases h1.unfold with | bot => trivial | lam a3 a4 a5
+      have ⟨_, _, _, _, B4, B5, _, B6, B7, B8⟩ := h2
+      cases A4.determ .forallE B4 .forallE
+      refine ⟨fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩
+      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal a5 le.1 c1.1
+        have ⟨b1, b2⟩ := B7 (.mono_2 c2 c3 le.1 A6.left c1)
+        exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
+          ⟨.mono_r_1 h3 (A8 c1).1.left (eq ▸ b1), .mono_r_1 h3 (A8 c1).1.left (eq ▸ b2)⟩
+      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal a5 le.1 c1.1
+        exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
+          .mono_r_1 h3 (A8 c1).1.left (eq ▸ B8 (.mono_2 c2 c3 le.1 A6.left c1))
 
 def TypeEq (Γ : List SExpr) : LogRel Γ n :=
   match n with
