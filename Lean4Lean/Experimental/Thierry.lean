@@ -116,7 +116,6 @@ inductive FinHasType : FinMut b → FinHasTypeK b → Prop
     FinHasType f (.lam a g) → FinHasType (.cons u v f) (.lam a g)
 
 theorem FinHasType.mono : u :ᶠ a → a ≤ b → u :ᶠ b := sorry
-theorem FinHasType.mono_l : u :ᶠ a → v ≤ u → v :ᶠ a := sorry
 
 theorem FinHasType.join (H : Join u v w) : u :ᶠ a → v :ᶠ b → w :ᶠ b := sorry
 

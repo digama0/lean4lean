@@ -565,6 +565,8 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
 
 theorem IsDefEq.isType : Γ ⊢ e1 ≡ e2 : A → ∃ u, Γ ⊢ A : .sort u := sorry
 
+theorem IsDefEq.uniq_sort : Γ ⊢ e1 ≡ e2 : .sort u → Γ ⊢ e2 ≡ e3 : .sort v → u = v := sorry
+
 def Ctx.WF : List SExpr → Prop
   | [] => True
   | A::Γ => WF Γ ∧ ∃ u, Γ ⊢ A : .sort u
