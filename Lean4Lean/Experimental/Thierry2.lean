@@ -242,8 +242,7 @@ theorem Shape.HasType.lam : HasTypeLam (n := n) f a b → HasType (n := n+1) (.l
 theorem Shape.HasTypeLam.bot : HasTypeLam .bot a b := by
   simp [HasTypeLam, ShapeFun.bot]; exact ⟨.bot, .bot⟩
 
-theorem Shape.HasType.mono {m a a' : Shape n} (ha : a ≤ a') :
-    m :ᶠ a → m :ᶠ a' := sorry
+theorem Shape.HasType.mono {m a a' : Shape n} (ha : a ≤ a') : m :ᶠ a → m :ᶠ a' := sorry
 
 theorem Shape.HasTypeLam.app (H : HasTypeLam f a b) (ht : HasType x a) :
     HasType (ShapeFun.app f x) (ShapeFun.app b x) := sorry
@@ -299,13 +298,14 @@ inductive WHRed : Expr → Expr → Prop
   | app : WHRed N N' → WHRed (.app N M) (.app N' M)
   | beta : WHRed (.app (.lam A N) M) (subst N M)
 
-axiom HasType (Γ : List Expr) (M N : Expr) : Prop
-axiom HasType.U : HasType Γ .U .U
+axiom DefEq (Γ : List Expr) (M N A : Expr) : Prop
+axiom DefEq.U : DefEq Γ .U .U .U
+axiom DefEq.left : DefEq Γ M N A → DefEq Γ M M A
 def Conv (M N _ : Expr) := M = N
 
 def WHRedT (M N A : Expr) := WHRed M N ∧ Conv M N A
 inductive WHRedTS : (M N A : Expr) → Prop where
-  | rfl : HasType [] M A → WHRedTS M M A
+  | rfl : DefEq [] M M A → WHRedTS M M A
   | tail : WHRedTS M N A → WHRedT N P A → WHRedTS M P A
 
 local notation M " ⤳* " N " : " A:36 => WHRedTS M N A
@@ -313,120 +313,179 @@ local notation M " ⤳* " N " : " A:36 => WHRedTS M N A
 axiom WHRedTS.uniq_pi : M ⤳* .pi B F : A → M ⤳* .pi B' F' : A → B.pi F = B'.pi F'
 
 section
-variable (HasTypeF : Expr → Expr → Shape n → Shape n → Prop)
+variable (DefEqF : Expr → Expr → Expr → Shape n → Shape n → Prop)
 
-def HasTypeFamF (B F : Expr) (b : Shape n) (f : ShapeFun n) : Prop :=
-  ∀ N v, Shape.embed v ≤ N.eval (fun _ => .bot) → v :ᶠ b →
-    HasTypeF N B v b → HasTypeF (subst F N) .U (f.app v) .U
+def DefEqPiF (B F F' : Expr) (b : Shape n) (f : ShapeFun n) : Prop :=
+  ∀ v, v :ᶠ b → ∀ N, v.embed ≤ N.eval (fun _ => .bot) →
+  (∀ N', v.embed ≤ N'.eval (fun _ => .bot) → DefEqF N N' B v b →
+    DefEqF (subst F N) (subst F N') .U (f.app v) .U ∧
+    DefEqF (subst F' N) (subst F' N') .U (f.app v) .U) ∧
+  (DefEqF N N B v b → DefEqF (subst F N) (subst F' N) .U (f.app v) .U)
 
-def HasPiFamF (M B F : Expr) (m : ShapeFun n) (b : Shape n) (f : ShapeFun n) : Prop :=
-  ∀ N v, Shape.embed v ≤ N.eval (fun _ => .bot) → v :ᶠ b →
-    HasTypeF N B v b → HasTypeF (.app M N) (subst F N) (m.app v) (f.app v)
+def DefEqLamF (M M' B F : Expr) (m : ShapeFun n) (b : Shape n) (f : ShapeFun n) : Prop :=
+  ∀ v, v :ᶠ b → ∀ N, v.embed ≤ N.eval (fun _ => .bot) →
+  (∀ N', v.embed ≤ N'.eval (fun _ => .bot) → DefEqF N N' B v b →
+    -- DefEqF (subst F N) (subst F N') .U (f.app v) .U ∧
+    DefEqF (.app M N) (.app M N') (subst F N) (m.app v) (f.app v) ∧
+    DefEqF (.app M' N) (.app M' N') (subst F N) (m.app v) (f.app v)) ∧
+  (DefEqF N N B v b → DefEqF (.app M N) (.app M' N) (subst F N) (m.app v) (f.app v))
 end
 
-def HasTypeF : ∀ {n}, Expr → Expr → Shape n → Shape n → Prop
-  | 0, _, _, _, .bot | _+1, _, _, _, .bot => True
-  | _+1, _, _, _, .lam f => f ≤≤ .bot
-  | 0, A, V, .U, .U | _+1, A, V, .U, .U => V ⤳* .U : .U ∧ A ⤳* .U : .U
-  | _+1, A, V, .pi b f, .U => V ⤳* .U : .U ∧ ∃ B F, A ⤳* .pi B F : .U ∧
-    HasTypeF B .U b .U ∧ HasType [B] F .U ∧ HasTypeFamF HasTypeF B F b f
-  | 0, _, V, .bot, .U | _+1, _, V, .bot, .U => V ⤳* .U : .U
-  | _+1, _, V, .lam f, .U => V ⤳* .U : .U ∧ f ≤≤ .bot
-  | _+1, M, A, .lam m, .pi b f => ∃ B F, A ⤳* .pi B F : .U ∧ HasPiFamF HasTypeF M B F m b f
-  | _+1, M, A, .bot, .pi b f => ∃ B F, A ⤳* .pi B F : .U ∧ HasPiFamF HasTypeF M B F .bot b f
-  | _, _, _, _, _ => False
+def DefEqF : ∀ {n}, Expr → Expr → Expr → Shape n → Shape n → Prop
+  | 0, _, _, _, _, .bot | _+1, _, _, _, _, .bot => True
+  | _+1, _, _, _, _, .lam f => f ≤≤ .bot
+  | 0, A, A', V, .U, .U | _+1, A, A', V, .U, .U => V ⤳* .U : .U ∧ A ⤳* .U : .U ∧ A' ⤳* .U : .U
+  | _+1, A, A', V, .pi b f, .U => V ⤳* .U : .U ∧
+    ∃ B F B' F', A ⤳* .pi B F : .U ∧ A' ⤳* .pi B' F' : .U ∧
+    DefEqF B B' .U b .U ∧ DefEq [B] F F' .U ∧ DefEqPiF DefEqF B F F' b f
+  | 0, _, _, V, .bot, .U | _+1, _, _, V, .bot, .U => V ⤳* .U : .U
+  | _+1, _, _, V, .lam f, .U => V ⤳* .U : .U ∧ f ≤≤ .bot
+  | _+1, M, M', A, .lam m, .pi b f => ∃ B F, A ⤳* .pi B F : .U ∧ DefEqLamF DefEqF M M' B F m b f
+  | _+1, M, M', A, .bot, .pi b f => ∃ B F, A ⤳* .pi B F : .U ∧ DefEqLamF DefEqF M M' B F .bot b f
+  | _, _, _, _, _, _ => False
 
-theorem HasTypeF.U_U : @HasTypeF n A V .U .U ↔ V ⤳* .U : .U ∧ A ⤳* .U : .U := by
-  cases n <;> simp [HasTypeF]
+theorem DefEqF.U_U : @DefEqF n A A' V .U .U ↔ V ⤳* .U : .U ∧ A ⤳* .U : .U ∧ A' ⤳* .U : .U := by
+  cases n <;> simp [DefEqF]
 
-theorem HasPiFamF.bot : @Shape.HasTypePi n f a →
-    HasTypeFamF HasTypeF B F a f → HasPiFamF HasTypeF M B F .bot a f := by
-  intro h1 h3 N v f' h5 h6
-  have h2 := h3 _ _ f' h5 h6
-  have := h1.app h5
-  generalize eq : f.app v = t at *
-  cases this.unfold with simp [HasTypeF] at this ⊢
-  | bot | U => cases n <;> simp [HasTypeF] <;> exact h2.2
-  | pi a1 =>
-    let ⟨B, F, c1, c2, c3, c4⟩ := h2.2
-    exact ⟨B, F, c1, HasPiFamF.bot a1 c4⟩
+theorem DefEqPiF.left : DefEqPiF DefEqF B F F' b f → DefEqPiF DefEqF B F F b f := by
+  intro h1 v h2 N hN
+  have a1 := (h1 _ h2 _ hN).1
+  exact ⟨fun N' hN' h3 => ⟨(a1 _ hN' h3).1, (a1 _ hN' h3).1⟩, fun h3 => (a1 _ hN h3).1⟩
+
+theorem DefEqLamF.left : DefEqLamF DefEqF M M' B F m b f → DefEqLamF DefEqF M M B F m b f := by
+  intro h1 v h2 N hN
+  have a1 := (h1 _ h2 _ hN).1
+  exact ⟨fun N' hN' h3 => ⟨(a1 _ hN' h3).1, (a1 _ hN' h3).1⟩, fun h3 => (a1 _ hN h3).1⟩
+
+theorem DefEqF.left {a : Shape n} : DefEqF M M' A u a → DefEqF M M A u a := by
+  unfold DefEqF; split
+  · exact id
+  · exact id
+  · exact id
+  · exact fun ⟨h1, h2, _⟩ => ⟨h1, h2, h2⟩
+  · exact fun ⟨h1, h2, _⟩ => ⟨h1, h2, h2⟩
+  · intro ⟨h1, _, _, _, _, h2, h3, h4, h5, h6⟩
+    exact ⟨h1, _, _, _, _, h2, h2, h4.left, h5.left, h6.left⟩
+  · exact id
+  · exact id
+  · exact id
+  · exact fun ⟨_, _, h1, h2⟩ => ⟨_, _, h1, h2.left⟩
+  · exact fun ⟨_, _, h1, h2⟩ => ⟨_, _, h1, h2.left⟩
+  · exact id
 
 mutual
 
-theorem HasTypeF.mono {a a' : Shape n} : HasTypeF A .U a .U → a :ᶠ .U → a' ≤ a →
-    u :ᶠ a → HasTypeF M A u a → u' ≤ u → u' :ᶠ a' → HasTypeF M A u' a' := by
+theorem DefEqF.bot : DefEqF (n := n) A A .U a .U → DefEqF M N A .bot a := by
+  cases n <;> cases a <;> simp [DefEqF]
+  intro h1 _ _ h2 _ _ h3 h4 h5 h6
+  exact ⟨_, _, h2, .bot h6⟩
+termination_by 2 * n
+
+theorem DefEqLamF.bot :
+    DefEqPiF (n := n) DefEqF B F F' a f → DefEqLamF DefEqF M M' B F .bot a f := by
+  intro h3 v h5 N hN; simp
+  have ⟨a1, a2⟩ := h3 _ h5 _ hN
+  refine ⟨fun N' hN' h6 => ?_, fun h6 => .bot (a1 _ hN h6).1⟩
+  · have := (a1 _ hN' h6).1.left; exact ⟨.bot this, .bot this⟩
+termination_by 2 * n + 1
+
+end
+
+mutual
+
+theorem DefEqF.mono {a a' : Shape n} : DefEqF A A .U a .U → a :ᶠ .U → a' ≤ a →
+    u :ᶠ a → DefEqF M M' A u a → u' ≤ u → u' :ᶠ a' → DefEqF M M' A u' a' := by
   intro h1 h2 h3 h7 h4 h6 h5
-  unfold HasTypeF at h4; split at h4
-  · cases a' <;> cases h3; simp [HasTypeF]
-  · cases a' <;> cases h3; simp [HasTypeF]
-  · cases a' with | bot => simp [HasTypeF] | lam => ?_ | _ => cases h3
+  unfold DefEqF at h4; split at h4
+  · cases a' <;> cases h3; simp [DefEqF]
+  · cases a' <;> cases h3; simp [DefEqF]
+  · cases a' with | bot => simp [DefEqF] | lam => ?_ | _ => cases h3
     exact .trans h3 h4
-  · cases a' with | bot => simp [HasTypeF] | U
+  · cases a' with | bot => simp [DefEqF] | U
     cases u' with | bot => exact h4.1 | U => exact h4
-  · cases a' with | bot => simp [HasTypeF] | U => ?_ | _ => cases h3
+  · cases a' with | bot => simp [DefEqF] | U => ?_ | _ => cases h3
     cases u' with | bot => exact h4.1 | U => exact h4 | _ => cases h6
-  · cases a' with | bot => simp [HasTypeF] | U => ?_ | _ => cases h3
+  · cases a' with | bot => simp [DefEqF] | U => ?_ | _ => cases h3
     cases u' with | bot => exact h4.1 | pi => ?_ | _ => cases h6
-    let ⟨a1, B, F, a2, a3, a4, a5⟩ := h4; simp [Shape.LE.def] at h6
+    let ⟨a1, _, _, _, _, a2, a2', a3, a4, a5⟩ := h4; simp [Shape.LE.def] at h6
     let .pi hf := h5.unfold; let .pi b1 := h7.unfold
-    refine ⟨a1, B, F, a2, .mono (HasTypeF.U_U.2 ⟨.rfl .U, .rfl .U⟩) .U .rfl b1.1 a3 h6.1 hf.1,
-      a4, .mono a3 hf b1 h6.1 h6.2 a5⟩
-  · cases a' with | bot => simp [HasTypeF] | U
+    refine ⟨a1, _, _, _, _, a2, a2',
+      .mono (DefEqF.U_U.2 ⟨.rfl .U, .rfl .U, .rfl .U⟩) .U .rfl b1.1 a3 h6.1 hf.1,
+      a4, .mono a3.left hf b1 h6.1 h6.2 a5⟩
+  · cases a' with | bot => simp [DefEqF] | U
     cases u' with | bot => exact h4 | _ => cases h6
-  · cases a' with | bot => simp [HasTypeF] | U => ?_ | _ => cases h3
+  · cases a' with | bot => simp [DefEqF] | U => ?_ | _ => cases h3
     cases u' with | bot => exact h4 | _ => cases h6
-  · cases a' with | bot => simp [HasTypeF] | U => ?_ | _ => cases h3
-    cases h5.unfold with simp [HasTypeF] | bot => exact h4.1 | _ => cases h6
-  · cases a' with | bot => simp [HasTypeF] | pi a f => ?_ | _ => cases h3
+  · cases a' with | bot => simp [DefEqF] | U => ?_ | _ => cases h3
+    cases h5.unfold with simp [DefEqF] | bot => exact h4.1 | _ => cases h6
+  · cases a' with | bot => simp [DefEqF] | pi a f => ?_ | _ => cases h3
     let .pi c1 := h2.unfold; let .lam b1 := h7.unfold
-    let ⟨B, F, a1, a2⟩ := h4; let ⟨B', F', a1', a3, a4, a5⟩ := h1.2; cases a1.uniq_pi a1'
-    cases h5.unfold with simp [HasTypeF, Shape.LE.def] at h3 ⊢
+    let ⟨B, F, a1, a2⟩ := h4; let ⟨_, _, _, _, a1', a1'', a3, a4, a5⟩ := h1.2
+    cases a1.uniq_pi a1'; cases a1.uniq_pi a1''
+    cases h5.unfold with simp [DefEqF, Shape.LE.def] at h3 ⊢
     | bot => exact ⟨B, F, a1, .mono a3 a5 c1 .bot .bot h3.1 h3.2 b1 a2⟩
     | lam h5 => exact ⟨B, F, a1, .mono a3 a5 c1 h5 h6 h3.1 h3.2 b1 a2⟩
-  · cases a' with | bot => simp [HasTypeF] | pi a f => ?_ | _ => cases h3
+  · cases a' with | bot => simp [DefEqF] | pi a f => ?_ | _ => cases h3
     let .pi c1 := h2.unfold; cases Shape.le_bot.1 h6; simp [Shape.LE.def] at h3
-    let ⟨B, F, a1, a2⟩ := h4; let ⟨B', F', a1', a3, a4, a5⟩ := h1.2; cases a1.uniq_pi a1'
+    let ⟨B, F, a1, a2⟩ := h4; let ⟨_, _, _, _, a1', a1'', a3, a4, a5⟩ := h1.2
+    cases a1.uniq_pi a1'; cases a1.uniq_pi a1''
     exact ⟨B, F, a1, .mono a3 a5 c1 .bot .rfl h3.1 h3.2 .bot a2⟩
   · cases h4
 termination_by 2 * n
 
-theorem HasPiFamF.mono :
-    HasTypeF (n := n) B .U b .U → HasTypeFamF HasTypeF B F b f →
+theorem DefEqLamF.mono :
+    DefEqF (n := n) B B .U b .U → DefEqPiF DefEqF B F F b f →
     Shape.HasTypePi f b → Shape.HasTypeLam m' b' f' →
     m' ≤≤ m → b' ≤ b → f' ≤≤ f →
-    Shape.HasTypeLam m b f → HasPiFamF HasTypeF M B F m b f →
-    HasPiFamF HasTypeF M B F m' b' f' := by
-  intro h0 bf h1 hm' h3 h4 h5 hm h6 N v h7 h8 h9
-  have h9' := h0.mono_r h1.1 h4 h9 h8
-  have := h6 _ _ h7 (h8.mono h4) h9'
-  refine .mono (bf _ _ h7 (h8.mono h4) h9') (h1.app (h8.mono h4))
-    (ShapeFun.app_mono_l h5 _) (hm.app (h8.mono h4))
-    this (ShapeFun.app_mono_l h3 _) (hm'.app h8)
+    Shape.HasTypeLam m b f → DefEqLamF DefEqF M M' B F m b f →
+    DefEqLamF DefEqF M M' B F m' b' f' := by
+  intro h0 bf h1 hm' h3 h4 h5 hm h6 v h8 N hN
+  have ⟨a1, a2⟩ := h6 _ (h8.mono h4) _ hN
+  have ⟨a3, a4⟩ := bf _ (h8.mono h4) _ hN
+  refine ⟨fun N' hN' h9 => ?_, fun h9 => ?_⟩
+  · have h9' := h0.mono_r h1.1 h4 h9 h8
+    have ⟨a1, a2⟩ := a1 _ hN' h9'
+    have b1 := (a3 _ hN' h9').1.left
+    refine ⟨?_, ?_⟩
+    · exact .mono b1 (h1.app (h8.mono h4)) (ShapeFun.app_mono_l h5 _)
+        (hm.app (h8.mono h4)) a1 (ShapeFun.app_mono_l h3 _) (hm'.app h8)
+    · exact .mono b1 (h1.app (h8.mono h4)) (ShapeFun.app_mono_l h5 _)
+        (hm.app (h8.mono h4)) a2 (ShapeFun.app_mono_l h3 _) (hm'.app h8)
+  · have h9' := h0.mono_r h1.1 h4 h9 h8
+    exact .mono (a4 h9') (h1.app (h8.mono h4)) (ShapeFun.app_mono_l h5 _)
+      (hm.app (h8.mono h4)) (a2 h9') (ShapeFun.app_mono_l h3 _) (hm'.app h8)
 termination_by 2 * n + 1
 
-theorem HasTypeFamF.mono : HasTypeF (n := n) B .U b .U →
+theorem DefEqPiF.mono : DefEqF (n := n) B B .U b .U →
     Shape.HasTypePi f' b' → Shape.HasTypePi f b → b' ≤ b → f' ≤≤ f →
-    HasTypeFamF HasTypeF B F b f → HasTypeFamF HasTypeF B F b' f' := by
-  rw [HasTypeFamF, HasTypeFamF]
-  intro h1 h3 hf h4 h5 h6 N v h7 h8 h9
-  have := h6 _ _ h7 (h8.mono h4) (.mono_r h1 hf.1 h4 h9 h8)
-  refine .mono (HasTypeF.U_U.2 ⟨.rfl .U, .rfl .U⟩) .U .rfl
-    (hf.app (h8.mono h4)) this (ShapeFun.app_mono_l h5 _) (h3.app h8)
+    DefEqPiF DefEqF B F F' b f → DefEqPiF DefEqF B F F' b' f' := by
+  intro h1 h3 hf h4 h5 h6 v h8 N hN
+  have ⟨a1, a2⟩ := h6 _ (h8.mono h4) _ hN
+  refine ⟨fun N' hN' h9 => ?_, fun h9 => ?_⟩
+  · have ⟨a1, a2⟩ := a1 _ hN' (h1.mono_r hf.1 h4 h9 h8)
+    refine ⟨?_, ?_⟩
+    · exact .mono (DefEqF.U_U.2 ⟨.rfl .U, .rfl .U, .rfl .U⟩) .U .rfl
+        (hf.app (h8.mono h4)) a1 (ShapeFun.app_mono_l h5 _) (h3.app h8)
+    · exact .mono (DefEqF.U_U.2 ⟨.rfl .U, .rfl .U, .rfl .U⟩) .U .rfl
+        (hf.app (h8.mono h4)) a2 (ShapeFun.app_mono_l h5 _) (h3.app h8)
+  · specialize a2 (h1.mono_r hf.1 h4 h9 h8)
+    exact .mono (DefEqF.U_U.2 ⟨.rfl .U, .rfl .U, .rfl .U⟩) .U .rfl
+      (hf.app (h8.mono h4)) a2 (ShapeFun.app_mono_l h5 _) (h3.app h8)
 termination_by 2 * n + 1
 
-theorem HasTypeF.mono_r : HasTypeF (n := n) A .U a .U → a :ᶠ .U → a' ≤ a →
-    HasTypeF M A u' a' → u' :ᶠ a' → HasTypeF M A u' a := by
+theorem DefEqF.mono_r : DefEqF (n := n) A A .U a .U → a :ᶠ .U → a' ≤ a →
+    DefEqF M M' A u' a' → u' :ᶠ a' → DefEqF M M' A u' a := by
   intro h1 h2 h3 h4 h5
-  unfold HasTypeF at h4; split at h4
+  unfold DefEqF at h4; split at h4
   · cases h5.unfold
     cases h2.unfold with
     | bot => trivial
-    | U => exact h1.2
+    | U => exact h1.2.1
   · cases h5.unfold
     cases h2.unfold with
     | bot => trivial
-    | U => exact h1.2
-    | pi b1 => let ⟨B, F, a1, a2, a3, a4⟩ := h1.2; exact ⟨_, _, a1, .bot b1 a4⟩
+    | U => exact h1.2.1
+    | pi b1 => let ⟨B, F, _, _, a1, a1', a2, a3, a4⟩ := h1.2; exact ⟨_, _, a1, .bot a4⟩
   · cases h2.unfold with | bot => trivial | _ => cases h3
   · cases h2.unfold with | U => exact h4 | _ => cases h3
   · cases h2.unfold with | U => exact h4 | _ => cases h3
@@ -436,22 +495,31 @@ theorem HasTypeF.mono_r : HasTypeF (n := n) A .U a .U → a :ᶠ .U → a' ≤ a
   · cases h5.unfold
   · cases h2.unfold <;> simp [Shape.LE.def] at h3
     let .lam h5 := h5.unfold; let .pi h6 := h2.unfold
-    let ⟨B, F, a1, a2⟩ := h4; let ⟨B', F', a1', a3, a4, a5⟩ := h1.2; cases a1.uniq_pi a1'
+    let ⟨B, F, a1, a2⟩ := h4; let ⟨_, _, _, _, a1', a1'', a3, a4, a5⟩ := h1.2
+    cases a1.uniq_pi a1'; cases a1.uniq_pi a1''
     exact ⟨B, F, a1, .mono_r a3 a5 h6 h5 h3.1 h3.2 a2⟩
   · cases h2.unfold <;> simp [Shape.LE.def] at h3; let .pi h6 := h2.unfold
-    let ⟨B, F, a1, a2⟩ := h4; let ⟨B', F', a1', a3, a4, a5⟩ := h1.2; cases a1.uniq_pi a1'
+    let ⟨B, F, a1, a2⟩ := h4; let ⟨_, _, _, _, a1', a1'', a3, a4, a5⟩ := h1.2
+    cases a1.uniq_pi a1'; cases a1.uniq_pi a1''
     exact ⟨B, F, a1, .mono_r a3 a5 h6 .bot h3.1 h3.2 a2⟩
   · cases h4
 termination_by 2 * n
 
-theorem HasPiFamF.mono_r : HasTypeF (n := n) B .U a .U → HasTypeFamF HasTypeF B F a f →
+theorem DefEqLamF.mono_r : DefEqF (n := n) B B .U a .U → DefEqPiF DefEqF B F F a f →
     Shape.HasTypePi f a → Shape.HasTypeLam m a' f' →
-    a' ≤ a → f' ≤≤ f → HasPiFamF HasTypeF M B F m a' f' → HasPiFamF HasTypeF M B F m a f := by
-  intro hb bf h2 h3 h4 h5 h6 N v h7 hv h9
+    a' ≤ a → f' ≤≤ f → DefEqLamF DefEqF M M' B F m a' f' → DefEqLamF DefEqF M M' B F m a f := by
+  intro hb bf h2 h3 h4 h5 h6 v hv N hN
   have ⟨v', hv', lv, eq⟩ := hv.maximal h3 h4
-  have := h6 N v' (.trans (D.LE.embed.2 lv) h7) hv' (.mono hb h2.1 h4 hv h9 lv hv')
   have fv : f'.app v' ≤ f.app v := .trans (ShapeFun.app_mono_l h5 v') (ShapeFun.app_mono_r lv)
-  exact .mono_r (bf N v h7 hv h9) (h2.app hv) fv (eq ▸ this) (eq ▸ h3.app hv')
+  have ⟨a1, a2⟩ := h6 _ hv' _ (.trans (D.LE.embed.2 lv) hN)
+  have ⟨b1, b2⟩ := bf _ hv _ hN
+  refine ⟨fun N' hN' h9 => ?_, fun h9 => ?_⟩
+  · have ⟨a1, a2⟩ := a1 _ (.trans (D.LE.embed.2 lv) hN') (.mono hb h2.1 h4 hv h9 lv hv')
+    refine ⟨?_, ?_⟩
+    · exact .mono_r (b1 _ hN' h9).1.left (h2.app hv) fv (eq ▸ a1) (eq ▸ h3.app hv')
+    · exact .mono_r (b1 _ hN' h9).1.left (h2.app hv) fv (eq ▸ a2) (eq ▸ h3.app hv')
+  · specialize a2 (.mono hb h2.1 h4 hv h9 lv hv')
+    exact .mono_r (b1 _ hN h9).1.left (h2.app hv) fv (eq ▸ a2) (eq ▸ h3.app hv')
 termination_by 2 * n + 1
 
 end
