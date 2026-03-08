@@ -8,6 +8,9 @@ open Std
 
 attribute [simp] Option.bind_eq_some_iff List.filterMap_cons
 
+theorem Option.beq_some_iff [BEq α] {a : Option α} {b : α} :
+    a == some b ↔ ∃ a', a = some a' ∧ a' == b := by cases a <;> simp
+
 protected theorem Nat.le_iff_exists_add {a b : Nat} : a ≤ b ↔ ∃ c, b = a + c :=
   ⟨fun h => ⟨_, (Nat.add_sub_cancel' h).symm⟩, fun ⟨_, h⟩ => h ▸ Nat.le_add_right ..⟩
 

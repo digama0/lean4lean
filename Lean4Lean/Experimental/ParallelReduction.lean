@@ -1,5 +1,9 @@
 import Lean4Lean.Theory.Typing.Strong
-import Lean4Lean.Theory.Typing.NormalEq
+import Lean4Lean.Experimental.NormalEq
+
+-- TODO: remove, this is now part of ChurchRosser.lean
+
+-- TODO: remove, this is now part of ChurchRosser.lean
 
 namespace Lean4Lean
 
