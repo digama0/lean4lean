@@ -2009,7 +2009,7 @@ theorem TrExpr.beta (H : TrExpr env Us Δ e e')
   | trans _ _ ih1 ih2 => exact ih2 (ih1 H)
   | app _ ih =>
     let ⟨_, .app hf ha tf ta, _, df⟩ := H
-    have ⟨_, _, hf', ha'⟩ := df.app_inv' henv hΓ (.inl rfl)
+    have ⟨_, _, hf', ha'⟩ := df.hasType.1.app_inv henv hΓ
     exact ((ih ⟨_, tf, _, hf'⟩).app henv hΓ hf' ha' (ta.trExpr henv hΓ)).defeq henv hΓ ⟨_, df⟩
   | beta =>
     let ⟨_, .app hf ha tf ta, _, df⟩ := H
