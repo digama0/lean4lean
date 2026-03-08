@@ -89,10 +89,10 @@ def VarNode.addVar (v : Name) (k : Nat) : List VarNode → List VarNode
 def NormLevel.addVar (v : Name) (k : Nat) (path' : List Name) (s : NormLevel) : NormLevel :=
   s.modify path' fun n => { n with var := VarNode.addVar v k n.var }
 
-def NormLevel.addNode (v : Name) (path' : List Name) (s : NormLevel) : NormLevel :=
+def NormLevel.addNode (v : Name) (k : Nat) (path' : List Name) (s : NormLevel) : NormLevel :=
   s.alter path' fun
-    | none => some { var := [⟨v, 0⟩] }
-    | some n => some { n with var := VarNode.addVar v 0 n.var }
+    | none => some { var := [⟨v, k⟩] }
+    | some n => some { n with var := VarNode.addVar v k n.var }
 
 def NormLevel.addConst (k : Nat) (path : List Name) (acc : NormLevel) : NormLevel :=
   if k = 0 || k = 1 && !path.isEmpty then acc else
@@ -108,14 +108,14 @@ def normalizeAux (l : Level) (path : List Name) (k : Nat) (acc : NormLevel) : No
   | .imax u (.imax v w) => normalizeAux (.imax u w) path k acc |> normalizeAux (.imax v w) path k
   | .imax u (.param v) =>
     match orderedInsert Name.cmp v path with
-    | some path' => acc.addNode v path' |> normalizeAux u path' k
-    | none => normalizeAux u path k acc
+    | some path' => acc.addConst k path |>.addNode v k path' |> normalizeAux u path' k
+    | none =>
+      let acc := if k = 0 then acc else acc.addVar v k path
+      normalizeAux u path k acc
   | .mvar _ | .imax _ (.mvar _) => acc -- unreachable
   | .param v =>
     match orderedInsert Name.cmp v path with
-    | some path' =>
-      let acc := acc.addConst k path |>.addNode v path'
-      if k = 0 then acc else acc.addVar v k path'
+    | some path' => acc.addConst k path |>.addNode v k path'
     | none => if k = 0 then acc else acc.addVar v k path
 
 def subsumeVars : List VarNode → List VarNode → List VarNode
@@ -277,3 +277,5 @@ def geq' (u v : Level) : Bool := (Normalize.normalize v).le (Normalize.normalize
 -- #guard_msgs in normalize imax u u
 -- /-- info: max 1 (imax (u+1) u) -/
 -- #guard_msgs in normalize imax u (u+1)
+-- /-- info: max 1 (imax (max (v+1) (imax (u+1) u)) v) -/
+-- #guard_msgs in normalize imax u v + 1
