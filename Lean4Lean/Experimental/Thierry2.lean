@@ -8,44 +8,6 @@ the monotonicity theorem right.
 
 axiom mySorry : α
 
-axiom D : Type
-axiom DF.OK (f : D → D) : Prop
-def DF : Type := { f : D → D // DF.OK f }
-
-noncomputable instance : CoeFun DF fun _ => D → D := ⟨(·.1)⟩
-
-def DF.comp (f g : DF) : DF := ⟨fun x => f (g x), mySorry⟩
-
-axiom D.bot : D
-axiom D.U : D
-axiom D.lam : DF → D
-axiom D.pi : D → DF → D
-axiom D.LE : D → D → Prop
-
-instance : LE D := ⟨D.LE⟩
-instance : LE DF := ⟨fun f g => ∀ x, f x ≤ g x⟩
-
-axiom D.LE.antisymm {x y : D} : x ≤ y → y ≤ x → x = y
-axiom D.LE.trans {x y z : D} : x ≤ y → y ≤ z → x ≤ z
-
-theorem DF.LE.trans {x y z : DF} : x ≤ y → y ≤ z → x ≤ z := fun h1 h2 _ => (h1 _).trans (h2 _)
-axiom DF.mono {f : DF} : x ≤ y → f x ≤ f y
-
-noncomputable def DF.bot : DF := .mk (fun _ => .bot) mySorry
-@[simp] theorem DF.bot_val : DF.bot.1 x = .bot := rfl
-
-axiom D.lam_bot : D.lam .bot = .bot
-
-axiom D.app : D → D → D
-noncomputable instance : CoeFun D fun _ => D → D := ⟨.app⟩
-axiom D.app_lam : D.lam f x = f x
-
-axiom D.LE.bot {x : D} : .bot ≤ x
-theorem DF.LE.bot {x : DF} : .bot ≤ x := fun _ => .bot
-axiom D.LE.rfl {x : D} : x ≤ x
-axiom D.LE.lam {x y : DF} : D.lam x ≤ .lam y ↔ x ≤ y
-axiom D.LE.pi {x y : D} : D.pi x f ≤ D.pi y g ↔ x ≤ y ∧ f ≤ g
-
 inductive Shape0 : Type where
   | bot : Shape0
   | U : Shape0
@@ -70,10 +32,14 @@ abbrev ShapeFun (n) := List (Shape n × Shape n)
   | 0 => Shape0.U
   | _+1 => ShapeS.U
 
-axiom Shape.embed : Shape n → D
-axiom ShapeFun.embed : ShapeFun n → DF
-noncomputable instance : CoeOut (Shape n) D := ⟨Shape.embed⟩
-noncomputable instance : CoeOut (ShapeFun n) DF := ⟨ShapeFun.embed⟩
+def ShapeFun.Compat (R : α → β → Bool) (f : List (α × α)) (f' : List (β × β)) : Bool :=
+  f.all fun (x, y) => f'.all fun (x', y') => R x x' → R y y'
+
+def Shape.Compat : ∀ {n}, Shape n → Shape n → Bool
+  | 0, _, _ | _+1, .bot, _ | _+1, _, .bot | _+1, .U, .U => true
+  | _+1, .pi s f, .pi s' f' => s.Compat s' && ShapeFun.Compat Compat f f'
+  | _+1, .lam f, .lam f' => ShapeFun.Compat Compat f f'
+  | _, _, _ => false
 
 def ShapeFun.ble (R : α → α → Bool) (f f' : List (α × α)) : Bool :=
   f.all fun (x, y) => f'.any fun (x', y') => R x' x && R y y'
@@ -91,9 +57,6 @@ instance : LE (Shape n) := ⟨Shape.LE⟩
 instance : DecidableRel (α := Shape n) (· ≤ ·) := fun x y => inferInstanceAs (Decidable (x.ble y))
 
 local notation s " ≤≤ " s':36 => ShapeFun.LE s s'
-
-axiom D.LE.embed {x y : Shape n} : Shape.embed x ≤ Shape.embed y ↔ x ≤ y
-axiom DF.LE.embed {x y : ShapeFun n} : ShapeFun.embed x ≤ ShapeFun.embed y ↔ x ≤≤ y
 
 @[simp] theorem Shape.bot_le : Shape.bot ≤ (s : Shape n) := by cases n <;> rfl
 
@@ -155,28 +118,44 @@ theorem ShapeFun.LE.trans {s t u : ShapeFun n} : s ≤≤ t → t ≤≤ u → s
   rintro h1 h2 x hx; let ⟨_, hy, x1, x2⟩ := h1 _ hx; let ⟨_, hz, y1, y2⟩ := h2 _ hy
   exact ⟨_, hz, Shape.LE.trans y1 x1, Shape.LE.trans x2 y2⟩
 
--- @[simp] axiom FinElem.embed_bot : ((.bot : FinElem) : D) = .bot
--- @[simp] axiom FinFun.embed_bot : ((.bot : FinFun) : DF) = .bot
-@[simp] axiom Shape.embed_U : (Shape.U (n := n) : D) = .U
--- def FinElem.LE_unfold : FinElem → FinElem → Prop
---   | .bot, _ => True
---   | .U, .U => True
---   | .pi x f, .pi y g => x ≤ y ∧ f ≤ g
---   | .lam f, .lam g => f ≤ g
---   | .lam f, .bot => f ≤ .bot
---   | _, _ => False
+theorem Shape.Compat.bot_l {x : Shape n} : Shape.bot.Compat x = true := by
+  cases n <;> rfl
+theorem Shape.Compat.bot_r {x : Shape n} : x.Compat Shape.bot = true := by
+  cases n <;> cases x <;> rfl
 
--- @[simp] theorem FinMut.LE.lam {x y : FinFun} : x.lam ≤ y.lam ↔ x ≤ y := sorry
--- @[simp] theorem FinMut.LE.pi {x y : FinElem} : x.pi f ≤ y.pi g ↔ x ≤ y ∧ f ≤ g := sorry
--- axiom FinMut.LE.cons : FinMut.cons u v f ≤ g ↔ v ≤ g u ∧ f ≤ g
--- axiom eval_cons : FinMut.cons u v f x ≤ y ↔ (u ≤ x → v ≤ y) ∧ f x ≤ y
--- @[simp] axiom eval_embed : ((f : FinFun) x : D) = (f : DF) x
--- @[simp] axiom bot_apply : (.bot : FinFun) x = .bot
+def Shape.Join (x y z : Shape n) := ∀ w, z ≤ w ↔ x ≤ w ∧ y ≤ w
+def ShapeFun.Join (x y z : ShapeFun n) := ∀ w, z.LE w ↔ x.LE w ∧ y.LE w
 
--- inductive FinHasTypeK : Bool → Type
---   | ty : FinElem → FinHasTypeK false
---   | pi (a : FinElem) : FinHasTypeK true
---   | lam (a : FinElem) (f : FinFun) : FinHasTypeK true
+theorem Shape.Join.le (H : Join x y z) : x ≤ z ∧ y ≤ z := (H _).1 .rfl
+theorem ShapeFun.Join.le (H : Join x y z) : x ≤≤ z ∧ y ≤≤ z := (H _).1 .rfl
+
+theorem Shape.Compat.def {x y : Shape n} : x.Compat y ↔ ∃ z, x ≤ z ∧ y ≤ z := sorry
+
+theorem Shape.Join.compat (H : Join x y z) : x.Compat y := Compat.def.2 ⟨_, (H _).1 .rfl⟩
+
+def ShapeFun.join (join : Shape n → Shape n → Shape n) (f f' : ShapeFun n) : ShapeFun n := by
+  refine f.foldl (init := []) fun l (x, y) => ?_
+  refine f'.foldl (init := l) fun l (x', y') => ?_
+  refine if x.Compat x' then ?_ else l
+  let jx := join x x'
+  let jy := join y y'
+  exact l.map fun (z, w) => (z, if z ≤ jx then join w jy else w)
+
+def Shape.join : ∀ {n}, Shape n → Shape n → Shape n
+  | 0, s, .bot | 0, .bot, s | _+1, .bot, s | _+1, s, .bot => s
+  | 0, .U, .U | _+1, .U, .U => .U
+  | _+1, .pi s f, .pi s' f' => .pi (join s s') (ShapeFun.join join f f')
+  | _+1, .lam f, .lam f' => .lam (ShapeFun.join join f f')
+  | _+1, _, _ => .bot
+
+theorem Shape.join.bot_l {x : Shape n} : Shape.bot.join x = x := by
+  cases n <;> cases x <;> rfl
+theorem Shape.join.bot_r {x : Shape n} : x.join Shape.bot = x := by
+  cases n <;> cases x <;> rfl
+
+theorem Shape.Join.mk (H : x.Compat y) : Join x y (x.join y) := sorry
+
+theorem ShapeFun.Join.mk (H : Compat Shape.Compat x y) : Join x y (join Shape.join x y) := sorry
 
 def ShapeFun.maxBelow (s : ShapeFun n) : Shape n × Shape n :=
   (s.find? fun (x, _) => s.all fun (x', _) => x' ≤ x).getD (.bot, .bot)
@@ -190,11 +169,27 @@ theorem ShapeFun.app_mono_l {f f' : ShapeFun n} : f.LE f' → ∀ a, f.app a ≤
 theorem ShapeFun.app_mono_r {f : ShapeFun n} : a ≤ a' → f.app a ≤ f.app a' :=
   sorry
 
+theorem ShapeFun.Join.app (H : Join x y z) : Shape.Join (x.app a) (y.app a) (z.app a) := sorry
+
+theorem ShapeFun.Compat.def {f f' : ShapeFun n} :
+    ShapeFun.Compat Shape.Compat f f' ↔ ∀ x, (f.app x).Compat (f'.app x) :=
+  sorry
+
 @[simp] theorem ShapeFun.bot_app : (@ShapeFun.bot n).app x = .bot := sorry
 
 def Shape.app : Shape (n + 1) → Shape n → Shape n
   | .lam f, x => ShapeFun.app f x
   | _, _ => .bot
+
+theorem Shape.Join.app (H : Join x y z) : Shape.Join (x.app a) (y.app a) (z.app a) := sorry
+
+theorem Shape.app_mono_l {f f' : Shape (n + 1)} (h1 : f ≤ f') (a) : f.app a ≤ f'.app a := by
+  unfold app; split
+  · cases f' <;> simp [Shape.LE.def] at h1
+    exact ShapeFun.app_mono_l h1 _
+  · exact bot_le
+
+theorem Shape.app_mono_r {f : Shape (n + 1)} (h1 : x ≤ y) : f.app x ≤ f.app y := sorry
 
 def Shape.hasType : ∀ {n}, Shape n → Shape n → Bool
   | _+1, .pi a b, .U =>
@@ -254,11 +249,308 @@ theorem Shape.HasType.maximal
     (H : HasTypeLam f a b) (ha : a ≤ a') (ht : HasType x' a') :
     ∃ x, HasType x a ∧ x ≤ x' ∧ ShapeFun.app f x = ShapeFun.app f x' := sorry
 
+def ShapeFun.lift (lift : α → β) (x : List (α × α)) : List (β × β) :=
+  x.map fun (a, b) => (lift a, lift b)
+
+def Shape.lift : ∀ {n m}, Shape n → Shape m
+  | 0, _, .U | _+1, _, .U => .U
+  | 0, _, .bot | _+1, _, .bot | _, 0, _ => .bot
+  | _+1, _+1, .pi s f => .pi (lift s) <| ShapeFun.lift lift f
+  | _+1, _+1, .lam f => .lam <| ShapeFun.lift lift f
+
+@[simp] theorem Shape.lift_bot : ((Shape.bot : Shape n).lift : Shape m) = Shape.bot := by
+  cases n; rfl; cases m <;> rfl
+
+@[simp] theorem Shape.lift_U : ((Shape.U : Shape n).lift : Shape m) = Shape.U := by
+  cases n; rfl; cases m <;> rfl
+
+theorem Shape.lift_self {s : Shape n} : s.lift = s := by
+  have {α} {lift : α → α} (IH : ∀ {s}, lift s = s) {s} : ShapeFun.lift lift s = s := by
+    simp [ShapeFun.lift]; apply List.map_id''; simp [IH]
+  unfold lift <;> split <;> (try rfl)
+  · cases s; rfl; grind
+  · rw [Shape.lift_self, this Shape.lift_self]
+  · rw [this Shape.lift_self]
+
+theorem Shape.lift_lift {s : Shape n₁} (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) :
+    ((s.lift : Shape n₂).lift : Shape n₃) = s.lift := by
+  induction n₁ generalizing n₂ n₃ with
+  | zero => cases s <;> simp [lift]
+  | succ n₁ ih =>
+    cases n₃ with
+    | zero =>
+      cases n₂ with | zero => rw [lift_self] | succ n₃
+      cases s <;> simp [lift]
+    | succ n₃ =>
+      let n₂ + 1 := n₂; simp at le; replace ih {s} := ih (s := s) le
+      have ihf {s : ShapeFun n₁} :
+          (ShapeFun.lift lift (ShapeFun.lift lift s : ShapeFun n₂) : ShapeFun n₃) =
+          ShapeFun.lift lift s := by simp [ShapeFun.lift, ih]
+      cases s <;> simp [lift, ih, ihf]
+      -- case sort i h1 => split <;> split <;> simp [lift, *]; grind
+
+theorem Shape.lift_le_lift {s t : Shape n} (le : n ≤ m) : (s.lift : Shape m) ≤ t.lift ↔ s ≤ t := by
+  dsimp [(· ≤ ·), Shape.LE]; rw [← Bool.eq_iff_iff]
+  induction n generalizing m with
+  | zero =>
+    cases m with | zero => simp [lift_self] | succ m
+    cases s <;> cases t <;> simp [lift, ble]
+  | succ n ih =>
+    let m + 1 := m; replace le := Nat.le_of_succ_le_succ le; replace ih {t' s} := @ih m t' s le
+    have ihf {s t} :
+        ShapeFun.ble ble (ShapeFun.lift (lift : Shape n → Shape m) s) (ShapeFun.lift lift t) =
+        ShapeFun.ble ble s t := by
+      simp only [ShapeFun.ble, ShapeFun.lift, List.all_map, List.any_map, Function.comp_def, ih]
+    -- have sif {i} (h : i ≤ n) : (if h : i ≤ m then .sort i h else .bot : Shape (m+1)) =
+    --     .sort i (Nat.le_trans h le) := dif_pos _
+    cases s <;> cases t <;> simp [ble, lift, *]
+
+theorem Shape.lift_mono {s t : Shape n} : s ≤ t → (s.lift : Shape m) ≤ t.lift := by
+  dsimp [(· ≤ ·), Shape.LE]
+  induction n generalizing m with
+  | zero =>
+    cases s <;> cases t <;> simp [lift, ble] <;>
+      first | exact Shape.LE.rfl | exact Shape.bot_le
+  | succ n ih =>
+    cases m with
+    | zero => cases s <;> cases t <;> simp [lift, ble]
+    | succ m =>
+      specialize @ih m
+      have ihf {s t} : ShapeFun.ble ble s t →
+          ShapeFun.ble ble (ShapeFun.lift (lift : Shape n → Shape m) s) (ShapeFun.lift lift t) := by
+        simp only [ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true,
+          ShapeFun.lift, List.any_map, List.all_map, Function.comp_apply]
+        exact fun H _ h1 => let ⟨_, h2, h3, h4⟩ := H _ h1; ⟨_, h2, ih h3, ih h4⟩
+      cases s <;> cases t <;> simp [ble, lift, *]
+      -- · split <;> split <;> simp [ble]; omega
+      · grind
+      · grind
+
+theorem Shape.Compat.lift {x y : Shape n} (le : n ≤ m) :
+    (x.lift : Shape m).Compat y.lift ↔ x.Compat y := sorry
+
+theorem ShapeFun.Compat.lift {x y : ShapeFun n} (le : n ≤ m) :
+    Compat Shape.Compat (lift Shape.lift x : ShapeFun m) (lift Shape.lift y) ↔
+    Compat Shape.Compat x y := sorry
+
+theorem Shape.lift_join {x y : Shape n} (le : n ≤ m) :
+    ((x.join y).lift : Shape m) = x.lift.join y.lift := sorry
+
+theorem ShapeFun.lift_join {x y : ShapeFun n} (le : n ≤ m) :
+    (lift Shape.lift (x.join Shape.join y) : ShapeFun m) =
+    join Shape.join (lift Shape.lift x) (lift Shape.lift y) := sorry
+
+theorem ShapeFun.lift_app {f : ShapeFun n} {a} (le : n ≤ m) :
+    (f.app a).lift (m := m) = ShapeFun.app (ShapeFun.lift Shape.lift f) a.lift :=
+  sorry
+
+theorem Shape.lift_app {f : Shape (n+1)} {a} (le : n ≤ m) :
+    (f.app a).lift (m := m) = f.lift.app a.lift :=
+  sorry
+
+structure D : Type where
+  above : Shape n → Prop
+  lift : n ≤ n' → above (n := n) a → above (n := n') a.lift
+  bot' : above (n := n) .bot
+  le : b ≤ a → above a → above b
+  join : above a → above b → a.Compat b ∧ above (a.join b)
+
+theorem D.above.join' (J : a.Join b c) {x : D}
+    (h1 : x.above a) (h2 : x.above b) : x.above c :=
+  have ⟨a1, a2⟩ := x.join h1 h2
+  x.le ((J _).2 (Shape.Join.mk a1).le) a2
+
+@[ext] theorem D.ext {x y : D} (H : ∀ {n} (s : Shape n), x.above s ↔ y.above s) : x = y := by
+  cases x; cases y; congr; ext; apply H
+
+def D.LE (x y : D) : Prop := ∀ {{n}} {{s : Shape n}}, x.above s → y.above s
+
+instance : LE D := ⟨D.LE⟩
+
+theorem D.LE.rfl {x : D} : x ≤ x := fun _ _ => id
+
+theorem D.LE.antisymm {x y : D} (h1 : x ≤ y) (h2 : y ≤ x) : x = y := ext fun _ => ⟨@h1 _ _, @h2 _ _⟩
+theorem D.LE.trans {x y z : D} : x ≤ y → y ≤ z → x ≤ z := fun h1 h2 _ _ h => h2 (h1 h)
+
+def Shape.embed (s : Shape n) : D where
+  above {m} x := x.lift (m := max n m) ≤ s.lift
+  lift {m m' x} le h1 := by
+    rw [lift_lift (.inl le)]
+    refine cast ?_ (lift_mono (m := max n m') h1)
+    congr 1 <;> rw [lift_lift] <;> omega
+  bot' := by simp
+  le h1 h2 := .trans (lift_mono h1) h2
+  join h1 h2 :=
+    have := Compat.def.2 ⟨_, h1, h2⟩; have r := Nat.le_max_right ..
+    ⟨(Compat.lift r).1 this, lift_join r ▸ (Shape.Join.mk this _).2 ⟨h1, h2⟩⟩
+
+def D.bot : D := Shape.bot.embed (n := 0)
+@[simp] theorem D.bot_above : D.bot.above (n := n) s ↔ s ≤ .bot := by
+  simp [D.bot, Shape.embed]
+  simpa using Shape.lift_le_lift (Nat.le_max_right 0 n) (s := s) (t := .bot)
+
+theorem D.LE.bot {x : D} : .bot ≤ x := fun _ _ h => x.le (by simpa using h) x.bot'
+
+def D.U : D := Shape.U.embed (n := 0)
+
+structure DF : Type where
+  f : Shape n → D
+  lift : n ≤ n' → f (n := n') a.lift = f (n := n) a
+  mono : a ≤ b → f a ≤ f b
+
+axiom ShapeFun.embed : ShapeFun n → DF
+noncomputable instance : CoeOut (Shape n) D := ⟨Shape.embed⟩
+noncomputable instance : CoeOut (ShapeFun n) DF := ⟨ShapeFun.embed⟩
+
+def DF.app (f : DF) (x : D) : D where
+  above y₀ := ∃ n, ∃ x₀ : Shape n, x.above x₀ ∧ (f.f x₀).above y₀
+  lift h1 | ⟨_, _, h2, h3⟩ => ⟨_, _, h2, (f.f _).lift h1 h3⟩
+  bot' := ⟨0, _, x.bot', (f.f _).bot'⟩
+  le h1 | ⟨_, _, h2, h3⟩ => ⟨_, _, h2, (f.f _).le h1 h3⟩
+  join := by
+    intro _ _ _ ⟨n, _, h1, h2⟩ ⟨m, _, h3, h4⟩
+    have ⟨a1, a2⟩ := x.join (x.lift (Nat.le_max_left ..) h1) (x.lift (Nat.le_max_right ..) h3)
+    have ⟨l1, l2⟩ := (Shape.Join.mk a1).le
+    rw [← f.lift (Nat.le_max_left n m)] at h2
+    rw [← f.lift (Nat.le_max_right n m)] at h4
+    have ⟨b1, b2⟩ := (f.f _).join (f.mono l1 h2) (f.mono l2 h4)
+    exact ⟨b1, _, _, a2, b2⟩
+
+noncomputable instance : CoeFun DF fun _ => D → D := ⟨(·.app)⟩
+
+def DF.mk' (f : D → D) : DF := sorry
+@[simp] axiom DF.mk'_app : DF.mk' g x = g x
+
+theorem D.LE.app {f : DF} (h : x ≤ y) : f x ≤ f y :=
+  fun _ _ ⟨_, _, h1, h2⟩ => ⟨_, _, h h1, h2⟩
+
+def DF.comp (f g : DF) : DF where
+  f y := f.app (g.f y)
+  lift le := g.lift le ▸ rfl
+  mono le := .app (g.mono le)
+
+def D.lam (f : DF) : D where
+  above {n} y := ∀ {{m}}, n ≤ m + 1 → ∃ g, y.lift (m := m + 1) ≤ .lam g ∧
+    ∀ x : Shape m, (f.f x).above (ShapeFun.app g x)
+  lift h1 h2 _ le :=
+    have ⟨_, a1, a2⟩ := h2 (Nat.le_trans h1 le)
+    ⟨_, (Shape.lift_lift (.inl h1)).symm ▸ a1, a2⟩
+  bot' le := ⟨ShapeFun.bot, by simp; exact fun _ => (f.f _).bot'⟩
+  le {n _ _} h1 h2 m le :=
+    have ⟨_, a1, a2⟩ := h2 le
+    ⟨_, .trans (Shape.lift_mono h1) a1, a2⟩
+  join {n} a b h1 h2 := by
+    have H {a : Shape n} (ha : a ≠ .bot)
+        (h1 : ∀ ⦃m⦄, n ≤ m + 1 → ∃ g, a.lift (m := m+1) ≤ .lam g ∧
+          ∀ x : Shape m, (f.f x).above (ShapeFun.app g x)) :
+        ∃ n', n = n' + 1 ∧ ∃ g : ShapeFun n', a ≍ ShapeS.lam g := by
+      have ⟨_, a1, _⟩ := h1 (Nat.le_succ _)
+      cases n <;> cases a <;> simp [Shape.lift, Shape.LE.def, Shape.bot, Shape.lift] at a1 ha
+      exact ⟨_, rfl, _, .rfl⟩
+    by_cases ha : a = .bot; · simp [ha, Shape.Compat.bot_l, Shape.join.bot_l]; exact h2
+    by_cases hb : b = .bot; · simp [hb, Shape.Compat.bot_r, Shape.join.bot_r]; exact h1
+    obtain ⟨n, ⟨⟩, a, ⟨⟩⟩ := H ha h1; obtain ⟨_, ⟨⟩, b, ⟨⟩⟩ := H hb h2
+    simp [Shape.lift, Shape.LE.def, Shape.join, Shape.Compat] at h1 h2 ⊢
+    refine have hJ := ?_; ⟨hJ, fun m h3 => ?_⟩
+    · simp [ShapeFun.Compat.def]; intro x
+      obtain ⟨_, h1, a1⟩ := h1 (Nat.le_succ _)
+      obtain ⟨_, h2, a2⟩ := h2 (Nat.le_succ _)
+      have ⟨_, b1, b2⟩ := Shape.Compat.def.1 ((f.f _).join (a1 x.lift) (a2 x.lift)).1
+      have b1 := ShapeFun.lift_app (Nat.le_succ _) ▸ (ShapeFun.app_mono_l h1 _).trans b1
+      have b2 := ShapeFun.lift_app (Nat.le_succ _) ▸ (ShapeFun.app_mono_l h2 _).trans b2
+      exact (Shape.Compat.lift (Nat.le_succ _)).1 <| Shape.Compat.def.2 ⟨_, b1, b2⟩
+    · have ⟨g, h1, a1⟩ := h1 h3; have ⟨g', h2, a2⟩ := h2 h3
+      have := (@ShapeFun.Compat.def _ g g').2 fun x => ((f.f _).join (a1 x) (a2 x)).1
+      have H := ShapeFun.Join.mk this
+      refine ⟨ShapeFun.join Shape.join g g', ?_, fun x => ?_⟩
+      · rw [ShapeFun.lift_join h3]
+        exact (ShapeFun.Join.mk ((ShapeFun.Compat.lift h3).2 hJ) _).2
+          ⟨h1.trans H.le.1, h2.trans H.le.2⟩
+      have ⟨_, b1, b2⟩ := Shape.Compat.def.1 ((f.f _).join (a1 x) (a2 x)).1
+      exact (a1 _).join' H.app (a2 _)
+
+def D.pi : D → DF → D := sorry
+
+instance : LE DF := ⟨fun f g => ∀ x, f x ≤ g x⟩
+
+theorem DF.LE.trans {x y z : DF} : x ≤ y → y ≤ z → x ≤ z := fun h1 h2 _ => (h1 _).trans (h2 _)
+
+noncomputable def DF.bot : DF where
+  f _ := .bot
+  lift := by simp
+  mono _ _ _ := id
+
+@[simp] theorem DF.bot_app : DF.bot.app x = .bot := by
+  ext; simp [app, bot]; exact fun _ => ⟨0, _, x.bot'⟩
+
+theorem D.lam_bot : D.lam .bot = .bot := by
+  refine LE.antisymm (fun _ _ h => D.bot_above.2 ?_) .bot
+  have ⟨_, a1, a2⟩ := h (Nat.le_succ _)
+  refine (Shape.lift_le_lift (Nat.le_succ _)).1 (a1.trans ?_)
+  simp [Shape.LE.def]; exact mySorry
+
+def D.unlam (f : D) : DF where
+  f {n} x₀ := {
+    above {m} y₀ := ∃ k, n ≤ k ∧ m ≤ k ∧
+      ∃ f₀ : Shape (k + 1), f.above f₀ ∧ y₀.lift ≤ f₀.app x₀.lift
+    lift {m m' x} h1 := fun ⟨k, h2, h3, f₀, h4, h5⟩ => by
+      refine ⟨_, Nat.le_trans h2 (Nat.le_max_right ..), Nat.le_max_left .., f₀.lift,
+        f.lift (Nat.succ_le_succ (Nat.le_max_right ..)) h4, ?_⟩
+      have := Shape.lift_mono (m := max m' k) h5
+      rw [Shape.lift_lift (.inl h3), Shape.lift_app (Nat.le_max_right ..),
+        Shape.lift_lift (.inl h2)] at this
+      rwa [Shape.lift_lift (.inl h1)]
+    bot' {m} := ⟨_, Nat.le_max_left .., Nat.le_max_right .., _, f.bot', by simp⟩
+    le h1 := fun ⟨k, h2, h3, f₀, h4, h5⟩ =>
+       ⟨k, h2, h3, f₀, h4, .trans (Shape.lift_mono h1) h5⟩
+    join {m a b} := fun ⟨k, a1, a2, f₀, a3, a4⟩ ⟨k', b1, b2, f₁, b3, b4⟩ => by
+      replace a4 := Shape.lift_mono (m := max k k') a4
+      replace b4 := Shape.lift_mono (m := max k k') b4
+      rw [Shape.lift_lift (.inl ‹_›), Shape.lift_app (by omega),
+        Shape.lift_lift (.inl ‹_›)] at a4 b4
+      have ⟨c1, c2⟩ := f.join
+        (f.lift (Nat.add_le_add_right (Nat.le_max_left ..) _) a3)
+        (f.lift (Nat.add_le_add_right (Nat.le_max_right ..) _) b3)
+      have hJ := (Shape.Join.mk c1).app (a := x₀.lift)
+      have ⟨_, c3, c4⟩ := Shape.Compat.def.1 hJ.compat
+      refine have := Shape.Compat.def.2 ⟨_, .trans a4 c3, .trans b4 c4⟩
+        ⟨(Shape.Compat.lift (Nat.le_trans a2 (Nat.le_max_left ..))).1 this, ?_⟩
+      refine
+        have hn := Nat.le_trans a1 (Nat.le_max_left ..)
+        have hm := Nat.le_trans a2 (Nat.le_max_left ..)
+        ⟨max k k', hn, hm, _, c2, ?_⟩
+      rw [Shape.lift_join hm]
+      exact (Shape.Join.mk this _).2 ⟨.trans a4 hJ.le.1, .trans b4 hJ.le.2⟩ }
+  lift {n n' x} le := ext fun x => by
+    dsimp; constructor <;> intro ⟨k, h1, h2, _, h3, h4⟩
+    · exact ⟨_, Nat.le_trans le h1, h2, _, h3, (Shape.lift_lift (.inl le) ▸ h4 :)⟩
+    · refine ⟨_, Nat.le_max_right .., Nat.le_trans h2 (Nat.le_max_left ..),
+        _, f.lift (Nat.succ_le_succ (Nat.le_max_left ..)) h3, ?_⟩
+      replace h4 := Shape.lift_mono (m := max k n') h4
+      rw [Shape.lift_lift (.inl h2), Shape.lift_app (Nat.le_max_left ..),
+        Shape.lift_lift (.inl h1)] at h4
+      rwa [Shape.lift_lift (.inl le)]
+  mono le _ _ := fun ⟨k, h1, h2, _, h3, h4⟩ =>
+    ⟨_, h1, h2, _, h3, .trans h4 (Shape.app_mono_r (Shape.lift_mono le))⟩
+
+def D.app (f : D) : D → D := DF.app (D.unlam f)
+
+noncomputable instance : CoeFun D fun _ => D → D := ⟨.app⟩
+axiom D.app_lam : D.lam f x = f x
+
+axiom D.LE.lam {x y : DF} : D.lam x ≤ .lam y ↔ x ≤ y
+axiom D.LE.pi {x y : D} : D.pi x f ≤ D.pi y g ↔ x ≤ y ∧ f ≤ g
+
+axiom D.LE.embed {x y : Shape n} : Shape.embed x ≤ Shape.embed y ↔ x ≤ y
+axiom DF.LE.embed {x y : ShapeFun n} : ShapeFun.embed x ≤ ShapeFun.embed y ↔ x ≤≤ y
+
+@[simp] axiom Shape.embed_U : (Shape.U (n := n) : D) = .U
+
 axiom proj : D → DF
 axiom proj_U_U : proj .U .U = .U
 axiom proj_U_pi : proj .U (.pi a f) = .pi (proj .U a) ((proj .U).comp <| f.comp <| proj a)
 axiom proj_pi : proj (.pi a f) (.lam w) =
-  .lam (.mk (fun x => proj (f (proj a x)) (w (proj a x))) mySorry)
+  .lam (.mk' fun x => proj (f (proj a x)) (w (proj a x)))
 
 axiom proj_le : proj a u ≤ u
 axiom proj_proj (a u : D) : proj a (proj a u) = proj a u
@@ -286,13 +578,27 @@ noncomputable def push (ρ : Nat → D) (u a : D) : Nat → D
 noncomputable def Expr.eval (ρ : Nat → D) : Expr → D
   | .bvar i => ρ i
   | .U => .U
-  | .pi A B => .pi (A.eval ρ) (.mk (fun u => B.eval (push ρ u (A.eval ρ))) mySorry)
+  | .pi A B => .pi (A.eval ρ) (.mk' fun u => B.eval (push ρ u (A.eval ρ)))
   | .app M N => (M.eval ρ) (N.eval ρ)
-  | .lam A M => .lam (.mk (fun u => M.eval (push ρ u (A.eval ρ))) mySorry)
+  | .lam A M => .lam (.mk' fun u => M.eval (push ρ u (A.eval ρ)))
 
 def fits (ρ : Nat → D) : List Expr → Prop
   | [] => True
   | A::Γ => El .U (A.eval (tail ρ)) ∧ El (A.eval (tail ρ)) (ρ 0) ∧ fits (tail ρ) Γ
+
+def Valuation := Nat → D
+
+def Valuation.nil : Valuation := fun _ => .bot
+def Valuation.push (ρ : Valuation) (u : D) : Valuation
+  | 0 => u
+  | n+1 => ρ n
+
+def interp (ρ : Valuation) : Expr → D
+  | .bvar i => ρ i
+  | .U => .U
+  | .app f a => .app (interp ρ f) (interp ρ a)
+  | .lam a f => .lam (.mk' fun u => interp (ρ.push (proj (interp ρ a) u)) f)
+  | .pi a f => .pi (interp ρ a) (.mk' fun u => interp (ρ.push (proj (interp ρ a) u)) f)
 
 inductive WHRed : Expr → Expr → Prop
   | app : WHRed N N' → WHRed (.app N M) (.app N' M)
