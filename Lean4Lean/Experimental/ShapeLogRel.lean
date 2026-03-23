@@ -1325,7 +1325,6 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n + 1) where
       · nofun
     · nofun
   mono_2 {m m' a a' A U M N} h1 hm ha hA := by
-    stop
     obtain ⟨A1, A2, _, _, _, _, A3, A4⟩ := hA
     cases h1.unfold with
     | bot h1 =>
@@ -1334,60 +1333,63 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n + 1) where
       | sort =>
         obtain rfl|rfl := Shape.le_sort.1 ha <;> [exact fun _ => trivial; skip]
         exact fun ⟨_, h, _⟩ => ⟨_, h, trivial⟩
-      | forallE a1 a2 =>
+      | forallE =>
         cases a with simp [Shape.LE.def] at ha | bot => exact fun _ => trivial | forallE
-        have .forallE a3 a4 := h1.unfold; intro ⟨_, _, _, _, b1, b2, b3, b4, b5⟩
-        refine ⟨_, _, _, _, b1, .mono_l a3 ha.1 b2, b3, fun _ _ _ c1 => ?_, ⟨⟩⟩
-        exact (b4 (b2.mono_r_1 ha.1 c1)).mono_l (.pi_app a4 c1.1) (ShapeFun.app_mono_l ha.2 _)
+        have .forallE ht := h1.unfold; intro ⟨_, _, _, _, b1, b2, b3, b4, b5⟩
+        refine ⟨_, _, _, _, b1, .mono_l ht.1.isType ha.1 b2, b3, fun _ _ _ c1 => ?_, ⟨⟩⟩
+        exact (b4 (b2.mono_r_1 ha.1 c1)).mono_l (ht.2 _ c1.1) (ShapeFun.app_mono_l ha.2 _)
     | sort =>
       cases m' <;> simp [Shape.LE.def] at hm
       cases a' <;> simp [Shape.LE.def] at ha
       exact id
-    | forallE c1 c2 =>
+    | forallE ht =>
       cases m' <;> simp [Shape.LE.def] at hm
       cases a' <;> simp [Shape.LE.def] at ha
       intro ⟨_, a3, _, _, _, _, a4, a5, _, _, a6, a7, a8, a9⟩
-      refine ⟨_, a3, _, _, _, _, a4, a5, _, _, a6.mono_l c1 hm.1, a7,
+      refine ⟨_, a3, _, _, _, _, a4, a5, _, _, a6.mono_l ht.1.isType hm.1, a7,
         fun _ _ _ d => ?_, fun _ _ d => ?_⟩ <;>
         have ⟨d1, d2⟩ := a8 (.mono_r_1 hm.1 a6.left d)
-      · exact have d3 := .pi_app c2 d.1; have d4 := ShapeFun.app_mono_l hm.2 _
+      · exact have d3 := ht.2 _ d.1; have d4 := ShapeFun.app_mono_l hm.2 _
           ⟨d1.mono_l d3 d4, d2.mono_l d3 d4⟩
-      · exact (a9 (a6.left.mono_r_1 hm.1 d)).mono_l (.pi_app c2 d.1) (ShapeFun.app_mono_l hm.2 _)
-    | lam c1 c2 c3 =>
+      · exact (a9 (a6.left.mono_r_1 hm.1 d)).mono_l (ht.2 _ d.1) (ShapeFun.app_mono_l hm.2 _)
+    | lam ht =>
       cases m' <;> simp [Shape.LE.def] at hm
       cases a' <;> simp [Shape.LE.def] at ha
       rintro ⟨_, _, _, _, a1, a2, a3, a4, a5, a6⟩
-      refine ⟨_, _, _, _, a1, .mono_l c1 ha.1 a2, a3,
+      refine ⟨_, _, _, _, a1, .mono_l ht.1.1.isType ha.1 a2, a3,
         fun _ _ _ d => ?_, fun _ _ _ d => ?_, fun _ _ d => ?_⟩
-      · exact .mono_l (.pi_app c2 d.1) (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d))
+      · exact .mono_l (ht.1.2 _ d.1) (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d))
       · have ⟨a7, a8⟩ := a5 (.mono_r_1 ha.1 a2 d)
         exact
-          have h1 := .lam_app c3 d.1; have h2 := ShapeFun.app_mono_l hm _
+          have h1 := ht.2.2 _ d.1; have h2 := ShapeFun.app_mono_l hm _
           have h3 := ShapeFun.app_mono_l ha.2 _; have h4 := a4 (.mono_r_1 ha.1 a2 d.left)
           ⟨.mono_2 h1 h2 h3 h4 a7, .mono_2 h1 h2 h3 h4 a8⟩
-      · exact .mono_2 (.lam_app c3 d.1) (ShapeFun.app_mono_l hm _)
+      · exact .mono_2 (ht.2.2 _ d.1) (ShapeFun.app_mono_l hm _)
           (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d.left)) (a6 (.mono_r_1 ha.1 a2 d))
   mono_r_1 {a a' A U M N m} h1 le hA := by
-    stop
     obtain ⟨A1, A2, _, _, _, _, A3, A4⟩ := hA
     cases A1.unfold with
     | bot => cases Shape.le_bot.1 le; exact id
     | sort =>
       obtain rfl|rfl := Shape.le_sort.1 le <;> [rintro -; exact id]
       cases h1.unfold; have ⟨_, h, _⟩ := A4; exact ⟨_, h, ⟨⟩⟩
-    | forallE a1 a2 =>
+    | forallE =>
       have ⟨_, _, _, _, A4, A5, _, _, A6, A7, A8, A9⟩ := A4
       refine fun h2 => ⟨_, _, _, _, A4, A6.left, A7.hasType.1, fun _ _ _ c1 => (A8 c1).1, ?_⟩
       cases a with simp [Shape.LE.def] at le | bot => cases h1.unfold; trivial | forallE
-      cases h1.unfold with | bot => trivial | lam a3 a4 a5
+      cases h1.unfold with | bot => trivial | lam h
       have ⟨_, _, _, _, B4, B5, _, B6, B7, B8⟩ := h2
       cases A4.determ .forallE B4 .forallE
       refine ⟨fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩
-      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal a5 le.1 c1.1
+      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal
+          (fun x y hy => ⟨Shape.HasDom.def.1 h.2.1 x y hy, (Shape.HasTypeLam.def.1 h).2.2 x y hy⟩)
+          le.1 c1.1
         have ⟨b1, b2⟩ := B7 (.mono_2 c2 c3 le.1 A6.left c1)
         exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
           ⟨.mono_r_1 h3 (A8 c1).1.left (eq ▸ b1), .mono_r_1 h3 (A8 c1).1.left (eq ▸ b2)⟩
-      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal a5 le.1 c1.1
+      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal
+          (fun x y hy => ⟨Shape.HasDom.def.1 h.2.1 x y hy, (Shape.HasTypeLam.def.1 h).2.2 x y hy⟩)
+          le.1 c1.1
         exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
           .mono_r_1 h3 (A8 c1).1.left (eq ▸ B8 (.mono_2 c2 c3 le.1 A6.left c1))
   join {m₁ m₂ M N A a} ne1 ne2 hC h1 h2 := by
