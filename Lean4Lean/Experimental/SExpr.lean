@@ -567,6 +567,37 @@ theorem IsDefEq.isType : Γ ⊢ e1 ≡ e2 : A → ∃ u, Γ ⊢ A : .sort u := s
 
 theorem IsDefEq.uniq_sort : Γ ⊢ e1 ≡ e2 : .sort u → Γ ⊢ e2 ≡ e3 : .sort v → u = v := sorry
 
+section
+local notation:65 (priority := high) Γ " ⊢ " e1 " : " A:36 => IsDefEqStrong Γ e1 e1 A
+local notation:65 (priority := high) Γ " ⊢ " e1 " ≡ " e2 " : " A:36 => IsDefEqStrong Γ e1 e2 A
+inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop where
+  | bvar : Lookup Γ i A → Γ ⊢ .bvar i : A
+  | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
+  | trans : Γ ⊢ A : .sort u → Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
+  | sort : Γ ⊢ .sort l : .sort (.succ l)
+  | const : env.constants c = some ci → ls.length = ci.uvars →
+    Γ ⊢ .const c ls : (SExpr.mk ci.type).instL ls
+  | appDF : Γ ⊢ A : .sort u → A::Γ ⊢ B : .sort v →
+    Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
+    Γ ⊢ B.inst a : .sort v →
+    Γ ⊢ .app f a pat ≡ .app f' a' pat : B.inst a
+  | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ body ≡ body' : B →
+    Γ ⊢ .lam A body ≡ .lam A' body' : .forallE A B
+  | forallEDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ body ≡ body' : .sort v →
+    Γ ⊢ .forallE A body ≡ .forallE A' body' : .sort (.imax u v)
+  | defeqDF : Γ ⊢ A ≡ B : .sort u → Γ ⊢ e1 ≡ e2 : A → Γ ⊢ e1 ≡ e2 : B
+  | beta : A::Γ ⊢ e : B → Γ ⊢ e' : A →
+    Γ ⊢ .app (.lam A e) e' : B.inst e' → Γ ⊢ .app (.lam A e) e' ≡ e.inst e' : B.inst e'
+  | eta : Γ ⊢ e : .forallE A B → Γ ⊢ .lam A (.app e.lift (.bvar 0)) : .forallE A B →
+    Γ ⊢ .lam A (.app e.lift (.bvar 0)) ≡ e : .forallE A B
+  | proofIrrel : Γ ⊢ p : .sort .zero → Γ ⊢ h : p → Γ ⊢ h' : p → Γ ⊢ h ≡ h' : p
+  | extra : env.defeqs df → ls.length = df.uvars →
+    Γ ⊢ .instL ls (.mk df.lhs) ≡ .instL ls (.mk df.rhs) : .instL ls (.mk df.type)
+end
+
+theorem IsDefEq.strong : Γ ⊢ e1 ≡ e2 : A → IsDefEqStrong Γ e1 e2 A := sorry
+theorem IsDefEqStrong.defeq : IsDefEqStrong Γ e1 e2 A → Γ ⊢ e1 ≡ e2 : A := sorry
+
 def Ctx.WF : List SExpr → Prop
   | [] => True
   | A::Γ => WF Γ ∧ ∃ u, Γ ⊢ A : .sort u
