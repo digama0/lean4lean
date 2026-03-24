@@ -165,6 +165,10 @@ omit [Params] in
 theorem Shape.le_sort {s : Shape n} : s ≤ .sort ↔ s = .bot ∨ s = .sort := by
   cases n <;> simp [sort, bot, (· ≤ ·), Shape.LE] <;> cases s <;> simp [ble]
 
+theorem ShapeFun.bot_le {f : ShapeFun n} : ShapeFun.bot.LE f := by
+  simp [ShapeFun.LE.def, bot]
+  exact ⟨.bot, sorry, Shape.bot_le⟩
+
 def ShapeFun.lift (lift : α → β) (x : List (α × α)) : List (β × β) :=
   x.map fun (a, b) => (lift a, lift b)
 
@@ -399,6 +403,12 @@ def ShapeFun.app (s : ShapeFun n) (a : Shape n) : Shape n :=
   maxBelow (s.filter (·.1 ≤ a)) |>.2
 
 omit [Params] in
+theorem ShapeFun.bot_mem (f : ShapeFun n) : ∃ y, (.bot, y) ∈ f := sorry
+
+omit [Params] in
+theorem ShapeFun.non_bot (f : ShapeFun n) : ∃ x y, (x, y) ∈ f ∧ y ≠ .bot := sorry
+
+omit [Params] in
 theorem ShapeFun.app_of_mem {f : ShapeFun n} (h : (x, y) ∈ f) : f.app x = y :=
   sorry
 
@@ -418,6 +428,10 @@ theorem ShapeFun.app_mono_l {f f' : ShapeFun n} : f.LE f' → ∀ a, f.app a ≤
 omit [Params] in
 theorem ShapeFun.app_mono_r {f : ShapeFun n} : a ≤ a' → f.app a ≤ f.app a' :=
   sorry
+
+omit [Params] in
+theorem ShapeFun.Join.app {f g h : ShapeFun n} (hJ : Join f g h) (p : Shape n) :
+    Shape.Join (f.app p) (g.app p) (h.app p) := sorry
 
 omit [Params] in
 theorem ShapeFun.uniq_l {f : ShapeFun n} (h1 : (x, y) ∈ f) (h2 : (x', y') ∈ f)
@@ -446,6 +460,10 @@ def ShapeFun.single (x y : Shape n) : ShapeFun n :=
   (x, y) :: if x ≤ .bot then [] else [(.bot, .bot)]
 
 theorem ShapeFun.single_app : (ShapeFun.single x y).app x' = if x ≤ x' then y else .bot := by
+  sorry
+
+theorem ShapeFun.single_le :
+    (ShapeFun.single x y).LE f ↔ ∃ x' y', (x', y') ∈ f ∧ x' ≤ x ∧ y ≤ y' := by
   sorry
 
 omit [Params] in
@@ -1010,19 +1028,47 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
         subst h; cases h4.bot_r; cases hm ((Shape.lift_le_bot le).1 h1)
       cases h2 with
       | bot => cases hm ((Shape.lift_le_bot le).1 h1)
-      | @lam _ _ _ _ f' _ _ a1 a2 a3 a4
+      | @lam _ n _ _ f' _ _ a1 a2 a3 a4
       cases h3 with | bot => cases ht rfl | @forallE _ _ _ _ _ _ _ m₁ b1 b2 b3 b4 b5
       cases t with simp [Shape.LE.def] at b5 | bot => cases ht rfl | forallE a' b'
       cases h4.unfold with | bot => cases hm ((Shape.lift_le_bot le).1 h1) | @lam _ f _ _ d1
-      have : ∀ x y, (x, y) ∈ f' → LE_Interp (ρ.push x) y (e.lift.app (SExpr.bvar 0)) := by
-        intro x y h
-        have hy : y ≠ .bot := sorry
-        have := ShapeFun.app_of_mem h ▸ a3 x (Shape.HasDom.def.1 a2 _ _ h)
-        cases this with | bot => cases hy rfl | app c1 c2 c3
-        have := LE_Interp.weak_iff.1 c1
-        have ⟨k, le₁, le₂, c2⟩ := LE_Interp.bvar_iff.1 c2
-        sorry
-      sorry
+      have key : ∀ x y, (x, y) ∈ f' → y ≠ .bot →
+          LE_Interp (n := n+1) ρ (ShapeS.lam (ShapeFun.single x y)) e := by
+        intro x y hmem hy
+        have := ShapeFun.app_of_mem hmem ▸ a3 x (Shape.HasDom.def.1 a2 _ _ hmem)
+        cases this with | bot => cases hy rfl | @app _ _ f_s _ a_s _ _ _ c1 c2 c3
+        cases f_s with | lam g => ?_ | _ => cases hy (Shape.le_bot.1 c3)
+        refine .mono ?_ (LE_Interp.weak_iff.1 c1)
+        simp [Shape.LE.def, ShapeFun.single_le]
+        have ⟨k', le₁, _, hle⟩ := LE_Interp.bvar_iff.1 c2
+        have ha_s : a_s ≤ x := (Shape.lift_le_lift le₁).1 hle
+        have ⟨x'', y'', hle₁, hmemg, happ⟩ := ShapeFun.app_eq g a_s
+        simp [Shape.app, happ] at c3
+        exact ⟨_, _, hmemg, .trans hle₁ ha_s, c3⟩
+      have main (l : List (Shape n × Shape n)) (H : ∀ p, p ∈ l → p ∈ f') :
+          ∃ g : Shape (n+1),
+            (∀ z, g ≤ z ↔ ∀ x y, (x, y) ∈ l → y ≠ .bot → .lam (ShapeFun.single x y) ≤ z) ∧
+            LE_Interp (n := _+1) ρ g e := by
+        induction l with | nil => exact ⟨.bot, by simp, .bot⟩ | cons p l ih; let (x, y) := p
+        simp only [List.mem_cons, forall_eq_or_imp] at H
+        have ⟨g, a1, a2⟩ := ih H.2
+        by_cases hy : y = .bot
+        · exact ⟨g, fun z => (a1 z).trans (by simp [or_imp, forall_and, hy]), a2⟩
+        · have := Shape.Join.mk (x := g) (y := .lam (ShapeFun.single x y)) sorry
+          refine ⟨_, fun z => (this z).trans ?_, .join this a2 (key _ _ H.1 hy)⟩
+          simp [a1, or_imp, forall_and, and_comm, hy]
+      have ⟨g, a1, a2⟩ := main f' (fun _ => id)
+      refine (lift le).1 <| a2.mono <| h1.trans <| a4.trans ?_
+      have ⟨x, y, hmem, hy⟩ := f'.non_bot
+      obtain ⟨g, rfl⟩ : ∃ g', g = .lam g' := by
+        have := (a1 _).1 .rfl _ _ hmem hy
+        cases g <;> simp [Shape.LE.def] at this; exact ⟨_, rfl⟩
+      simp [Shape.LE.def, ShapeFun.LE.def]
+      intro x' y' hmem
+      by_cases hy : y' = .bot
+      · have ⟨_, hmem⟩ := ShapeFun.bot_mem g
+        exact ⟨_, _, hmem, Shape.bot_le, hy ▸ Shape.bot_le⟩
+      · simpa [Shape.LE.def, ShapeFun.single_le] using (a1 _).1 .rfl _ _ hmem hy
     · have ⟨_, m', f, le, a1, a2, a3, a4⟩ := (ih1 W).2 h
       have hf : f ≠ .bot := fun h => by
         subst h; cases a4.bot_r; cases hm ((Shape.lift_le_bot le).1 a1)
@@ -1398,22 +1444,46 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n + 1) where
     | sort =>
       cases m₂ with simp [Shape.Compat] at hC | bot => cases ne2 rfl | sort
       exact h1.2.2.2.2.2
-    | forallE =>
+    | forallE ht₁ =>
       cases m₂ with simp [Shape.Compat] at hC | bot => cases ne2 rfl | forallE
       simp [Shape.join]
       have hJ₁ := Shape.Join.mk hC.1; have hJ₂ := ShapeFun.Join.mk hC.2
       have ⟨_, _, _, _, _, _, a1, _, _, _, _, a2, a3, _, _, a4, a5, a6, a7⟩ := h1
-      have ⟨_, _, _, _, _, _, b1, _, _, _, _, b2, b3, _, _, b4, b5, b6, b7⟩ := h2
+      have ⟨b0, _, _, _, _, _, b1, _, _, _, _, b2, b3, _, _, b4, b5, b6, b7⟩ := h2
       cases a2.determ .forallE b2 .forallE; cases a3.determ .forallE b3 .forallE
       cases a4.2.1.uniq_sort b4.2.1.symm
-      refine ⟨_, a1, _, _, _, _, a2, a3, _, _, a4.join hJ₁ b4, a5,
-        fun _ _ _ c1 => ⟨?_, ?_⟩, fun _ _ c1 => ?_⟩
-      · stop
-        have := a6 (c1.mono_r_2 _ hJ₁.le.1)
-        sorry
-      · sorry
-      · sorry
-    | lam _ => sorry
+      cases a5.uniq_sort b5.symm
+      have .forallE ht₂ := b0.unfold
+      have hJ' := a4.join hJ₁ b4
+      refine ⟨_, a1, _, _, _, _, a2, a3, _, _, hJ', a5, fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩
+      all_goals
+        obtain ⟨_, _, d1, d2, rfl⟩ := ShapeFun.app_eq _ _
+        have d3 := Shape.HasDom.def.1 ht₁.1 _ _ d2
+        have c2 := c1.mono_l (hJ'.1.mono_r hJ₁.le.1 d3) d1 |>.mono_r_2 d3 hJ₁.le.1
+        obtain ⟨_, _, e1, e2, rfl⟩ := ShapeFun.app_eq _ _
+        have e3 := Shape.HasDom.def.1 ht₂.1 _ _ e2
+        have c3 := c1.mono_l (hJ'.1.mono_r hJ₁.le.2 e3) e1 |>.mono_r_2 e3 hJ₁.le.2
+      · constructor
+        · have ha := ShapeFun.app_of_mem d2 ▸ (a6 c2).1
+          have hb := ShapeFun.app_of_mem e2 ▸ (b6 c3).1
+          exact ha.join (ShapeFun.Join.app hJ₂ _) hb
+        · have ha := ShapeFun.app_of_mem d2 ▸ (a6 c2).2
+          have hb := ShapeFun.app_of_mem e2 ▸ (b6 c3).2
+          exact ha.join (ShapeFun.Join.app hJ₂ _) hb
+      · have ha := ShapeFun.app_of_mem d2 ▸ a7 c2
+        have hb := ShapeFun.app_of_mem e2 ▸ b7 c3
+        exact ha.join (ShapeFun.Join.app hJ₂ _) hb
+    | lam ht₁ =>
+      cases m₂ with simp [Shape.Compat] at hC | bot => cases ne2 rfl | lam
+      simp [Shape.join]
+      have hJ := ShapeFun.Join.mk hC
+      have ⟨_, _, _, _, _, _, _, _, _, a1, a2, a3, a4, a5, a6⟩ := h1
+      have ⟨_, _, _, _, _, _, _, _, _, b1, b2, b3, b4, b5, b6⟩ := h2
+      cases a1.determ .forallE b1 .forallE
+      refine ⟨_, _, _, _, a1, a2, a3, a4, fun _ _ _ c1 => ⟨?_, ?_⟩, fun _ _ c1 => ?_⟩
+      · exact (a5 c1).1.join (ShapeFun.Join.app hJ _) (b5 c1).1
+      · exact (a5 c1).2.join (ShapeFun.Join.app hJ _) (b5 c1).2
+      · exact (a6 c1).join (ShapeFun.Join.app hJ _) (b6 c1)
 
 def LR (Γ : List SExpr) : LogRel Γ n :=
   match n with
