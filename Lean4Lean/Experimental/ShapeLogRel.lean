@@ -1589,3 +1589,144 @@ theorem LR.fundamental (H : Γ ⊢ M ≡ N : A) (W : LR.Subst Γ₀ σ Γ ρ)
     --   ⟨_, a3, .trans (.mono_r_1 a1 c2 h2) (.mono_r_1 a2 c2 h4)⟩
     sorry
   | _ => sorry
+
+
+/-! ### Agda-aligned definitions (Val2/ValTy2 hierarchy)
+
+These definitions mirror the Agda `Validity2.agda` structure more closely.
+Key differences from `DefEq'`/`LogRelBase` above:
+
+1. **Separate type validity (`ValTy2`)**: Type validity is a separate predicate from
+   term validity, trivial at sort shapes (matching Agda's `ValTy2 G M UCode = Top`).
+   Current `DefEq'` bundles type validity inside `IH.DefEq ... (.sort (u ≠ .zero))`.
+
+2. **`.type` instead of `.sort (u ≠ .zero)`**: Inner type judgments use `.type`
+   as the type-shape, matching Agda's use of `UCode` everywhere for the universe.
+   This avoids the `HasType a (.sort false) = false` issue that made `isType` unprovable.
+
+3. **Lighter inner type judgments**: `TyDefEq` (5-tuple) drops `LE_Interp .nil a A`
+   from the full `DefEq` 6-tuple, and uses `ValTy2` instead of `DefEq'` for semantic content.
+
+Correspondence with Agda `Validity2.agda`:
+- `LogRel2Base.ValTy2` ↔ merged `ValTy2` / `EqValTy2`
+- `LogRel2Base.Val2`   ↔ merged `Val2` / `EqVal2`
+- `LR2S.PiEdge2`        ↔ merged `PiEdgeVal2` / `PiEdgeEq2`
+- `LR2S.PiEdgeEqTy2`    ↔ `PiEdgeEqTy2`
+- `LR2S.ValPi2`         ↔ merged `ValPi2` / `EqValPi2` (term application)
+- `LogRel2Base.TyDefEq` ↔ inner type judgment using `UCode` / `.type`
+-/
+
+/-- Base structure for the Agda-aligned logical relation.
+Two abstract predicates: term validity `Val2` and type validity `ValTy2`. -/
+structure LogRel2Base (Γ : List SExpr) (n : Nat) where
+  /-- Term validity: `M ≡ N : A` at element-shape `m` and type-shape `a`. -/
+  Val2 (M N A : SExpr) (m a : Shape n) : Prop
+  /-- Type validity: `M ≡ N` are valid types at element-shape `m`.
+  Trivial at sort shapes; only non-trivial at forallE. -/
+  ValTy2 (M N : SExpr) (m : Shape n) : Prop
+
+/-- Full term-level judgment: syntactic + interpretations + semantic `Val2`.
+Same shape as `LogRelBase.DefEq` but uses `Val2` for the semantic field. -/
+def LogRel2Base.DefEq (R : LogRel2Base Γ n) (M N A : SExpr) (m a : Shape n) : Prop :=
+  Shape.HasType m a ∧ Γ ⊢ M ≡ N : A
+    ∧ LE_Interp .nil m M ∧ LE_Interp .nil m N ∧ LE_Interp .nil a A
+    ∧ R.Val2 M N A m a
+
+/-- Type-level judgment: like `DefEq` but with `.type` as the type-shape.
+Drops the `LE_Interp .nil .type (.sort u)` field (unprovable when `u = .zero`)
+and uses `ValTy2` instead of `Val2` for the semantic field. -/
+def LogRel2Base.TyDefEq (R : LogRel2Base Γ n) (M N : SExpr) (u : SLevel) (m : Shape n) : Prop :=
+  Shape.HasType m .type ∧ Γ ⊢ M ≡ N : .sort u
+    ∧ LE_Interp .nil m M ∧ LE_Interp .nil m N
+    ∧ R.ValTy2 M N m
+
+/-- `LogRel2` extends `LogRel2Base` with structural operations.
+Fields left minimal for now; monotonicity etc. to be added as needed. -/
+structure LogRel2 (Γ : List SExpr) (n : Nat) extends LogRel2Base Γ n where
+  sort : Val2 (.sort u) (.sort u) (.sort u.succ) (.sort (u ≠ .zero)) .type
+  left : Val2 M N A m a → Val2 M M A m a
+  symm : Val2 M N A m a → Val2 N M A m a
+  trans : Val2 M₁ M₂ A m a → Val2 M₂ M₃ A m a → Val2 M₁ M₃ A m a
+
+/-! #### Concrete definitions at level 0 -/
+
+def LR20.Val2 (Γ : List SExpr) (A : SExpr) (a : Shape 0) : Prop :=
+  match a with
+  | .bot => True
+  | .sort _ => ∃ u, Γ ⊢ A ⤳* .sort u
+
+def LR20 : LogRel2 Γ 0 where
+  Val2 _ _ A _ := LR20.Val2 Γ A
+  ValTy2 _ _ _ := True
+  sort := ⟨_, .rfl⟩
+  left := id
+  symm := id
+  trans _ := id
+
+/-! #### Concrete definitions at level n+1 -/
+
+/-- Pi edge validity (merged `PiEdgeVal2` / `PiEdgeEq2`).
+For each argument `a ≡ b : A₁`, the substituted codomains are valid types.
+For each argument `a : A₁`, the codomains `A₂[a]` and `B₂[a]` are equal types. -/
+def LR2S.PiEdge2 (IH : LogRel2 Γ n)
+    (A₁ A₂ B₂ : SExpr) (v : SLevel) (b : Shape n) (f : ShapeFun n) : Prop :=
+  (∀ {{a b' p}}, IH.DefEq a b' A₁ p b →
+    IH.TyDefEq (A₂.inst a) (A₂.inst b') v (ShapeFun.app f p) ∧
+    IH.TyDefEq (B₂.inst a) (B₂.inst b') v (ShapeFun.app f p)) ∧
+  ∀ {{a p}}, IH.DefEq a a A₁ p b →
+    IH.TyDefEq (A₂.inst a) (B₂.inst a) v (ShapeFun.app f p)
+
+/-- Pi-type validity (merged `ValTyPi2` / `EqValTyPi2`).
+`M` and `N` reduce to Pi types; domain and codomain are recursively valid.
+Uses `IH.TyDefEq` (with `.type`) for inner type judgments. -/
+def LR2S.ValTyPi2 (IH : LogRel2 Γ n) (M N : SExpr)
+    (b : Shape n) (f : ShapeFun n) : Prop :=
+  ∃ M₁ M₂ N₁ N₂ u v,
+    Γ ⊢ M ⤳* .forallE M₁ M₂ ∧ Γ ⊢ N ⤳* .forallE N₁ N₂ ∧
+    Γ ⊢ M₁ ≡ N₁ : .sort u ∧ M₁::Γ ⊢ M₂ ≡ N₂ : .sort v ∧
+    IH.TyDefEq M₁ N₁ u b ∧
+    LR2S.PiEdge2 IH M₁ M₂ N₂ v b f
+
+/-- Term application behavior (merged `ValPi2` / `EqValPi2`).
+For `m = .lam g`: M and N applied to equal arguments give equal results. -/
+def LR2S.ValPi2 (IH : LogRel2 Γ n)
+    (M N A₁ A₂ : SExpr) (m : Shape (n+1)) (a₁ : Shape n) (a₂ : ShapeFun n) : Prop :=
+  match m with
+  | .bot => True
+  | .lam g =>
+    (∀ {{a b p}}, IH.DefEq a b A₁ p a₁ →
+      IH.DefEq (M.app a) (M.app b) (A₂.inst a) (ShapeFun.app g p) (ShapeFun.app a₂ p) ∧
+      IH.DefEq (N.app a) (N.app b) (A₂.inst a) (ShapeFun.app g p) (ShapeFun.app a₂ p)) ∧
+    (∀ {{a p}}, IH.DefEq a a A₁ p a₁ →
+      IH.DefEq (M.app a) (N.app a) (A₂.inst a) (ShapeFun.app g p) (ShapeFun.app a₂ p))
+  | _ => False
+
+/-- Type validity at element-shape `m` (merged `ValTy2` / `EqValTy2`).
+**Trivial at sort shapes** (key Agda principle). Non-trivial only at `.forallE`. -/
+def LR2S.ValTy2 (IH : LogRel2 Γ n) (M N : SExpr) : Shape (n+1) → Prop
+  | .bot | .sort _ | .lam _ => True
+  | .forallE b f => LR2S.ValTyPi2 IH M N b f
+
+/-- Term validity at `(m, a)` (merged `Val2` / `EqVal2`).
+At `.sort`: type validity via `ValTy2` (trivial at sort sub-shapes).
+At `.forallE`: type validity via `ValTyPi2` + term behavior via `ValPi2`. -/
+def LR2S.Val2 (IH : LogRel2 Γ n) (M N A : SExpr) (m a : Shape (n+1)) : Prop :=
+  match a with
+  | .bot => True
+  | .sort _ => ∃ u, Γ ⊢ A ⤳* .sort u ∧ LR2S.ValTy2 IH M N m
+  | .forallE a₁ a₂ => ∃ A₁ A₂ u v, Γ ⊢ A ⤳* .forallE A₁ A₂ ∧
+    -- Type validity of A at this shape (domain + codomain edges)
+    IH.TyDefEq A₁ A₁ u a₁ ∧
+    A₁::Γ ⊢ A₂ : sort v ∧
+    LR2S.PiEdge2 IH A₁ A₂ A₂ v a₁ a₂ ∧
+    -- Term application behavior of M, N
+    LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂
+  | _ => False
+
+def LR2S (IH : LogRel2 Γ n) : LogRel2 Γ (n+1) where
+  Val2 := LR2S.Val2 IH
+  ValTy2 := LR2S.ValTy2 IH
+  sort := ⟨_, .rfl, trivial⟩
+  left := sorry
+  symm := sorry
+  trans := sorry
