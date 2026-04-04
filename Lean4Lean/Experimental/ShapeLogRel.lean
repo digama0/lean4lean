@@ -173,7 +173,7 @@ theorem Shape.le_bot {s : Shape n} : s ≤ .bot ↔ s = .bot :=
 omit [Params] in
 theorem Shape.le_sort {s : Shape n} : s ≤ .sort r ↔ s = .bot ∨ s = .sort r := by
   cases n <;> simp [sort, bot, (· ≤ ·), Shape.LE] <;> cases s <;>
-    simp [ble, Shape0.sort.injEq, ShapeS.sort.injEq]
+    simp [ble] <;> exact ⟨fun h => h ▸ rfl, fun h => by injection h⟩
 
 theorem ShapeFun.bot_le {f : ShapeFun n} : ShapeFun.bot.LE f := by
   simp [ShapeFun.LE.def, bot]
@@ -257,7 +257,8 @@ theorem Shape.lift_mono {s t : Shape n} : s ≤ t → (s.lift : Shape m) ≤ t.l
   dsimp [(· ≤ ·), Shape.LE]
   induction n generalizing m with
   | zero =>
-    cases s <;> cases t <;> simp [lift, ble]
+    cases s <;> cases t <;> simp [lift, ble] <;>
+      first | exact Shape.bot_le | (intro h; subst h; exact Shape.LE.rfl)
   | succ n ih =>
     cases m with
     | zero => cases s <;> cases t <;> simp [lift, ble]
@@ -334,7 +335,8 @@ omit [Params] in
 theorem Shape.LE.trans {s t u : Shape n} : s ≤ t → t ≤ u → s ≤ u := by
   dsimp [(· ≤ ·), Shape.LE]
   induction n with
-  | zero => cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *]
+  | zero => cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;>
+      (intro h1 h2; exact h1.trans h2)
   | succ n ih =>
     have ihf {s t u : List (Shape n × Shape n)} :
         ShapeFun.ble ble s t → ShapeFun.ble ble t u → ShapeFun.ble ble s u := by
@@ -342,7 +344,10 @@ theorem Shape.LE.trans {s t u : Shape n} : s ≤ t → t ≤ u → s ≤ u := by
       rintro h1 h2 x hx; let ⟨_, hy, x1, x2⟩ := h1 _ hx; let ⟨_, hz, y1, y2⟩ := h2 _ hy
       exact ⟨_, hz, ih y1 x1, ih x2 y2⟩
     cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;>
-      [exact fun h1 h2 h3 h4 => ⟨ih h1 h3, ihf h2 h4⟩; exact ihf]
+      first
+      | exact fun h1 h2 h3 h4 => ⟨ih h1 h3, ihf h2 h4⟩
+      | exact ihf
+      | (intro h1 h2; exact h1.trans h2)
 
 omit [Params] in
 theorem ShapeFun.LE.trans {s t u : ShapeFun n} : s.LE t → t.LE u → s.LE u := by
@@ -650,6 +655,17 @@ theorem Shape.HasType.maximal
     (H : ∀ x y, (x, y) ∈ (f : ShapeFun n) → HasType x a ∧ HasType y (ShapeFun.app b x))
     (ha : a ≤ a') (ht : HasType x' a') :
     ∃ x, HasType x a ∧ x ≤ x' ∧ ShapeFun.app f x = ShapeFun.app f x' := sorry
+
+omit [Params] in
+theorem Shape.HasType.proofIrrel
+    (ha : HasType (n := n) a .prop) (hx : HasType x a) : x = .bot := by
+  cases n with | zero => cases ha.unfold; exact hx.bot_r | succ n
+  cases ha.unfold with | bot => exact hx.bot_r | forallE ha
+  cases hx.unfold with | bot => rfl | @lam _ f _ _ hx
+  obtain ⟨x, y, h1, h2⟩ := f.non_bot
+  obtain ⟨x', a1, a2, a3⟩ := hx.2.1 x
+  have := f.app_of_mem h1 ▸ (hx.2.2 _ a2).mono_l (ShapeFun.app_mono_r a1) a3
+  cases h2 (proofIrrel (ha.2 _ a2) this)
 
 omit [Params] in
 theorem Shape.HasDom.single : HasDom (ShapeFun.single x y) a ↔ x.HasType a := by
@@ -1117,10 +1133,15 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
       cases a4.unfold with | bot => cases hm ((Shape.lift_le_bot le).1 a1) | lam d1
       refine (LE_Interp.lift le).1 <| .lam (b1.mono b5.1) d1.2.1 (fun _ h => ?_) a1
       exact .app a2.weak (.bvar (Nat.le_refl _) (Nat.le_refl _) .rfl) .rfl
-  | proofIrrel _ _ _ ih1 ih2 ih3 =>
-    refine ⟨⟨fun h => ?_, fun h => ?_⟩, (ih2 W).2⟩
-    · sorry
-    · sorry
+  | @proofIrrel _ p h h' _ _ _ ih1 ih2 ih3 =>
+    suffices ∀ {h h'}, InterpTyped ρ m h p → LE_Interp ρ m h → LE_Interp ρ m h' from
+      ⟨⟨fun h => this ((ih2 W).2 h) h, fun h => this ((ih3 W).2 h) h⟩, (ih2 W).2⟩
+    refine fun ⟨_, _, _, le, a1, a2, a3, a4⟩ h1 => (?_ : m = .bot) ▸ .bot
+    have ⟨_, _, _, le', b1, b2, b3, b4⟩ := (ih1 W).2 a3
+    have b4' := Shape.HasType.mono_r (by simpa using b3.le_sort) .sort b4
+    have := b4'.proofIrrel (b4'.mono_r b1 ((Shape.HasType.lift le').2 a4))
+    have := Shape.lift_lift (.inl le) ▸ (this ▸ (Shape.lift_le_lift le').2 a1)
+    exact (Shape.lift_le_bot (Nat.le_trans le le')).1 this
   | extra => sorry
 
 structure LogRelBase (Γ : List SExpr) (n : Nat) where
@@ -1167,10 +1188,10 @@ theorem LogRelBase.DefEq.mono_l {R : LogRel Γ n}
   H.mono_2 hm le .rfl hm.isType
 
 theorem LogRelBase.DefEq.mono_r_1 {R : LogRel Γ n}
-    (ha : a ≤ a') (hA : R.DefEq A A (.sort u) a' (.sort (u ≠ .zero))) :
+    (ha : a ≤ a') (ha' : a'.HasType .type) (hLE : LE_Interp .nil a' A) :
     R.DefEq M N A m a → R.DefEq M N A m a'
   | ⟨ht, h2, h3, h4, _, h6⟩ =>
-    ⟨.mono_r ha hA.1 ht, h2, h3, h4, hA.2.2.1, R.mono_r_1 ht ha hA.1.toType hA.2.2.1 h6⟩
+    ⟨.mono_r ha ha' ht, h2, h3, h4, hLE, R.mono_r_1 ht ha ha' hLE h6⟩
 
 theorem LogRelBase.DefEq.mono_r_2 {R : LogRel Γ n}
     (ht : m.HasType a) (ha : a ≤ a') (H : R.DefEq M N A m a') : R.DefEq M N A m a :=
@@ -1209,8 +1230,8 @@ theorem LogRelBase.DefEq.sort {R : LogRel Γ n} :
   ⟨.sort, .sort, .sort .rfl, .sort .rfl, .sort (by simpa [SLevel.succ_ne_zero] using .rfl), R.sort⟩
 
 theorem LogRel.mono_r {R : LogRel Γ n}
-    (ht : m.HasType a) (hA : R.DefEq A A (.sort u) a' (.sort (u ≠ .zero))) (ha : a ≤ a') :
-    R.DefEq M N A m a ↔ R.DefEq M N A m a' := ⟨.mono_r_1 ha hA, .mono_r_2 ht ha⟩
+    (ht : m.HasType a) (ha' : a'.HasType .type) (hLE : LE_Interp .nil a' A) (ha : a ≤ a') :
+    R.DefEq M N A m a ↔ R.DefEq M N A m a' := ⟨.mono_r_1 ha ha' hLE, .mono_r_2 ht ha⟩
 
 def LR0.DefEqTy (Γ : List SExpr) (M N : SExpr) (m : Shape 0) : Prop :=
   match m with
@@ -1415,7 +1436,6 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n + 1) where
       · nofun
     · nofun
   mono_2 {m m' a a' A M N} h1 hm ha ha' hA := by
-    -- obtain ⟨A1, A2, _, _, _, _, A3, A4⟩ := hA
     cases h1.unfold with
     | bot h1 =>
       cases ha'.unfold with
@@ -1424,10 +1444,11 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n + 1) where
         obtain rfl|rfl := Shape.le_sort.1 ha <;> [exact fun _ => trivial; skip]
         exact fun ⟨_, h, _⟩ => ⟨_, h, trivial⟩
       | forallE =>
-        cases a with simp [Shape.LE.def] at ha | bot => exact fun _ => trivial | forallE
-        have .forallE ht := h1.unfold; intro ⟨_, _, _, _, b1, b2, b3, b4, b5⟩
-        refine ⟨_, _, _, _, b1, .mono_l ht.1.isType ha.1 b2, b3, fun _ _ _ c1 => ?_, ⟨⟩⟩
-        exact (b4 (b2.mono_r_1 ha.1 c1)).mono_l (ht.2 _ c1.1) (ShapeFun.app_mono_l ha.2 _)
+        sorry
+        -- cases a with simp [Shape.LE.def] at ha | bot => exact fun _ => trivial | forallE
+        -- have .forallE ht := h1.unfold; intro ⟨_, _, _, _, b1, b2, b3, b4, b5⟩
+        -- refine ⟨_, _, _, _, b1, .mono_l ht.1.isType ha.1 b2, b3, fun _ _ _ c1 => ?_, ⟨⟩⟩
+        -- exact (b4 (b2.mono_r_1 ha.1 c1)).mono_l (ht.2 _ c1.1) (ShapeFun.app_mono_l ha.2 _)
     | sort =>
       cases m' <;> simp [Shape.LE.def] at hm
       cases a' <;> simp [Shape.LE.def] at ha
@@ -1435,59 +1456,61 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n + 1) where
     | forallE ht =>
       cases m' <;> simp [Shape.LE.def] at hm
       cases a' <;> simp [Shape.LE.def] at ha
-      intro ⟨_, a3, _, _, _, _, a4, a5, _, _, a6, a7, a8, a9⟩
-      refine ⟨_, a3, _, _, _, _, a4, a5, _, _, a6.mono_l ht.1.isType hm.1, a7,
-        fun _ _ _ d => ?_, fun _ _ d => ?_⟩ <;>
-        have ⟨d1, d2⟩ := a8 (.mono_r_1 hm.1 a6.left d)
-      · exact have d3 := ht.2 _ d.1; have d4 := ShapeFun.app_mono_l hm.2 _
-          ⟨d1.mono_l d3 d4, d2.mono_l d3 d4⟩
-      · exact (a9 (a6.left.mono_r_1 hm.1 d)).mono_l (ht.2 _ d.1) (ShapeFun.app_mono_l hm.2 _)
+      sorry
+      -- intro ⟨_, a3, _, _, _, _, a4, a5, _, _, a6, a7, a8, a9⟩
+      -- refine ⟨_, a3, _, _, _, _, a4, a5, _, _, a6.mono_l ht.1.isType hm.1, a7,
+      --   fun _ _ _ d => ?_, fun _ _ d => ?_⟩ <;>
+      --   have ⟨d1, d2⟩ := a8 (.mono_r_1 hm.1 a6.left d)
+      -- · exact have d3 := ht.2 _ d.1; have d4 := ShapeFun.app_mono_l hm.2 _
+      --     ⟨d1.mono_l d3 d4, d2.mono_l d3 d4⟩
+      -- · exact (a9 (a6.left.mono_r_1 hm.1 d)).mono_l (ht.2 _ d.1) (ShapeFun.app_mono_l hm.2 _)
     | lam ht =>
       cases m' <;> simp [Shape.LE.def] at hm
       cases a' <;> simp [Shape.LE.def] at ha
-      rintro ⟨_, _, _, _, a1, a2, a3, a4, a5, a6⟩
-      refine ⟨_, _, _, _, a1, .mono_l ht.1.1.isType ha.1 a2, a3,
-        fun _ _ _ d => ?_, fun _ _ _ d => ?_, fun _ _ d => ?_⟩
-      · exact .mono_l (ht.1.2 _ d.1) (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d))
-      · have ⟨a7, a8⟩ := a5 (.mono_r_1 ha.1 a2 d)
-        exact
-          have h1 := ht.2.2 _ d.1; have h2 := ShapeFun.app_mono_l hm _
-          have h3 := ShapeFun.app_mono_l ha.2 _; have h4 := a4 (.mono_r_1 ha.1 a2 d.left)
-          ⟨.mono_2 h1 h2 h3 h4 a7, .mono_2 h1 h2 h3 h4 a8⟩
-      · exact .mono_2 (ht.2.2 _ d.1) (ShapeFun.app_mono_l hm _)
-          (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d.left)) (a6 (.mono_r_1 ha.1 a2 d))
-  mono_r_1 {a a' A U M N m} h1 le hA := by
-    obtain ⟨A1, A2, _, _, _, _, A3, A4⟩ := hA
-    cases A1.unfold with
+      sorry
+      -- rintro ⟨_, _, _, _, a1, a2, a3, a4, a5, a6⟩
+      -- refine ⟨_, _, _, _, a1, .mono_l ht.1.1.isType ha.1 a2, a3,
+      --   fun _ _ _ d => ?_, fun _ _ _ d => ?_, fun _ _ d => ?_⟩
+      -- · exact .mono_l (ht.1.2 _ d.1) (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d))
+      -- · have ⟨a7, a8⟩ := a5 (.mono_r_1 ha.1 a2 d)
+      --   exact
+      --     have h1 := ht.2.2 _ d.1; have h2 := ShapeFun.app_mono_l hm _
+      --     have h3 := ShapeFun.app_mono_l ha.2 _; have h4 := a4 (.mono_r_1 ha.1 a2 d.left)
+      --     ⟨.mono_2 h1 h2 h3 h4 a7, .mono_2 h1 h2 h3 h4 a8⟩
+      -- · exact .mono_2 (ht.2.2 _ d.1) (ShapeFun.app_mono_l hm _)
+      --     (ShapeFun.app_mono_l ha.2 _) (a4 (.mono_r_1 ha.1 a2 d.left)) (a6 (.mono_r_1 ha.1 a2 d))
+  mono_r_1 {a a' A M N m} h1 le ha' hA := by
+    cases ha'.unfold with
     | bot => cases Shape.le_bot.1 le; exact id
     | sort =>
       obtain rfl|rfl := Shape.le_sort.1 le <;> [rintro -; exact id]
-      cases h1.unfold; have ⟨_, h, _⟩ := A4; exact ⟨_, h, ⟨⟩⟩
+      cases h1.unfold; exact ⟨sorry, sorry, ⟨⟩⟩
     | forallE =>
-      have ⟨_, _, _, _, A4, A5, _, _, A6, A7, A8, A9⟩ := A4
-      refine fun h2 => ⟨_, _, _, _, A4, A6.left, A7.hasType.1, fun _ _ _ c1 => (A8 c1).1, ?_⟩
-      cases a with simp [Shape.LE.def] at le | bot => cases h1.unfold; trivial | forallE
-      cases h1.unfold with | bot => trivial | lam h
-      have ⟨_, _, _, _, B4, B5, _, B6, B7, B8⟩ := h2
-      cases A4.determ .forallE B4 .forallE
-      refine ⟨fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩
-      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal
-          (fun x y hy => ⟨Shape.HasDom.def.1 h.2.1 x y hy, (Shape.HasTypeLam.def.1 h).2.2 x y hy⟩)
-          le.1 c1.1
-        have ⟨b1, b2⟩ := B7 (.mono_2 c2 c3 le.1 A6.left c1)
-        exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
-          ⟨.mono_r_1 h3 (A8 c1).1.left (eq ▸ b1), .mono_r_1 h3 (A8 c1).1.left (eq ▸ b2)⟩
-      · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal
-          (fun x y hy => ⟨Shape.HasDom.def.1 h.2.1 x y hy, (Shape.HasTypeLam.def.1 h).2.2 x y hy⟩)
-          le.1 c1.1
-        exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
-          .mono_r_1 h3 (A8 c1).1.left (eq ▸ B8 (.mono_2 c2 c3 le.1 A6.left c1))
+      sorry
+      -- have ⟨_, _, _, _, A4, A5, _, _, A6, A7, A8, A9⟩ := A4
+      -- refine fun h2 => ⟨_, _, _, _, A4, A6.left, A7.hasType.1, fun _ _ _ c1 => (A8 c1).1, ?_⟩
+      -- cases a with simp [Shape.LE.def] at le | bot => cases h1.unfold; trivial | forallE
+      -- cases h1.unfold with | bot => trivial | lam h
+      -- have ⟨_, _, _, _, B4, B5, _, B6, B7, B8⟩ := h2
+      -- cases A4.determ .forallE B4 .forallE
+      -- refine ⟨fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩
+      -- · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal
+      --     (fun x y hy => ⟨Shape.HasDom.def.1 h.2.1 x y hy, (Shape.HasTypeLam.def.1 h).2.2 x y hy⟩)
+      --     le.1 c1.1
+      --   have ⟨b1, b2⟩ := B7 (.mono_2 c2 c3 le.1 A6.left c1)
+      --   exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
+      --     ⟨.mono_r_1 h3 (A8 c1).1.left (eq ▸ b1), .mono_r_1 h3 (A8 c1).1.left (eq ▸ b2)⟩
+      -- · have ⟨_, c2, c3, eq⟩ := Shape.HasType.maximal
+      --     (fun x y hy => ⟨Shape.HasDom.def.1 h.2.1 x y hy, (Shape.HasTypeLam.def.1 h).2.2 x y hy⟩)
+      --     le.1 c1.1
+      --   exact have h3 := .trans (ShapeFun.app_mono_l le.2 _) (ShapeFun.app_mono_r c3)
+      --     .mono_r_1 h3 (A8 c1).1.left (eq ▸ B8 (.mono_2 c2 c3 le.1 A6.left c1))
   join {m₁ m₂ M N A a} ne1 ne2 hC h1 h2 := by
     cases h1.1.unfold with
     | bot => cases ne1 rfl
     | sort =>
       cases m₂ with simp [Shape.Compat] at hC | bot => cases ne2 rfl | sort
-      exact h1.2.2.2.2.2
+      subst hC; simp [Shape.join]; exact h1.2.2.2.2.2
     | forallE ht₁ =>
       cases m₂ with simp [Shape.Compat] at hC | bot => cases ne2 rfl | forallE
       simp [Shape.join]
@@ -1560,6 +1583,9 @@ theorem LR.fundamental (H : Γ ⊢ M ≡ N : A) (W : LR.Subst Γ₀ σ Γ ρ)
     have hJ := Shape.Join.mk (h1.compat h3)
     have ⟨a1, a2⟩ := hJ.le; have a3 := h1.join hJ h3
     have ⟨_, c1, c2⟩ := ihA W a3
-    exact have c2 := .mono_r_1 c1.le_sort LogRelBase.DefEq.sort c2
-      ⟨_, a3, .trans (.mono_r_1 a1 c2 h2) (.mono_r_1 a2 c2 h4)⟩
+    -- TODO: adapt to new mono_r_1 signature (needs ha' : a'.HasType .type, hLE : LE_Interp .nil a' A)
+    -- Old code:
+    -- exact have c2 := .mono_r_1 c1.le_sort LogRelBase.DefEq.sort c2
+    --   ⟨_, a3, .trans (.mono_r_1 a1 c2 h2) (.mono_r_1 a2 c2 h4)⟩
+    sorry
   | _ => sorry
