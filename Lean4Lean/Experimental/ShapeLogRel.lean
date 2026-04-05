@@ -1621,9 +1621,9 @@ Two abstract predicates: term validity `Val2` and type validity `ValTy2`. -/
 structure LogRel2Base (Γ : List SExpr) (n : Nat) where
   /-- Term validity: `M ≡ N : A` at element-shape `m` and type-shape `a`. -/
   Val2 (M N A : SExpr) (m a : Shape n) : Prop
-  /-- Type validity: `M ≡ N` are valid types at element-shape `m`.
+  /-- Type validity: `A ≡ B` are valid types at type-shape `a`.
   Trivial at sort shapes; only non-trivial at forallE. -/
-  ValTy2 (M N : SExpr) (m : Shape n) : Prop
+  ValTy2 (A B : SExpr) (a : Shape n) : Prop
 
 /-- Full term-level judgment: syntactic + interpretations + semantic `Val2`.
 Same shape as `LogRelBase.DefEq` but uses `Val2` for the semantic field. -/
@@ -1641,27 +1641,160 @@ def LogRel2Base.TyDefEq (R : LogRel2Base Γ n) (M N : SExpr) (u : SLevel) (m : S
     ∧ R.ValTy2 M N m
 
 /-- `LogRel2` extends `LogRel2Base` with structural operations.
-Fields left minimal for now; monotonicity etc. to be added as needed. -/
+Fields mirror Agda's `Validity2.agda` mutual block. Coherence hypotheses are
+systematically omitted (every shape is treated as coherent via sorried lemmas). -/
 structure LogRel2 (Γ : List SExpr) (n : Nat) extends LogRel2Base Γ n where
+  -- basic structural
   sort : Val2 (.sort u) (.sort u) (.sort u.succ) (.sort (u ≠ .zero)) .type
+  isType : Val2 M N A m a → ValTy2 A A a
   left : Val2 M N A m a → Val2 M M A m a
+  left_ty : ValTy2 M N m → ValTy2 M M m
   symm : Val2 M N A m a → Val2 N M A m a
+  symm_ty : ValTy2 M N m → ValTy2 N M m
   trans : Val2 M₁ M₂ A m a → Val2 M₂ M₃ A m a → Val2 M₁ M₃ A m a
+  trans_ty : ValTy2 M₁ M₂ m → ValTy2 M₂ M₃ m → ValTy2 M₁ M₃ m
+  -- type conversion transport (Agda: Val2-EqValTy2-fwd + EqVal2-EqValTy2-fwd)
+  conv : ValTy2 A B a → Val2 M N A m a → Val2 M N B m a
+  -- monotonicity in type-shape: decrease (Agda: downVal2 + downEqVal2)
+  mono_r_2 : a ≤ a' → m.HasType a → a'.HasType .type → Val2 M N A m a' → Val2 M N A m a
+  -- monotonicity in type-shape for types: decrease (Agda: downValTy2 + downEqValTy2)
+  mono_r_2_ty : a ≤ a' → a.HasType .type → a'.HasType .type → ValTy2 A B a' → ValTy2 A B a
+  -- monotonicity in type-shape: increase (Agda: upVal2 + upEqVal2)
+  mono_r_1 : a ≤ a' → m.HasType a → m.HasType a' → ValTy2 A A a' → Val2 M N A m a → Val2 M N A m a'
+  -- monotonicity in element-shape: decrease (Agda: restrictVal2 + restrictEqVal2)
+  mono_l : m ≤ m' → m.HasType a → m'.HasType a → Val2 M N A m' a → Val2 M N A m a
+  -- supremum for types (Agda: ValTy2-Sup + EqValTy2-Sup)
+  join_ty : m₁.Compat m₂ → m₁.HasType .type → m₂.HasType .type →
+    ValTy2 A B m₁ → ValTy2 A B m₂ → ValTy2 A B (m₁.join m₂)
+  -- head reduction (Agda: Val2-beta-expand/contract + EqVal2 variants, merged)
+  whr : Γ ⊢ M ⤳ M' → Γ ⊢ N ⤳ N' → (Val2 M N A m a ↔ Val2 M' N' A m a)
+  -- head reduction for types (Agda: ValTy2-headred-expand/contract + EqValTy2 variants, merged)
+  whr_ty : Γ ⊢ A ⤳ A' → Γ ⊢ B ⤳ B' → (ValTy2 A B m ↔ ValTy2 A' B' m)
+
+/-! #### Structural lemmas for DefEq / TyDefEq -/
+
+theorem LogRel2Base.DefEq.isType {R : LogRel2 Γ n} :
+    R.DefEq M N A m a → ∃ u, R.TyDefEq A A u a
+  | ⟨h1, h2, _, _, h5, h6⟩ => h2.isType.imp fun _ hA => ⟨h1.isType, hA, h5, h5, R.isType h6⟩
+
+theorem LogRel2Base.DefEq.left {R : LogRel2 Γ n} :
+    R.DefEq M N A m a → R.DefEq M M A m a
+  | ⟨h1, h2, h3, _, h5, h6⟩ => ⟨h1, h2.hasType.1, h3, h3, h5, R.left h6⟩
+
+theorem LogRel2Base.DefEq.symm {R : LogRel2 Γ n} :
+    R.DefEq M N A m a → R.DefEq N M A m a
+  | ⟨h1, h2, h3, h4, h5, h6⟩ => ⟨h1, h2.symm, h4, h3, h5, R.symm h6⟩
+
+theorem LogRel2Base.DefEq.trans {R : LogRel2 Γ n} :
+    R.DefEq M₁ M₂ A m a → R.DefEq M₂ M₃ A m a → R.DefEq M₁ M₃ A m a
+  | ⟨a1, a2, a3, _, a5, a6⟩, ⟨_, b2, _, b4, _, b6⟩ =>
+    ⟨a1, a2.trans b2, a3, b4, a5, R.trans a6 b6⟩
+
+theorem LogRel2Base.DefEq.conv {R : LogRel2 Γ n} :
+    R.TyDefEq A B u a → R.DefEq M N A m a → R.DefEq M N B m a
+  | ⟨_, a2, _, a4, a5⟩, ⟨b1, b2, b3, b4, _, b6⟩ =>
+    ⟨b1, .defeqDF a2 b2, b3, b4, a4, R.conv a5 b6⟩
+
+theorem LogRel2Base.TyDefEq.left {R : LogRel2 Γ n} :
+    R.TyDefEq M N u m → R.TyDefEq M M u m
+  | ⟨h1, h2, h3, _, h5⟩ => ⟨h1, h2.hasType.1, h3, h3, R.left_ty h5⟩
+
+theorem LogRel2Base.TyDefEq.symm {R : LogRel2 Γ n} :
+    R.TyDefEq M N u m → R.TyDefEq N M u m
+  | ⟨h1, h2, h3, h4, h5⟩ => ⟨h1, h2.symm, h4, h3, R.symm_ty h5⟩
+
+theorem LogRel2Base.TyDefEq.trans {R : LogRel2 Γ n} :
+    R.TyDefEq M₁ M₂ u m → R.TyDefEq M₂ M₃ u m → R.TyDefEq M₁ M₃ u m
+  | ⟨a1, a2, a3, _, a5⟩, ⟨_, b2, _, b4, b5⟩ =>
+    ⟨a1, a2.trans b2, a3, b4, R.trans_ty a5 b5⟩
+
+-- Projections
+theorem LogRel2Base.DefEq.hasType {R : LogRel2Base Γ n}
+    (h : R.DefEq M N A m a) : Shape.HasType m a := h.1
+
+theorem LogRel2Base.DefEq.isDefEq {R : LogRel2Base Γ n}
+    (h : R.DefEq M N A m a) : Γ ⊢ M ≡ N : A := h.2.1
+
+theorem LogRel2Base.DefEq.val2 {R : LogRel2Base Γ n}
+    (h : R.DefEq M N A m a) : R.Val2 M N A m a := h.2.2.2.2.2
+
+theorem LogRel2Base.TyDefEq.hasType {R : LogRel2Base Γ n}
+    (h : R.TyDefEq M N u m) : Shape.HasType m .type := h.1
+
+theorem LogRel2Base.TyDefEq.isDefEq {R : LogRel2Base Γ n}
+    (h : R.TyDefEq M N u m) : Γ ⊢ M ≡ N : .sort u := h.2.1
+
+theorem LogRel2Base.TyDefEq.valTy2 {R : LogRel2Base Γ n}
+    (h : R.TyDefEq M N u m) : R.ValTy2 M N m := h.2.2.2.2
+
+-- Monotonicity structural lemmas on DefEq / TyDefEq
+
+theorem LogRel2Base.TyDefEq.mono_r_2 {R : LogRel2 Γ n} (le : m ≤ m') (hm : m.HasType .type) :
+    R.TyDefEq A B u m' → R.TyDefEq A B u m
+  | ⟨hm', h2, h3, h4, h5⟩ => ⟨hm, h2, h3.mono le, h4.mono le, R.mono_r_2_ty le hm hm' h5⟩
+
+theorem LogRel2Base.DefEq.mono_r_1 {R : LogRel2 Γ n} (le : a ≤ a')
+    (tyA : R.TyDefEq A A u a') : R.DefEq M N A m a → R.DefEq M N A m a'
+  | ⟨h1, h2, h3, h4, _, h6⟩ =>
+    ⟨.mono_r le tyA.hasType h1, h2, h3, h4, tyA.2.2.1,
+     R.mono_r_1 le h1 (.mono_r le tyA.hasType h1) tyA.valTy2 h6⟩
+
+theorem LogRel2Base.DefEq.mono_r_2 {R : LogRel2 Γ n}
+    (le : a ≤ a') (hm : m.HasType a) (ht : a'.HasType .type) :
+    R.DefEq M N A m a' → R.DefEq M N A m a
+  | ⟨_, h2, h3, h4, h5, h6⟩ => ⟨hm, h2, h3, h4, h5.mono le, R.mono_r_2 le hm ht h6⟩
+
+theorem LogRel2Base.DefEq.mono_l {R : LogRel2 Γ n}
+    (le : m ≤ m') (hm : m.HasType a) : R.DefEq M N A m' a → R.DefEq M N A m a
+  | ⟨h1, h2, h3, h4, h5, h6⟩ => ⟨hm, h2, h3.mono le, h4.mono le, h5, R.mono_l le hm h1 h6⟩
+
+theorem LogRel2Base.TyDefEq.join_ty {R : LogRel2 Γ n}
+    (h1 : R.TyDefEq A B u m₁) (h2 : R.TyDefEq A B u m₂) :
+    R.TyDefEq A B u (m₁.join m₂) :=
+  have hC := LE_Interp.compat h1.2.2.1 h2.2.2.1
+  have hJ := Shape.Join.mk hC
+  ⟨.join hJ h1.hasType h2.hasType, h1.isDefEq, .join hJ h1.2.2.1 h2.2.2.1,
+   .join hJ h1.2.2.2.1 h2.2.2.2.1, R.join_ty hC h1.hasType h2.hasType h1.valTy2 h2.valTy2⟩
+
+theorem LogRel2Base.TyDefEq.join {R : LogRel2 Γ n} (hJ : Shape.Join m₁ m₂ m)
+    (h1 : R.TyDefEq A B u m₁) (h2 : R.TyDefEq A B u m₂) :
+    R.TyDefEq A B u m :=
+  (h1.join_ty h2).mono_r_2 (Shape.Join.iff.1 hJ).2.2 (.join hJ h1.hasType h2.hasType)
+
+/-- Head reduction preserves `DefEq`. Uses `R.whr` for the `Val2` component;
+the `IsDefEq` and `LE_Interp` components are sorry'd (semantic soundness of reduction). -/
+theorem LogRel2Base.DefEq.whr {R : LogRel2 Γ n}
+    (hM : Γ ⊢ M ⤳ M') (hN : Γ ⊢ N ⤳ N') :
+    R.DefEq M N A m a ↔ R.DefEq M' N' A m a := by
+  constructor
+  · rintro ⟨h1, h2, h3, h4, h5, h6⟩
+    exact ⟨h1, sorry, sorry, sorry, h5, (R.whr hM hN).1 h6⟩
+  · rintro ⟨h1, h2, h3, h4, h5, h6⟩
+    exact ⟨h1, sorry, sorry, sorry, h5, (R.whr hM hN).2 h6⟩
 
 /-! #### Concrete definitions at level 0 -/
 
-def LR20.Val2 (Γ : List SExpr) (A : SExpr) (a : Shape 0) : Prop :=
-  match a with
-  | .bot => True
-  | .sort _ => ∃ u, Γ ⊢ A ⤳* .sort u
-
+-- At level 0 (no PiCode/FunEl shapes), all Val2/ValTy2 are trivially True,
+-- matching Agda where Val2 at base-level shapes is always Top.
 def LR20 : LogRel2 Γ 0 where
-  Val2 _ _ A _ := LR20.Val2 Γ A
+  Val2 _ _ _ _ _ := True
   ValTy2 _ _ _ := True
-  sort := ⟨_, .rfl⟩
+  sort := trivial
+  isType := id
   left := id
+  left_ty := id
   symm := id
+  symm_ty := id
   trans _ := id
+  trans_ty _ := id
+  conv _ := id
+  mono_r_2 _ _ _ := id
+  mono_r_2_ty _ _ _ := id
+  mono_r_1 _ _ _ _ := id
+  mono_l _ _ _ := id
+  join_ty _ _ _ _ := id
+  whr _ _ := .rfl
+  whr_ty _ _ := .rfl
 
 /-! #### Concrete definitions at level n+1 -/
 
@@ -1669,23 +1802,24 @@ def LR20 : LogRel2 Γ 0 where
 For each argument `a ≡ b : A₁`, the substituted codomains are valid types.
 For each argument `a : A₁`, the codomains `A₂[a]` and `B₂[a]` are equal types. -/
 def LR2S.PiEdge2 (IH : LogRel2 Γ n)
-    (A₁ A₂ B₂ : SExpr) (v : SLevel) (b : Shape n) (f : ShapeFun n) : Prop :=
-  (∀ {{a b' p}}, IH.DefEq a b' A₁ p b →
-    IH.TyDefEq (A₂.inst a) (A₂.inst b') v (ShapeFun.app f p) ∧
-    IH.TyDefEq (B₂.inst a) (B₂.inst b') v (ShapeFun.app f p)) ∧
-  ∀ {{a p}}, IH.DefEq a a A₁ p b →
-    IH.TyDefEq (A₂.inst a) (B₂.inst a) v (ShapeFun.app f p)
+    (B F₁ F₂ : SExpr) (v : SLevel) (b : Shape n) (f : ShapeFun n) : Prop :=
+  (∀ {{a b' p}}, IH.DefEq a b' B p b →
+    IH.TyDefEq (F₁.inst a) (F₁.inst b') v (ShapeFun.app f p) ∧
+    IH.TyDefEq (F₂.inst a) (F₂.inst b') v (ShapeFun.app f p)) ∧
+  ∀ {{a p}}, IH.DefEq a a B p b → IH.TyDefEq (F₁.inst a) (F₂.inst a) v (ShapeFun.app f p)
+
+theorem LR2S.PiEdge2.left {IH : LogRel2 Γ n} :
+    LR2S.PiEdge2 IH B F₁ F₂ v b f → LR2S.PiEdge2 IH B F₁ F₁ v b f
+  | ⟨h1, _⟩ => ⟨fun _ _ _ a1 => ⟨(h1 a1).1, (h1 a1).1⟩, fun _ _ a1 => (h1 a1).1⟩
 
 /-- Pi-type validity (merged `ValTyPi2` / `EqValTyPi2`).
 `M` and `N` reduce to Pi types; domain and codomain are recursively valid.
 Uses `IH.TyDefEq` (with `.type`) for inner type judgments. -/
-def LR2S.ValTyPi2 (IH : LogRel2 Γ n) (M N : SExpr)
-    (b : Shape n) (f : ShapeFun n) : Prop :=
-  ∃ M₁ M₂ N₁ N₂ u v,
-    Γ ⊢ M ⤳* .forallE M₁ M₂ ∧ Γ ⊢ N ⤳* .forallE N₁ N₂ ∧
-    Γ ⊢ M₁ ≡ N₁ : .sort u ∧ M₁::Γ ⊢ M₂ ≡ N₂ : .sort v ∧
-    IH.TyDefEq M₁ N₁ u b ∧
-    LR2S.PiEdge2 IH M₁ M₂ N₂ v b f
+def LR2S.ValTyPi2 (IH : LogRel2 Γ n) (M₁ M₂ : SExpr) (b : Shape n) (f : ShapeFun n) : Prop :=
+  ∃ B₁ F₁ B₂ F₂ u v,
+    Γ ⊢ M₁ ⤳* .forallE B₁ F₁ ∧ Γ ⊢ M₂ ⤳* .forallE B₂ F₂ ∧
+    B₁::Γ ⊢ F₁ ≡ F₂ : .sort v ∧ IH.TyDefEq B₁ B₂ u b ∧
+    LR2S.PiEdge2 IH B₁ F₁ F₂ v b f
 
 /-- Term application behavior (merged `ValPi2` / `EqValPi2`).
 For `m = .lam g`: M and N applied to equal arguments give equal results. -/
@@ -1701,32 +1835,320 @@ def LR2S.ValPi2 (IH : LogRel2 Γ n)
       IH.DefEq (M.app a) (N.app a) (A₂.inst a) (ShapeFun.app g p) (ShapeFun.app a₂ p))
   | _ => False
 
+/-- Monotonicity of `ValPi2` in the type-shape: increase (Agda: `upPiAppVal2` / `upPiAppEq2`).
+Given `PiEdge2` at the TARGET, lifts `ValPi2` from `(a₁, a₂)` to `(a₁', a₂')`. -/
+theorem LR2S.ValPi2.mono_r_1 {IH : LogRel2 Γ n}
+    (le₁ : a₁ ≤ a₁') (le₂ : a₂.LE a₂') (hm : m.HasType (.forallE a₁ a₂))
+    (tyA₁ : IH.TyDefEq A₁ A₁ u a₁') (piEV : LR2S.PiEdge2 IH A₁ A₂ A₂ v a₁' a₂') :
+    LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ → LR2S.ValPi2 IH M N A₁ A₂ m a₁' a₂' := by
+  dsimp [LR2S.ValPi2]; split <;> try trivial
+  intro ⟨pav, pae⟩; have .lam hm := hm.unfold
+  refine ⟨fun _ _ x a1 => ?_, fun _ x a1 => ?_⟩ <;> (
+    have ⟨x', le, ha, h1⟩ := hm.2.1 x
+    have ha' := tyA₁.hasType.mono_r le₁ ha
+    have a2 := (a1.mono_l le ha').mono_r_2 le₁ ha tyA₁.hasType
+    have hg_p := (hm.2.2 x' ha).mono_l (ShapeFun.app_mono_r le) h1
+    have le_cod := (ShapeFun.app_mono_r le).trans (ShapeFun.app_mono_l le₂ x))
+  · have ⟨p1, p2⟩ := pav a2
+    have tyA₂ := (piEV.1 a1.left).1
+    exact ⟨(p1.mono_l h1 hg_p).mono_r_1 le_cod tyA₂, (p2.mono_l h1 hg_p).mono_r_1 le_cod tyA₂⟩
+  · exact (pae a2).mono_l h1 hg_p |>.mono_r_1 le_cod (piEV.2 a1)
+
 /-- Type validity at element-shape `m` (merged `ValTy2` / `EqValTy2`).
 **Trivial at sort shapes** (key Agda principle). Non-trivial only at `.forallE`. -/
 def LR2S.ValTy2 (IH : LogRel2 Γ n) (M N : SExpr) : Shape (n+1) → Prop
   | .bot | .sort _ | .lam _ => True
   | .forallE b f => LR2S.ValTyPi2 IH M N b f
 
+theorem LR2S.ValTy2.left {IH : LogRel2 Γ n} :
+    LR2S.ValTy2 IH M N m → LR2S.ValTy2 IH M M m := by
+  dsimp [LR2S.ValTy2]; split <;> try trivial
+  intro ⟨M₁, M₂, _, _, u, v, rM, _, hMN2, hTy, hE⟩
+  exact ⟨M₁, M₂, M₁, M₂, u, v, rM, rM, hMN2.hasType.1,
+    hTy.left, ⟨fun _ _ _ a1 => ⟨(hE.1 a1).1, (hE.1 a1).1⟩, fun _ _ a1 => (hE.1 a1).1⟩⟩
+
+theorem LR2S.ValTy2.symm {IH : LogRel2 Γ n} :
+    LR2S.ValTy2 IH M N m → LR2S.ValTy2 IH N M m := by
+  dsimp [LR2S.ValTy2]; split <;> try trivial
+  intro ⟨_, _, _, _, _, _, rM, rN, hMN, hTy, hE1, hE2⟩
+  refine ⟨_, _, _, _, _, _, rN, rM, hTy.isDefEq.defeqDF_l hMN.symm,
+    hTy.symm, fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩
+  · exact (hE1 (a1.conv hTy.symm)).symm
+  · exact (hE2 (a1.conv hTy.symm)).symm
+
+theorem LR2S.ValTy2.trans {IH : LogRel2 Γ n} :
+    LR2S.ValTy2 IH M₁ M₂ m → LR2S.ValTy2 IH M₂ M₃ m → LR2S.ValTy2 IH M₁ M₃ m := by
+  dsimp [LR2S.ValTy2]; split <;> try trivial
+  intro ⟨B₁, F₁, B₂, F₂, u, v, rM₁, rM₂, hF₁₂, hB₁₂, hE1⟩
+        ⟨_, _, B₃, F₃, u', v', rM₂', rM₃, hF₂₃, hB₂₃, hE2⟩
+  cases rM₂.determ .forallE rM₂' .forallE
+  have hF₂₃' := hB₁₂.symm.isDefEq.defeqDF_l hF₂₃
+  cases hB₁₂.isDefEq.uniq_sort hB₂₃.isDefEq
+  cases hF₁₂.uniq_sort hF₂₃'
+  refine ⟨_, _, _, _, _, _, rM₁, rM₃, hF₁₂.trans hF₂₃', hB₁₂.trans hB₂₃,
+    fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩
+  · exact ⟨(hE1.1 a1).1, (hE2.1 (a1.conv hB₁₂)).2⟩
+  · exact (hE1.2 a1).trans (hE2.2 (a1.conv hB₁₂))
+
+theorem LR2S.ValPi2.left {IH : LogRel2 Γ n} :
+    LR2S.ValPi2 IH M N B F m m₁ m₂ → LR2S.ValPi2 IH M M B F m m₁ m₂ := by
+  dsimp [LR2S.ValPi2]; split <;> try trivial
+  exact fun hP => ⟨fun _ _ _ a1 => ⟨(hP.1 a1).1, (hP.1 a1).1⟩, fun _ _ a1 => (hP.1 a1).1⟩
+
+theorem LR2S.ValPi2.symm {IH : LogRel2 Γ n} :
+    LR2S.ValPi2 IH M N B F m m₁ m₂ → LR2S.ValPi2 IH N M B F m m₁ m₂ := by
+  dsimp [LR2S.ValPi2]; split <;> try trivial
+  exact fun hP => ⟨fun _ _ _ a1 => ⟨(hP.1 a1).2, (hP.1 a1).1⟩, fun _ _ a1 => (hP.2 a1).symm⟩
+
+theorem LR2S.ValPi2.trans {IH : LogRel2 Γ n} :
+    LR2S.ValPi2 IH M₁ M₂ B F m m₁ m₂ →
+    LR2S.ValPi2 IH M₂ M₃ B F m m₁ m₂ → LR2S.ValPi2 IH M₁ M₃ B F m m₁ m₂ := by
+  dsimp only [LR2S.ValPi2]; split <;> try trivial
+  refine fun ⟨hP1, hP2⟩ ⟨hP1', hP2'⟩ => ⟨fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩
+  · exact ⟨(hP1 a1).1, (hP1' a1).2⟩
+  · exact (hP2 a1).trans (hP2' a1)
+
+theorem LR2S.PiEdge2.mono_r_2 {IH : LogRel2 Γ n}
+    (le₁ : b.LE b') (le₂ : ShapeFun.LE f f')
+    (htpi : Shape.HasTypePi f b r) (tyA₁ : IH.TyDefEq A₁ A₁ u b') :
+    LR2S.PiEdge2 IH A₁ A₂ B₂ v b' f' → LR2S.PiEdge2 IH A₁ A₂ B₂ v b f
+  | ⟨h1, h2⟩ => by
+    refine ⟨fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩ <;> have a2 := a1.mono_r_1 le₁ tyA₁
+    · let ⟨t1, t2⟩ := h1 a2
+      exact ⟨t1.mono_r_2 (ShapeFun.app_mono_l le₂ _) (htpi.2 _ a1.hasType).toType,
+             t2.mono_r_2 (ShapeFun.app_mono_l le₂ _) (htpi.2 _ a1.hasType).toType⟩
+    · exact (h2 a2).mono_r_2 (ShapeFun.app_mono_l le₂ _) (htpi.2 _ a1.hasType).toType
+
+theorem LR2S.ValPi2.mono_r_2 {IH : LogRel2 Γ n}
+    (le₁ : a₁.LE a₁') (le₂ : a₂.LE a₂') (hm : m.HasType (.forallE a₁ a₂))
+    (tyA₁ : IH.TyDefEq A₁ A₁ u a₁') :
+    LR2S.ValPi2 IH M N A₁ A₂ m a₁' a₂' → LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ := by
+  dsimp [LR2S.ValPi2]; split <;> try trivial
+  intro ⟨h1, h2⟩; have .lam hm := hm.unfold
+  refine ⟨fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩ <;> have a1' := a1.mono_r_1 le₁ tyA₁
+  · have ⟨d1, d2⟩ := h1 a1'
+    constructor
+    · exact d1.mono_r_2 (ShapeFun.app_mono_l le₂ _) (hm.2.2 _ a1.hasType) d1.hasType.isType
+    · exact d2.mono_r_2 (ShapeFun.app_mono_l le₂ _) (hm.2.2 _ a1.hasType) d2.hasType.isType
+  · exact (h2 a1').mono_r_2 (ShapeFun.app_mono_l le₂ _) (hm.2.2 _ a1.hasType) (h2 a1').hasType.isType
+
+/-- Monotonicity of `ValPi2` in the element-shape: decrease (Agda: `restrictPiAppVal2-sel` etc.).
+In Lean this is simpler than Agda because we quantify over all `p` with `DefEq`, not selections. -/
+theorem LR2S.ValPi2.mono_l {IH : LogRel2 Γ n}
+    (le : m ≤ m') (hm : m.HasType (.forallE a₁ a₂)) :
+    LR2S.ValPi2 IH M N A₁ A₂ m' a₁ a₂ → LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ := by
+  cases hm.unfold with
+  | bot => exact fun _ => trivial
+  | lam htl =>
+    cases m' <;> simp [Shape.LE.def] at le
+    dsimp [LR2S.ValPi2]
+    intro ⟨pav, pae⟩
+    refine ⟨fun a b p a1 => ?_, fun a p a1 => ?_⟩
+    · have ⟨d1, d2⟩ := pav a1
+      exact ⟨d1.mono_l (ShapeFun.app_mono_l le _) (htl.2.2 _ a1.hasType),
+             d2.mono_l (ShapeFun.app_mono_l le _) (htl.2.2 _ a1.hasType)⟩
+    · exact (pae a1).mono_l (ShapeFun.app_mono_l le _) (htl.2.2 _ a1.hasType)
+
+/-- Join of `PiEdge2`: given edge validity at `(b₁, f₁)` and `(b₂, f₂)`,
+produce edge validity at `(b₁.join b₂, f₁.join f₂)`.
+Follows the same representative-based strategy as old `LRS.join`. -/
+theorem LR2S.PiEdge2.join {IH : LogRel2 Γ n}
+    (hB₁ : IH.TyDefEq B₁ B₂ u b₁) (hB₂ : IH.TyDefEq B₁ B₂ u b₂)
+    (ht₁ : Shape.HasTypePi f₁ b₁ true) (ht₂ : Shape.HasTypePi f₂ b₂ true)
+    (hC_f : ShapeFun.Compat Shape.Compat f₁ f₂)
+    (hE₁ : LR2S.PiEdge2 IH B₁ F₁ F₂ v b₁ f₁)
+    (hE₂ : LR2S.PiEdge2 IH B₁ F₁ F₂ v b₂ f₂) :
+    LR2S.PiEdge2 IH B₁ F₁ F₂ v (b₁.join b₂) (ShapeFun.join Shape.join f₁ f₂) := by
+  have hC_b := LE_Interp.compat hB₁.2.2.1 hB₂.2.2.1
+  have hJ_f := ShapeFun.Join.mk hC_f
+  have hB_join := hB₁.join_ty hB₂
+  refine ⟨fun _ _ _ c1 => ?_, fun _ _ c1 => ?_⟩
+  all_goals
+    obtain ⟨_, _, d1, d2, rfl⟩ := ShapeFun.app_eq f₁ _
+    have d3 := Shape.HasDom.def.1 ht₁.1 _ _ d2
+    have c2 := c1.mono_l d1 (Shape.HasType.mono_r (Shape.Join.mk hC_b).le.1 hB_join.hasType d3)
+      |>.mono_r_2 (Shape.Join.mk hC_b).le.1 d3 hB_join.hasType
+    obtain ⟨_, _, e1, e2, rfl⟩ := ShapeFun.app_eq f₂ _
+    have e3 := Shape.HasDom.def.1 ht₂.1 _ _ e2
+    have c3 := c1.mono_l e1 (Shape.HasType.mono_r (Shape.Join.mk hC_b).le.2 hB_join.hasType e3)
+      |>.mono_r_2 (Shape.Join.mk hC_b).le.2 e3 hB_join.hasType
+  · constructor
+    · exact (ShapeFun.app_of_mem d2 ▸ (hE₁.1 c2).1).join
+        (ShapeFun.Join.app hJ_f _) (ShapeFun.app_of_mem e2 ▸ (hE₂.1 c3).1)
+    · exact (ShapeFun.app_of_mem d2 ▸ (hE₁.1 c2).2).join
+        (ShapeFun.Join.app hJ_f _) (ShapeFun.app_of_mem e2 ▸ (hE₂.1 c3).2)
+  · exact (ShapeFun.app_of_mem d2 ▸ hE₁.2 c2).join
+      (ShapeFun.Join.app hJ_f _) (ShapeFun.app_of_mem e2 ▸ hE₂.2 c3)
+
+/-- Head reduction on M, N preserves `ValPi2`. Uses `DefEq.whr` (with `WHRed.app`)
+to transport the inner `IH.DefEq` terms. -/
+theorem LR2S.ValPi2.whr {IH : LogRel2 Γ n}
+    (hM : Γ ⊢ M ⤳ M') (hN : Γ ⊢ N ⤳ N') :
+    LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ ↔ LR2S.ValPi2 IH M' N' A₁ A₂ m a₁ a₂ := by
+  dsimp [LR2S.ValPi2]; split <;> try exact .rfl
+  constructor <;> intro ⟨pav, pae⟩ <;> refine ⟨fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩
+  · have ⟨d1, d2⟩ := pav a1
+    exact ⟨(LogRel2Base.DefEq.whr (.app hM) (.app hM)).1 d1, (LogRel2Base.DefEq.whr (.app hN) (.app hN)).1 d2⟩
+  · exact (LogRel2Base.DefEq.whr (.app hM) (.app hN)).1 (pae a1)
+  · have ⟨d1, d2⟩ := pav a1
+    exact ⟨(LogRel2Base.DefEq.whr (.app hM) (.app hM)).2 d1, (LogRel2Base.DefEq.whr (.app hN) (.app hN)).2 d2⟩
+  · exact (LogRel2Base.DefEq.whr (.app hM) (.app hN)).2 (pae a1)
+
 /-- Term validity at `(m, a)` (merged `Val2` / `EqVal2`).
-At `.sort`: type validity via `ValTy2` (trivial at sort sub-shapes).
-At `.forallE`: type validity via `ValTyPi2` + term behavior via `ValPi2`. -/
+At `.sort`: just `ValTy2 M N m` — no `A` dependency (matches Agda: `Val2 G M A u UCode = ValTy2 G M u`).
+At `.forallE`: type validity + term behavior, with `A ⤳*` stored here. -/
 def LR2S.Val2 (IH : LogRel2 Γ n) (M N A : SExpr) (m a : Shape (n+1)) : Prop :=
   match a with
   | .bot => True
-  | .sort _ => ∃ u, Γ ⊢ A ⤳* .sort u ∧ LR2S.ValTy2 IH M N m
+  | .sort _ => LR2S.ValTy2 IH M N m
   | .forallE a₁ a₂ => ∃ A₁ A₂ u v, Γ ⊢ A ⤳* .forallE A₁ A₂ ∧
-    -- Type validity of A at this shape (domain + codomain edges)
-    IH.TyDefEq A₁ A₁ u a₁ ∧
-    A₁::Γ ⊢ A₂ : sort v ∧
-    LR2S.PiEdge2 IH A₁ A₂ A₂ v a₁ a₂ ∧
-    -- Term application behavior of M, N
-    LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂
+    IH.TyDefEq A₁ A₁ u a₁ ∧ A₁::Γ ⊢ A₂ : sort v ∧
+    LR2S.PiEdge2 IH A₁ A₂ A₂ v a₁ a₂ ∧ LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂
   | _ => False
 
 def LR2S (IH : LogRel2 Γ n) : LogRel2 Γ (n+1) where
   Val2 := LR2S.Val2 IH
   ValTy2 := LR2S.ValTy2 IH
-  sort := ⟨_, .rfl, trivial⟩
-  left := sorry
-  symm := sorry
-  trans := sorry
+  sort := trivial
+  left_ty := .left
+  symm_ty := .symm
+  trans_ty := .trans
+  isType {M N A m a} := by
+    dsimp [LR2S.ValTy2]; dsimp [LR2S.Val2]; split <;> [exact id; simp; skip; nofun]
+    intro ⟨A₁, A₂, u, v, rA, hTyA, hA₂, hE, _⟩
+    exact ⟨_, _, _, _, _, _, rA, rA, hA₂, hTyA, hE⟩
+  left {M N A m a} := by
+    dsimp [LR2S.Val2]; split <;> try trivial
+    · exact .left
+    · intro ⟨A₁, A₂, u, v, rA, hTyA, hA₂, hE, hP⟩
+      exact ⟨A₁, A₂, u, v, rA, hTyA, hA₂, hE, hP.left⟩
+  symm {M N A m a} := by
+    dsimp [LR2S.Val2]; split <;> try trivial
+    · exact .symm
+    · intro ⟨A₁, A₂, u, v, rA, hTyA, hA₂, hE, hP⟩
+      exact ⟨A₁, A₂, u, v, rA, hTyA, hA₂, hE, hP.symm⟩
+  trans {M₁ M₂ A m a M₃} := by
+    dsimp [LR2S.Val2]; split <;> try trivial
+    · exact .trans
+    · intro ⟨B, F, u, v, rA, hB, hF, hE, hP⟩ ⟨_, _, _, _, rA', hB', hF', _, hP'⟩
+      cases rA.determ .forallE rA' .forallE
+      exact ⟨_, _, _, _, rA, hB, hF, hE, hP.trans hP'⟩
+  conv {A A' a M N m} := by
+    dsimp [LR2S.ValTy2]; dsimp [LR2S.Val2]; split <;> (try · simp); dsimp
+    intro ⟨B, F, B', F', u, v, rA, rA', hF, hB, hE⟩ ⟨_, _, _, v', rA₁, hB₁, hF₁, _, hP⟩
+    cases rA.determ .forallE rA₁ .forallE
+    cases hB₁.isDefEq.uniq_sort hB.isDefEq
+    cases hF₁.uniq_sort hF
+    refine ⟨_, _, _, _, rA', hB.symm.left, hB.isDefEq.defeqDF_l hF.hasType.2,
+      ⟨fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩, ?_⟩
+    · exact and_self_iff.2 (hE.1 (a1.conv hB.symm)).2
+    · exact (hE.1 (a1.conv hB.symm)).2
+    revert hP; dsimp [LR2S.ValPi2]; split <;> try trivial
+    refine fun ⟨hP1, hP2⟩ => ⟨fun _ _ _ a1 => ?_, fun _ _ a1 => ?_⟩ <;> have a2 := a1.conv hB.symm
+    · exact ⟨(hP1 a2).1.conv (hE.2 a2.left), (hP1 a2).2.conv (hE.2 a2.left)⟩
+    · exact (hP2 a2).conv (hE.2 a2.left)
+  mono_r_2 {a a' M N A m} le hm ht h := by
+    cases a with dsimp [LR2S.Val2]
+    | sort => cases a' <;> simp [Shape.LE.def] at le; subst le; exact h
+    | forallE a₁ a₂ =>
+      cases a' <;> simp [Shape.LE.def] at le
+      let .forallE hp := hm.isType.unfold
+      let ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE, hP⟩ := h
+      exact ⟨A₁, A₂, u, v, rA,
+        hTy.mono_r_2 le.1 hp.1.isType, hA₂,
+        hE.mono_r_2 le.1 le.2 hp hTy.left, hP.mono_r_2 le.1 le.2 hm hTy.left⟩
+    | lam => cases a' <;> simp [Shape.LE.def] at le; exact h
+  mono_r_2_ty {a a' A B} le ha ha' h := by
+    dsimp [LR2S.ValTy2] at h ⊢; split <;> try trivial
+    cases a' <;> simp [Shape.LE.def] at le
+    have .forallE ha := ha.unfold
+    let ⟨M₁, M₂, N₁, N₂, u, v, rM, rN, hMN₂, hTy, hE⟩ := h
+    exact ⟨M₁, M₂, N₁, N₂, u, v, rM, rN, hMN₂,
+      hTy.mono_r_2 le.1 ha.1.isType, hE.mono_r_2 le.1 le.2 ha hTy.left⟩
+  mono_r_1 {a a' A M N m} le ha ha' hA h := by
+    cases ha'.unfold with
+    | bot ha' =>
+      cases ha'.unfold with | forallE => ?_ | _ => trivial
+      let ⟨B, F, B', F', u, v, rA, rA', hF, hB, hE⟩ := hA
+      cases rA.determ .forallE rA' .forallE
+      exact ⟨_, _, _, _, rA, hB, hF.hasType.1, hE, trivial⟩
+    | sort => cases ha.unfold; exact h
+    | forallE => obtain rfl | rfl := Shape.le_sort.1 le <;> [cases ha.unfold; exact h]
+    | lam =>
+      cases a <;> simp [Shape.LE.def] at le <;> cases ha.unfold
+      let ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE_src, hP⟩ := h
+      let ⟨B₁, F₁, B₂, F₂, u', v', rA', rA'', hF_tgt, hB_tgt, hE_tgt⟩ := hA
+      cases rA.determ .forallE rA' .forallE
+      cases rA.determ .forallE rA'' .forallE
+      cases hA₂.uniq_sort hF_tgt.hasType.1
+      exact ⟨_, _, _, _, rA, hB_tgt, hA₂, hE_tgt, hP.mono_r_1 le.1 le.2 ha hB_tgt hE_tgt⟩
+  mono_l {m m' M N A a} le hm hm' h := by
+    cases a with dsimp [LR2S.Val2]
+    | sort s =>
+      dsimp [LR2S.ValTy2] at h ⊢; split <;> try trivial
+      cases m' <;> simp [Shape.LE.def] at le
+      have .forallE hp := hm.unfold
+      let ⟨B₁, F₁, B₂, F₂, u, v, rM, rN, hMN₂, hTy, hE⟩ := h
+      exact ⟨B₁, F₁, B₂, F₂, u, v, rM, rN, hMN₂,
+        hTy.mono_r_2 le.1 hp.1.isType, hE.mono_r_2 le.1 le.2 hp hTy.left⟩
+    | forallE a₁ a₂ =>
+      let ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE, hP⟩ := h
+      exact ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE, hP.mono_l le hm⟩
+    | lam => exact h
+  join_ty {A B m₁ m₂} hC hm₁ hm₂ h1 h2 := by
+    cases hm₁.unfold with
+    | bot => simp [Shape.join]; exact h2
+    | sort =>
+      cases m₂ with simp [Shape.join]
+      | sort => split <;> trivial
+      | _ => trivial
+    | forallE =>
+      cases m₂ with simp [Shape.join] | forallE b₂ f₂ => ?_ | _ => trivial
+      simp only [Shape.Compat, Bool.and_eq_true] at hC
+      have .forallE ht₁ := hm₁.unfold
+      have .forallE ht₂ := hm₂.unfold
+      dsimp [LR2S.ValTy2]
+      let ⟨B₁, F₁, B₂, F₂, u, v, rA, rB, hFF, hB₁, hE₁⟩ := h1
+      let ⟨_, _, _, _, u', v', rA', rB', hFF', hB₂, hE₂⟩ := h2
+      cases rA.determ .forallE rA' .forallE
+      cases rB.determ .forallE rB' .forallE
+      cases hB₁.isDefEq.uniq_sort hB₂.isDefEq.symm
+      cases hFF.uniq_sort hFF'.symm
+      exact ⟨B₁, F₁, B₂, F₂, u, v, rA, rB, hFF, hB₁.join_ty hB₂,
+        .join hB₁ hB₂ ht₁ ht₂ hC.2 hE₁ hE₂⟩
+  whr {M M' N N' A m a} hM hN := by
+    cases a with dsimp [LR2S.Val2]
+    | bot => exact .rfl
+    | sort s =>
+      dsimp [LR2S.ValTy2]; split <;> try exact .rfl
+      constructor
+      · rintro ⟨B₁, F₁, B₂, F₂, u, v, rM, rN, rest⟩
+        refine ⟨B₁, F₁, B₂, F₂, u, v, ?_, ?_, rest⟩
+        · cases rM using ReflTransGen.headIndOn with
+          | rfl => exact absurd hM (WHNF.forallE _)
+          | head r1 r2 => cases r1.determ hM; exact r2
+        · cases rN using ReflTransGen.headIndOn with
+          | rfl => exact absurd hN (WHNF.forallE _)
+          | head r1 r2 => cases r1.determ hN; exact r2
+      · rintro ⟨B₁, F₁, B₂, F₂, u, v, rM', rN', rest⟩
+        exact ⟨B₁, F₁, B₂, F₂, u, v, .trans (.tail .rfl hM) rM', .trans (.tail .rfl hN) rN', rest⟩
+    | forallE a₁ a₂ =>
+      constructor
+      · rintro ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE, hP⟩
+        exact ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE, (LR2S.ValPi2.whr hM hN).1 hP⟩
+      · rintro ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE, hP⟩
+        exact ⟨A₁, A₂, u, v, rA, hTy, hA₂, hE, (LR2S.ValPi2.whr hM hN).2 hP⟩
+    | lam => exact .rfl
+  whr_ty {A A' B B' m} hA hB := by
+    dsimp [LR2S.ValTy2]; split <;> try exact .rfl
+    constructor
+    · rintro ⟨B₁, F₁, B₂, F₂, u, v, rA, rB, rest⟩
+      refine ⟨B₁, F₁, B₂, F₂, u, v, ?_, ?_, rest⟩
+      · cases rA using ReflTransGen.headIndOn with
+        | rfl => exact absurd hA (WHNF.forallE _)
+        | head r1 r2 => cases r1.determ hA; exact r2
+      · cases rB using ReflTransGen.headIndOn with
+        | rfl => exact absurd hB (WHNF.forallE _)
+        | head r1 r2 => cases r1.determ hB; exact r2
+    · rintro ⟨B₁, F₁, B₂, F₂, u, v, rA', rB', rest⟩
+      exact ⟨B₁, F₁, B₂, F₂, u, v, .trans (.tail .rfl hA) rA', .trans (.tail .rfl hB) rB', rest⟩
