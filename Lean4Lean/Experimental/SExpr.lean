@@ -384,6 +384,12 @@ theorem subst_inst {e : SExpr} : (e.inst a).subst σ = (e.subst σ.lift).inst (a
   · simp [Subst.one, Subst.cons]
   · rw [← SExpr.inst, lift_inst]; rfl
 
+theorem inst_lift_cons {e : SExpr} {σ : Subst} :
+    (e.subst σ.lift).inst x = e.subst (σ.cons x) := by
+  rw [SExpr.inst, subst_subst, Subst.one]; congr 1
+  funext i; obtain _|i := i <;>
+    simp [Subst.comp, Subst.lift, SExpr.subst, Subst.cons, lift_subst_cons]
+
 inductive Ctx.Lift' : Lift → List SExpr → List SExpr → Prop where
   | refl : Ctx.Lift' .refl Γ Γ
   | skip : Ctx.Lift' l Γ Γ' → Ctx.Lift' (.skip l) Γ (A :: Γ')
@@ -584,7 +590,7 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
     Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
     Γ ⊢ B.inst a : .sort v →
     Γ ⊢ .app f a pat ≡ .app f' a' pat : B.inst a
-  | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ body ≡ body' : B →
+  | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ B : .sort v → A::Γ ⊢ body ≡ body' : B →
     Γ ⊢ .lam A body ≡ .lam A' body' : .forallE A B
   | forallEDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ body ≡ body' : .sort v →
     Γ ⊢ .forallE A body ≡ .forallE A' body' : .sort (.imax u v)
