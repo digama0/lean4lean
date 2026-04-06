@@ -264,6 +264,9 @@ theorem Subst.comp_lift {σ σ' : Subst} : (σ.comp σ').lift = σ.lift.comp σ'
 theorem subst_subst {e : SExpr} : (e.subst σ).subst σ' = subst e (.comp σ σ') := by
   induction e generalizing σ σ' <;> simp! [*, Subst.comp, Subst.comp_lift]
 
+theorem lift_subst_cons {e : SExpr} : e.lift.subst (σ.cons t) = e.subst σ := by
+  rw [lift, subst_lift', ← Subst.tail_eq_lift_l, Subst.tail_cons]
+
 theorem Subst.lift_l_eq : Subst.lift_l ρ σ = Subst.comp ρ.toSubst σ := by
   funext; simp [lift_l, comp, Lift.toSubst_apply, SExpr.subst]
 
@@ -850,6 +853,11 @@ theorem WHRedS.weak' (W : Ctx.Lift' ρ Γ Δ) (H : Γ ⊢ e1 ⤳* e2) :
   | rfl => exact .rfl
   | tail _ h2 ih => exact .tail ih (h2.weak' W)
 
+theorem WHRedS.app (H : Γ ⊢ e1 ⤳* e2) : Γ ⊢ e1.app a ⤳* e2.app a := by
+  induction H with
+  | rfl => exact .rfl
+  | tail _ h2 ih => exact .tail ih h2.app
+
 theorem WHRedS.weakU_inv (W : Ctx.Lift' ρ Γ Δ) (H : Δ ⊢ e1.lift' ρ ⤳* e2') :
     ∃ e2, e2' = e2.lift' ρ ∧ Γ ⊢ e1 ⤳* e2 := by
   induction H with
@@ -859,14 +867,9 @@ theorem WHRedS.weakU_inv (W : Ctx.Lift' ρ Γ Δ) (H : Δ ⊢ e1.lift' ρ ⤳* e
     obtain ⟨_, rfl, a2⟩ := h2.weakU_inv W
     exact ⟨_, rfl, .tail a1 a2⟩
 
-theorem WHRedS.determ
-    (H1 : Γ ⊢ e ⤳* e₁) (W1 : WHNF Γ e₁)
-    (H2 : Γ ⊢ e ⤳* e₂) (W2 : WHNF Γ e₂) : e₁ = e₂ := by
+theorem WHRedS.determ_l (H1 : Γ ⊢ e ⤳* e₁) (H2 : Γ ⊢ e ⤳* e₂) (W2 : WHNF Γ e₂) : Γ ⊢ e₁ ⤳* e₂ := by
   induction H1 using ReflTransGen.headIndOn generalizing e₂ with
-  | rfl =>
-    cases H2 using ReflTransGen.headIndOn with
-    | rfl => rfl
-    | head r1 => cases W1 _ r1
+  | rfl => exact H2
   | head l1 l2 ih =>
     cases H2 using ReflTransGen.headIndOn with
     | rfl => cases W2 _ l1
@@ -876,6 +879,10 @@ theorem WHNF.whRedS (W : WHNF Γ e) (H : Γ ⊢ e ⤳* e') : e = e' := by
   cases H using ReflTransGen.headIndOn with
   | rfl => rfl
   | head h1 => cases W _ h1
+
+theorem WHRedS.determ
+    (H1 : Γ ⊢ e ⤳* e₁) (W1 : WHNF Γ e₁)
+    (H2 : Γ ⊢ e ⤳* e₂) (W2 : WHNF Γ e₂) : e₁ = e₂ := W1.whRedS (H1.determ_l H2 W2)
 
 scoped notation:65 Γ " ⊢ " e1 " ≫ " e2:36 => ParRed Γ e1 e2
 inductive ParRed : List SExpr → SExpr → SExpr → Prop where
