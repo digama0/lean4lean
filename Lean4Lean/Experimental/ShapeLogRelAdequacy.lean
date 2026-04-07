@@ -102,7 +102,16 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
       have he₂ := (LE_Interp.sound H1.defeq W.fits).1.1 hM
     · exact ⟨((ih1 hM hA hmem).1 W).1, ((ih2 he₂ hA hmem).1 W).2⟩
     · exact (LR2 Γ₀).trans ((ih1 hM hA hmem).2 W) ((ih2 he₂ hA hmem).2 W)
-  | sort => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
+  | @sort _ l =>
+    suffices (LR2 Γ₀).Val2 (.sort l) (.sort l) (.sort l.succ) m a from
+      ⟨fun _ _ _ => ⟨this, this⟩, fun _ _ => this⟩
+    cases hmem.unfold with
+    | bot hm =>
+      cases hm.unfold with
+      | forallE => let .sort h := hA; simp [Shape.LE.def] at h
+      | _ => cases n <;> trivial
+    | sort => cases n <;> trivial
+    | _ => let .sort h := hM; simp [Shape.LE.def] at h
   | const => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
   | appDF => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
   | @lamDF Γ A A' u B v body body' HA HB HBody ihA ihB ihBody =>
