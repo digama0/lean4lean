@@ -2405,11 +2405,7 @@ Matches Agda's ValidSub2-extend / ValidConvSub2-extend.
 Zero case: use the hypothesis `h0` for the new variable.
 Succ case: delegate to the original `W`, using `lift_subst_cons` and `weak_iff`. -/
 theorem LR2.SubstWF.cons (W : LR2.SubstWF Γ₀ σ σ' Γ ρ)
-    (h0 : Γ₀ ⊢ t ≡ t' : A.subst σ ∧
-      ∀ {{n}} (a : Shape n), LE_Interp (ρ.push x) a A.lift →
-        (a.HasType .type → ∃ u, (LR2 Γ₀).TyDefEq (A.subst σ) (A.subst σ') u a) ∧
-        (∀ {{m}}, LE_Interp (ρ.push x) m (.bvar 0) → m.HasType a →
-          (LR2 Γ₀).Val2 t t' (A.subst σ) m a)) :
+    (h0 : LR2.Subst1 Γ₀ t t' A.lift (A.subst σ) (A.subst σ') (ρ.push x)) :
     LR2.SubstWF Γ₀ (σ.cons t) (σ'.cons t') (A :: Γ) (ρ.push x) := by
   intro i B hlookup
   cases hlookup with
