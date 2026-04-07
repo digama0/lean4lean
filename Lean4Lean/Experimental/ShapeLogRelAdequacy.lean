@@ -112,7 +112,11 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
       | _ => cases n <;> trivial
     | sort => cases n <;> trivial
     | _ => let .sort h := hM; simp [Shape.LE.def] at h
-  | const => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
+  | const =>
+    cases hM
+    exact
+      have {M N A} := (LR2 _).bot (M := M) (N := N) (A := A) hmem.isType
+      ⟨fun _ _ _ => ⟨this, this⟩, fun _ _ => this⟩
   | appDF => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
   | @lamDF Γ A A' u B v body body' HA HB HBody ihA ihB ihBody =>
     suffices ∀ {X Y X' Y' σ σ'},
@@ -149,6 +153,7 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
     have hA1 := hA.forallE_inv.1
     have ⟨_, a', _, le_n, le_a, hA', hSort, hmem'⟩ := (LE_Interp.sound HA.defeq W.left.fits).2 hA1
     have cons := Adequate.cons ihA HA.defeq
+    cases hmem.unfold with | bot => trivial | lam htm
     refine ⟨A.subst σ, B.subst σ.lift, u, v, .rfl, hTypA, ?_, hTypB, ?_, ?_⟩
     · exact (LR2 Γ₀).left_ty <| toValTy le_n le_a aty.1.isType hSort hmem'
         ((ihA hA' hSort hmem').2 W.left)
@@ -159,7 +164,6 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
       have ⟨n', ab, _, le, le', iB, iv, hmb⟩ :=
         (LE_Interp.sound HB.defeq W'.fits).2 (hA.forallE_inv.2 _ hp)
       exact toValTy le le' (aty.2 _ hp) iv hmb ((ihB iB iv hmb).1 W').1
-    cases hmem.unfold with | bot => trivial | lam htm
     have beta {X Y t : SExpr} {σ} : Γ₀ ⊢ .app (.lam (X.subst σ) (Y.subst σ.lift)) t ⤳*
         Y.subst (σ.cons t) := inst_lift_cons (x := t) ▸ .tail .rfl .beta
     refine ⟨fun x x' p hp ha hv => ?_, fun x p hp ha hv => ?_⟩
