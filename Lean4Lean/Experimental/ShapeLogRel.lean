@@ -1655,7 +1655,7 @@ Fields mirror Agda's `Validity2.agda` mutual block. Coherence hypotheses are
 systematically omitted (every shape is treated as coherent via sorried lemmas). -/
 structure LogRel2 (Γ : List SExpr) (n : Nat) extends LogRel2Base Γ n where
   -- basic structural
-  sort : Val2 (.sort u) (.sort u) (.sort u.succ) (.sort (u ≠ .zero)) .type
+  sort : Val2 M N A (.sort r) (.sort r')
   isType : Val2 M N A m a → ValTy2 A A a
   toType : Val2 M N A m (.sort r) → ValTy2 M N m
   left : Val2 M N A m a → Val2 M M A m a
@@ -1772,11 +1772,14 @@ theorem LogRel2Base.TyDefEq.join {R : LogRel2 Γ n} (hJ : Shape.Join m₁ m₂ m
     R.TyDefEq A B u m :=
   (h1.join_ty h2).mono_r_2 (Shape.Join.iff.1 hJ).2.2 (.join hJ h1.hasType h2.hasType)
 
+theorem LogRel2Base.ValTy2.sort {R : LogRel2 Γ n} : R.ValTy2 M N (.sort r) :=
+  R.toType (A := default) (r := default) R.sort
+
 theorem LogRel2Base.DefEq.toType {R : LogRel2 Γ n} :
     R.DefEq M N (.sort u) m a → R.TyDefEq M N u m
   | ⟨h1, h2, h3, h4, h5, h6⟩ =>
     have h1' := Shape.HasType.mono_r h5.le_sort .sort h1
-    have h6' := R.mono_r_1 h5.le_sort h1 h1' (R.toType R.sort) h6
+    have h6' := R.mono_r_1 h5.le_sort h1 h1' .sort h6
     ⟨(Shape.HasType.mono_r h5.le_sort .sort h1).toType, h2, h3, h4, R.toType h6'⟩
 
 -- /-- Head reduction preserves `DefEq`. Uses `R.whr` for the `Val2` component;
