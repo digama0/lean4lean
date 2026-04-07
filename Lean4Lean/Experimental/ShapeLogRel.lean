@@ -1656,7 +1656,8 @@ systematically omitted (every shape is treated as coherent via sorried lemmas). 
 structure LogRel2 (Γ : List SExpr) (n : Nat) extends LogRel2Base Γ n where
   -- basic structural
   sort : Val2 M N A (.sort r) (.sort r')
-  isType : Val2 M N A m a → ValTy2 A A a
+  bot : a.HasType .type → Val2 M N A .bot a
+  -- isType : Val2 M N A m a → ValTy2 A A a
   toType : Val2 M N A m (.sort r) → ValTy2 M N m
   left : Val2 M N A m a → Val2 M M A m a
   left_ty : ValTy2 M N m → ValTy2 M M m
@@ -1684,9 +1685,9 @@ structure LogRel2 (Γ : List SExpr) (n : Nat) extends LogRel2Base Γ n where
 
 /-! #### Structural lemmas for DefEq / TyDefEq -/
 
-theorem LogRel2Base.DefEq.isType {R : LogRel2 Γ n} :
-    R.DefEq M N A m a → ∃ u, R.TyDefEq A A u a
-  | ⟨h1, h2, _, _, h5, h6⟩ => h2.isType.imp fun _ hA => ⟨h1.isType, hA, h5, h5, R.isType h6⟩
+-- theorem LogRel2Base.DefEq.isType {R : LogRel2 Γ n} :
+--     R.DefEq M N A m a → ∃ u, R.TyDefEq A A u a
+--   | ⟨h1, h2, _, _, h5, h6⟩ => h2.isType.imp fun _ hA => ⟨h1.isType, hA, h5, h5, R.isType h6⟩
 
 theorem LogRel2Base.DefEq.left {R : LogRel2 Γ n} :
     R.DefEq M N A m a → R.DefEq M M A m a
@@ -1801,7 +1802,8 @@ def LR20 : LogRel2 Γ 0 where
   Val2 _ _ _ _ _ := True
   ValTy2 _ _ _ := True
   sort := trivial
-  isType := id
+  bot _ := trivial
+  -- isType := id
   toType := id
   left := id
   left_ty := id
@@ -1849,35 +1851,30 @@ def LR2S.ValTyPi2 (IH : LogRel2 Γ n) (M₁ M₂ : SExpr) (b : Shape n) (f : Sha
 For `m = .lam g`: M and N applied to equal arguments give equal results.
 Uses raw `Val2` for input, with `p.HasType a₁` as a separate assumption. -/
 def LR2S.ValPi2 (IH : LogRel2 Γ n)
-    (M N A₁ A₂ : SExpr) (m : Shape (n+1)) (a₁ : Shape n) (a₂ : ShapeFun n) : Prop :=
-  match m with
-  | .bot => True
-  | .lam g =>
-    (∀ {{a b p}}, p.HasType a₁ → Γ ⊢ a ≡ b : A₁ → IH.Val2 a b A₁ p a₁ →
-      IH.Val2 (M.app a) (M.app b) (A₂.inst a) (ShapeFun.app g p) (ShapeFun.app a₂ p) ∧
-      IH.Val2 (N.app a) (N.app b) (A₂.inst a) (ShapeFun.app g p) (ShapeFun.app a₂ p)) ∧
-    (∀ {{a p}}, p.HasType a₁ → Γ ⊢ a : A₁ → IH.Val2 a a A₁ p a₁ →
-      IH.Val2 (M.app a) (N.app a) (A₂.inst a) (ShapeFun.app g p) (ShapeFun.app a₂ p))
-  | _ => False
+    (M N A₁ A₂ : SExpr) (m : ShapeFun n) (a₁ : Shape n) (a₂ : ShapeFun n) : Prop :=
+  (∀ {{a b p}}, p.HasType a₁ → Γ ⊢ a ≡ b : A₁ → IH.Val2 a b A₁ p a₁ →
+    IH.Val2 (M.app a) (M.app b) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p) ∧
+    IH.Val2 (N.app a) (N.app b) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p)) ∧
+  (∀ {{a p}}, p.HasType a₁ → Γ ⊢ a : A₁ → IH.Val2 a a A₁ p a₁ →
+    IH.Val2 (M.app a) (N.app a) (A₂.inst a) (ShapeFun.app m p) (ShapeFun.app a₂ p))
 
 /-- Monotonicity of `ValPi2` in the type-shape: increase (Agda: `upPiAppVal2` / `upPiAppEq2`).
 Given `PiEdge2` at the TARGET, lifts `ValPi2` from `(a₁, a₂)` to `(a₁', a₂')`. -/
 theorem LR2S.ValPi2.mono_r_1 {IH : LogRel2 Γ n}
-    (le₁ : a₁ ≤ a₁') (le₂ : a₂.LE a₂') (hm : m.HasType (.forallE a₁ a₂))
-    (hm' : m.HasType (.forallE a₁' a₂')) (piEV : LR2S.PiEdge2 IH A₁ A₂ A₂ a₁' a₂') :
+    (le₁ : a₁ ≤ a₁') (le₂ : a₂.LE a₂') (hm : Shape.HasTypeLam m a₁ a₂)
+    (hm' : Shape.HasTypeLam m a₁' a₂') (piEV : LR2S.PiEdge2 IH A₁ A₂ A₂ a₁' a₂') :
     LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ → LR2S.ValPi2 IH M N A₁ A₂ m a₁' a₂' := by
-  dsimp [LR2S.ValPi2]; split <;> try trivial
-  intro ⟨pav, pae⟩; have .lam htm := hm.unfold; have .lam htm' := hm'.unfold
+  intro ⟨pav, pae⟩
   refine ⟨fun _ _ x hx ha a1 => ?_, fun _ x hx ha a1 => ?_⟩
   all_goals
-    have ⟨x', le', hax, h1⟩ := htm.2.1 x
+    have ⟨x', le', hax, h1⟩ := hm.2.1 x
     have hax' := Shape.HasType.mono_r le₁ hx.isType hax
     have a1_x := IH.mono_l le' hax' hx a1
     have a1_down := IH.mono_r_2 le₁ hax hx.isType a1_x
-    have hg_x := htm.2.2 x' hax
+    have hg_x := hm.2.2 x' hax
     have hg_p := hg_x.mono_l (ShapeFun.app_mono_r le') h1
     have le_cod := (ShapeFun.app_mono_r le').trans (ShapeFun.app_mono_l le₂ _)
-    have ht_cod := htm'.1.2 x hx
+    have ht_cod := hm'.1.2 x hx
     have hm_target := Shape.HasType.mono_r le_cod ht_cod hg_p
   · have ⟨p1, p2⟩ := pav hax ha a1_down
     have tyA₂ := (piEV.1 hx ha.hasType.1 (IH.left a1)).1
@@ -1925,14 +1922,12 @@ theorem LR2S.ValTy2.trans {IH : LogRel2 Γ n} :
 
 theorem LR2S.ValPi2.left {IH : LogRel2 Γ n} :
     LR2S.ValPi2 IH M N B F m m₁ m₂ → LR2S.ValPi2 IH M M B F m m₁ m₂ := by
-  dsimp [LR2S.ValPi2]; split <;> try trivial
   refine fun hP => ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩
   · exact ⟨(hP.1 hp ha a1).1, (hP.1 hp ha a1).1⟩
   · exact (hP.1 hp ha a1).1
 
 theorem LR2S.ValPi2.symm {IH : LogRel2 Γ n} :
     LR2S.ValPi2 IH M N B F m m₁ m₂ → LR2S.ValPi2 IH N M B F m m₁ m₂ := by
-  dsimp [LR2S.ValPi2]; split <;> try trivial
   refine fun hP => ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩
   · exact ⟨(hP.1 hp ha a1).2, (hP.1 hp ha a1).1⟩
   · exact IH.symm (hP.2 hp ha a1)
@@ -1940,7 +1935,6 @@ theorem LR2S.ValPi2.symm {IH : LogRel2 Γ n} :
 theorem LR2S.ValPi2.trans {IH : LogRel2 Γ n} :
     LR2S.ValPi2 IH M₁ M₂ B F m m₁ m₂ →
     LR2S.ValPi2 IH M₂ M₃ B F m m₁ m₂ → LR2S.ValPi2 IH M₁ M₃ B F m m₁ m₂ := by
-  dsimp only [LR2S.ValPi2]; split <;> try trivial
   refine fun ⟨hP1, hP2⟩ ⟨hP1', hP2'⟩ => ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩
   · exact ⟨(hP1 hp ha a1).1, (hP1' hp ha a1).2⟩
   · exact IH.trans (hP2 hp ha a1) (hP2' hp ha a1)
@@ -1962,11 +1956,10 @@ theorem LR2S.PiEdge2.mono_r_2 {IH : LogRel2 Γ n}
     · exact IH.mono_r_2_ty (ShapeFun.app_mono_l le₂ x) hm_tgt hm_src (h2 hp' ha a2)
 
 theorem LR2S.ValPi2.mono_r_2 {IH : LogRel2 Γ n}
-    (le₁ : a₁.LE a₁') (le₂ : a₂.LE a₂') (hm : m.HasType (.forallE a₁ a₂))
+    (le₁ : a₁.LE a₁') (le₂ : a₂.LE a₂') (hm : Shape.HasTypeLam m a₁ a₂)
     (hValA₁ : IH.ValTy2 A₁ A₁ a₁') (htpi' : Shape.HasTypePi a₂' a₁' r') :
     LR2S.ValPi2 IH M N A₁ A₂ m a₁' a₂' → LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ := by
-  dsimp [LR2S.ValPi2]; split <;> try trivial
-  intro ⟨h1, h2⟩; have .lam hm := hm.unfold
+  intro ⟨h1, h2⟩
   refine ⟨fun _ _ x hp ha a1 => ?_, fun _ x hp ha a1 => ?_⟩
   all_goals
     have hp' := Shape.HasType.mono_r le₁ htpi'.1.isType hp
@@ -1982,25 +1975,19 @@ theorem LR2S.ValPi2.mono_r_2 {IH : LogRel2 Γ n}
 /-- Monotonicity of `ValPi2` in the element-shape: decrease (Agda: `restrictPiAppVal2-sel` etc.).
 In Lean this is simpler than Agda because we quantify over all `p` with `DefEq`, not selections. -/
 theorem LR2S.ValPi2.mono_l {IH : LogRel2 Γ n}
-    (le : m ≤ m') (hm : m.HasType (.forallE a₁ a₂))
-    (hm' : m'.HasType (.forallE a₁ a₂)) :
+    (le : m.LE m') (hm : Shape.HasTypeLam m a₁ a₂)
+    (hm' : Shape.HasTypeLam m' a₁ a₂) :
     LR2S.ValPi2 IH M N A₁ A₂ m' a₁ a₂ → LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ := by
-  cases hm.unfold with
-  | bot => exact fun _ => trivial
-  | lam htl =>
-    cases m' <;> simp [Shape.LE.def] at le
-    have .lam htl' := hm'.unfold
-    dsimp [LR2S.ValPi2]
-    intro ⟨pav, pae⟩
-    refine ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩
-    all_goals
-      have hm_tgt := htl.2.2 _ hp
-      have hm_src := htl'.2.2 _ hp
-    · have ⟨d1, d2⟩ := pav hp ha a1
-      exact ⟨IH.mono_l (ShapeFun.app_mono_l le _) hm_tgt hm_src d1,
-             IH.mono_l (ShapeFun.app_mono_l le _) hm_tgt hm_src d2⟩
-    · have q := pae hp ha a1
-      exact IH.mono_l (ShapeFun.app_mono_l le _) hm_tgt hm_src q
+  intro ⟨pav, pae⟩
+  refine ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩
+  all_goals
+    have hm_tgt := hm.2.2 _ hp
+    have hm_src := hm'.2.2 _ hp
+  · have ⟨d1, d2⟩ := pav hp ha a1
+    exact ⟨IH.mono_l (ShapeFun.app_mono_l le _) hm_tgt hm_src d1,
+           IH.mono_l (ShapeFun.app_mono_l le _) hm_tgt hm_src d2⟩
+  · have q := pae hp ha a1
+    exact IH.mono_l (ShapeFun.app_mono_l le _) hm_tgt hm_src q
 
 /-- Join of `PiEdge2`: given edge validity at `(b₁, f₁)` and `(b₂, f₂)`,
 produce edge validity at `(b₁.join b₂, f₁.join f₂)`.
@@ -2047,7 +2034,6 @@ to transport the inner `IH.Val2` terms. HasType is preserved trivially (doesn't 
 theorem LR2S.ValPi2.whr {IH : LogRel2 Γ n}
     (hM : Γ ⊢ M ⤳* M') (hN : Γ ⊢ N ⤳* N') :
     LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂ ↔ LR2S.ValPi2 IH M' N' A₁ A₂ m a₁ a₂ := by
-  dsimp [LR2S.ValPi2]; split <;> try exact .rfl
   constructor <;> intro ⟨pav, pae⟩ <;> refine ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩
   · have ⟨d1, d2⟩ := pav hp ha a1
     exact ⟨(IH.whr (.app hM) (.app hM)).1 d1, (IH.whr (.app hN) (.app hN)).1 d2⟩
@@ -2063,57 +2049,72 @@ def LR2S.Val2 (IH : LogRel2 Γ n) (M N A : SExpr) (m a : Shape (n+1)) : Prop :=
   match a with
   | .bot => True
   | .sort _ => LR2S.ValTy2 IH M N m
-  | .forallE a₁ a₂ => ∃ A₁ A₂ u v, Γ ⊢ A ⤳* .forallE A₁ A₂ ∧
-    Γ ⊢ A₁ : .sort u ∧ IH.ValTy2 A₁ A₁ a₁ ∧ A₁::Γ ⊢ A₂ : sort v ∧
-    LR2S.PiEdge2 IH A₁ A₂ A₂ a₁ a₂ ∧ LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂
+  | .forallE a₁ a₂ =>
+    match m with
+    | .bot => True
+    | .lam m =>
+      ∃ A₁ A₂ u v, Γ ⊢ A ⤳* .forallE A₁ A₂ ∧
+      Γ ⊢ A₁ : .sort u ∧ IH.ValTy2 A₁ A₁ a₁ ∧ A₁::Γ ⊢ A₂ : sort v ∧
+      LR2S.PiEdge2 IH A₁ A₂ A₂ a₁ a₂ ∧ LR2S.ValPi2 IH M N A₁ A₂ m a₁ a₂
+    | _ => False
   | _ => False
 
 def LR2S (IH : LogRel2 Γ n) : LogRel2 Γ (n+1) where
   Val2 := LR2S.Val2 IH
   ValTy2 := LR2S.ValTy2 IH
   sort := trivial
+  bot ha := by cases ha.unfold <;> trivial
   left_ty := .left
   symm_ty := .symm
   trans_ty := .trans
-  isType {M N A m a} := by
-    dsimp [LR2S.ValTy2]; dsimp [LR2S.Val2]; split <;> [exact id; simp; skip; nofun]
-    intro ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, _⟩
-    exact ⟨_, _, _, _, _, _, rA, rA, hA1, hA₂, hA2, hE⟩
+  -- isType {M N A m a} := by
+  --   dsimp [LR2S.ValTy2]; dsimp [LR2S.Val2]; split <;> [exact id; simp; skip; nofun]
+  --   cases m with
+  --   | bot => intro; sorry
+  --   | lam g =>
+  --     intro ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, _⟩
+  --     exact ⟨_, _, _, _, _, _, rA, rA, hA1, hA₂, hA2, hE⟩
+  --   | _ => simp
   toType := id
   left {M N A m a} := by
     dsimp [LR2S.Val2]; split <;> try trivial
     · exact .left
-    · intro ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP⟩
+    · cases m with | lam => ?_ | _ => exact id
+      intro ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP⟩
       exact ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP.left⟩
   symm {M N A m a} := by
     dsimp [LR2S.Val2]; split <;> try trivial
     · exact .symm
-    · intro ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP⟩
+    · cases m with | lam => ?_ | _ => exact id
+      intro ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP⟩
       exact ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP.symm⟩
   trans {M₁ M₂ A m a M₃} := by
     dsimp [LR2S.Val2]; split <;> try trivial
     · exact .trans
-    · intro ⟨B, F, u, v, rA, hA1, hA2, hA₂, hE, hP⟩ ⟨_, _, _, _, rA', _, _, _, _, hP'⟩
+    · cases m with | lam => ?_ | _ => simp
+      intro ⟨B, F, u, v, rA, hA1, hA2, hA₂, hE, hP⟩ ⟨_, _, _, _, rA', _, _, _, _, hP'⟩
       cases rA.determ .forallE rA' .forallE
       exact ⟨_, _, _, _, rA, hA1, hA2, hA₂, hE, hP.trans hP'⟩
   conv {A A' a M N m} := by
     dsimp [LR2S.ValTy2]; dsimp [LR2S.Val2]; split <;> (try · simp); dsimp
     intro ⟨B, F, B', F', u, v, rA, rA', hBB', hFF', hValB, hEdge⟩
-          ⟨_, _, _, v', rA₁, hA1, hValA, hA₂, hEdge₁, hP⟩
+    cases m with | lam => ?_ | _ => exact id
+    intro ⟨_, _, _, v', rA₁, hA1, hValA, hA₂, hEdge₁, hP⟩
     cases rA.determ .forallE rA₁ .forallE
     cases hA1.uniq_sort hBB'.hasType.1
     cases hA₂.uniq_sort hFF'.hasType.1
     refine ⟨_, _, _, _, rA', hBB'.hasType.2, IH.left_ty (IH.symm_ty hValB),
-      hBB'.defeqDF_l hFF'.hasType.2,
-      ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩, ?_⟩
-    · exact and_self_iff.2 (hEdge.1 hp sorry (IH.conv (IH.symm_ty hValB) a1)).2
-    · exact (hEdge.1 hp sorry (IH.conv (IH.symm_ty hValB) a1)).2
-    revert hP; dsimp [LR2S.ValPi2]; split <;> try trivial
-    refine fun ⟨hP1, hP2⟩ => ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩ <;> (
+      hBB'.defeqDF_l hFF'.hasType.2, ?_, ?_⟩
+    · refine ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩ <;>
+        have ha' := hBB'.symm.defeqDF ha
+      · exact and_self_iff.2 (hEdge.1 hp ha' (IH.conv (IH.symm_ty hValB) a1)).2
+      · exact (hEdge.1 hp ha' (IH.conv (IH.symm_ty hValB) a1)).2
+    refine ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩ <;> (
       have a2 := IH.conv (IH.symm_ty hValB) a1
-      have c := hEdge.2 hp sorry (IH.left a2))
-    · have ⟨v1, v2⟩ := hP1 hp sorry a2; exact ⟨IH.conv c v1, IH.conv c v2⟩
-    · exact IH.conv c (hP2 hp sorry a2)
+      have ha' := hBB'.symm.defeqDF ha
+      have c := hEdge.2 hp ha'.hasType.1 (IH.left a2))
+    · have ⟨v1, v2⟩ := hP.1 hp ha' a2; exact ⟨IH.conv c v1, IH.conv c v2⟩
+    · exact IH.conv c (hP.2 hp ha' a2)
   mono_r_2 {a a' M N A m} le hm ht h := by
     cases a with dsimp [LR2S.Val2]
     | sort => cases a' <;> simp [Shape.LE.def] at le; subst le; exact h
@@ -2121,6 +2122,7 @@ def LR2S (IH : LogRel2 Γ n) : LogRel2 Γ (n+1) where
       cases a' <;> simp [Shape.LE.def] at le
       let .forallE hp := hm.isType.unfold
       let .forallE hp' := ht.unfold
+      cases hm.unfold with | bot => trivial | lam hm
       let ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hEdge, hP⟩ := h
       exact ⟨A₁, A₂, u, v, rA, hA1,
         IH.mono_r_2_ty le.1 hp.1.isType hp'.1.isType hA2, hA₂,
@@ -2136,22 +2138,18 @@ def LR2S (IH : LogRel2 Γ n) : LogRel2 Γ (n+1) where
       hEdge.mono_r_2 le.1 le.2 hp hp' (IH.left_ty hValB)⟩
   mono_r_1 {a a' A M N m} le ha ha' hA h := by
     cases ha'.unfold with
-    | bot ha' =>
-      cases ha'.unfold with | forallE => ?_ | _ => trivial
-      let ⟨B, F, B', F', u, v, rA, rA', hBB', hFF', hValB, hEdge⟩ := hA
-      cases rA.determ .forallE rA' .forallE
-      exact ⟨_, _, _, _, rA, hBB'.hasType.1, hValB, hFF'.hasType.1, hEdge, trivial⟩
+    | bot ha' => cases ha'.unfold <;> trivial
     | sort => cases ha.unfold; exact h
     | forallE => obtain rfl | rfl := Shape.le_sort.1 le <;> [cases ha.unfold; exact h]
-    | lam =>
-      cases a <;> simp [Shape.LE.def] at le <;> cases ha.unfold
+    | lam ha'' =>
+      let .lam ha := ha.unfold; simp [Shape.LE.def] at le
       let ⟨A₁, A₂, u, v, rA, hA1, hValA, hA₂, hEdge_src, hP⟩ := h
       let ⟨B₁, F₁, B₂, F₂, u', v', rA', rA'', hBB_tgt, hFF_tgt, hValB_tgt, hEdge_tgt⟩ := hA
       cases rA.determ .forallE rA' .forallE
       cases rA.determ .forallE rA'' .forallE
       cases hA₂.uniq_sort hFF_tgt
       exact ⟨_, _, _, _, rA, hBB_tgt.hasType.1, hValB_tgt, hA₂, hEdge_tgt,
-        hP.mono_r_1 le.1 le.2 ha ha' hEdge_tgt⟩
+        hP.mono_r_1 le.1 le.2 ha ha'' hEdge_tgt⟩
   mono_l {m m' M N A a} le hm hm' h := by
     cases a with dsimp [LR2S.Val2]
     | sort s =>
@@ -2163,6 +2161,8 @@ def LR2S (IH : LogRel2 Γ n) : LogRel2 Γ (n+1) where
         IH.mono_r_2_ty le.1 hm.1.isType hm'.1.isType hValB,
         hEdge.mono_r_2 le.1 le.2 hm hm' (IH.left_ty hValB)⟩
     | forallE a₁ a₂ =>
+      cases hm.unfold with | bot => trivial | lam hm
+      cases hm'.unfold with | bot => simp [Shape.LE.def] at le | lam hm'
       let ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP⟩ := h
       exact ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP.mono_l le hm hm'⟩
     | lam => exact h
@@ -2190,17 +2190,17 @@ def LR2S (IH : LogRel2 Γ n) : LogRel2 Γ (n+1) where
         .join ht₁.1.isType ht₂.1.isType hC.1 ht₁ ht₂ hC.2 hEdge₁ hEdge₂⟩
   whr {M M' N N' A m a} hM hN := by
     cases a with dsimp [LR2S.Val2]
-    | bot => exact .rfl
     | sort s =>
       dsimp [LR2S.ValTy2]; split <;> try rfl
       constructor <;> intro ⟨B₁, F₁, B₂, F₂, u, v, rM, rN, rest⟩
       · exact ⟨B₁, F₁, B₂, F₂, u, v, hM.determ_l rM .forallE, hN.determ_l rN .forallE, rest⟩
       · exact ⟨B₁, F₁, B₂, F₂, u, v, .trans hM rM, .trans hN rN, rest⟩
     | forallE a₁ a₂ =>
+      cases m with | lam g => ?_ | _ => rfl
       constructor <;> intro ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP⟩
       · exact ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, (LR2S.ValPi2.whr hM hN).1 hP⟩
       · exact ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, (LR2S.ValPi2.whr hM hN).2 hP⟩
-    | lam => exact .rfl
+    | _ => rfl
   whr_ty {A A' B B' m} hA hB := by
     dsimp [LR2S.ValTy2]; split <;> try rfl
     constructor <;> intro ⟨B₁, F₁, B₂, F₂, u, v, rA, rB, rest⟩
@@ -2250,6 +2250,7 @@ private theorem LR2.lift_succ_aux :
   · intro M N A m a hma
     cases a with | bot | lam => rfl | sort r => exact h1 hma.toType | forallE a₁ a₂
     change ShapeFun .. at a₂; have .forallE htpi_a := hma.isType.unfold
+    cases hma.unfold with | bot => constructor <;> intro <;> trivial | @lam _ g _ _ htm
     constructor <;> intro ⟨A₁, A₂, u, v, rA, hA1, hValA, hA₂, hEdge, hP⟩
     · refine ⟨A₁, A₂, u, v, rA, hA1, (ih.1 htpi_a.1.isType).1 hValA, hA₂, ?_, ?_⟩
       · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
@@ -2259,9 +2260,7 @@ private theorem LR2.lift_succ_aux :
           exact ⟨(ih.1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r1),
                  (ih.1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r2)⟩
         · exact (ih.1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ hEdge.2 hp' ha v')
-      · dsimp [LR2S.ValPi2] at hP ⊢; cases m <;> simp [Shape.lift] at hP ⊢
-        rename_i g; have .lam htm := hma.unfold
-        refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
+      · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
           have hp' := (Shape.HasType.lift (Nat.le_succ k)).2 hp
           have v' := (ih.2 hp).2 v)
         · have ⟨r1, r2⟩ := hP.1 hp' ha v'
@@ -2281,9 +2280,7 @@ private theorem LR2.lift_succ_aux :
           exact ⟨ShapeFun.app_of_mem d2 ▸ (ih.1 (htpi_a.2 _ hq)).2 r1,
                  ShapeFun.app_of_mem d2 ▸ (ih.1 (htpi_a.2 _ hq)).2 r2⟩
         · exact ShapeFun.app_of_mem d2 ▸ (ih.1 (htpi_a.2 _ hq)).2 (hEdge.2 hq ha v')
-      · revert hP; dsimp [LR2S.ValPi2]; cases m <;> simp [Shape.lift]
-        rename_i g; change ShapeFun .. at g; have .lam htm := hma.unfold
-        refine fun hP1 hP2 => ⟨fun _ _ p hp ha v => ?_, fun _ p hp ha v => ?_⟩
+      · refine ⟨fun _ _ p hp ha v => ?_, fun _ p hp ha v => ?_⟩
         all_goals
           have ⟨_, _, dg1, dg2, dg3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift g) p
           simp [ShapeFun.lift] at dg2; obtain ⟨qg, fg, dg2, rfl, rfl⟩ := dg2
@@ -2304,10 +2301,10 @@ private theorem LR2.lift_succ_aux :
             ((Shape.HasType.lift (Nat.le_succ k)).2 hqa) hp v)
           have vt_qa := hEdge.2 hqa ha.hasType.1 ((LR2 Γ).left v_lo_qa)
           rw [dg3, da3]
-        · have ⟨r1, r2⟩ := hP1 hqg ha v_lo
+        · have ⟨r1, r2⟩ := hP.1 hqg ha v_lo
           exact ⟨(ih.2 ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa r1),
                  (ih.2 ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa r2)⟩
-        · exact (ih.2 ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa (hP2 hqg ha v_lo))
+        · exact (ih.2 ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa (hP.2 hqg ha v_lo))
 
 theorem LR2.Val2.lift {m a : Shape n} (le : n ≤ n') (hma : m.HasType a) :
     (LR2 Γ).Val2 (n := n') M N A m.lift a.lift ↔ (LR2 Γ).Val2 M N A m a := by
