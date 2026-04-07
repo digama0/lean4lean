@@ -749,6 +749,9 @@ theorem LE_Interp.bvar_iff :
 theorem LE_Interp.forallE_inv {b} {f : ShapeFun n} {B F}
     (H : LE_Interp (n := n+1) ρ (.forallE b f) (.forallE B F)) :
     LE_Interp ρ b B ∧ ∀ x, x.HasType b → LE_Interp (ρ.push x) (f.app x) F := sorry
+theorem LE_Interp.lam_inv {b} {f : ShapeFun n} {B F}
+    (H : LE_Interp (n := n+1) ρ (.lam f) (.lam B F)) (hf : Shape.HasDom f b) :
+    LE_Interp ρ b B ∧ ∀ x, x.HasType b → LE_Interp (ρ.push x) (f.app x) F := sorry
 
 theorem LE_Interp.join (J : m₁.Join m₂ m) (H1 : LE_Interp ρ m₁ M) (H2 : LE_Interp ρ m₂ M) :
     LE_Interp ρ m M := sorry
@@ -2335,12 +2338,20 @@ theorem LR2.TyDefEq.lift {m : Shape n} (le : n ≤ n') :
       (LE_Interp.lift le).2 h3, (LE_Interp.lift le).2 h4,
       (LR2.ValTy2.lift le h1).2 h5⟩
 
-/-- Two-substitution validity: σ and σ' agree up to DefEq at each variable.
-Matches Agda's ValidConvSub2. -/
+def LR2.Subst1 (Γ₀ : List SExpr) (x x' A₀ A A' : SExpr) (ρ : Valuation) (i := 0) : Prop :=
+  Γ₀ ⊢ x ≡ x' : A ∧ ∀ {{n}} (a : Shape n), LE_Interp ρ a A₀ →
+    (a.HasType .type → ∃ u', (LR2 Γ₀).TyDefEq A A' u' a) ∧
+    (∀ {{m}}, LE_Interp ρ m (.bvar i) → m.HasType a → (LR2 Γ₀).Val2 x x' A m a)
+
+/-- Two-substitution validity: σ and σ' agree up to IsDefEq+Val2 at each variable.
+Matches Agda's ValidConvSub2. Uses `IsDefEq ∧ Val2` instead of full `DefEq`
+to avoid requiring `LE_Interp .nil` fields that are not available in bvar0_defEq. -/
 def LR2.SubstWF (Γ₀ : List SExpr) (σ σ' : Subst) (Γ : List SExpr) (ρ : Valuation) : Prop :=
-  ∀ {{n}} {{i A}}, Lookup Γ i A →
-    ∀ (m a : Shape n), LE_Interp ρ m (.bvar i) → LE_Interp ρ a A → m.HasType a →
-      (LR2 Γ₀).DefEq (σ i) (σ' i) (A.subst σ) m a
+  ∀ {{i A}}, Lookup Γ i A → LR2.Subst1 Γ₀ (σ i) (σ' i) A (A.subst σ) (A.subst σ') ρ i
+  -- ∀ {{i A}}, Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ ∧
+  --   ∀ {{n}} (a : Shape n), LE_Interp ρ a A →
+  --     (a.HasType .type → ∃ u, (LR2 Γ₀).TyDefEq (A.subst σ) (A.subst σ') u a) ∧
+  --     (∀ {{m}}, LE_Interp ρ m (.bvar i) → m.HasType a → (LR2 Γ₀).Val2 (σ i) (σ' i) (A.subst σ) m a)
 
 /-- Well-typed conversion substitution: σ(i) ≡ σ'(i) at each variable. -/
 def Ctx.SubstEq (Γ₀ : List SExpr) (σ σ' : SExpr.Subst) (Γ : List SExpr) : Prop :=
@@ -2353,368 +2364,58 @@ theorem Ctx.SubstEq.lift (W : Ctx.SubstEq Γ₀ σ σ' Γ) (hA : Γ₀ ⊢ A.sub
     Ctx.SubstEq (A.subst σ :: Γ₀) σ.lift σ'.lift (A :: Γ) := sorry
 
 theorem LR2.SubstWF.toSubstEq (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) : Ctx.SubstEq Γ₀ σ σ' Γ :=
-  fun _ _ h => (W (n := 0) h .bot .bot .bot .bot <| .bot' <| .bot .sort).isDefEq
+  fun _ _ h => (W h).1
 
 theorem LR2.SubstWF.fits (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) : ρ.Fits Γ₀ Γ := sorry
 
 /-- Substitution lemma for LE_Interp: if `m` approximates `M` under valuation `ρ`,
 and `σ`/`σ'` are substitutions compatible with `ρ` (via SubstWF),
-then `m` approximates `M.subst σ` (resp. `M.subst σ'`) under the nil valuation.
-Proved by induction on the LE_Interp derivation; at bvar leaves, uses SubstWF
-to get LE_Interp .nil from the DefEq at each variable. -/
+then `m` approximates `M.subst σ` (resp. `M.subst σ'`) under the nil valuation. -/
 theorem LE_Interp.subst_nil (h : LE_Interp ρ m M) (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) :
     LE_Interp .nil m (M.subst σ) ∧ LE_Interp .nil m (M.subst σ') := sorry
 
-theorem LR2.SubstWF.left (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) : LR2.SubstWF Γ₀ σ σ Γ ρ :=
-  fun _ _ _ h m a hM hA hmem => (W h m a hM hA hmem).left
+theorem LR2.SubstWF.left (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) : LR2.SubstWF Γ₀ σ σ Γ ρ := by
+  refine fun _ _ h => ⟨(W h).1.hasType.1, fun _ a hA => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
+  · exact (((W h).2 a hA).1 ht).imp fun _ => (·.left)
+  · exact (LR2 Γ₀).left <| ((W h).2 a hA).2 hM hmem
 
-theorem LR2.SubstWF.symm (W : LR2.SubstWF Γ₀ σ σ' Γ ρ)
-    (hty : ∀ {{i A}}, Lookup Γ i A → ∀ {n} (a : Shape n), LE_Interp ρ a A → a.HasType .type →
-      ∃ u, (LR2 Γ₀).TyDefEq (A.subst σ) (A.subst σ') u a) :
-    LR2.SubstWF Γ₀ σ' σ Γ ρ :=
-  fun _ _ _ h m a hM hA hmem =>
-    let ⟨_, hte⟩ := hty h a hA hmem.isType
-    (W h m a hM hA hmem).symm.conv hte
+theorem LR2.SubstWF.symm (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) : LR2.SubstWF Γ₀ σ' σ Γ ρ := by
+  refine fun i A h => ⟨?_, fun _ a hA => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
+  · have ⟨_, hte⟩ := ((W h).2 (n := 0) _ .bot).1 (.bot .sort)
+    exact hte.isDefEq.defeqDF (W h).1.symm
+  · exact let ⟨u, hte⟩ := ((W h).2 a hA).1 ht; ⟨u, hte.symm⟩
+  · let ⟨_, hte⟩ := ((W h).2 a hA).1 hmem.isType
+    exact (LR2 Γ₀).conv hte.valTy2 ((LR2 Γ₀).symm (((W h).2 a hA).2 hM hmem))
 
-theorem LR2.SubstWF.trans (W₁ : LR2.SubstWF Γ₀ σ σ' Γ ρ) (W₂ : LR2.SubstWF Γ₀ σ' σ'' Γ ρ)
-    (hty : ∀ {{i A}}, Lookup Γ i A → ∀ {n} (a : Shape n), LE_Interp ρ a A → a.HasType .type →
-      ∃ u, (LR2 Γ₀).TyDefEq (A.subst σ) (A.subst σ') u a) :
-    LR2.SubstWF Γ₀ σ σ'' Γ ρ :=
-  fun _ _ _ h m a hM hA hmem =>
-    let ⟨_, hte⟩ := hty h a hA hmem.isType
-    (W₁ h m a hM hA hmem).trans ((W₂ h m a hM hA hmem).conv hte.symm)
+theorem LR2.SubstWF.trans (W₁ : LR2.SubstWF Γ₀ σ σ' Γ ρ) (W₂ : LR2.SubstWF Γ₀ σ' σ'' Γ ρ) :
+    LR2.SubstWF Γ₀ σ σ'' Γ ρ := by
+  refine fun i A h => ⟨?_, fun _ a hA => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
+  · have ⟨_, h'⟩ := ((W₁ h).2 (n := 0) _ .bot).1 (.bot .sort)
+    exact (W₁ h).1.trans (h'.isDefEq.symm.defeqDF (W₂ h).1)
+  · let ⟨u, hte₁⟩ := ((W₁ h).2 a hA).1 ht
+    let ⟨_, hte₂⟩ := ((W₂ h).2 a hA).1 ht
+    cases hte₁.isDefEq.uniq_sort hte₂.isDefEq
+    exact ⟨u, hte₁.trans hte₂⟩
+  · let ⟨_, hte⟩ := ((W₁ h).2 a hA).1 hmem.isType
+    exact (LR2 Γ₀).trans (((W₁ h).2 a hA).2 hM hmem) <|
+      (LR2 Γ₀).conv ((LR2 Γ₀).symm_ty hte.valTy2) (((W₂ h).2 a hA).2 hM hmem)
 
 /-- Extend substitution validity to a new binding.
 Matches Agda's ValidSub2-extend / ValidConvSub2-extend.
 Zero case: use the hypothesis `h0` for the new variable.
 Succ case: delegate to the original `W`, using `lift_subst_cons` and `weak_iff`. -/
 theorem LR2.SubstWF.cons (W : LR2.SubstWF Γ₀ σ σ' Γ ρ)
-    (h0 : ∀ {n} (m a : Shape n), LE_Interp (ρ.push x) m (.bvar 0) →
-      LE_Interp (ρ.push x) a A.lift → m.HasType a → (LR2 Γ₀).DefEq t t' (A.subst σ) m a) :
+    (h0 : Γ₀ ⊢ t ≡ t' : A.subst σ ∧
+      ∀ {{n}} (a : Shape n), LE_Interp (ρ.push x) a A.lift →
+        (a.HasType .type → ∃ u, (LR2 Γ₀).TyDefEq (A.subst σ) (A.subst σ') u a) ∧
+        (∀ {{m}}, LE_Interp (ρ.push x) m (.bvar 0) → m.HasType a →
+          (LR2 Γ₀).Val2 t t' (A.subst σ) m a)) :
     LR2.SubstWF Γ₀ (σ.cons t) (σ'.cons t') (A :: Γ) (ρ.push x) := by
-  intro n i B hlookup m a hM hA hmem
+  intro i B hlookup
   cases hlookup with
-  | zero => rw [lift_subst_cons]; exact h0 m a hM hA hmem
+  | zero => simp only [lift_subst_cons, Subst.cons]; exact ⟨h0.1, h0.2⟩
   | succ hlookup =>
-    rw [Subst.cons, lift_subst_cons]
-    exact W hlookup m a (LE_Interp.weak_iff.mp hM) (LE_Interp.weak_iff.mp hA) hmem
-
-/-- Combined fundamental theorem: proves all three parts simultaneously.
-Merges Agda's adequacySub2, adequacyEqSub2, and adequacyConvSub2.
-The three-part output avoids the trans blockage that a separate fundamentalConv would face:
-ih1 on (e₁≡e₂) gives e₂σ≡e₂σ' as part 2, ih2 on (e₂≡e₃) gives e₂σ≡e₃σ as part 3. -/
-theorem LR2.fundamental (H : Γ ⊢ M ≡ N : A)
-    (hM : LE_Interp (n := n) ρ m M) (hA : LE_Interp ρ a A) (hmem : m.HasType a) :
-    (∀ {{σ σ'}}, LR2.SubstWF Γ₀ σ σ' Γ ρ →
-      (LR2 Γ₀).Val2 (M.subst σ) (M.subst σ') (A.subst σ) m a ∧
-      (LR2 Γ₀).Val2 (N.subst σ) (N.subst σ') (A.subst σ) m a) ∧
-    ∀ {{σ}}, LR2.SubstWF Γ₀ σ σ Γ ρ → (LR2 Γ₀).Val2 (M.subst σ) (N.subst σ) (A.subst σ) m a := by
-  replace H := H.strong; induction H generalizing ρ n m a with
-  | bvar h => exact ⟨fun σ σ' W => let d := W h m a hM hA hmem; ⟨d.val2, d.val2⟩,
-    fun σ W => (LR2 Γ₀).left (W h m a hM hA hmem).val2⟩
-  | symm H ih =>
-    refine ⟨fun σ σ' W => ?_, fun σ W => ?_⟩ <;>
-      have hN := (LE_Interp.sound H.defeq W.fits).1.2 hM
-    · exact ((ih hN hA hmem).1 W).symm
-    · exact (LR2 Γ₀).symm ((ih hN hA hmem).2 W)
-  | trans _ H1 H2 ihA ih1 ih2 =>
-    refine ⟨fun σ σ' W => ?_, fun σ W => ?_⟩ <;>
-      have he₂ := (LE_Interp.sound H1.defeq W.fits).1.1 hM
-    · exact ⟨((ih1 hM hA hmem).1 W).1, ((ih2 he₂ hA hmem).1 W).2⟩
-    · exact (LR2 Γ₀).trans ((ih1 hM hA hmem).2 W) ((ih2 he₂ hA hmem).2 W)
-  | sort => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | const => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | appDF => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | @lamDF Γ A A' u B v body body' HA HB HBody ihA ihB ihBody =>
-    -- Context manipulation: call body IH with ρ.push p and W.cons h0.
-    -- h0 provides DefEq for variable 0 (the new binding), derived from the ValPi2 input.
-    have bodyPair {k np : Nat} {p : Shape np} {mb ab : Shape k}
-        {t t' : SExpr} {σ σ' : Subst}
-        (hMb : LE_Interp (ρ.push p) mb body)
-        (hBb : LE_Interp (ρ.push p) ab B)
-        (hmb : mb.HasType ab)
-        (W : LR2.SubstWF Γ₀ σ σ' Γ ρ)
-        (h0 : ∀ {n'} (m a : Shape n'), LE_Interp (ρ.push p) m (.bvar 0) →
-          LE_Interp (ρ.push p) a A.lift → m.HasType a → (LR2 Γ₀).DefEq t t' (A.subst σ) m a) :
-        (LR2 Γ₀).Val2 (n := k) (body.subst (σ.cons t)) (body.subst (σ'.cons t'))
-          (B.subst (σ.cons t)) mb ab ∧
-        (LR2 Γ₀).Val2 (n := k) (body'.subst (σ.cons t)) (body'.subst (σ'.cons t'))
-          (B.subst (σ.cons t)) mb ab := (ihBody hMb hBb hmb).1 (W.cons h0)
-    have bodyEq {k np : Nat} {p : Shape np} {mb ab : Shape k}
-        {t : SExpr} {σ : Subst}
-        (hMb : LE_Interp (ρ.push p) mb body)
-        (hBb : LE_Interp (ρ.push p) ab B)
-        (hmb : mb.HasType ab)
-        (W : LR2.SubstWF Γ₀ σ σ Γ ρ)
-        (h0 : ∀ {n'} (m a : Shape n'), LE_Interp (ρ.push p) m (.bvar 0) →
-          LE_Interp (ρ.push p) a A.lift → m.HasType a → (LR2 Γ₀).DefEq t t (A.subst σ) m a) :
-        (LR2 Γ₀).Val2 (n := k) (body.subst (σ.cons t)) (body'.subst (σ.cons t))
-          (B.subst (σ.cons t)) mb ab := (ihBody hMb hBb hmb).2 (W.cons h0)
-    -- Domain type validity via ihA
-    -- Mirrors DefEq.toType: adjust type-shape from ad to .sort, then extract ValTy2
-    have domTyEq {nd : Nat} {md ad : Shape nd} {σ : Subst}
-        (hAd : LE_Interp ρ md A) (hSd : LE_Interp (n := nd) ρ ad (.sort u)) (hmd : md.HasType ad)
-        (W : LR2.SubstWF Γ₀ σ σ Γ ρ) :
-        (LR2 Γ₀).ValTy2 (A.subst σ) (A'.subst σ) md :=
-      (LR2 Γ₀).toType <| (LR2 Γ₀).mono_r_1 hSd.le_sort hmd
-        (.mono_r hSd.le_sort .sort hmd) ((LR2 Γ₀).toType (LR2 Γ₀).sort) ((ihA hAd hSd hmd).2 W)
-    -- LE_Interp extraction lemmas for lambda/forallE shapes (sorry'd — need shape theory)
-    -- From LE_Interp at .forallE: extract domain interpretation
-    have forallE_dom_interp {k : Nat} {a₁ : Shape k} {a₂ : ShapeFun k} {X Y : SExpr}
-        (hFE : LE_Interp (n := k+1) ρ (.forallE a₁ a₂) (.forallE X Y)) :
-        LE_Interp ρ a₁ X := sorry
-    -- From LE_Interp at .lam: given p.HasType a₁, extract body interpretation
-    have lam_body_interp {k : Nat} {f : ShapeFun k} {a₁ : Shape k} {a₂ : ShapeFun k}
-        {p : Shape k} {X Y : SExpr}
-        (hLam : LE_Interp (n := k+1) ρ (.lam f) (.lam X Y))
-        (htm : Shape.HasTypeLam f a₁ a₂) (hp : p.HasType a₁) :
-        LE_Interp (ρ.push p) (ShapeFun.app f p) Y := sorry
-    -- From LE_Interp at .forallE: given p.HasType a₁, extract codomain interpretation
-    have forallE_body_interp {k : Nat} {a₁ : Shape k} {a₂ : ShapeFun k} {p : Shape k}
-        (hFE : LE_Interp (n := k+1) ρ (.forallE a₁ a₂) (.forallE A B))
-        (hp : p.HasType a₁) :
-        LE_Interp (ρ.push p) (ShapeFun.app a₂ p) B := sorry
-    -- From Val2 input + bvar/lift interpretation: derive DefEq at variable 0
-    -- (Agda: transportVal2 — uses downVal2/restrictVal2 to go from (p,a₁) to (m',a'))
-    have bvar0_defEq {k : Nat} {a₁ : Shape k} {p : Shape k}
-        {x x' : SExpr} {σ : Subst}
-        (hp : p.HasType a₁)
-        (hx : Γ₀ ⊢ x ≡ x' : A.subst σ)
-        (hv : (LR2 Γ₀).Val2 x x' (A.subst σ) p a₁)
-        {n' : Nat} (m' : Shape n') (a' : Shape n')
-        (hm : LE_Interp (ρ.push p) m' (.bvar 0))
-        (ha : LE_Interp (ρ.push p) a' A.lift)
-        (hma : m'.HasType a') :
-        (LR2 Γ₀).DefEq x x' (A.subst σ) m' a' := sorry
-    -- Codomain type validity via ihB
-    -- Given LE_Interps into B and .sort v at fiber p, produces ValTy2 for B after substitution.
-    -- Mirrors domTyEq but uses ihB (IH for A::Γ ⊢ B : .sort v) with extended SubstWF.
-    have codomTyPair {k np : Nat} {mb ab : Shape k} {p : Shape np} {a₁ : Shape np}
-        {x x' : SExpr} {σ : Subst}
-        (hBb : LE_Interp (ρ.push p) mb B) (hSb : LE_Interp (ρ.push p) ab (.sort v))
-        (hmb : mb.HasType ab)
-        (hp : p.HasType a₁)
-        (hx : Γ₀ ⊢ x ≡ x' : A.subst σ)
-        (hv : (LR2 Γ₀).Val2 x x' (A.subst σ) p a₁)
-        (W : LR2.SubstWF Γ₀ σ σ Γ ρ) :
-        (LR2 Γ₀).ValTy2 (B.subst (σ.cons x)) (B.subst (σ.cons x')) mb :=
-      (LR2 Γ₀).toType <| (LR2 Γ₀).mono_r_1 hSb.le_sort hmb
-        (.mono_r hSb.le_sort .sort hmb) ((LR2 Γ₀).toType (LR2 Γ₀).sort)
-        ((ihB hBb hSb hmb).1 (W.cons (bvar0_defEq hp hx hv)) |>.1)
-    have codomTyEq {k np : Nat} {mb ab : Shape k} {p : Shape np} {a₁ : Shape np}
-        {x : SExpr} {σ : Subst}
-        (hBb : LE_Interp (ρ.push p) mb B) (hSb : LE_Interp (ρ.push p) ab (.sort v))
-        (hmb : mb.HasType ab)
-        (hp : p.HasType a₁)
-        (hx : Γ₀ ⊢ x : A.subst σ)
-        (hv : (LR2 Γ₀).Val2 x x (A.subst σ) p a₁)
-        (W : LR2.SubstWF Γ₀ σ σ Γ ρ) :
-        (LR2 Γ₀).ValTy2 (B.subst (σ.cons x)) (B.subst (σ.cons x)) mb :=
-      (LR2 Γ₀).toType <| (LR2 Γ₀).mono_r_1 hSb.le_sort hmb
-        (.mono_r hSb.le_sort .sort hmb) ((LR2 Γ₀).toType (LR2 Γ₀).sort)
-        ((ihB hBb hSb hmb).2 (W.cons (bvar0_defEq hp hx hv)))
-    -- N interpretation from M interpretation via sound (bidirectional eval)
-    have hN (W : ρ.Fits Γ₀ Γ) : LE_Interp ρ m (.lam A' body') :=
-      (LE_Interp.sound (.lamDF HA.defeq HBody.defeq) W).1.1 hM
-    -- Pair direction: local lemma, used twice (for M and for N)
-    -- Produces Val2 (.lam X Y).subst σ (.lam X Y).subst σ' (.forallE A B).subst σ m a
-    -- given LE_Interp for the lambda term and the relevant body IH direction.
-    have mkPairVal2 {X Y}
-        (hTerm : LE_Interp ρ m (.lam X Y))
-        (bodyDir : ∀ {k np : Nat} {p : Shape np} {mb ab : Shape k}
-          {t t' : SExpr} {σ σ' : Subst},
-          LE_Interp (ρ.push p) mb Y → LE_Interp (ρ.push p) ab B → mb.HasType ab →
-          LR2.SubstWF Γ₀ σ σ' Γ ρ →
-          (∀ {n'} (m a : Shape n'), LE_Interp (ρ.push p) m (.bvar 0) →
-            LE_Interp (ρ.push p) a A.lift → m.HasType a → (LR2 Γ₀).DefEq t t' (A.subst σ) m a) →
-          (LR2 Γ₀).Val2 (n := k) (Y.subst (σ.cons t)) (Y.subst (σ'.cons t'))
-            (B.subst (σ.cons t)) mb ab)
-        (σ σ' : Subst) (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) :
-        (LR2 Γ₀).Val2 (.subst (.lam X Y) σ) (.subst (.lam X Y) σ')
-          (.subst (.forallE A B) σ) m a := by
-      cases hmem.unfold with
-      | bot | sort | forallE => exact sorry
-      | lam htm =>
-        rename_i k f a₁ a₂
-        show LR2S.Val2 (LR2 Γ₀) _ _ _ (.lam f) (.forallE a₁ a₂)
-        dsimp only [LR2S.Val2]
-        -- Syntactic side conditions
-        have ⟨v, hBsort⟩ := HBody.defeq.isType
-        have hTypA : Γ₀ ⊢ A.subst σ : .sort u :=
-          HA.defeq.hasType.1.subst W.left.toSubstEq
-        have hTypB : A.subst σ :: Γ₀ ⊢ B.subst σ.lift : .sort v :=
-          hBsort.subst (W.left.toSubstEq.lift hTypA)
-        -- Semantic domain validity: ValTy2 (A.subst σ) (A.subst σ) a₁
-        -- Chain: extract LE_Interp ρ a₁ A from hA, use sound to get InterpTyped,
-        -- then domTyEq + left_ty + mono_r_2_ty + lift
-        have hDomInterp := forallE_dom_interp hA
-        have ⟨_, a', _, le_n, le_a, hA', hSort, hmem'⟩ :=
-          (LE_Interp.sound HA.defeq W.left.fits).2 hDomInterp
-        have hDomEq := (LR2 Γ₀).left_ty (domTyEq hA' hSort hmem' W.left)
-        have hValTyDom : (LR2 Γ₀).ValTy2 (A.subst σ) (A.subst σ) a₁ :=
-          (LR2.ValTy2.lift le_n htm.1.1.isType).1 <| (LR2 Γ₀).mono_r_2_ty le_a
-            (Shape.lift_type ▸ (Shape.HasType.lift le_n).2 htm.1.1.isType)
-            (Shape.HasType.mono_r hSort.le_sort .sort hmem').toType hDomEq
-        -- Codomain type validity at each fiber, using ihB
-        -- have hFits_ext {p : Shape k} (hp : p.HasType a₁) :
-        --     (ρ.push p).Fits Γ₀ (A :: Γ) := sorry
-        have hPiEdge : LR2S.PiEdge2 (LR2 Γ₀) (A.subst σ) (B.subst σ.lift) (B.subst σ.lift)
-            a₁ a₂ := by
-          constructor
-          · intro x x' p hp ha hv
-            simp only [inst_lift_cons]
-            have W' := W.cons (bvar0_defEq hp ha hv)
-            have hBb := forallE_body_interp hA hp
-            have ⟨n', ab, _, le_n', le_ab, hBb', hSortB, hmemB⟩ :=
-              (LE_Interp.sound HB.defeq W'.fits).2 hBb
-            have ρ_le : (ρ.push p).LE (ρ.push (n := n') p.lift) :=
-              (Valuation.LE.push' le_n' (Nat.le_refl _)).2 ⟨.rfl, Shape.lift_self ▸ .rfl⟩
-            have t := codomTyPair (hBb'.mono_l ρ_le) (hSortB.mono_l ρ_le) hmemB
-              ((Shape.HasType.lift le_n').2 hp) ha ((Val2.lift le_n' hp).2 hv) W.left
-            have hap : (a₂.app p).HasType .type := htm.1.2 _ hp
-            have t' := (LR2.ValTy2.lift le_n' hap).1 <| (LR2 Γ₀).mono_r_2_ty le_ab
-              (Shape.lift_type ▸ (Shape.HasType.lift le_n').2 hap)
-              (Shape.HasType.mono_r hSortB.le_sort .sort hmemB).toType t
-            exact ⟨t', t'⟩
-          · intro x p hp ha hv
-            simp only [inst_lift_cons]
-            have W' := W.cons (bvar0_defEq hp ha hv)
-            have hBb := forallE_body_interp hA hp
-            have ⟨_, ab, _, le_n', le_ab, hBb', hSortB, hmemB⟩ :=
-              (LE_Interp.sound HB.defeq W'.fits).2 hBb
-            have hap : (a₂.app p).HasType .type := htm.1.2 _ hp
-            exact (LR2.ValTy2.lift le_n' hap).1 <| (LR2 Γ₀).mono_r_2_ty le_ab
-              (Shape.lift_type ▸ (Shape.HasType.lift le_n').2 hap)
-              (Shape.HasType.mono_r hSortB.le_sort .sort hmemB).toType
-              (codomTyEq hBb' hSortB hmemB hp ha hv W.left)
-        refine ⟨A.subst σ, B.subst σ.lift, u, v, .rfl, hTypA, hValTyDom, hTypB, hPiEdge, ?_, ?_⟩
-        -- ValPi2 pair: Val2 x x' (A.subst σ) p a₁ →
-        --   Val2 ((.lam X Y).subst σ).app x) .. ∧ Val2 ((.lam X Y).subst σ').app x) ..
-        · intro x x' p hp ha hv
-          have betaL : ∀ (t : SExpr), Γ₀ ⊢ .app (.lam (X.subst σ) (Y.subst σ.lift)) t ⤳*
-              Y.subst (σ.cons t) := fun t => inst_lift_cons (x := t) ▸ .tail .rfl .beta
-          have betaR : ∀ (t : SExpr), Γ₀ ⊢ .app (.lam (X.subst σ') (Y.subst σ'.lift)) t ⤳*
-              Y.subst (σ'.cons t) := fun t => inst_lift_cons (x := t) ▸ .tail .rfl .beta
-          rw [inst_lift_cons]
-          constructor
-          -- Conjunct 1: same σ direction
-          · exact ((LR2 Γ₀).whr (betaL x) (betaL x')).2
-              (bodyDir (lam_body_interp hTerm htm hp) (forallE_body_interp hA hp) (htm.2.2 p hp)
-                W.left (bvar0_defEq hp ha hv))
-          -- Conjunct 2: same σ' direction (needs SubstWF σ' σ')
-          · exact ((LR2 Γ₀).whr (betaR x) (betaR x')).2 sorry
-        -- ValPi2 eq: Val2 x x (A.subst σ) p a₁ →
-        --   Val2 ((.lam X Y).subst σ).app x) ((.lam X Y).subst σ').app x) ..
-        · intro x p hp ha hv
-          have betaL : Γ₀ ⊢ .app (.lam (X.subst σ) (Y.subst σ.lift)) x ⤳*
-              Y.subst (σ.cons x) := inst_lift_cons (x := x) ▸ .tail .rfl .beta
-          have betaR : Γ₀ ⊢ .app (.lam (X.subst σ') (Y.subst σ'.lift)) x ⤳*
-              Y.subst (σ'.cons x) := inst_lift_cons (x := x) ▸ .tail .rfl .beta
-          rw [inst_lift_cons]
-          exact ((LR2 Γ₀).whr betaL betaR).2
-            (bodyDir (lam_body_interp hTerm htm hp) (forallE_body_interp hA hp) (htm.2.2 p hp)
-              W (bvar0_defEq hp ha hv))
-    -- Main result
-    refine ⟨fun σ σ' W => ⟨
-        mkPairVal2 hM
-          (fun hMb hBb hmb W h0 => (ihBody hMb hBb hmb).1 (W.cons h0) |>.1) σ σ' W,
-        mkPairVal2 (hN W.fits)
-          (fun _ _ _ _ _ => sorry) σ σ' W⟩,
-      fun σ W => ?_⟩
-    -- Val2 (.lam (A.subst σ) (body.subst σ.lift)) (.lam (A'.subst σ) (body'.subst σ.lift))
-    --      (.forallE (A.subst σ) (B.subst σ.lift)) m a
-    cases hmem.unfold with
-    | bot | sort | forallE => exact sorry
-    | lam htm =>
-      -- m = .lam f, a = .forallE a₁ a₂: the main case
-      -- htm : HasTypeLam f a₁ a₂
-      rename_i k f a₁ a₂
-      show LR2S.Val2 (LR2 Γ₀) _ _ _ (.lam f) (.forallE a₁ a₂)
-      dsimp only [LR2S.Val2]
-      -- Witnesses for the existential: A₁=A.subst σ, A₂=B.subst σ.lift, u, v
-      -- v is the universe of the codomain B
-      have hTypA : Γ₀ ⊢ A.subst σ : .sort u := sorry
-      have v : SLevel := sorry  -- universe of B
-      have hTypB : A.subst σ :: Γ₀ ⊢ B.subst σ.lift : .sort v := sorry
-      have hValTyDom : (LR2 Γ₀).ValTy2 (A.subst σ) (A.subst σ) a₁ := sorry
-      have hPiEdge : LR2S.PiEdge2 (LR2 Γ₀) (A.subst σ) (B.subst σ.lift) (B.subst σ.lift) a₁ a₂ :=
-        sorry
-      refine ⟨A.subst σ, B.subst σ.lift, u, v, .rfl, hTypA, hValTyDom, hTypB, hPiEdge,
-        ?_, ?_⟩
-      -- ValPi2 pair direction: given Val2 x x' (A.subst σ) p a₁, produce
-      -- Val2 (M.app x) (M.app x') ... ∧ Val2 (N.app x) (N.app x') ...
-      · intro x x' p hp ha hv
-        have betaM : Γ₀ ⊢ .app (.lam (A.subst σ) (body.subst σ.lift)) x ⤳*
-            body.subst (σ.cons x) := inst_lift_cons (x := x) ▸ .tail .rfl .beta
-        have betaM' : Γ₀ ⊢ .app (.lam (A.subst σ) (body.subst σ.lift)) x' ⤳*
-            body.subst (σ.cons x') := inst_lift_cons (x := x') ▸ .tail .rfl .beta
-        have betaN : Γ₀ ⊢ .app (.lam (A'.subst σ) (body'.subst σ.lift)) x ⤳*
-            body'.subst (σ.cons x) := inst_lift_cons (x := x) ▸ .tail .rfl .beta
-        have betaN' : Γ₀ ⊢ .app (.lam (A'.subst σ) (body'.subst σ.lift)) x' ⤳*
-            body'.subst (σ.cons x') := inst_lift_cons (x := x') ▸ .tail .rfl .beta
-        rw [inst_lift_cons]
-        have bP := bodyPair
-          (lam_body_interp hM htm hp) (forallE_body_interp hA hp) (htm.2.2 p hp)
-          W (bvar0_defEq hp ha hv)
-        exact ⟨((LR2 Γ₀).whr betaM betaM').2 bP.1,
-               ((LR2 Γ₀).whr betaN betaN').2 bP.2⟩
-      -- ValPi2 equality direction: given Val2 x x (A.subst σ) p a₁, produce
-      -- Val2 (M.app x) (N.app x) ...
-      · intro x p hp ha hv
-        have betaM : Γ₀ ⊢ .app (.lam (A.subst σ) (body.subst σ.lift)) x ⤳*
-            body.subst (σ.cons x) := inst_lift_cons (x := x) ▸ .tail .rfl .beta
-        have betaN : Γ₀ ⊢ .app (.lam (A'.subst σ) (body'.subst σ.lift)) x ⤳*
-            body'.subst (σ.cons x) := inst_lift_cons (x := x) ▸ .tail .rfl .beta
-        rw [inst_lift_cons]
-        exact ((LR2 Γ₀).whr betaM betaN).2
-          (bodyEq (lam_body_interp hM htm hp) (forallE_body_interp hA hp) (htm.2.2 p hp)
-            W (bvar0_defEq hp ha hv))
-  | forallEDF => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | @defeqDF Γ A' B' u' _ _ Hty He ihTy ihE =>
-    -- Hty : A' ≡ B' : .sort u',  He : e1 ≡ e2 : A'
-    -- goal: three-part result at type B'
-    -- hA : LE_Interp ρ a B', convert to A' via type equality
-    have tyConv : ∀ {{σ}}, LR2.SubstWF Γ₀ σ σ Γ ρ →
-        (LR2 Γ₀).ValTy2 (A'.subst σ) (B'.subst σ) a := by
-      intro σ W
-      have hA' := (LE_Interp.sound Hty.defeq W.fits).1.2 hA
-      have ⟨_, a', _, le_n, le_a, hA'', hSort, hmem'⟩ :=
-        (LE_Interp.sound Hty.defeq W.fits).2 hA'
-      have hAB' := (LR2 Γ₀).toType ((LR2 Γ₀).mono_r_1 hSort.le_sort hmem'
-          (Shape.HasType.mono_r hSort.le_sort .sort hmem')
-          ((LR2 Γ₀).toType (LR2 Γ₀).sort)
-          ((ihTy hA'' hSort hmem').2 W))
-      exact (LR2.ValTy2.lift le_n hmem.isType).1
-        ((LR2 Γ₀).mono_r_2_ty le_a
-          (Shape.lift_type ▸ (Shape.HasType.lift le_n).2 hmem.isType)
-          (Shape.HasType.mono_r hSort.le_sort .sort hmem').toType hAB')
-    refine ⟨fun σ σ' W => ?_, fun σ W => ?_⟩
-    · have hA' := (LE_Interp.sound Hty.defeq W.left.fits).1.2 hA
-      have hAB := tyConv W.left
-      exact ⟨(LR2 Γ₀).conv hAB ((ihE hM hA' hmem).1 W).1,
-             (LR2 Γ₀).conv hAB ((ihE hM hA' hmem).1 W).2⟩
-    · have hA' := (LE_Interp.sound Hty.defeq W.fits).1.2 hA
-      exact (LR2 Γ₀).conv (tyConv W) ((ihE hM hA' hmem).2 W)
-  | beta => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | eta => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | proofIrrel => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | extra => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-
-/-- Wraps the first conjunct of `fundamental` into a full `DefEq` bundle.
-From `Val2 (M.subst σ) (M.subst σ') (A.subst σ) m a` we recover the
-`HasType`, `IsDefEq`, and `LE_Interp .nil` fields using sorry'd lemmas. -/
-theorem LR2.fundamental_defeq (H : Γ ⊢ M ≡ N : A)
-    (hM : LE_Interp (n := n) ρ m M) (hA : LE_Interp ρ a A) (hmem : m.HasType a)
-    {σ σ'} (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) :
-    (LR2 Γ₀).DefEq (M.subst σ) (M.subst σ') (A.subst σ) m a :=
-  ⟨hmem, H.hasType.1.subst W.toSubstEq, (hM.subst_nil W).1, (hM.subst_nil W).2, (hA.subst_nil W).1,
-    ((LR2.fundamental H hM hA hmem).1 W).1⟩
-
-/-- Wraps the second conjunct of `fundamental` into a full `DefEq` bundle.
-From `Val2 (M.subst σ) (N.subst σ) (A.subst σ) m a`. -/
-theorem LR2.fundamental_defeq_2 (H : Γ ⊢ M ≡ N : A)
-    (hM : LE_Interp (n := n) ρ m M) (hN : LE_Interp ρ m N) (hA : LE_Interp ρ a A)
-    (hmem : m.HasType a) {σ} (W : LR2.SubstWF Γ₀ σ σ Γ ρ) :
-      (LR2 Γ₀).DefEq (M.subst σ) (N.subst σ) (A.subst σ) m a :=
-  ⟨hmem, H.subst W.toSubstEq, (hM.subst_nil W).1, (hN.subst_nil W).1, (hA.subst_nil W).1,
-    (LR2.fundamental H hM hA hmem).2 W⟩
+    simp only [lift_subst_cons, Subst.cons]
+    exact ⟨(W hlookup).1, fun _ a hA =>
+      let W' := (W hlookup).2 a (LE_Interp.weak_iff.mp hA)
+      ⟨W'.1, fun _ hM hmem => W'.2 (LE_Interp.weak_iff.mp hM) hmem⟩⟩
