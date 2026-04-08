@@ -644,6 +644,15 @@ theorem Ctx.Subst.id : Ctx.Subst HasType Γ .id Γ := sorry
 theorem Ctx.Subst.one (H : HasType Γ e A) : Ctx.Subst HasType Γ (.one e) (A::Γ) :=
   .cons .id (by simpa)
 
+def Ctx.SubstEq (Γ₀ : List SExpr) (σ σ' : SExpr.Subst) (Γ : List SExpr) : Prop :=
+  ∀ {{i A}}, Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ
+
+theorem Ctx.SubstEq.lift (W : Ctx.SubstEq Γ₀ σ σ' Γ) (hA : Γ₀ ⊢ A.subst σ : .sort u) :
+    Ctx.SubstEq (A.subst σ :: Γ₀) σ.lift σ'.lift (A :: Γ) := sorry
+
+theorem IsDefEq.subst (W : Ctx.SubstEq Γ₀ σ σ' Γ) :
+    Γ ⊢ e1 ≡ e2 : A → Γ₀ ⊢ e1.subst σ ≡ e2.subst σ' : A.subst σ := sorry
+
 theorem IsDefEq.hasType (H : Γ ⊢ e1 ≡ e2 : A) :
     Γ ⊢ e1 ≡ e1 : A ∧ Γ ⊢ e2 ≡ e2 : A := ⟨H.trans H.symm, H.symm.trans H⟩
 
