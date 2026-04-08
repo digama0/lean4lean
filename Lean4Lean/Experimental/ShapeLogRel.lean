@@ -1072,17 +1072,23 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
         exact ⟨_, _, hmemg, .trans hle₁ ha_s, c3⟩
       have main (l : List (Shape n × Shape n)) (H : ∀ p, p ∈ l → p ∈ f') :
           ∃ g : Shape (n+1),
+            (g = .bot ∨ ∃ l, g = .lam l) ∧
             (∀ z, g ≤ z ↔ ∀ x y, (x, y) ∈ l → y ≠ .bot → .lam (ShapeFun.single x y) ≤ z) ∧
             LE_Interp (n := _+1) ρ g e := by
-        induction l with | nil => exact ⟨.bot, by simp, .bot⟩ | cons p l ih; let (x, y) := p
-        simp only [List.mem_cons, forall_eq_or_imp] at H
-        have ⟨g, a1, a2⟩ := ih H.2
+        induction l with | nil => exact ⟨.bot, .inl rfl, by simp, .bot⟩ | cons p l ih
+        let (x, y) := p; simp only [List.mem_cons, forall_eq_or_imp] at H
+        have ⟨g, eq, a1, a2⟩ := ih H.2
         by_cases hy : y = .bot
-        · exact ⟨g, fun z => (a1 z).trans (by simp [or_imp, forall_and, hy]), a2⟩
-        · have := Shape.Join.mk (x := g) (y := .lam (ShapeFun.single x y)) sorry
-          refine ⟨_, fun z => (this z).trans ?_, .join this a2 (key _ _ H.1 hy)⟩
-          simp [a1, or_imp, forall_and, and_comm, hy]
-      have ⟨g, a1, a2⟩ := main f' (fun _ => id)
+        · exact ⟨g, eq, fun z => (a1 z).trans (by simp [or_imp, forall_and, hy]), a2⟩
+        · have := Shape.Join.mk (x := g) (y := .lam (ShapeFun.single x y)) <| by
+            obtain rfl | ⟨g, rfl⟩ := eq; · simp [Shape.Compat]
+            refine Shape.Compat.def.2 ⟨.lam f', ?_, ?_⟩
+            · exact (a1 _).2 fun _ _ h _ => ShapeFun.single_le.2 ⟨_, _, H.2 _ h, .rfl, .rfl⟩
+            · exact ShapeFun.single_le.2 ⟨_, _, H.1, .rfl, .rfl⟩
+          refine ⟨_, .inr ?_, fun z => (this z).trans ?_, .join this a2 (key _ _ H.1 hy)⟩
+          · obtain rfl | ⟨g, rfl⟩ := eq <;> exact ⟨_, rfl⟩
+          · simp [a1, or_imp, forall_and, and_comm, hy]
+      have ⟨g, _, a1, a2⟩ := main f' (fun _ => id)
       refine (lift le).1 <| a2.mono <| h1.trans <| a4.trans ?_
       have ⟨x, y, hmem, hy⟩ := f'.non_bot
       obtain ⟨g, rfl⟩ : ∃ g', g = .lam g' := by
@@ -1734,54 +1740,41 @@ theorem LRS.LamDefEq.lift {g : ShapeFun n} {a₁ a₂} (le : n ≤ n') (htm : Sh
 
 def LR.Subst1 (Γ₀ : List SExpr) (x x' A₀ A A' : SExpr) (ρ : Valuation) (i := 0) : Prop :=
   Γ₀ ⊢ x ≡ x' : A ∧ ∀ {{n}} (a : Shape n), LE_Interp ρ a A₀ →
-    (a.HasType .type → ∃ u, Γ₀ ⊢ A ≡ A' : .sort u ∧ (LR Γ₀).TyDefEq A A' a) ∧
+    (a.HasType .type → (∃ u, Γ₀ ⊢ A ≡ A' : .sort u) ∧ (LR Γ₀).TyDefEq A A' a) ∧
     (∀ {{m}}, LE_Interp ρ m (.bvar i) → m.HasType a → (LR Γ₀).DefEq x x' A m a)
 
-def LR.SubstWF (Γ₀ : List SExpr) (σ σ' : Subst) (Γ : List SExpr) (ρ : Valuation) : Prop :=
-  ∀ {{i A}}, Lookup Γ i A → LR.Subst1 Γ₀ (σ i) (σ' i) A (A.subst σ) (A.subst σ') ρ i
+inductive LR.SubstWF (Γ₀ : List SExpr) : Subst → Subst → List SExpr → Valuation → Prop where
+  | id : LR.SubstWF Γ₀ .id .id Γ₀ .nil
+  | cons : LR.SubstWF Γ₀ σ.tail σ'.tail Γ ρ →
+    (∀ {n a}, LE_Interp (n := n) ρ a A →
+      ∃ n' a', n ≤ n' ∧ a.lift (m := n') ≤ a' ∧ LE_Interp ρ a' A ∧ a'.HasType .type) →
+    LE_Interp (n := n) ρ a A → x.HasType a →
+    LR.Subst1 Γ₀ σ.head σ'.head A.lift (A.subst σ.tail) (A.subst σ'.tail) (ρ.push x) →
+    LR.SubstWF Γ₀ σ σ' (A :: Γ) (ρ.push x)
 
-theorem LR.SubstWF.id : LR.SubstWF Γ .id .id Γ .nil := sorry
+theorem LR.SubstWF.fits : LR.SubstWF Γ₀ σ σ' Γ ρ → ρ.Fits Γ₀ Γ
+  | .id => .nil
+  | .cons W h1 h2 h3 _ => .cons W.fits h1 h2 h3
 
-theorem LR.SubstWF.toSubstEq (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : Ctx.SubstEq Γ₀ σ σ' Γ :=
-  fun _ _ h => (W h).1
-
-theorem LR.SubstWF.fits (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : ρ.Fits Γ₀ Γ := sorry
+theorem LR.SubstWF.toSubstEq : LR.SubstWF Γ₀ σ σ' Γ ρ → Ctx.SubstEq Γ₀ σ σ' Γ
+  | .id => .nil
+  | .cons W _ _ _ h0 => .cons W.toSubstEq h0.1
 
 theorem LR.SubstWF.left (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : LR.SubstWF Γ₀ σ σ Γ ρ := by
-  refine fun _ _ h => ⟨(W h).1.hasType.1, fun _ a hA => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
-  · have ⟨_, h1, h2⟩ := ((W h).2 a hA).1 ht; exact ⟨_, h1.hasType.1, (LR _).left_ty h2⟩
-  · exact (LR Γ₀).left <| ((W h).2 a hA).2 hM hmem
+  induction W with
+  | id => exact .id
+  | cons _ h1 h2 h3 h0 ih =>
+    refine .cons ih h1 h2 h3 ⟨h0.1.hasType.1, fun _ a ha => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
+    · have ⟨⟨_, h1⟩, h2⟩ := (h0.2 a ha).1 ht; exact ⟨⟨_, h1.hasType.1⟩, (LR _).left_ty h2⟩
+    · exact (LR _).left <| (h0.2 a ha).2 hM hmem
 
 theorem LR.SubstWF.symm (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : LR.SubstWF Γ₀ σ' σ Γ ρ := by
-  refine fun i A h => ⟨?_, fun _ a hA => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
-  · have ⟨_, h1, h2⟩ := ((W h).2 (n := 0) _ .bot).1 (.bot .sort)
-    exact h1.defeqDF (W h).1.symm
-  · exact let ⟨u, h1, h2⟩ := ((W h).2 a hA).1 ht; ⟨u, h1.symm, (LR _).symm_ty h2⟩
-  · let ⟨_, _, h2⟩ := ((W h).2 a hA).1 hmem.isType
-    exact (LR Γ₀).conv h2 ((LR Γ₀).symm (((W h).2 a hA).2 hM hmem))
-
-theorem LR.SubstWF.trans (W₁ : LR.SubstWF Γ₀ σ σ' Γ ρ) (W₂ : LR.SubstWF Γ₀ σ' σ'' Γ ρ) :
-    LR.SubstWF Γ₀ σ σ'' Γ ρ := by
-  refine fun i A h => ⟨?_, fun _ a hA => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
-  · have ⟨_, h1, h2⟩ := ((W₁ h).2 (n := 0) _ .bot).1 (.bot .sort)
-    exact (W₁ h).1.trans (h1.symm.defeqDF (W₂ h).1)
-  · let ⟨u, hte₁⟩ := ((W₁ h).2 a hA).1 ht
-    let ⟨_, hte₂⟩ := ((W₂ h).2 a hA).1 ht
-    cases hte₁.1.uniq_sort hte₂.1
-    exact ⟨u, hte₁.1.trans hte₂.1, (LR _).trans_ty hte₁.2 hte₂.2⟩
-  · let ⟨_, hte⟩ := ((W₁ h).2 a hA).1 hmem.isType
-    exact (LR Γ₀).trans (((W₁ h).2 a hA).2 hM hmem) <|
-      (LR Γ₀).conv ((LR Γ₀).symm_ty hte.2) (((W₂ h).2 a hA).2 hM hmem)
-
-/-- Extend substitution validity to a new binding. -/
-theorem LR.SubstWF.cons (W : LR.SubstWF Γ₀ σ σ' Γ ρ)
-    (h0 : LR.Subst1 Γ₀ t t' A.lift (A.subst σ) (A.subst σ') (ρ.push x)) :
-    LR.SubstWF Γ₀ (σ.cons t) (σ'.cons t') (A :: Γ) (ρ.push x) := by
-  intro i B hlookup
-  cases hlookup with
-  | zero => simp only [lift_subst_cons, Subst.cons]; exact ⟨h0.1, h0.2⟩
-  | succ hlookup =>
-    simp only [lift_subst_cons, Subst.cons]
-    exact ⟨(W hlookup).1, fun _ a hA =>
-      let W' := (W hlookup).2 a (LE_Interp.weak_iff.mp hA)
-      ⟨W'.1, fun _ hM hmem => W'.2 (LE_Interp.weak_iff.mp hM) hmem⟩⟩
+  induction W with
+  | id => exact .id
+  | cons _ h1 h2 h3 h0 ih =>
+    refine .cons ih h1 h2 h3 ⟨?_, fun _ a ha => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
+    · have ⟨⟨_, h1⟩, _⟩ := (h0.2 (n := 0) _ .bot).1 (.bot .sort)
+      exact h1.defeqDF h0.1.symm
+    · exact let ⟨⟨u, h1⟩, h2⟩ := (h0.2 a ha).1 ht; ⟨⟨u, h1.symm⟩, (LR _).symm_ty h2⟩
+    · let ⟨_, h2⟩ := (h0.2 a ha).1 hmem.isType
+      exact (LR _).conv h2 ((LR _).symm ((h0.2 a ha).2 hM hmem))

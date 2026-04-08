@@ -264,8 +264,11 @@ theorem Subst.comp_lift {σ σ' : Subst} : (σ.comp σ').lift = σ.lift.comp σ'
 theorem subst_subst {e : SExpr} : (e.subst σ).subst σ' = subst e (.comp σ σ') := by
   induction e generalizing σ σ' <;> simp! [*, Subst.comp, Subst.comp_lift]
 
+theorem lift_subst {e : SExpr} : e.lift.subst σ = e.subst σ.tail := by
+  rw [lift, subst_lift', ← Subst.tail_eq_lift_l]
+
 theorem lift_subst_cons {e : SExpr} : e.lift.subst (σ.cons t) = e.subst σ := by
-  rw [lift, subst_lift', ← Subst.tail_eq_lift_l, Subst.tail_cons]
+  rw [lift_subst, Subst.tail_cons]
 
 theorem Subst.lift_l_eq : Subst.lift_l ρ σ = Subst.comp ρ.toSubst σ := by
   funext; simp [lift_l, comp, Lift.toSubst_apply, SExpr.subst]
@@ -644,8 +647,14 @@ theorem Ctx.Subst.id : Ctx.Subst HasType Γ .id Γ := sorry
 theorem Ctx.Subst.one (H : HasType Γ e A) : Ctx.Subst HasType Γ (.one e) (A::Γ) :=
   .cons .id (by simpa)
 
-def Ctx.SubstEq (Γ₀ : List SExpr) (σ σ' : SExpr.Subst) (Γ : List SExpr) : Prop :=
-  ∀ {{i A}}, Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ
+inductive Ctx.SubstEq (Γ₀ : List SExpr) : SExpr.Subst → SExpr.Subst → List SExpr → Prop where
+  | nil : Ctx.SubstEq Γ₀ .id .id Γ₀
+  | cons : Ctx.SubstEq Γ₀ σ.tail σ'.tail Γ →
+    Γ₀ ⊢ σ.head ≡ σ'.head : A.subst σ.tail →
+    Ctx.SubstEq Γ₀ σ σ' (A :: Γ)
+
+theorem Ctx.SubstEq.lookup (W : Ctx.SubstEq Γ₀ σ σ' Γ) :
+    Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ := sorry
 
 theorem Ctx.SubstEq.lift (W : Ctx.SubstEq Γ₀ σ σ' Γ) (hA : Γ₀ ⊢ A.subst σ : .sort u) :
     Ctx.SubstEq (A.subst σ :: Γ₀) σ.lift σ'.lift (A :: Γ) := sorry
