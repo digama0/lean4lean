@@ -42,11 +42,12 @@ theorem LR.Adequate.cons
     (hp : p.HasType a₁) (hA₁ : LE_Interp ρ a₁ A)
     (hx : Γ₀ ⊢ x ≡ x' : A.subst σ) (hv : (LR Γ₀).DefEq x x' (A.subst σ) p a₁)
     (W : SubstWF Γ₀ σ σ' Γ ρ) : SubstWF Γ₀ (σ.cons x) (σ'.cons x') (A :: Γ) (ρ.push p) := by
-  refine W.cons ⟨hx, fun _ a' ha' => ?_⟩
+  refine W.cons (fun hA => ?_) hA₁ hp ⟨hx, fun _ a' ha' => ?_⟩
+  · have ⟨_, _, _, le_n, le_a, hA', hSort, hmem'⟩ := (LE_Interp.sound HA W.fits).2 hA
+    exact ⟨_, _, le_n, le_a, hA', (Shape.HasType.mono_r hSort.le_sort .sort hmem').toType⟩
   have ha' := LE_Interp.weak_iff.mp ha'
-  refine ⟨fun ht => ?_, fun m' hm' ht => ?_⟩
-  · refine ⟨u, HA.hasType.1.subst W.toSubstEq, ?_⟩
-    have ⟨_, _, _, le_n, le_a, hA', hSort, hmem'⟩ := (LE_Interp.sound HA W.fits).2 ha'
+  refine ⟨fun ht => ⟨⟨_, HA.hasType.1.subst W.toSubstEq⟩, ?_⟩, fun m' hm' ht => ?_⟩
+  · have ⟨_, _, _, le_n, le_a, hA', hSort, hmem'⟩ := (LE_Interp.sound HA W.fits).2 ha'
     refine (TyDefEq.lift le_n ht).1 <| (LR Γ₀).mono_r_2_ty le_a
       (Shape.lift_type ▸ (Shape.HasType.lift le_n).2 ht)
       (Shape.HasType.mono_r hSort.le_sort .sort hmem').toType ?_
@@ -95,7 +96,15 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
     (hM : LE_Interp (n := n) ρ m M) (hA : LE_Interp ρ a A) (hmem : m.HasType a) :
     Adequate Γ₀ Γ ρ M N A m a := by
   replace H := H.strong; induction H generalizing ρ n m a with
-  | bvar h => exact .refl fun _ _ W => ((W h).2 a hA).2 hM hmem
+  | @bvar Γ i A h =>
+    refine .refl fun _ _ W => ?_
+    have ⟨k, le, a1⟩ := LE_Interp.bvar_iff.1 hM; clear hM
+    induction W generalizing i A with
+    | id => cases (Shape.lift_le_bot le).1 a1.2; exact (LR _).bot hmem.isType
+    | cons W' _ _ _ h0 ih =>
+      cases h with
+      | zero => exact lift_subst ▸ (h0.2 a hA).2 (.bvar a1.1 le a1.2) hmem
+      | succ h' => exact lift_subst ▸ ih h' (LE_Interp.weak_iff.1 hA) a1
   | symm H ih => exact .fits fun W => (ih ((LE_Interp.sound H.defeq W).1.2 hM) hA hmem).symm
   | trans _ H1 H2 ihA ih1 ih2 =>
     exact .fits fun W => (ih1 hM hA hmem).trans (ih2 ((LE_Interp.sound H1.defeq W).1.1 hM) hA hmem)
