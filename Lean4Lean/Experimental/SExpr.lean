@@ -588,7 +588,7 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
     Γ ⊢ .const c ls : (SExpr.mk ci.type).instL ls
   | appDF : Γ ⊢ A : .sort u → A::Γ ⊢ B : .sort v →
     Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
-    Γ ⊢ B.inst a : .sort v →
+    Γ ⊢ B.inst a ≡ B.inst a' : .sort v →
     Γ ⊢ .app f a pat ≡ .app f' a' pat : B.inst a
   | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ B : .sort v → A::Γ ⊢ body ≡ body' : B →
     Γ ⊢ .lam A body ≡ .lam A' body' : .forallE A B

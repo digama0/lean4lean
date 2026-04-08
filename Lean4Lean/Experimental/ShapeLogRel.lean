@@ -169,6 +169,11 @@ theorem Shape.LE.rfl {s : Shape n} : s ≤ s := by
     cases s <;> simp [ble, ih, ihf]
 
 omit [Params] in
+theorem ShapeFun.LE.rfl {s : ShapeFun n} : s.LE s := by
+  simp only [ShapeFun.LE, ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true]
+  exact fun _ h => ⟨_, h, Shape.LE.rfl, Shape.LE.rfl⟩
+
+omit [Params] in
 theorem Shape.le_bot {s : Shape n} : s ≤ .bot ↔ s = .bot :=
   ⟨(by cases n <;> cases s <;> first | rfl | cases ·), (· ▸ LE.rfl)⟩
 
@@ -345,11 +350,7 @@ theorem Shape.LE.trans {s t u : Shape n} : s ≤ t → t ≤ u → s ≤ u := by
       simp only [ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true]
       rintro h1 h2 x hx; let ⟨_, hy, x1, x2⟩ := h1 _ hx; let ⟨_, hz, y1, y2⟩ := h2 _ hy
       exact ⟨_, hz, ih y1 x1, ih x2 y2⟩
-    cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;>
-      first
-      | exact fun h1 h2 h3 h4 => ⟨ih h1 h3, ihf h2 h4⟩
-      | exact ihf
-      | (intro h1 h2; exact h1.trans h2)
+    cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;> grind
 
 omit [Params] in
 theorem ShapeFun.LE.trans {s t u : ShapeFun n} : s.LE t → t.LE u → s.LE u := by
@@ -728,7 +729,7 @@ inductive LE_Interp : Valuation → ∀ {n}, Shape n → SExpr → Prop
   -- | lift : n ≤ n' → LE_Interp (n := n) ρ m M → LE_Interp (n := n') ρ m.lift M
   | bvar : (ρ i).1 ≤ n' → n ≤ n' → m.lift (m := n') ≤ (ρ i).2.lift → LE_Interp (n := n) ρ m (.bvar i)
   | sort : m ≤ .sort (decide (l ≠ .zero)) → LE_Interp ρ m (.sort l)
-  | app : LE_Interp ρ f F → LE_Interp ρ a A → m ≤ f.app a → LE_Interp ρ m (.app F A pat)
+  | app : LE_Interp ρ f F → LE_Interp ρ a A → m ≤ f.app a → LE_Interp ρ m (.app F A)
   | lam : LE_Interp (n := n) ρ a A →
     Shape.HasDom f a → (∀ x, x.HasType a → LE_Interp (ρ.push x) ((f : ShapeFun n).app x) F) →
     m ≤ .lam f → LE_Interp (n := n+1) ρ m (.lam A F)
@@ -746,12 +747,30 @@ theorem LE_Interp.inst : LE_Interp (n := n) ρ f (F.inst A) ↔
 theorem LE_Interp.bvar_iff :
     LE_Interp (n := n) ρ m (.bvar i) ↔
     ∃ k, n ≤ k ∧ (ρ i).1 ≤ k ∧ m.lift (m := k) ≤ (ρ i).2.lift := sorry
+
 theorem LE_Interp.forallE_inv {b} {f : ShapeFun n} {B F}
     (H : LE_Interp (n := n+1) ρ (.forallE b f) (.forallE B F)) :
-    LE_Interp ρ b B ∧ ∀ x, x.HasType b → LE_Interp (ρ.push x) (f.app x) F := sorry
+    LE_Interp ρ b B ∧ ∀ {{X x}}, LE_Interp ρ x X → LE_Interp ρ (f.app x) (F.inst X) := by
+  let .forallE (b := b₁) (b' := b₂) (f := f') hb₁ hb₂ hd hiB le := H
+  simp [Shape.LE.def] at le
+  refine ⟨hb₁.mono le.1, fun X x hx => ?_⟩
+  obtain ⟨x', _, le1, hf, rfl⟩ := ShapeFun.app_eq f x
+  obtain ⟨_, _, hf, le2, lf⟩ := ShapeFun.LE.def.1 le.2 _ _ hf
+  refine .inst.2 ⟨_, _, ?_, hx.mono (le2.trans le1)⟩
+  exact (hiB _ (Shape.HasDom.def.1 hd _ _ hf)).mono (lf.trans (ShapeFun.app_of_mem hf ▸ .rfl))
+
+theorem LE_Interp.forallE_inv' {b} {f : ShapeFun n} {B F}
+    (H : LE_Interp (n := n+1) ρ (.forallE b f) (.forallE B F)) :
+    LE_Interp ρ b B ∧ ∀ x, LE_Interp (ρ.push x) (f.app x) F := by
+  have ⟨h1, h2⟩ := H.forallE_inv; refine ⟨H.forallE_inv.1, fun x => ?_⟩
+  have := (LE_Interp.weak (x := x) H).forallE_inv.2
+    (.bvar (i := 0) (Nat.le_refl _) (Nat.le_refl _) .rfl)
+  rwa [SExpr.inst, SExpr.subst_lift', (?_ : Subst.lift_l _ _ = Subst.id), subst_id] at this
+  funext i; cases i <;> rfl
+
 theorem LE_Interp.lam_inv {b} {f : ShapeFun n} {B F}
     (H : LE_Interp (n := n+1) ρ (.lam f) (.lam B F)) (hf : Shape.HasDom f b) :
-    LE_Interp ρ b B ∧ ∀ x, x.HasType b → LE_Interp (ρ.push x) (f.app x) F := sorry
+    LE_Interp ρ b B ∧ ∀ {{x}}, x.HasType b → LE_Interp (ρ.push x) (f.app x) F := sorry
 
 theorem LE_Interp.join (J : m₁.Join m₂ m) (H1 : LE_Interp ρ m₁ M) (H2 : LE_Interp ρ m₂ M) :
     LE_Interp ρ m M := sorry
@@ -1102,7 +1121,7 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
           LE_Interp (n := n+1) ρ (ShapeS.lam (ShapeFun.single x y)) e := by
         intro x y hmem hy
         have := ShapeFun.app_of_mem hmem ▸ a3 x (Shape.HasDom.def.1 a2 _ _ hmem)
-        cases this with | bot => cases hy rfl | @app _ _ f_s _ a_s _ _ _ c1 c2 c3
+        cases this with | bot => cases hy rfl | @app _ _ f_s _ a_s _ _ c1 c2 c3
         cases f_s with | lam g => ?_ | _ => cases hy (Shape.le_bot.1 c3)
         refine .mono ?_ (LE_Interp.weak_iff.1 c1)
         simp [Shape.LE.def, ShapeFun.single_le]
@@ -2212,14 +2231,82 @@ def LR2 (Γ : List SExpr) : LogRel2 Γ n :=
   | 0 => LR20
   | _+1 => LR2S (LR2 Γ)
 
+private theorem LR2S.PiEdge2.lift_aux
+    {b} {f : ShapeFun n} (le : n ≤ n') (htpi_a : Shape.HasTypePi f b true)
+    (IH1 : ∀ {M N : SExpr} {m : Shape n}, m.HasType .type →
+      ((LR2 Γ).ValTy2 (n := n') M N m.lift ↔ (LR2 Γ).ValTy2 M N m))
+    (IH2 : ∀ {M N A : SExpr} {m a : Shape n}, m.HasType a →
+      ((LR2 Γ).Val2 (n := n') M N A m.lift a.lift ↔ (LR2 Γ).Val2 M N A m a)) :
+    LR2S.PiEdge2 (LR2 Γ) (n := n') B F₁ F₂ b.lift (ShapeFun.lift Shape.lift f) ↔
+    LR2S.PiEdge2 (LR2 Γ) B F₁ F₂ b f := by
+  constructor <;> intro hEdge
+  · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
+      have hp' := (Shape.HasType.lift le).2 hp
+      have v' := (IH2 hp).2 v)
+    · have ⟨r1, r2⟩ := hEdge.1 hp' ha v'
+      exact ⟨(IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r1),
+              (IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r2)⟩
+    · exact (IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ hEdge.2 hp' ha v')
+  · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
+      refine have ⟨_, _, d1, d2, d3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift _) _; d3 ▸ ?_
+      simp [ShapeFun.lift] at d2; obtain ⟨q, _, d2, rfl, rfl⟩ := d2
+      have hq := Shape.HasDom.def.1 htpi_a.1 _ _ d2
+      have v' := (IH2 hq).1 ((LR2 Γ).mono_l d1
+        ((Shape.HasType.lift le).2 hq) hp v))
+    · have ⟨r1, r2⟩ := hEdge.1 hq ha v'
+      exact ⟨ShapeFun.app_of_mem d2 ▸ (IH1 (htpi_a.2 _ hq)).2 r1,
+             ShapeFun.app_of_mem d2 ▸ (IH1 (htpi_a.2 _ hq)).2 r2⟩
+    · exact ShapeFun.app_of_mem d2 ▸ (IH1 (htpi_a.2 _ hq)).2 (hEdge.2 hq ha v')
+
+private theorem LR2S.ValPi2.lift_aux
+    {g : ShapeFun n} {a₁ a₂} (le : n ≤ n') (htm : Shape.HasTypeLam g a₁ a₂)
+    (IH : ∀ {M N A : SExpr} {m a : Shape n}, m.HasType a →
+      ((LR2 Γ).Val2 (n := n') M N A m.lift a.lift ↔ (LR2 Γ).Val2 M N A m a))
+    (hEdge : LR2S.PiEdge2 (LR2 Γ) A₁ A₂ A₂ a₁ a₂) :
+    LR2S.ValPi2 (LR2 Γ) (n := n') M N A₁ A₂
+      (ShapeFun.lift Shape.lift g) a₁.lift (ShapeFun.lift Shape.lift a₂) ↔
+    LR2S.ValPi2 (LR2 Γ) M N A₁ A₂ g a₁ a₂ := by
+  constructor <;> intro hP
+  · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
+      have hp' := (Shape.HasType.lift le).2 hp
+      have v' := (IH hp).2 v)
+    · have ⟨r1, r2⟩ := hP.1 hp' ha v'
+      refine ⟨(IH (htm.2.2 _ hp)).1 ?_, (IH (htm.2.2 _ hp)).1 ?_⟩
+        <;> rw [ShapeFun.lift_app, ShapeFun.lift_app] <;> [exact r1; exact r2]
+    · apply (IH (htm.2.2 _ hp)).1
+      rw [ShapeFun.lift_app, ShapeFun.lift_app]
+      exact hP.2 hp' ha v'
+  · refine ⟨fun _ _ p hp ha v => ?_, fun _ p hp ha v => ?_⟩
+    all_goals
+      have ⟨_, _, dg1, dg2, dg3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift g) p
+      simp [ShapeFun.lift] at dg2; obtain ⟨qg, fg, dg2, rfl, rfl⟩ := dg2
+      have ⟨_, _, da1, da2, da3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift a₂) p
+      simp [ShapeFun.lift] at da2; obtain ⟨qa, fa, da2, rfl, rfl⟩ := da2
+      obtain rfl : fg = g.app qg := (ShapeFun.app_of_mem dg2).symm
+      obtain rfl : fa = a₂.app qa := (ShapeFun.app_of_mem da2).symm
+      have hqg := Shape.HasDom.def.1 htm.2.1 _ _ dg2
+      have hqa := Shape.HasDom.def.1 htm.1.1 _ _ da2
+      have v_lo := (IH hqg).1 ((LR2 Γ).mono_l dg1
+        ((Shape.HasType.lift le).2 hqg) hp v)
+      have le_a2 : a₂.app qg ≤ a₂.app qa := by
+        rw [← Shape.lift_le_lift le, ShapeFun.lift_app, ShapeFun.app_of_mem da2, ← da3]
+        exact ShapeFun.app_mono_r dg1
+      have ht_lo := htm.2.2 _ hqg
+      have ht_hi := (htm.1.2 _ hqa).mono_r le_a2 ht_lo
+      have v_lo_qa := (IH hqa).1 ((LR2 Γ).mono_l da1
+        ((Shape.HasType.lift le).2 hqa) hp v)
+      have vt_qa := hEdge.2 hqa ha.hasType.1 ((LR2 Γ).left v_lo_qa)
+      rw [dg3, da3]
+    · have ⟨r1, r2⟩ := hP.1 hqg ha v_lo
+      exact ⟨(IH ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa r1),
+              (IH ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa r2)⟩
+    · exact (IH ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa (hP.2 hqg ha v_lo))
+
 private theorem LR2.lift_succ_aux :
-    (∀ {M N : SExpr} {m : Shape n},
-      m.HasType .type →
-      (LR2S.ValTy2 (LR2 Γ) M N (m.lift (m := n+1)) ↔ (LR2 Γ).ValTy2 M N m)) ∧
-    (∀ {M N A : SExpr} {m a : Shape n},
-      m.HasType a →
-      (LR2S.Val2 (LR2 Γ) M N A (m.lift (m := n+1)) (a.lift (m := n+1)) ↔
-      (LR2 Γ).Val2 M N A m a)) := by
+    (∀ {M N : SExpr} {m : Shape n}, m.HasType .type →
+      (LR2S.ValTy2 (n := n) (LR2 Γ) M N m.lift ↔ (LR2 Γ).ValTy2 M N m)) ∧
+    (∀ {M N A : SExpr} {m a : Shape n}, m.HasType a →
+      (LR2S.Val2 (n := n) (LR2 Γ) M N A m.lift a.lift ↔ (LR2 Γ).Val2 M N A m a)) := by
   induction n with
   | zero => exact ⟨by rintro _ _ ⟨⟩ _ <;> rfl, by rintro _ _ _ ⟨⟩ ⟨⟩ _ <;> rfl⟩
   | succ k ih
@@ -2252,59 +2339,12 @@ private theorem LR2.lift_succ_aux :
     change ShapeFun .. at a₂; have .forallE htpi_a := hma.isType.unfold
     cases hma.unfold with | bot => constructor <;> intro <;> trivial | @lam _ g _ _ htm
     constructor <;> intro ⟨A₁, A₂, u, v, rA, hA1, hValA, hA₂, hEdge, hP⟩
-    · refine ⟨A₁, A₂, u, v, rA, hA1, (ih.1 htpi_a.1.isType).1 hValA, hA₂, ?_, ?_⟩
-      · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
-          have hp' := (Shape.HasType.lift (Nat.le_succ k)).2 hp
-          have v' := (ih.2 hp).2 v)
-        · have ⟨r1, r2⟩ := hEdge.1 hp' ha v'
-          exact ⟨(ih.1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r1),
-                 (ih.1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r2)⟩
-        · exact (ih.1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ hEdge.2 hp' ha v')
-      · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
-          have hp' := (Shape.HasType.lift (Nat.le_succ k)).2 hp
-          have v' := (ih.2 hp).2 v)
-        · have ⟨r1, r2⟩ := hP.1 hp' ha v'
-          refine ⟨(ih.2 (htm.2.2 _ hp)).1 ?_, (ih.2 (htm.2.2 _ hp)).1 ?_⟩
-            <;> rw [ShapeFun.lift_app, ShapeFun.lift_app] <;> [exact r1; exact r2]
-        · apply (ih.2 (htm.2.2 _ hp)).1
-          rw [ShapeFun.lift_app, ShapeFun.lift_app]
-          exact hP.2 hp' ha v'
-    · refine ⟨A₁, A₂, u, v, rA, hA1, (ih.1 htpi_a.1.isType).2 hValA, hA₂, ?_, ?_⟩
-      · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
-          refine have ⟨_, _, d1, d2, d3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift _) _; d3 ▸ ?_
-          simp [ShapeFun.lift] at d2; obtain ⟨q, _, d2, rfl, rfl⟩ := d2
-          have hq := Shape.HasDom.def.1 htpi_a.1 _ _ d2
-          have v' := (ih.2 hq).1 ((LR2S (LR2 Γ)).mono_l d1
-            ((Shape.HasType.lift (Nat.le_succ k)).2 hq) hp v))
-        · have ⟨r1, r2⟩ := hEdge.1 hq ha v'
-          exact ⟨ShapeFun.app_of_mem d2 ▸ (ih.1 (htpi_a.2 _ hq)).2 r1,
-                 ShapeFun.app_of_mem d2 ▸ (ih.1 (htpi_a.2 _ hq)).2 r2⟩
-        · exact ShapeFun.app_of_mem d2 ▸ (ih.1 (htpi_a.2 _ hq)).2 (hEdge.2 hq ha v')
-      · refine ⟨fun _ _ p hp ha v => ?_, fun _ p hp ha v => ?_⟩
-        all_goals
-          have ⟨_, _, dg1, dg2, dg3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift g) p
-          simp [ShapeFun.lift] at dg2; obtain ⟨qg, fg, dg2, rfl, rfl⟩ := dg2
-          have ⟨_, _, da1, da2, da3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift a₂) p
-          simp [ShapeFun.lift] at da2; obtain ⟨qa, fa, da2, rfl, rfl⟩ := da2
-          obtain rfl : fg = g.app qg := (ShapeFun.app_of_mem dg2).symm
-          obtain rfl : fa = a₂.app qa := (ShapeFun.app_of_mem da2).symm
-          have hqg := Shape.HasDom.def.1 htm.2.1 _ _ dg2
-          have hqa := Shape.HasDom.def.1 htpi_a.1 _ _ da2
-          have v_lo := (ih.2 hqg).1 ((LR2S (LR2 Γ)).mono_l dg1
-            ((Shape.HasType.lift (Nat.le_succ k)).2 hqg) hp v)
-          have le_a2 : a₂.app qg ≤ a₂.app qa := by
-            rw [← Shape.lift_le_lift (Nat.le_succ k), ShapeFun.lift_app, ShapeFun.app_of_mem da2, ← da3]
-            exact ShapeFun.app_mono_r dg1
-          have ht_lo := htm.2.2 _ hqg
-          have ht_hi := (htpi_a.2 _ hqa).mono_r le_a2 ht_lo
-          have v_lo_qa := (ih.2 hqa).1 ((LR2S (LR2 Γ)).mono_l da1
-            ((Shape.HasType.lift (Nat.le_succ k)).2 hqa) hp v)
-          have vt_qa := hEdge.2 hqa ha.hasType.1 ((LR2 Γ).left v_lo_qa)
-          rw [dg3, da3]
-        · have ⟨r1, r2⟩ := hP.1 hqg ha v_lo
-          exact ⟨(ih.2 ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa r1),
-                 (ih.2 ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa r2)⟩
-        · exact (ih.2 ht_hi).2 ((LR2 Γ).mono_r_1 le_a2 ht_lo ht_hi vt_qa (hP.2 hqg ha v_lo))
+    · have hEdge' := (LR2S.PiEdge2.lift_aux (Nat.le_succ k) htm.1 ih.1 ih.2).1 hEdge
+      refine ⟨A₁, A₂, u, v, rA, hA1, (ih.1 htpi_a.1.isType).1 hValA, hA₂, hEdge', ?_⟩
+      exact (LR2S.ValPi2.lift_aux (Nat.le_succ k) htm ih.2 hEdge').1 hP
+    · have hEdge' := (LR2S.PiEdge2.lift_aux (Nat.le_succ k) htm.1 ih.1 ih.2).2 hEdge
+      refine ⟨A₁, A₂, u, v, rA, hA1, (ih.1 htpi_a.1.isType).2 hValA, hA₂, hEdge', ?_⟩
+      exact (LR2S.ValPi2.lift_aux (Nat.le_succ k) htm ih.2 hEdge).2 hP
 
 theorem LR2.Val2.lift {m a : Shape n} (le : n ≤ n') (hma : m.HasType a) :
     (LR2 Γ).Val2 (n := n') M N A m.lift a.lift ↔ (LR2 Γ).Val2 M N A m a := by
@@ -2317,6 +2357,17 @@ theorem LR2.ValTy2.lift {m : Shape n} (le : n ≤ n') (hmt : m.HasType .type) :
   induction le with | refl => simp [Shape.lift_self] | step le ih
   rw [(Shape.lift_lift (.inl le)).symm]
   exact (LR2.lift_succ_aux.1 (Shape.lift_type ▸ (Shape.HasType.lift le).2 hmt)).trans ih
+
+theorem LR2S.PiEdge2.lift
+    {b} {f : ShapeFun n} (le : n ≤ n') (htpi_a : Shape.HasTypePi f b true) :
+    LR2S.PiEdge2 (LR2 Γ) (n := n') B F₁ F₂ b.lift (ShapeFun.lift Shape.lift f) ↔
+    LR2S.PiEdge2 (LR2 Γ) B F₁ F₂ b f := lift_aux le htpi_a (LR2.ValTy2.lift le) (LR2.Val2.lift le)
+
+theorem LR2S.ValPi2.lift {g : ShapeFun n} {a₁ a₂} (le : n ≤ n') (htm : Shape.HasTypeLam g a₁ a₂)
+    (hEdge : LR2S.PiEdge2 (LR2 Γ) A₁ A₂ A₂ a₁ a₂) :
+    LR2S.ValPi2 (LR2 Γ) (n := n') M N A₁ A₂
+      (ShapeFun.lift Shape.lift g) a₁.lift (ShapeFun.lift Shape.lift a₂) ↔
+    LR2S.ValPi2 (LR2 Γ) M N A₁ A₂ g a₁ a₂ := lift_aux le htm (LR2.Val2.lift le) hEdge
 
 theorem LR2.DefEq.lift {m a : Shape n} (le : n ≤ n') :
     (LR2 Γ).DefEq (n := n') M N A m.lift a.lift ↔ (LR2 Γ).DefEq M N A m a := by
