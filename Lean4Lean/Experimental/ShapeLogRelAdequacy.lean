@@ -110,7 +110,7 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
       cases hm.unfold with
       | forallE => let .sort h := hA; simp [Shape.LE.def] at h
       | _ => cases n <;> trivial
-    | sort => cases n <;> trivial
+    | sort => exact (LR2 _).sort_iff.2 ⟨_, .rfl, .rfl⟩
     | _ => let .sort h := hM; simp [Shape.LE.def] at h
   | const => cases hM; exact .bot hmem.isType
   | @appDF Γ A u B v F F' X X' pat HA HB Hf Ha HBa ihA ihB ihf iha ihBa =>
@@ -387,3 +387,13 @@ theorem forallE_inv (H : Γ ⊢ SExpr.forallE A₀ B₀ ≡ SExpr.forallE A₁ B
 
 theorem sort_forallE_inv : ¬Γ ⊢ .sort u ≡ SExpr.forallE A₁ B₁ : .sort s :=
   fun H => have ⟨_, _, H⟩ := forallE_whRed_l H; nomatch WHNF.sort.whRedS H.1
+
+/-- Sort injectivity: if two sorts are definitionally equal, their levels are equal. -/
+theorem sort_inv (d : Γ ⊢ SExpr.sort u ≡ SExpr.sort v : V) : u = v := by
+  have hM : LE_Interp (n := 1) .nil (.sort (decide (u ≠ .zero))) (.sort u) := .sort .rfl
+  have ⟨n, mU, mV, h1, h2, h3, hA, h5⟩ := (LE_Interp.sound d .nil).2 hM
+  cases Shape.sort_le.1 h2
+  cases show mV = (Shape.type (n := 1)).lift by let _+1 := n; cases h5.unfold; rfl
+  have := (LR2.adequacy d hM ((LE_Interp.lift h1).1 hA) .sort).2 .id
+  have ⟨w, h1, h2⟩ := (LR2 _).sort_iff.mp (subst_id ▸ subst_id ▸ subst_id ▸ this)
+  cases WHNF.sort.whRedS h1; cases WHNF.sort.whRedS h2; rfl
