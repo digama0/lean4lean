@@ -462,6 +462,7 @@ theorem ShapeFun.uniq_l {f : ShapeFun n} (h1 : (x, y) ∈ f) (h2 : (x', y') ∈ 
     (h3 : x ≤ x') (h4 : x' ≤ x) : x = x' ∧ y = y' :=
   ShapeFun.uniq h1 h2 h3 (app_of_mem h1 ▸ app_of_mem h2 ▸ app_mono_r h4)
 
+omit [Params] in
 @[simp] theorem ShapeFun.bot_app : (@ShapeFun.bot n).app x = .bot := sorry
 
 omit [Params] in
@@ -639,6 +640,10 @@ theorem Shape.HasType.isType {m a : Shape n} (h : HasType m a) : HasType a .type
 omit [Params] in
 theorem Shape.HasDom.isType (H : Shape.HasDom f a) : a.HasType .type :=
   let ⟨_, _, h, _⟩ := H .bot; h.isType
+
+omit [Params] in
+theorem Shape.HasDom.bot (ha : a.HasType .type) : HasDom .bot a :=
+  fun _ => ⟨_, bot_le, .bot ha, ShapeFun.bot_app.symm ▸ bot_le⟩
 
 theorem Shape.HasType.lift (h : n ≤ n') :
     HasType (n := n') m.lift a.lift ↔ HasType (n := n) m a := sorry
@@ -2402,10 +2407,6 @@ Matches Agda's ValidConvSub2. Uses `IsDefEq ∧ Val2` instead of full `DefEq`
 to avoid requiring `LE_Interp .nil` fields that are not available in bvar0_defEq. -/
 def LR2.SubstWF (Γ₀ : List SExpr) (σ σ' : Subst) (Γ : List SExpr) (ρ : Valuation) : Prop :=
   ∀ {{i A}}, Lookup Γ i A → LR2.Subst1 Γ₀ (σ i) (σ' i) A (A.subst σ) (A.subst σ') ρ i
-  -- ∀ {{i A}}, Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ ∧
-  --   ∀ {{n}} (a : Shape n), LE_Interp ρ a A →
-  --     (a.HasType .type → ∃ u, (LR2 Γ₀).TyDefEq (A.subst σ) (A.subst σ') u a) ∧
-  --     (∀ {{m}}, LE_Interp ρ m (.bvar i) → m.HasType a → (LR2 Γ₀).Val2 (σ i) (σ' i) (A.subst σ) m a)
 
 /-- Well-typed conversion substitution: σ(i) ≡ σ'(i) at each variable. -/
 def Ctx.SubstEq (Γ₀ : List SExpr) (σ σ' : SExpr.Subst) (Γ : List SExpr) : Prop :=
@@ -2416,6 +2417,8 @@ theorem IsDefEq.subst (W : Ctx.SubstEq Γ₀ σ σ' Γ) :
 
 theorem Ctx.SubstEq.lift (W : Ctx.SubstEq Γ₀ σ σ' Γ) (hA : Γ₀ ⊢ A.subst σ : .sort u) :
     Ctx.SubstEq (A.subst σ :: Γ₀) σ.lift σ'.lift (A :: Γ) := sorry
+
+theorem LR2.SubstWF.id : LR2.SubstWF Γ .id .id Γ .nil := sorry
 
 theorem LR2.SubstWF.toSubstEq (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) : Ctx.SubstEq Γ₀ σ σ' Γ :=
   fun _ _ h => (W h).1
