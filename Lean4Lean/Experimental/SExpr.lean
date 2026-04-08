@@ -596,11 +596,14 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
     Γ ⊢ .forallE A body ≡ .forallE A' body' : .sort (.imax u v)
   | defeqDF : Γ ⊢ A ≡ B : .sort u → Γ ⊢ e1 ≡ e2 : A → Γ ⊢ e1 ≡ e2 : B
   | beta : A::Γ ⊢ e : B → Γ ⊢ e' : A →
-    Γ ⊢ .app (.lam A e) e' : B.inst e' → Γ ⊢ .app (.lam A e) e' ≡ e.inst e' : B.inst e'
+    Γ ⊢ .app (.lam A e) e' : B.inst e' → Γ ⊢ e.inst e' : B.inst e' →
+    Γ ⊢ .app (.lam A e) e' ≡ e.inst e' : B.inst e'
   | eta : Γ ⊢ e : .forallE A B → Γ ⊢ .lam A (.app e.lift (.bvar 0)) : .forallE A B →
     Γ ⊢ .lam A (.app e.lift (.bvar 0)) ≡ e : .forallE A B
   | proofIrrel : Γ ⊢ p : .sort .zero → Γ ⊢ h : p → Γ ⊢ h' : p → Γ ⊢ h ≡ h' : p
   | extra : env.defeqs df → ls.length = df.uvars →
+    Γ ⊢ .instL ls (.mk df.lhs) : .instL ls (.mk df.type) →
+    Γ ⊢ .instL ls (.mk df.rhs) : .instL ls (.mk df.type) →
     Γ ⊢ .instL ls (.mk df.lhs) ≡ .instL ls (.mk df.rhs) : .instL ls (.mk df.type)
 end
 

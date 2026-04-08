@@ -260,6 +260,10 @@ theorem Shape.lift_le_bot {s : Shape n} (h : n ≤ m) : s.lift (m := m) ≤ .bot
   rw [← le_bot, ← lift_bot, Shape.lift_le_lift h]
 
 omit [Params] in
+theorem Shape.lift_eq_bot {s : Shape n} (h : n ≤ m) : s.lift (m := m) = .bot ↔ s = .bot := by
+  rw [← le_bot, Shape.lift_le_bot h]
+
+omit [Params] in
 theorem Shape.lift_mono {s t : Shape n} : s ≤ t → (s.lift : Shape m) ≤ t.lift := by
   dsimp [(· ≤ ·), Shape.LE]
   induction n generalizing m with
@@ -1085,7 +1089,7 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
     refine ⟨(ih2 W).1, fun h => ?_⟩
     have ⟨_, _, _, le, h1, h2, h3, h4⟩ := (ih2 W).2 h
     exact ⟨_, _, _, le, h1, h2, (ih1 W).1.1 h3, h4⟩
-  | beta _ _ _ ih1 ih2 ih3 =>
+  | beta _ _ _ _ ih1 ih2 ih3 =>
     by_cases hm : m = .bot; · exact hm ▸ sound_bot
     refine ⟨⟨fun h => ?_, fun h => ?_⟩, (ih3 W).2⟩
     · cases h with | bot => cases hm rfl | app h1 h2 h3
@@ -1168,9 +1172,8 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
     refine fun ⟨_, _, _, le, a1, a2, a3, a4⟩ h1 => (?_ : m = .bot) ▸ .bot
     have ⟨_, _, _, le', b1, b2, b3, b4⟩ := (ih1 W).2 a3
     have b4' := Shape.HasType.mono_r (by simpa using b3.le_sort) .sort b4
-    have := b4'.proofIrrel (b4'.mono_r b1 ((Shape.HasType.lift le').2 a4))
-    have := Shape.lift_lift (.inl le) ▸ (this ▸ (Shape.lift_le_lift le').2 a1)
-    exact (Shape.lift_le_bot (Nat.le_trans le le')).1 this
+    cases (Shape.lift_eq_bot le').1 (b4'.proofIrrel (b4'.mono_r b1 ((Shape.HasType.lift le').2 a4)))
+    exact (Shape.lift_le_bot le).1 a1
   | extra => sorry
 
 structure LogRelBase (Γ : List SExpr) (n : Nat) where
