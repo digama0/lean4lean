@@ -314,7 +314,7 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
     · exact ((ihapp hM hA hmem).1 W).1
     · exact ((ihinst ((LE_Interp.sound (.beta He.defeq Ha.defeq) W.fits).1.1 hM) hA hmem).1 W).2
     · exact ((LR2 _).whr .rfl (subst_inst ▸ .tail .rfl .beta)).1 ((ihapp hM hA hmem).2 W)
-  | @eta _ e _ _ He _ ihe ihlam =>
+  | @eta _ e0 A0 B0 He Hlam ihe ihlam =>
     refine ⟨fun σ σ' W => ⟨?_, ?_⟩, fun σ W => ?_⟩
     · exact ((ihlam hM hA hmem).1 W).1
     · exact ((ihe ((LE_Interp.sound (.eta He.defeq) W.fits).1.1 hM) hA hmem).1 W).2
@@ -323,14 +323,14 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
     | bot hm => exact (LR2 _).bot hm
     | sort | forallE => (try cases n) <;> cases hM <;> rename_i h _ _ <;> simp [Shape.LE.def] at h
     | lam htm
-    have ⟨_, _, _, _, whr_t, htA₁, vtyA₁, htA₂, edge, vpi_M⟩ := (ihlam hM hA hmem).2 W
+    have ⟨A₁, A₂, u, v, whr_t, htA₁, vtyA₁, htA₂, edge, vpi_M⟩ := (ihlam hM hA hmem).2 W
     have ⟨_, _, _, _, whr_N, _, _, _, _, vpi_N⟩ := (ihe hM' hA hmem).2 W
     cases whr_t.determ .forallE whr_N .forallE
-    refine ⟨_, _, _, _, whr_t, htA₁, vtyA₁, htA₂, edge, ?_, ?_⟩
-    · exact fun _ _ _ hp ha hv => ⟨(vpi_M.1 hp ha hv).1, (vpi_N.1 hp ha hv).2⟩
-    · refine fun a _ hp ha hv => ((LR2 _).whr ?_ .rfl).2 (vpi_N.2 hp ha hv)
-      rw [(?_ : (e.subst σ).app a = _)]; exact .tail .rfl .beta
-      rw [inst_lift_cons, subst, lift_subst_cons]; rfl
+    refine ⟨A₁, A₂, u, v, whr_t, htA₁, vtyA₁, htA₂, edge, ?_, fun a p hp ha hv => ?_⟩
+    · exact fun a b p hp ha hv => ⟨(vpi_M.1 hp ha hv).1, (vpi_N.1 hp ha hv).2⟩
+    refine ((LR2 _).whr ?_ .rfl).2 (vpi_N.2 hp ha hv)
+    rw [(?_ : (e0.subst σ).app a = _)]; exact .tail .rfl .beta
+    rw [inst_lift_cons, subst, lift_subst_cons]; rfl
   | proofIrrel Hp =>
     refine .fits fun W => ?_
     have ⟨_, _, s, le_n, le_a, _, hSort, hmem'⟩ := (LE_Interp.sound (Γ₀ := Γ₀) Hp.defeq W).2 hA
@@ -359,3 +359,31 @@ theorem LR2.adequacy_defeq (H : Γ ⊢ M ≡ N : A)
       (LR2 Γ₀).DefEq (M.subst σ) (N.subst σ) (A.subst σ) m a :=
   ⟨hmem, H.subst W.toSubstEq, (hM.subst_nil W).1, (hN.subst_nil W).1, (hA.subst_nil W).1,
     (LR2.adequacy H hM hA hmem).2 W⟩
+
+/-! ## Pi injectivity (Corollary 6)
+
+From the adequacy theorem we derive that definitionally equal Pi types
+have convertible domains and codomains. -/
+
+theorem forallE_whRed_l (d : Γ ⊢ A₀ ≡ SExpr.forallE B₁ F₁ : .sort s) :
+    ∃ B₀ F₀, Γ ⊢ A₀ ⤳* .forallE B₀ F₀ ∧ ∃ u v,
+      Γ ⊢ B₀ ≡ B₁ : .sort u ∧ B₀::Γ ⊢ F₀ ≡ F₁ : .sort v := by
+  have hPi : LE_Interp (n := 1) .nil (.forallE .bot ShapeFun.bot) (.forallE B₁ F₁) := by
+    refine .forallE .bot .bot (.bot <| .bot' .sort) (fun _ h => ?_) .rfl
+    cases h.bot_r; rw [ShapeFun.bot_app]; exact .bot
+  have hmem : Shape.HasType (n := 1) (.forallE .bot ShapeFun.bot) (.sort (s ≠ .zero)) := by
+    refine .forallE ⟨.bot <| .bot' .sort, fun _ h => ?_⟩
+    cases h.bot_r; rw [ShapeFun.bot_app]; exact .bot .sort
+  have := (LR2.adequacy d ((LE_Interp.sound d .nil).1.2 hPi) (.sort .rfl) hmem).2 .id
+  have ⟨_, _, _, _, _, _, redA₀, redPi, convB, convF, _⟩ := subst_id ▸ subst_id ▸ subst_id ▸ this
+  cases WHNF.forallE.whRedS redPi; exact ⟨_, _, redA₀, _, _, convB, convF⟩
+
+/-- Pi–Pi injectivity: if two Pi types are definitionally equal,
+their domains and codomains are each definitionally equal. -/
+theorem forallE_inv (H : Γ ⊢ SExpr.forallE A₀ B₀ ≡ SExpr.forallE A₁ B₁ : .sort s) :
+    ∃ u v, Γ ⊢ A₀ ≡ A₁ : .sort u ∧ A₀::Γ ⊢ B₀ ≡ B₁ : .sort v := by
+  have ⟨_, _, red, H⟩ := forallE_whRed_l H
+  cases WHNF.forallE.whRedS red; exact H
+
+theorem sort_forallE_inv : ¬Γ ⊢ .sort u ≡ SExpr.forallE A₁ B₁ : .sort s :=
+  fun H => have ⟨_, _, H⟩ := forallE_whRed_l H; nomatch WHNF.sort.whRedS H.1
