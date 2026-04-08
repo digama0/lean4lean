@@ -1,7 +1,5 @@
 import Lean4Lean.Experimental.ShapeLogRel
 
--- example : Unit := sorry set_option warn.sorry false -- so I don't forget
-
 namespace Lean4Lean
 
 namespace SExpr
@@ -316,12 +314,23 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
     · exact ((ihapp hM hA hmem).1 W).1
     · exact ((ihinst ((LE_Interp.sound (.beta He.defeq Ha.defeq) W.fits).1.1 hM) hA hmem).1 W).2
     · exact ((LR2 _).whr .rfl (subst_inst ▸ .tail .rfl .beta)).1 ((ihapp hM hA hmem).2 W)
-  | eta He Hlam ihe ihlam =>
-    -- M = .lam A (.app e.lift (.bvar 0)), N = e, type = .forallE A B
+  | @eta _ e _ _ He _ ihe ihlam =>
     refine ⟨fun σ σ' W => ⟨?_, ?_⟩, fun σ W => ?_⟩
     · exact ((ihlam hM hA hmem).1 W).1
     · exact ((ihe ((LE_Interp.sound (.eta He.defeq) W.fits).1.1 hM) hA hmem).1 W).2
-    sorry -- eq direction: funext argument
+    have hM' := (LE_Interp.sound (.eta He.defeq) W.fits).1.1 hM
+    cases hmem.unfold with
+    | bot hm => exact (LR2 _).bot hm
+    | sort | forallE => (try cases n) <;> cases hM <;> rename_i h _ _ <;> simp [Shape.LE.def] at h
+    | lam htm
+    have ⟨_, _, _, _, whr_t, htA₁, vtyA₁, htA₂, edge, vpi_M⟩ := (ihlam hM hA hmem).2 W
+    have ⟨_, _, _, _, whr_N, _, _, _, _, vpi_N⟩ := (ihe hM' hA hmem).2 W
+    cases whr_t.determ .forallE whr_N .forallE
+    refine ⟨_, _, _, _, whr_t, htA₁, vtyA₁, htA₂, edge, ?_, ?_⟩
+    · exact fun _ _ _ hp ha hv => ⟨(vpi_M.1 hp ha hv).1, (vpi_N.1 hp ha hv).2⟩
+    · refine fun a _ hp ha hv => ((LR2 _).whr ?_ .rfl).2 (vpi_N.2 hp ha hv)
+      rw [(?_ : (e.subst σ).app a = _)]; exact .tail .rfl .beta
+      rw [inst_lift_cons, subst, lift_subst_cons]; rfl
   | proofIrrel Hp =>
     refine .fits fun W => ?_
     have ⟨_, _, s, le_n, le_a, _, hSort, hmem'⟩ := (LE_Interp.sound (Γ₀ := Γ₀) Hp.defeq W).2 hA
@@ -335,19 +344,16 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
     · exact ((ihr ((LE_Interp.sound (.extra h1 h2) W.fits).1.1 hM) hA hmem).1 W).2
     sorry
 
-/-- Wraps the first conjunct of `adequacy` into a full `DefEq` bundle.
-From `Val2 (M.subst σ) (M.subst σ') (A.subst σ) m a` we recover the
-`HasType`, `IsDefEq`, and `LE_Interp .nil` fields using sorry'd lemmas. -/
-theorem LR2.adequacy_defeq (H : Γ ⊢ M ≡ N : A)
+/-- Wraps the first conjunct of `adequacy` into a full `DefEq` bundle. -/
+theorem LR2.adequacy_hasType (H : Γ ⊢ M : A)
     (hM : LE_Interp (n := n) ρ m M) (hA : LE_Interp ρ a A) (hmem : m.HasType a)
     {σ σ'} (W : LR2.SubstWF Γ₀ σ σ' Γ ρ) :
     (LR2 Γ₀).DefEq (M.subst σ) (M.subst σ') (A.subst σ) m a :=
   ⟨hmem, H.hasType.1.subst W.toSubstEq, (hM.subst_nil W).1, (hM.subst_nil W).2, (hA.subst_nil W).1,
     ((LR2.adequacy H hM hA hmem).1 W).1⟩
 
-/-- Wraps the second conjunct of `adequacy` into a full `DefEq` bundle.
-From `Val2 (M.subst σ) (N.subst σ) (A.subst σ) m a`. -/
-theorem LR2.adequacy_defeq_2 (H : Γ ⊢ M ≡ N : A)
+/-- Wraps the second conjunct of `adequacy` into a full `DefEq` bundle. -/
+theorem LR2.adequacy_defeq (H : Γ ⊢ M ≡ N : A)
     (hM : LE_Interp (n := n) ρ m M) (hN : LE_Interp ρ m N) (hA : LE_Interp ρ a A)
     (hmem : m.HasType a) {σ} (W : LR2.SubstWF Γ₀ σ σ Γ ρ) :
       (LR2 Γ₀).DefEq (M.subst σ) (N.subst σ) (A.subst σ) m a :=
