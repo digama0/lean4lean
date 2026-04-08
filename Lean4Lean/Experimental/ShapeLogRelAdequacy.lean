@@ -16,8 +16,17 @@ def LR2.Adequate (Γ₀ Γ : List SExpr) (ρ : Valuation) (M N A : SExpr) (m a :
 theorem LR2.Adequate.bot (ha : a.HasType .type) : Adequate Γ₀ Γ ρ M N A .bot a :=
   ⟨fun _ _ _ => ⟨(LR2 _).bot ha, (LR2 _).bot ha⟩, fun _ _ => (LR2 _).bot ha⟩
 
+theorem LR2.Adequate.fits
+    (H : ρ.Fits Γ₀ Γ → Adequate Γ₀ Γ ρ M N A m a) : Adequate Γ₀ Γ ρ M N A m a :=
+  ⟨fun _ _ W => (H W.fits).1 W, fun _ W => (H W.fits).2 W⟩
+
+theorem LR2.Adequate.refl
+    (H : ∀ {{σ σ'}}, LR2.SubstWF Γ₀ σ σ' Γ ρ →
+      (LR2 Γ₀).Val2 (M.subst σ) (M.subst σ') (A.subst σ) m a) :
+    Adequate Γ₀ Γ ρ M M A m a := ⟨fun _ _ W => ⟨H W, H W⟩, fun _ W => H W⟩
+
 theorem LR2.Adequate.left : Adequate Γ₀ Γ ρ M N A m a → Adequate Γ₀ Γ ρ M M A m a
-  | ⟨h1, _⟩ => ⟨fun _ _ W => ⟨(h1 W).1, (h1 W).1⟩, fun _ W => (LR2 _).symm (h1 W).1⟩
+  | ⟨h1, _⟩ => .refl fun _ _ W => (h1 W).1
 
 theorem LR2.Adequate.symm : Adequate Γ₀ Γ ρ M N A m a → Adequate Γ₀ Γ ρ N M A m a
   | ⟨h1, h2⟩ => ⟨fun _ _ W => (h1 W).symm, fun _ W => (LR2 _).symm (h2 W)⟩
@@ -91,20 +100,10 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
     (hM : LE_Interp (n := n) ρ m M) (hA : LE_Interp ρ a A) (hmem : m.HasType a) :
     Adequate Γ₀ Γ ρ M N A m a := by
   replace H := H.strong; induction H generalizing ρ n m a with
-  | bvar h =>
-    refine ⟨fun σ σ' W => ?_, fun σ W => ?_⟩
-    · exact and_self_iff.2 (((W h).2 a hA).2 hM hmem)
-    · exact (LR2 Γ₀).left (((W h).2 a hA).2 hM hmem)
-  | symm H ih =>
-    refine ⟨fun σ σ' W => ?_, fun σ W => ?_⟩ <;>
-      have hN := (LE_Interp.sound H.defeq W.fits).1.2 hM
-    · exact ((ih hN hA hmem).1 W).symm
-    · exact (LR2 Γ₀).symm ((ih hN hA hmem).2 W)
+  | bvar h => exact .refl fun _ _ W => ((W h).2 a hA).2 hM hmem
+  | symm H ih => exact .fits fun W => (ih ((LE_Interp.sound H.defeq W).1.2 hM) hA hmem).symm
   | trans _ H1 H2 ihA ih1 ih2 =>
-    refine ⟨fun σ σ' W => ?_, fun σ W => ?_⟩ <;>
-      have he₂ := (LE_Interp.sound H1.defeq W.fits).1.1 hM
-    · exact ⟨((ih1 hM hA hmem).1 W).1, ((ih2 he₂ hA hmem).1 W).2⟩
-    · exact (LR2 Γ₀).trans ((ih1 hM hA hmem).2 W) ((ih2 he₂ hA hmem).2 W)
+    exact .fits fun W => (ih1 hM hA hmem).trans (ih2 ((LE_Interp.sound H1.defeq W).1.1 hM) hA hmem)
   | @sort _ l =>
     suffices (LR2 Γ₀).Val2 (.sort l) (.sort l) (.sort l.succ) m a from
       ⟨fun _ _ _ => ⟨this, this⟩, fun _ _ => this⟩
@@ -312,10 +311,29 @@ theorem LR2.adequacy (H : Γ ⊢ M ≡ N : A)
     · exact ⟨(LR2 Γ₀).conv (tyConv W.left) ((ihE hM hA' hmem).1 W).1,
              (LR2 Γ₀).conv (tyConv W.left) ((ihE hM hA' hmem).1 W).2⟩
     · exact (LR2 Γ₀).conv (tyConv W) ((ihE hM hA' hmem).2 W)
-  | beta => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | eta => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | proofIrrel => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
-  | extra => exact ⟨fun _ _ _ => ⟨sorry, sorry⟩, fun _ _ => sorry⟩
+  | beta He Ha Happ Hinst _ihe _iha ihapp ihinst =>
+    refine ⟨fun _ _ W => ⟨?_, ?_⟩, fun σ W => ?_⟩
+    · exact ((ihapp hM hA hmem).1 W).1
+    · exact ((ihinst ((LE_Interp.sound (.beta He.defeq Ha.defeq) W.fits).1.1 hM) hA hmem).1 W).2
+    · exact ((LR2 _).whr .rfl (subst_inst ▸ .tail .rfl .beta)).1 ((ihapp hM hA hmem).2 W)
+  | eta He Hlam ihe ihlam =>
+    -- M = .lam A (.app e.lift (.bvar 0)), N = e, type = .forallE A B
+    refine ⟨fun σ σ' W => ⟨?_, ?_⟩, fun σ W => ?_⟩
+    · exact ((ihlam hM hA hmem).1 W).1
+    · exact ((ihe ((LE_Interp.sound (.eta He.defeq) W.fits).1.1 hM) hA hmem).1 W).2
+    sorry -- eq direction: funext argument
+  | proofIrrel Hp =>
+    refine .fits fun W => ?_
+    have ⟨_, _, s, le_n, le_a, _, hSort, hmem'⟩ := (LE_Interp.sound (Γ₀ := Γ₀) Hp.defeq W).2 hA
+    have hS := Shape.HasType.mono_r hSort.le_sort .sort hmem'; simp at hS
+    have ha' := hS.mono_r le_a ((Shape.HasType.lift le_n).2 hmem)
+    cases (Shape.lift_eq_bot le_n).1 (hS.proofIrrel ha')
+    exact .bot hmem.isType
+  | extra h1 h2 Hl Hr ihl ihr =>
+    refine ⟨fun σ σ' W => ⟨?_, ?_⟩, fun σ W => ?_⟩
+    · exact ((ihl hM hA hmem).1 W).1
+    · exact ((ihr ((LE_Interp.sound (.extra h1 h2) W.fits).1.1 hM) hA hmem).1 W).2
+    sorry
 
 /-- Wraps the first conjunct of `adequacy` into a full `DefEq` bundle.
 From `Val2 (M.subst σ) (M.subst σ') (A.subst σ) m a` we recover the
