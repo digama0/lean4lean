@@ -235,7 +235,7 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
     all_goals
       rw [inst_lift_cons]
       have hBb_sd := hA.forallE_inv'.2 p
-      replace IH W := IH W ((hTerm.lam_inv htm.2.1).2 hp) hBb_sd (htm.2.2 p hp)
+      replace IH W := IH W (hTerm.lam_inv' p) hBb_sd (htm.2.2 p hp)
     · have W' := cons hp hA1 ha hv W.left
       constructor
       · exact ((LR Γ₀).whr beta beta).2 <| ((IH W'.fits).1 W').1

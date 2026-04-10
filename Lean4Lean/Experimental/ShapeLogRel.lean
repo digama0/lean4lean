@@ -117,6 +117,26 @@ omit [Params] in
 theorem Shape.sort_le {s : Shape n} : .sort r ≤ s ↔ .sort r = s := by
   cases n <;> simp [sort, (· ≤ ·), Shape.LE] <;> cases s <;> simp [ble, Shape]
 
+omit [Params] in
+theorem Shape.LE.trans {s t u : Shape n} : s ≤ t → t ≤ u → s ≤ u := by
+  dsimp [(· ≤ ·), Shape.LE]
+  induction n with
+  | zero => cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;>
+      (intro h1 h2; exact h1.trans h2)
+  | succ n ih =>
+    have ihf {s t u : List (Shape n × Shape n)} :
+        ShapeFun.ble ble s t → ShapeFun.ble ble t u → ShapeFun.ble ble s u := by
+      simp only [ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true]
+      rintro h1 h2 x hx; let ⟨_, hy, x1, x2⟩ := h1 _ hx; let ⟨_, hz, y1, y2⟩ := h2 _ hy
+      exact ⟨_, hz, ih y1 x1, ih x2 y2⟩
+    cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;> grind
+
+omit [Params] in
+theorem ShapeFun.LE.trans {s t u : ShapeFun n} : s.LE t → t.LE u → s.LE u := by
+  simp only [ShapeFun.LE, ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true]
+  rintro h1 h2 x hx; let ⟨_, hy, x1, x2⟩ := h1 _ hx; let ⟨_, hz, y1, y2⟩ := h2 _ hy
+  exact ⟨_, hz, Shape.LE.trans y1 x1, Shape.LE.trans x2 y2⟩
+
 def ShapeFun.lift (lift : α → β) (x : List (α × α)) : List (β × β) :=
   x.map fun (a, b) => (lift a, lift b)
 
@@ -147,6 +167,10 @@ theorem Shape.lift_self {s : Shape n} : s.lift = s := by
   · rw [this Shape.lift_self]
 
 omit [Params] in
+theorem ShapeFun.lift_self {s : ShapeFun n} : lift Shape.lift s = s := by
+  simp [ShapeFun.lift]; apply List.map_id''; simp [Shape.lift_self]
+
+omit [Params] in
 theorem Shape.lift_lift {s : Shape n₁} (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) :
     ((s.lift : Shape n₂).lift : Shape n₃) = s.lift := by
   induction n₁ generalizing n₂ n₃ with
@@ -162,7 +186,6 @@ theorem Shape.lift_lift {s : Shape n₁} (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) 
           (ShapeFun.lift lift (ShapeFun.lift lift s : ShapeFun n₂) : ShapeFun n₃) =
           ShapeFun.lift lift s := by simp [ShapeFun.lift, ih]
       cases s <;> simp [lift, ih, ihf]
-      -- case sort i h1 => split <;> split <;> simp [lift, *]; grind
 
 omit [Params] in
 theorem ShapeFun.lift_lift {s : ShapeFun n₁} (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) :
@@ -182,8 +205,6 @@ theorem Shape.lift_le_lift {s t : Shape n} (le : n ≤ m) : (s.lift : Shape m) �
         ShapeFun.ble ble (ShapeFun.lift (lift : Shape n → Shape m) s) (ShapeFun.lift lift t) =
         ShapeFun.ble ble s t := by
       simp only [ShapeFun.ble, ShapeFun.lift, List.all_map, List.any_map, Function.comp_def, ih]
-    -- have sif {i} (h : i ≤ n) : (if h : i ≤ m then .sort i h else .bot : Shape (m+1)) =
-    --     .sort i (Nat.le_trans h le) := dif_pos _
     cases s <;> cases t <;> simp [ble, lift, *]
 
 omit [Params] in
@@ -197,101 +218,140 @@ theorem Shape.lift_eq_bot {s : Shape n} (h : n ≤ m) : s.lift (m := m) = .bot �
 omit [Params] in
 theorem Shape.lift_mono {s t : Shape n} : s ≤ t → (s.lift : Shape m) ≤ t.lift := by
   dsimp [(· ≤ ·), Shape.LE]
-  induction n generalizing m with
+  cases n with
   | zero =>
     cases s <;> cases t <;> simp [lift, ble] <;>
       first | exact Shape.bot_le | (intro h; subst h; exact Shape.LE.rfl)
-  | succ n ih =>
+  | succ n =>
     cases m with
     | zero => cases s <;> cases t <;> simp [lift, ble]
     | succ m =>
-      specialize @ih m
-      have ihf {s t} : ShapeFun.ble ble s t →
-          ShapeFun.ble ble (ShapeFun.lift (lift : Shape n → Shape m) s) (ShapeFun.lift lift t) := by
+      let rec go {n m} (ih : ∀ {s t : Shape n}, s ≤ t → (s.lift : Shape m) ≤ t.lift)
+          {s t} : ShapeFun.ble ble s t → ShapeFun.ble ble
+            (ShapeFun.lift (lift : Shape n → Shape m) s) (ShapeFun.lift lift t) := by
         simp only [ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true,
           ShapeFun.lift, List.any_map, List.all_map, Function.comp_apply]
         exact fun H _ h1 => let ⟨_, h2, h3, h4⟩ := H _ h1; ⟨_, h2, ih h3, ih h4⟩
-      cases s <;> cases t <;> simp [ble, lift, *]
-      -- · split <;> split <;> simp [ble]; omega
-      · grind
-      · grind
+      have := @Shape.lift_mono n m; dsimp [(· ≤ ·), Shape.LE] at this
+      have := @go n m Shape.lift_mono
+      cases s <;> cases t <;> simp [ble, lift, *] <;> grind
 
 omit [Params] in
 theorem ShapeFun.lift_mono {s t : ShapeFun n} : s.LE t →
-    LE (lift Shape.lift s : ShapeFun m) (lift Shape.lift t) := by
-  simp only [ShapeFun.LE, ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true,
-    ShapeFun.lift, List.any_map, List.all_map, Function.comp_apply]
-  exact fun H _ h1 => let ⟨_, h2, h3, h4⟩ := H _ h1; ⟨_, h2, Shape.lift_mono h3, Shape.lift_mono h4⟩
+    LE (lift Shape.lift s : ShapeFun m) (lift Shape.lift t) := Shape.lift_mono.go Shape.lift_mono
 
--- def ShapeFun.plift (lift : α → β × Option β) (x : List (α × α)) :
---     List (β × β) × Option (List (β × β)) :=
---   (x.filterMap fun (a, b) => return (← (lift a).2, (lift b).1),
---    x.mapM fun (a, b) => return ((lift a).1, ← (lift b).2))
+def ShapeFun.plift (lift : α → β × Option β) (x : List (α × α)) :
+    List (β × β) × Option (List (β × β)) :=
+  (x.filterMap fun (a, b) => return (← (lift a).2, (lift b).1),
+   x.mapM fun (a, b) => return ((lift a).1, ← (lift b).2))
 
--- def Shape.plift : ∀ {n m}, Shape n → Shape m × Option (Shape m)
---   | 0, _, _ | _+1, _, .bot => (.bot, some .bot)
---   | _+1, 0, _ => (.bot, none)
---   | n+1, m+1, .sort i _ =>
---     (if h : i ≤ m then .sort i h else .bot, _)
-  -- | _+1, _+1, .forallE s f => .forallE (lift s) <| ShapeFun.lift lift f
-  -- | _+1, _+1, .lam f => .lam <| ShapeFun.lift lift f
-
--- omit [Params] in
--- theorem Shape.lift_lift_le {s : Shape n} : (s.lift : Shape m).lift ≤ s := by
---   show ble ..
---   induction n generalizing m with | zero => rfl | succ n ih
---   cases m with | zero => rw [show s.lift = .bot from rfl]; simp; exact Shape.bot_le | succ m
---   specialize @ih m
---   have ihf {s : ShapeFun m} :
---       ShapeFun.ble ble (ShapeFun.lift lift (ShapeFun.lift lift s : ShapeFun n)) s := by
---     simp only [ShapeFun.ble, ShapeFun.lift, List.map_map, List.all_map, List.all_eq_true,
---       Function.comp_apply, List.any_eq_true, Bool.and_eq_true]
---     exact fun _ h => ⟨_, h, _, _⟩
---   cases s <;> simp [lift, ih, ihf]
---   case sort i h1 => split <;> split <;> simp [lift, *]; grind
-
--- omit [Params] in
--- theorem Shape.lift_lift_le' {s : Shape n₁} :
---     ((s.lift : Shape n₂).lift : Shape n₃) ≤ s.lift := by
---   suffices ∀ n', n₂ ≤ n' → ∀ s : Shape n', (s.lift : Shape n₂).lift.ble s by
---     if h : n₁ ≤ n₂ ∨ n₃ ≤ n₂ then rw [lift_lift h]; exact .rfl else
---     simp at h
---     rw [← lift_lift (n₁ := n₂) (n₂ := n₁.min n₃) (n₃ := n₃) (by simp [Nat.le_min]; omega),
---       ← lift_lift (n₁ := n₁) (n₂ := n₁.min n₃) (n₃ := n₃) (by simp [Nat.le_min]; omega),
---       ← lift_lift (n₁ := n₁) (n₂ := n₁.min n₃) (n₃ := n₂) (by simp [Nat.le_min]; omega)]
---     apply lift_mono; apply this; simp [Nat.le_min]; omega
---   clear n₁ n₃ s; intro m le s
---   induction n₂ generalizing m with
---   | zero => rw [show s.lift = .bot from rfl]; simp; exact Shape.bot_le
---   | succ n ih =>
---     let m + 1 := m; simp at le; replace ih {s} := ih _ le s
---     have ihf {s : ShapeFun m} :
---         ShapeFun.ble ble (ShapeFun.lift lift (ShapeFun.lift lift s : ShapeFun n)) s := by
---       simp only [ShapeFun.ble, ShapeFun.lift, List.map_map, List.all_map, List.all_eq_true,
---         Function.comp_apply, List.any_eq_true, Bool.and_eq_true]
---       exact fun _ h => ⟨_, h, _, ih⟩
---     cases s <;> simp [lift, ih, ihf]
---     case sort i h1 => split <;> split <;> simp [lift, *]; grind
+def Shape.plift : ∀ {n m}, Shape n → Shape m × Option (Shape m)
+  | 0, _, .sort r | _+1, _, .sort r => (.sort r, some (.sort r))
+  | 0, _, .bot | _+1, _, .bot => (.bot, some .bot)
+  | _+1, 0, _ => (.bot, none)
+  | _+1, _+1, .forallE s f =>
+    let (s₀, s₁) := s.plift
+    let (f₀, f₁) := ShapeFun.plift plift f
+    (.forallE s₀ f₀, return .forallE (← s₁) (← f₁))
+  | _+1, _+1, .lam f =>
+    let (f₀, f₁) := ShapeFun.plift plift f
+    (.lam f₀, return .lam (← f₁))
 
 omit [Params] in
-theorem Shape.LE.trans {s t u : Shape n} : s ≤ t → t ≤ u → s ≤ u := by
-  dsimp [(· ≤ ·), Shape.LE]
-  induction n with
-  | zero => cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;>
-      (intro h1 h2; exact h1.trans h2)
-  | succ n ih =>
-    have ihf {s t u : List (Shape n × Shape n)} :
-        ShapeFun.ble ble s t → ShapeFun.ble ble t u → ShapeFun.ble ble s u := by
-      simp only [ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true]
-      rintro h1 h2 x hx; let ⟨_, hy, x1, x2⟩ := h1 _ hx; let ⟨_, hz, y1, y2⟩ := h2 _ hy
-      exact ⟨_, hz, ih y1 x1, ih x2 y2⟩
-    cases s <;> cases t <;> simp [ble] <;> cases u <;> simp [ble, *] <;> grind
+theorem Shape.plift_eq_lift (le : n ≤ m) {s : Shape n} :
+    s.plift (m := m) = (s.lift, some s.lift) := by
+  let rec go {n m} (IH : n ≤ m → ∀ {s : Shape n}, s.plift (m := m) = (s.lift, some s.lift))
+      (le : n ≤ m) {s : ShapeFun n} :
+      ShapeFun.plift plift s = (ShapeFun.lift (lift (m := m)) s, some (ShapeFun.lift lift s)) := by
+    simp only [ShapeFun.plift, ShapeFun.lift, IH le, bind, pure]; congr 1
+    · rw [← List.filterMap_eq_map]; rfl
+    · rw [List.mapM_eq_some, List.forall₂_map_right_iff]
+      exact .rfl fun _ _ => rfl
+  unfold plift; split <;> simp [lift] at le ⊢ <;> simp [plift_eq_lift le, go plift_eq_lift le]
 
 omit [Params] in
-theorem ShapeFun.LE.trans {s t u : ShapeFun n} : s.LE t → t.LE u → s.LE u := by
-  simp only [ShapeFun.LE, ShapeFun.ble, List.all_eq_true, List.any_eq_true, Bool.and_eq_true]
-  rintro h1 h2 x hx; let ⟨_, hy, x1, x2⟩ := h1 _ hx; let ⟨_, hz, y1, y2⟩ := h2 _ hy
-  exact ⟨_, hz, Shape.LE.trans y1 x1, Shape.LE.trans x2 y2⟩
+theorem Shape.plift_lift (le : n ≤ m) {s : Shape n} :
+    (s.lift (m := m)).plift = (s, some s) := by
+  let rec go {n m} (IH : n ≤ m → ∀ {s : Shape n}, (s.lift (m := m)).plift = (s, some s))
+      (le : n ≤ m) {s : ShapeFun n} :
+      ShapeFun.plift plift (ShapeFun.lift (lift (m := m)) s) = (s, some s) := by
+    simp only [ShapeFun.plift, ShapeFun.lift, List.filterMap_map, List.mapM_map]; congr 1
+    · refine .trans ?_ List.filterMap_some; congr 1; funext (a, b); simp [IH le]
+    · rw [List.mapM_eq_some]; refine .rfl fun (a, b) _ => by simp [IH le]
+  unfold lift; split <;> (try cases m) <;> try simp [plift, sort, bot] at le ⊢
+  · cases le; cases s <;> grind
+  all_goals · simp [plift_lift le, go plift_lift le]
+
+omit [Params] in
+theorem Shape.plift_thm (le : n ≤ m) {s : Shape m} {t : Shape n} :
+    (t.lift ≤ s ↔ t ≤ (s.plift (m := n)).1) ∧
+    (s ≤ t.lift ↔ ∃ z, (s.plift (m := n)).2 = some z ∧ z ≤ t) := by
+  let rec go {n m}
+      (IH : n ≤ m → ∀ {s : Shape m} {t : Shape n},
+        (t.lift ≤ s ↔ t ≤ (s.plift (m := n)).1) ∧
+        (s ≤ t.lift ↔ ∃ z, (s.plift (m := n)).2 = some z ∧ z ≤ t))
+      (le : n ≤ m) {s : ShapeFun m} {t : ShapeFun n} :
+      (ShapeFun.LE (ShapeFun.lift lift t) s ↔ ShapeFun.LE t (ShapeFun.plift plift s).1) ∧
+      (ShapeFun.LE s (ShapeFun.lift lift t) ↔
+        ∃ z, (ShapeFun.plift plift s).2 = some z ∧ ShapeFun.LE z t) := by
+    simp [ShapeFun.LE, ShapeFun.ble, ShapeFun.lift, ShapeFun.plift, List.mapM_eq_some,
+      -List.any_filterMap, -Prod.forall]
+    refine ⟨⟨fun H (a, b) h => ?_, fun H (a, b) h => ?_⟩,
+      ⟨fun H => ?_, fun ⟨l, hl, hl2⟩ (a, b) h => ?_⟩⟩
+    · obtain ⟨a₁, b₁, h1, h2, h3⟩ := H _ h
+      have ⟨z, hz, hz2⟩ := (IH le).2.1 h2
+      exact ⟨_, _, ⟨_, _, h1, _, hz, rfl, rfl⟩, hz2, (IH le).1.1 h3⟩
+    · obtain ⟨_, _, ⟨_, _, h1, _, h2, rfl, rfl⟩, h3, h4⟩ := H _ h
+      exact ⟨_, _, h1, (IH le).2.2 ⟨_, h2, h3⟩, (IH le).1.2 h4⟩
+    · induction s with | nil => exact ⟨[], .nil, nofun⟩ | cons p s ih
+      simp only [List.mem_cons, or_imp, forall_and, forall_eq] at H
+      have ⟨⟨a', b', h1, h2, h3⟩, H⟩ := H
+      have ⟨l, hl, hl2⟩ := ih H
+      have ⟨z, hz, hz2⟩ := (IH le).2.1 h3
+      refine ⟨_::l, .cons ⟨_, hz, rfl⟩ hl, ?_⟩
+      exact List.forall_mem_cons.2 ⟨⟨_, _, h1, (IH le).1.1 h2, hz2⟩, hl2⟩
+    · obtain ⟨_, h1, _, h2, rfl⟩ := hl.forall_exists_l _ h
+      have ⟨_, _, h3, h4, h5⟩ := hl2 _ h1
+      exact ⟨_, _, h3, (IH le).1.2 h4, (IH le).2.2 ⟨_, h2, h5⟩⟩
+  unfold plift; split
+    <;> (try (first | cases Nat.le_zero.1 le | cases n); cases t)
+    <;> (try · simp [lift, sort, bot, (· ≤ ·), LE, ble])
+    <;> (try · cases t <;> simp [lift, sort, bot, Shape.LE.def])
+  · rename_i s _ _; cases s with
+    | bot | sort => grind
+    | _ => cases t <;> simp [lift, sort, bot, (· ≤ ·), LE, ble]
+  · cases t with simp [lift, sort, bot, Shape.LE.def]
+    | forallE => ?_ | _ => intros; subst_vars; simp
+    simp [Shape.plift_thm (Nat.le_of_succ_le_succ le),
+      go Shape.plift_thm (Nat.le_of_succ_le_succ le)]; grind
+  · cases t with simp [lift, sort, bot, Shape.LE.def]
+    | lam => ?_ | _ => intros; subst_vars; simp
+    simp [go Shape.plift_thm (Nat.le_of_succ_le_succ le)]; grind
+
+omit [Params] in
+theorem Shape.le_plift (le : n ≤ m) {s : Shape m} {t : Shape n} :
+    t ≤ (s.plift (m := n)).1 ↔ t.lift ≤ s := (Shape.plift_thm le).1.symm
+
+omit [Params] in
+theorem Shape.plift_le (le : n ≤ m) {s : Shape m} {t : Shape n} :
+    (∃ z, (s.plift (m := n)).2 = some z ∧ z ≤ t) ↔ s ≤ t.lift := (Shape.plift_thm le).2.symm
+
+omit [Params] in
+theorem ShapeFun.le_plift (le : n ≤ m) {s : ShapeFun m} {t : ShapeFun n} :
+    LE t (plift Shape.plift s).1  ↔ LE (lift Shape.lift t) s :=
+  (Shape.plift_thm.go Shape.plift_thm le).1.symm
+
+omit [Params] in
+theorem ShapeFun.plift_le (le : n ≤ m) {s : ShapeFun m} {t : ShapeFun n} :
+    (∃ z, (plift Shape.plift s).2 = some z ∧ LE z t) ↔ LE s (lift Shape.lift t) :=
+  (Shape.plift_thm.go Shape.plift_thm le).2.symm
+
+omit [Params] in
+theorem Shape.plift_mono {s t : Shape m} (H : s ≤ t) :
+    (s.plift (m := n)).1 ≤ (t.plift (m := n)).1 := by
+  obtain le | le := Nat.le_total m n
+  · rw [Shape.plift_eq_lift le, Shape.plift_eq_lift le]; exact Shape.lift_mono H
+  · exact (Shape.le_plift le).2 (.trans ((Shape.le_plift le).1 .rfl) H)
 
 def Shape.Join (x y z : Shape n) := ∀ w, z ≤ w ↔ x ≤ w ∧ y ≤ w
 def ShapeFun.Join (x y z : ShapeFun n) := ∀ w, z.LE w ↔ x.LE w ∧ y.LE w
@@ -325,9 +385,6 @@ theorem Shape.Compat.mono {x y x' y' : Shape n}
 
 omit [Params] in
 theorem Shape.Join.compat (H : Join x y z) : x.Compat y := Compat.def.2 ⟨_, (H _).1 .rfl⟩
-
-omit [Params] in
-theorem Shape.Join.forallE (H : Join x y z) : x.Compat y := sorry
 
 omit [Params] in
 theorem Shape.Join.lift {x y : Shape n} (le : n ≤ m) :
@@ -375,8 +432,25 @@ def ShapeFun.maxBelow (s : ShapeFun n) : Shape n × Shape n :=
 def ShapeFun.app (s : ShapeFun n) (a : Shape n) : Shape n :=
   maxBelow (s.filter (·.1 ≤ a)) |>.2
 
+def ShapeFun.WF (WF : Shape n → Bool) (f : ShapeFun n) : Bool :=
+  (f.all fun (x, y) => WF x && WF y) && f.any (·.1 ≤ .bot) &&
+  (f.all fun (x, y) => f.all fun (x', y') =>
+    (x.Compat x' → (y.Compat y' && let j := x.join x'; f.any fun (z, _) => z ≤ j && j ≤ z)) &&
+    (x ≤ x' → y ≤ y')) &&
+  f.Pairwise fun (x, y) (x', y') => x ≤ x' → ¬y' ≤ y
+
+def Shape.WF : ∀ {n}, Shape n → Bool
+  | 0, _ | _+1, .bot | _+1, .sort .. => true
+  | _+1, .forallE s f => s.WF && ShapeFun.WF WF f
+  | _+1, .lam f => ShapeFun.WF WF f
+
 omit [Params] in
-theorem ShapeFun.bot_mem (f : ShapeFun n) : ∃ y, (.bot, y) ∈ f := sorry
+theorem ShapeFun.bot_mem (f : ShapeFun n) : ∃ y, (.bot, y) ∈ f := by
+  have wf : ShapeFun.WF Shape.WF f := sorry
+  simp [ShapeFun.WF, Bool.and_eq_true, List.any_eq_true] at wf
+  stop
+  have ⟨⟨x, y⟩, hmem, hle⟩ := wf.1.2
+  exact ⟨y, (Shape.le_bot.1 hle) ▸ hmem⟩
 
 omit [Params] in
 theorem ShapeFun.non_bot (f : ShapeFun n) : ∃ x y, (x, y) ∈ f ∧ y ≠ .bot := sorry
@@ -412,10 +486,11 @@ theorem ShapeFun.uniq_l {f : ShapeFun n} (h1 : (x, y) ∈ f) (h2 : (x', y') ∈ 
   ShapeFun.uniq h1 h2 h3 (app_of_mem h1 ▸ app_of_mem h2 ▸ app_mono_r h4)
 
 omit [Params] in
-@[simp] theorem ShapeFun.bot_app : (@ShapeFun.bot n).app x = .bot := sorry
+@[simp] theorem ShapeFun.bot_app : (@ShapeFun.bot n).app x = .bot := by
+  simp [ShapeFun.bot, ShapeFun.app, ShapeFun.maxBelow]
 
 omit [Params] in
-@[simp] theorem ShapeFun.lift_app :
+@[simp] theorem ShapeFun.lift_app (le : n ≤ m) :
     ((app f a : Shape n).lift : Shape m) = app (lift Shape.lift f) a.lift  := by
   sorry
 
@@ -471,7 +546,8 @@ omit [Params] in
 theorem Shape.HasDom.def : HasDom f a ↔ ∀ x y, (x, y) ∈ f → x.HasType a := by
   refine ⟨fun H x y h => ?_, fun H x => ?_⟩
   · sorry
-  · sorry
+  · have ⟨x', y', hle, hmem, heq⟩ := ShapeFun.app_eq f x
+    exact ⟨x', hle, H _ _ hmem, heq ▸ ShapeFun.app_of_mem hmem ▸ .rfl⟩
 
 omit [Params] in
 theorem Shape.HasDom.lift (le : n ≤ m) :
@@ -611,18 +687,21 @@ theorem Shape.HasType.mono_l {m a : Shape n}
     (hm1 : m ≤ m') (hm2 : m' ≤ m) (H : HasType m a) : HasType m' a :=
   .join (Shape.join_self.2 ⟨hm1, hm2⟩) H H
 
-theorem Shape.HasType.lam_app
-    (H : ∀ x y, (x, y) ∈ (f : ShapeFun n) → HasType x a ∧ HasType y (ShapeFun.app b x))
-    (ht : HasType x a) : HasType (ShapeFun.app f x) (ShapeFun.app b x) := sorry
+-- theorem Shape.HasType.lam_app
+--     (H : ∀ x y, (x, y) ∈ (f : ShapeFun n) → HasType x a ∧ HasType y (ShapeFun.app b x))
+--     (ht : HasType x a) : HasType (ShapeFun.app f x) (ShapeFun.app b x) := by
+--   have ⟨x', y', hle, hmem, heq⟩ := ShapeFun.app_eq f x
+--   rw [heq]; exact .mono_r (ShapeFun.app_mono_r hle) (r:=true) sorry (H _ _ hmem).2
 
-theorem Shape.HasType.pi_app
-    (H : ∀ x y, (x, y) ∈ (b : ShapeFun n) → HasType x a ∧ HasType y (.sort r))
-    (ht : HasType x a) : HasType (ShapeFun.app f x) (.sort r) := sorry
+-- theorem Shape.HasType.pi_app
+--     (H : ∀ x y, (x, y) ∈ (b : ShapeFun n) → HasType x a ∧ HasType y (.sort r))
+--     (ht : HasType x a) : HasType (ShapeFun.app f x) (.sort r) := sorry
 
-theorem Shape.HasType.maximal
-    (H : ∀ x y, (x, y) ∈ (f : ShapeFun n) → HasType x a ∧ HasType y (ShapeFun.app b x))
-    (ha : a ≤ a') (ht : HasType x' a') :
-    ∃ x, HasType x a ∧ x ≤ x' ∧ ShapeFun.app f x = ShapeFun.app f x' := sorry
+-- theorem Shape.HasType.maximal
+--     (H : ∀ x y, (x, y) ∈ (f : ShapeFun n) → HasType x a ∧ HasType y (ShapeFun.app b x)) :
+--     ∃ x, HasType x a ∧ x ≤ x' ∧ ShapeFun.app f x = ShapeFun.app f x' := by
+--   have ⟨x₀, y₀, hle, hmem, heq⟩ := ShapeFun.app_eq f x'
+--   exact ⟨x₀, (H _ _ hmem).1, hle, (ShapeFun.app_of_mem hmem).symm ▸ heq.symm⟩
 
 omit [Params] in
 theorem Shape.HasType.proofIrrel
@@ -660,18 +739,6 @@ theorem Shape.HasDom.join (h1 : HasDom f₁ a₁) (h2 : HasDom f₂ a₂)
   · exact a3.trans <| (ShapeFun.app_mono_r jx.le.1).trans (ShapeFun.app_mono_l jf.le.1 _)
   · exact b3.trans <| (ShapeFun.app_mono_r jx.le.2).trans (ShapeFun.app_mono_l jf.le.2 _)
 
-def ShapeFun.WF (WF : Shape n → Bool) (f : ShapeFun n) : Bool :=
-  (f.all fun (x, y) => WF x && WF y) && f.any (·.1 ≤ .bot) &&
-  (f.all fun (x, y) => f.all fun (x', y') =>
-    (x.Compat x' → (y.Compat y' && let j := x.join x'; f.any fun (z, _) => z ≤ j && j ≤ z)) &&
-    (x ≤ x' → y ≤ y')) &&
-  f.Pairwise fun (x, y) (x', y') => x ≤ x' → ¬y' ≤ y
-
-def Shape.WF : ∀ {n}, Shape n → Bool
-  | 0, _ | _+1, .bot | _+1, .sort .. => true
-  | _+1, .forallE s f => s.WF && ShapeFun.WF WF f
-  | _+1, .lam f => ShapeFun.WF WF f
-
 def Valuation := Nat → Σ n, Shape n
 
 def Valuation.nil : Valuation := fun _ => ⟨0, .bot⟩
@@ -705,8 +772,9 @@ theorem Valuation.LE.push {ρ ρ' : Valuation} : (ρ.push a).LE (ρ'.push a') �
 inductive LE_Interp : Valuation → ∀ {n}, Shape n → SExpr → Prop
   | bot : LE_Interp ρ .bot M
   -- | le : m ≤ m' → LE_Interp ρ m' M → LE_Interp ρ m M
-  -- | lift : n ≤ n' → LE_Interp (n := n) ρ m M → LE_Interp (n := n') ρ m.lift M
-  | bvar : (ρ i).1 ≤ n' → n ≤ n' → m.lift (m := n') ≤ (ρ i).2.lift → LE_Interp (n := n) ρ m (.bvar i)
+  -- | lift : n ≤ n' → LE_Interp (n := n') ρ m.lift M → LE_Interp (n := n) ρ m M
+  | bvar : (ρ i).1 ≤ n' → n ≤ n' →
+    m.lift (m := n') ≤ (ρ i).2.lift → LE_Interp (n := n) ρ m (.bvar i)
   | sort : m ≤ .sort (decide (l ≠ .zero)) → LE_Interp ρ m (.sort l)
   | app : LE_Interp ρ f F → LE_Interp ρ a A → m ≤ f.app a → LE_Interp ρ m (.app F A)
   | lam : LE_Interp (n := n) ρ a A →
@@ -716,21 +784,77 @@ inductive LE_Interp : Valuation → ∀ {n}, Shape n → SExpr → Prop
     Shape.HasDom f b' → (∀ x, x.HasType b' → LE_Interp (ρ.push x) ((f : ShapeFun n).app x) F) →
     m ≤ .forallE b f → LE_Interp (n := n+1) ρ m (.forallE B F)
 
-theorem LE_Interp.mono : m ≤ m' → LE_Interp ρ m' M → LE_Interp ρ m M := sorry
-theorem LE_Interp.mono_l : ρ.LE ρ' → LE_Interp ρ m M → LE_Interp ρ' m M := sorry
-theorem LE_Interp.lift : n ≤ n' → (LE_Interp (n := n') ρ m.lift M ↔ LE_Interp (n := n) ρ m M) := sorry
-theorem LE_Interp.weak (H : LE_Interp ρ m M) : LE_Interp (ρ.push x) m M.lift := sorry
+theorem LE_Interp.mono (h : m ≤ m') (H : LE_Interp ρ m' M) : LE_Interp ρ m M := by
+  induction H with
+  | bot => exact Shape.le_bot.1 h ▸ .bot
+  | bvar h1 h2 h3 => exact .bvar h1 h2 ((Shape.lift_mono h).trans h3)
+  | sort h1 => exact .sort (h.trans h1)
+  | app hf ha h1 => exact .app hf ha (h.trans h1)
+  | lam ha hdom hbody h1 => exact .lam ha hdom hbody (h.trans h1)
+  | forallE hb hb' hdom hbody h1 => exact .forallE hb hb' hdom hbody (h.trans h1)
+
+theorem LE_Interp.mono_l (hρ : ρ.LE ρ') (H : LE_Interp ρ m M) : LE_Interp ρ' m M := by
+  induction H generalizing ρ' with
+  | bot => exact .bot
+  | bvar h1 h2 h3 =>
+    refine have le₁ := Nat.le_max_left ..; have le₂ := Nat.le_max_right ..
+      .bvar le₂ (Nat.le_trans h2 le₁) (.trans ?_ (hρ _ _ (Nat.le_trans h1 le₁) le₂))
+    rw [← Shape.lift_lift (.inl h2), ← Shape.lift_lift (.inl h1)]; exact Shape.lift_mono h3
+  | sort h1 => exact .sort h1
+  | app _ _ h1 ih_f ih_a => exact .app (ih_f hρ) (ih_a hρ) h1
+  | lam _ hdom _ h1 ih_a ih_body =>
+    exact .lam (ih_a hρ) hdom (fun x hx => ih_body x hx (Valuation.LE.push.2 ⟨hρ, .rfl⟩)) h1
+  | forallE _ _ hdom _ h1 ih_b ih_b' ih_body =>
+    refine .forallE (ih_b hρ) (ih_b' hρ) hdom ?_ h1
+    exact fun x hx => ih_body x hx (Valuation.LE.push.2 ⟨hρ, .rfl⟩)
+
+theorem LE_Interp.lift (le : n ≤ n') :
+    LE_Interp (n := n') ρ m.lift M ↔ LE_Interp (n := n) ρ m M := by
+  constructor
+  · intro H
+    generalize eq : m.lift = m' at H
+    induction H generalizing n with try subst eq
+    | bot => exact (Shape.lift_eq_bot le).1 eq ▸ .bot
+    | sort h1 => exact .sort (by rwa [← Shape.lift_sort (n := n), Shape.lift_le_lift le] at h1)
+    | bvar h1 h2 h3 =>
+      exact .bvar h1 (Nat.le_trans le h2) (by rwa [Shape.lift_lift (.inl le)] at h3)
+    | app hf ha h1 ih_f ih_a =>
+      sorry
+      -- have := ih_a le _
+      -- exact .app hf ha (by
+      --   rw [← Shape.lift_app (n := n), ← eq]; exact (Shape.lift_le_lift le).1 h1)
+    | lam ha hdom hbody h1 ih_a ih_body => sorry
+    | forallE hb hb' hdom hbody h1 ih_b ih_b' ih_body => sorry
+  · intro H; sorry
+
+theorem LE_Interp.weak (H : LE_Interp ρ m M) : LE_Interp (ρ.push x) m M.lift := by
+  induction H with
+  | bot => exact .bot
+  | sort h1 => exact .sort h1
+  | bvar h1 h2 h3 => exact .bvar h1 h2 h3
+  | app hf ha h1 ih_f ih_a => exact .app ih_f ih_a h1
+  | lam ha hdom hbody h1 ih_a ih_body =>
+    sorry
+  | forallE hb hb' hdom hbody h1 ih_b ih_b' ih_body =>
+    sorry
+
 theorem LE_Interp.weak_iff : LE_Interp (ρ.push x) m M.lift ↔ LE_Interp ρ m M := sorry
+
 theorem LE_Interp.inst : LE_Interp (n := n) ρ f (F.inst A) ↔
     ∃ m a, LE_Interp (n := n) (ρ.push a) f F ∧ LE_Interp (n := m) ρ a A := sorry
+
 theorem LE_Interp.bvar_iff :
     LE_Interp (n := n) ρ m (.bvar i) ↔
-    ∃ k, n ≤ k ∧ (ρ i).1 ≤ k ∧ m.lift (m := k) ≤ (ρ i).2.lift := sorry
+    ∃ k, n ≤ k ∧ (ρ i).1 ≤ k ∧ m.lift (m := k) ≤ (ρ i).2.lift := by
+  refine ⟨?_, fun ⟨k, h1, h2, h3⟩ => .bvar h2 h1 h3⟩
+  intro
+  | .bot => exact ⟨_, Nat.le_max_left .., Nat.le_max_right .., Shape.lift_bot.symm ▸ Shape.bot_le⟩
+  | .bvar h1 h2 h3 => exact ⟨_, h2, h1, h3⟩
 
 theorem LE_Interp.forallE_inv {b} {f : ShapeFun n} {B F}
     (H : LE_Interp (n := n+1) ρ (.forallE b f) (.forallE B F)) :
     LE_Interp ρ b B ∧ ∀ {{X x}}, LE_Interp ρ x X → LE_Interp ρ (f.app x) (F.inst X) := by
-  let .forallE (b := b₁) (b' := b₂) (f := f') hb₁ hb₂ hd hiB le := H
+  let .forallE hb₁ hb₂ hd hiB le := H
   simp [Shape.LE.def] at le
   refine ⟨hb₁.mono le.1, fun X x hx => ?_⟩
   obtain ⟨x', _, le1, hf, rfl⟩ := ShapeFun.app_eq f x
@@ -747,22 +871,30 @@ theorem LE_Interp.forallE_inv' {b} {f : ShapeFun n} {B F}
   rwa [SExpr.inst, SExpr.subst_lift', (?_ : Subst.lift_l _ _ = Subst.id), subst_id] at this
   funext i; cases i <;> rfl
 
-theorem LE_Interp.lam_inv {b} {f : ShapeFun n} {B F}
-    (H : LE_Interp (n := n+1) ρ (.lam f) (.lam B F)) (hf : Shape.HasDom f b) :
-    LE_Interp ρ b B ∧ ∀ {{x}}, x.HasType b → LE_Interp (ρ.push x) (f.app x) F := sorry
+theorem LE_Interp.lam_inv {f : ShapeFun n} {B F}
+    (H : LE_Interp (n := n+1) ρ (.lam f) (.lam B F))
+    {{X x}} (hx : LE_Interp ρ x X) : LE_Interp ρ (f.app x) (F.inst X) := by
+  let .lam _ hd hiF le := H
+  obtain ⟨x', _, le1, hf, rfl⟩ := ShapeFun.app_eq f x
+  obtain ⟨_, _, hf, le2, lf⟩ := ShapeFun.LE.def.1 le _ _ hf
+  refine .inst.2 ⟨_, _, ?_, hx.mono (le2.trans le1)⟩
+  exact (hiF _ (Shape.HasDom.def.1 hd _ _ hf)).mono (lf.trans (ShapeFun.app_of_mem hf ▸ .rfl))
+
+theorem LE_Interp.lam_inv' {f : ShapeFun n} {B F}
+    (H : LE_Interp (n := n+1) ρ (.lam f) (.lam B F)) (x) :
+    LE_Interp (ρ.push x) (f.app x) F := by
+  have := (LE_Interp.weak (x := x) H).lam_inv
+    (.bvar (i := 0) (Nat.le_refl _) (Nat.le_refl _) .rfl)
+  rwa [SExpr.inst, SExpr.subst_lift', (?_ : Subst.lift_l _ _ = Subst.id), subst_id] at this
+  funext i; cases i <;> rfl
 
 private theorem LE_Interp.compat_join {m₁ m₂ : Shape n}
     (H1 : LE_Interp ρ m₁ M) (H2 : LE_Interp ρ m₂ M) :
     m₁.Compat m₂ ∧ LE_Interp ρ (m₁.join m₂) M := by
-
   have mk {n ρ m₁ m₂ m M} (H1 : m₁ ≤ m) (H2 : m₂ ≤ m) (H : LE_Interp ρ m M) :
       m₁.Compat (n := n) m₂ ∧ LE_Interp ρ (m₁.join m₂) M :=
     have := Shape.Compat.def.2 ⟨_, H1, H2⟩
     ⟨this, H.mono ((Shape.Join.mk this _).2 ⟨H1, H2⟩)⟩
-  have lift {n n' ρ m₁ m₂ M} (le : n ≤ n')
-      (H : m₁.lift.Compat (n := n') m₂.lift ∧ LE_Interp ρ (n := n') (m₁.lift.join m₂.lift) M) :
-      Shape.Compat (n := n) m₁ m₂ ∧ LE_Interp ρ (m₁.join m₂) M :=
-    ⟨(Shape.Compat.lift le).1 H.1, (LE_Interp.lift le).1 ((Shape.lift_join le).symm ▸ H.2)⟩
   induction M generalizing ρ n m₁ m₂ with
   | const => cases H1 with | bot => exact mk Shape.bot_le .rfl H2
   | sort =>
@@ -777,9 +909,11 @@ private theorem LE_Interp.compat_join {m₁ m₂ : Shape n}
       Shape.lift_mono (m := max k₁ k₂) h1le
     have h2le' := Shape.lift_lift (.inl h2k) ▸ Shape.lift_lift (.inl h2n) ▸
       Shape.lift_mono (m := max k₁ k₂) h2le
-    exact lift (Nat.le_trans h1k (Nat.le_max_left k₁ k₂)) <| mk h1le' h2le' <|
+    have le := Nat.le_trans h1k (Nat.le_max_left k₁ k₂)
+    have ⟨H1, H2⟩ := mk h1le' h2le' <|
       (LE_Interp.lift (Nat.le_trans h1n (Nat.le_max_left ..))).2
         (.bvar (Nat.le_refl _) (Nat.le_refl _) .rfl)
+    exact ⟨(Shape.Compat.lift le).1 H1, (LE_Interp.lift le).1 ((Shape.lift_join le).symm ▸ H2)⟩
   | app _ _ _ ih_f ih_a =>
     cases id H1 with | bot => exact mk Shape.bot_le .rfl H2 | app hf ha hle
     cases H2 with | bot => exact mk .rfl Shape.bot_le H1 | app hf' ha' hle'
@@ -1749,9 +1883,9 @@ private theorem LRS.PiDefEq.lift_aux
       have hp' := (Shape.HasType.lift le).2 hp
       have v' := (IH2 hp).2 v)
     · have ⟨r1, r2⟩ := hEdge.1 hp' ha v'
-      exact ⟨(IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r1),
-              (IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ r2)⟩
-    · exact (IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app ▸ hEdge.2 hp' ha v')
+      exact ⟨(IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app le ▸ r1),
+              (IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app le ▸ r2)⟩
+    · exact (IH1 (htpi_a.2 _ hp)).1 (ShapeFun.lift_app le ▸ hEdge.2 hp' ha v')
   · refine ⟨fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩ <;> (
       refine have ⟨_, _, d1, d2, d3⟩ := ShapeFun.app_eq (ShapeFun.lift Shape.lift _) _; d3 ▸ ?_
       simp [ShapeFun.lift] at d2; obtain ⟨q, _, d2, rfl, rfl⟩ := d2
@@ -1777,9 +1911,9 @@ private theorem LRS.LamDefEq.lift_aux
       have v' := (IH hp).2 v)
     · have ⟨r1, r2⟩ := hP.1 hp' ha v'
       refine ⟨(IH (htm.2.2 _ hp)).1 ?_, (IH (htm.2.2 _ hp)).1 ?_⟩
-        <;> rw [ShapeFun.lift_app, ShapeFun.lift_app] <;> [exact r1; exact r2]
+        <;> rw [ShapeFun.lift_app le, ShapeFun.lift_app le] <;> [exact r1; exact r2]
     · apply (IH (htm.2.2 _ hp)).1
-      rw [ShapeFun.lift_app, ShapeFun.lift_app]
+      rw [ShapeFun.lift_app le, ShapeFun.lift_app le]
       exact hP.2 hp' ha v'
   · refine ⟨fun _ _ p hp ha v => ?_, fun _ p hp ha v => ?_⟩
     all_goals
@@ -1794,7 +1928,7 @@ private theorem LRS.LamDefEq.lift_aux
       have v_lo := (IH hqg).1 ((LR Γ).mono_l dg1
         ((Shape.HasType.lift le).2 hqg) hp v)
       have le_a2 : a₂.app qg ≤ a₂.app qa := by
-        rw [← Shape.lift_le_lift le, ShapeFun.lift_app, ShapeFun.app_of_mem da2, ← da3]
+        rw [← Shape.lift_le_lift le, ShapeFun.lift_app le, ShapeFun.app_of_mem da2, ← da3]
         exact ShapeFun.app_mono_r dg1
       have ht_lo := htm.2.2 _ hqg
       have ht_hi := (htm.1.2 _ hqa).mono_r le_a2 ht_lo
@@ -1824,9 +1958,9 @@ private theorem LR.lift_succ_aux :
         have hp' := (Shape.HasType.lift (Nat.le_succ k)).2 hp
         have v' := (ih.2 hp).2 v)
       · have ⟨r1, r2⟩ := hE.1 hp' ha v'
-        exact ⟨(ih.1 (htpi.2 _ hp)).1 (ShapeFun.lift_app ▸ r1),
-               (ih.1 (htpi.2 _ hp)).1 (ShapeFun.lift_app ▸ r2)⟩
-      · exact (ih.1 (htpi.2 _ hp)).1 (ShapeFun.lift_app ▸ hE.2 hp' ha v')
+        exact ⟨(ih.1 (htpi.2 _ hp)).1 (ShapeFun.lift_app (Nat.le_succ k) ▸ r1),
+               (ih.1 (htpi.2 _ hp)).1 (ShapeFun.lift_app (Nat.le_succ k) ▸ r2)⟩
+      · exact (ih.1 (htpi.2 _ hp)).1 (ShapeFun.lift_app (Nat.le_succ k) ▸ hE.2 hp' ha v')
     · refine ⟨B₁, F₁, B₂, F₂, u, v, rM, rN, hB, hF, (ih.1 htpi.1.isType).2 hValB,
         fun _ _ _ hp ha v => ?_, fun _ _ hp ha v => ?_⟩
       all_goals
