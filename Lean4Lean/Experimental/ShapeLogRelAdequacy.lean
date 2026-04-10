@@ -45,7 +45,7 @@ theorem LR.Adequate.cons
   refine W.cons (fun hA => ?_) hA₁ hp ⟨hx, fun _ a' ha' => ?_⟩
   · have ⟨_, _, _, le_n, le_a, hA', hSort, hmem'⟩ := (LE_Interp.sound HA W.fits).2 hA
     exact ⟨_, _, le_n, le_a, hA', (Shape.HasType.mono_r hSort.le_sort .sort hmem').toType⟩
-  have ha' := LE_Interp.weak_iff.mp ha'
+  have ha' := LE_Interp.weak_iff.1 ha'
   refine ⟨fun ht => ⟨⟨_, HA.hasType.1.subst W.toSubstEq⟩, ?_⟩, fun m' hm' ht => ?_⟩
   · have ⟨_, _, _, le_n, le_a, hA', hSort, hmem'⟩ := (LE_Interp.sound HA W.fits).2 ha'
     refine (TyDefEq.lift le_n ht).1 <| (LR Γ₀).mono_r_2_ty le_a
@@ -53,7 +53,7 @@ theorem LR.Adequate.cons
       (Shape.HasType.mono_r hSort.le_sort .sort hmem').toType ?_
     exact (LR Γ₀).toType <| (LR Γ₀).mono_r_1 hSort.le_sort hmem'
       (.mono_r hSort.le_sort .sort hmem') .sort ((ihA hA' hSort hmem').1 W).1
-  · have ⟨k', le_n, le_k, hle⟩ := LE_Interp.bvar_iff.mp hm'
+  · have ⟨k', le_n, le_k, hle⟩ := LE_Interp.bvar_iff.1 hm'
     have ht' := (Shape.HasType.lift le_n).2 ht
     have hp' := (Shape.HasType.lift le_k).2 hp
     have hta₁ := Shape.lift_type ▸ (Shape.HasType.lift le_k).2 hp.isType
@@ -387,5 +387,5 @@ theorem sort_inv (d : Γ ⊢ SExpr.sort u ≡ SExpr.sort v : V) : u = v := by
   cases Shape.sort_le.1 h2
   cases show mV = (Shape.type (n := 1)).lift by let _+1 := n; cases h5.unfold; rfl
   have := (LR.adequacy d hM (hA.unlift h1) .sort).2 .id
-  have ⟨w, h1, h2⟩ := (LR _).sort_iff.mp (subst_id ▸ subst_id ▸ subst_id ▸ this)
+  have ⟨w, h1, h2⟩ := (LR _).sort_iff.1 (subst_id ▸ subst_id ▸ subst_id ▸ this)
   cases WHNF.sort.whRedS h1; cases WHNF.sort.whRedS h2; rfl
