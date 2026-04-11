@@ -42,7 +42,7 @@ theorem LR.Adequate.cons
     (hp : p.HasType a₁) (hA₁ : LE_Interp ρ a₁ A)
     (hx : Γ₀ ⊢ x ≡ x' : A.subst σ) (hv : (LR Γ₀).DefEq x x' (A.subst σ) p a₁)
     (W : SubstWF Γ₀ σ σ' Γ ρ) : SubstWF Γ₀ (σ.cons x) (σ'.cons x') (A :: Γ) (ρ.push p) := by
-  refine W.cons (fun hA => ?_) hA₁ hp ⟨hx, fun _ a' ha' => ?_⟩
+  refine W.cons (fun hA => ?_) hA₁ hp HA.hasType.1 ⟨hx, fun _ a' ha' => ?_⟩
   · have ⟨_, _, _, le_n, le_a, hA', hSort, hmem'⟩ := (LE_Interp.sound HA W.fits).2 hA
     exact ⟨_, _, le_n, le_a, hA', (Shape.HasType.mono_r hSort.le_sort .sort hmem').toType⟩
   have ha' := LE_Interp.weak_iff.1 ha'
@@ -101,7 +101,7 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
     have ⟨k, le, a1⟩ := LE_Interp.bvar_iff.1 hM; clear hM
     induction W generalizing i A with
     | id => cases (Shape.lift_le_bot le).1 a1.2; exact (LR _).bot hmem.isType
-    | cons W' _ _ _ h0 ih =>
+    | cons W' _ _ _ _ h0 ih =>
       cases h with
       | zero => exact lift_subst ▸ (h0.2 a hA).2 (.bvar a1.1 le a1.2) hmem
       | succ h' => exact lift_subst ▸ ih h' (LE_Interp.weak_iff.1 hA) a1
@@ -355,7 +355,11 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
     refine ⟨fun σ σ' W => ⟨?_, ?_⟩, fun σ W => ?_⟩
     · exact ((ihl hM hA hmem).1 W).1
     · exact ((ihr ((LE_Interp.sound (.extra h1 h2) W.fits).1.1 hM) hA hmem).1 W).2
-    sorry
+    · have ⟨⟨hA1, _⟩, hA2, hA3⟩ := Params.henv.closed.2 h1
+      have := (ihl hM hA hmem).2 W; revert this
+      rw [hA1.mkS.instL.subst_eq .zero, hA2.mkS.instL.subst_eq .zero, hA3.mkS.instL.subst_eq .zero]
+      let ⟨_, _, _, _, _, a1, a2, a3, a4, a5⟩ := Params.extra_pat Γ₀ h1 h2
+      exact ((LR _).whr .rfl (.tail .rfl (a5 ▸ .extra a1 a2 a3 a4))).1
 
 theorem forallE_whRed_l (d : Γ ⊢ A₀ ≡ SExpr.forallE B₁ F₁ : .sort s) :
     ∃ B₀ F₀, Γ ⊢ A₀ ⤳* .forallE B₀ F₀ ∧ ∃ u v,
