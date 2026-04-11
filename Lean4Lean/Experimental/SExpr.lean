@@ -575,6 +575,12 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
   | extra : env.defeqs df → ls.length = df.uvars →
     Γ ⊢ .instL ls (.mk df.lhs) ≡ .instL ls (.mk df.rhs) : .instL ls (.mk df.type)
 
+axiom Params.extra_pat (Γ) : env.defeqs df → ls.length = df.uvars →
+  ∃ p r m1 m2 dfs, Pat p r ∧ p.MatchesS (.instL ls (.mk df.lhs)) m1 m2 ∧
+    (dfs : List _).map (·.2) = r.2.defeqsS m1 m2 ∧
+    (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b : A) ∧
+    .instL ls (.mk df.rhs) = r.1.applyS m1 m2
+
 theorem IsDefEq.isType : Γ ⊢ e1 ≡ e2 : A → ∃ u, Γ ⊢ A : .sort u := sorry
 
 theorem IsDefEq.uniq_sort : Γ ⊢ e1 ≡ e2 : .sort u → Γ ⊢ e2 ≡ e3 : .sort v → u = v := sorry
@@ -613,6 +619,9 @@ end
 theorem IsDefEq.strong : Γ ⊢ e1 ≡ e2 : A → IsDefEqStrong Γ e1 e2 A := sorry
 theorem IsDefEqStrong.defeq : IsDefEqStrong Γ e1 e2 A → Γ ⊢ e1 ≡ e2 : A := sorry
 
+theorem IsDefEq.hasType (H : Γ ⊢ e1 ≡ e2 : A) :
+    Γ ⊢ e1 ≡ e1 : A ∧ Γ ⊢ e2 ≡ e2 : A := ⟨H.trans H.symm, H.symm.trans H⟩
+
 def Ctx.WF : List SExpr → Prop
   | [] => True
   | A::Γ => WF Γ ∧ ∃ u, Γ ⊢ A : .sort u
@@ -650,20 +659,28 @@ theorem Ctx.Subst.one (H : HasType Γ e A) : Ctx.Subst HasType Γ (.one e) (A::�
 inductive Ctx.SubstEq (Γ₀ : List SExpr) : SExpr.Subst → SExpr.Subst → List SExpr → Prop where
   | nil : Ctx.SubstEq Γ₀ .id .id Γ₀
   | cons : Ctx.SubstEq Γ₀ σ.tail σ'.tail Γ →
+    Γ ⊢ A : .sort u →
     Γ₀ ⊢ σ.head ≡ σ'.head : A.subst σ.tail →
     Ctx.SubstEq Γ₀ σ σ' (A :: Γ)
+
+theorem Ctx.SubstEq.left (W : Ctx.SubstEq Γ₀ σ σ' Γ) : Ctx.Subst (· ⊢ · : ·) Γ₀ σ Γ := by
+  induction W with
+  | nil => exact .id
+  | cons _ _ h ih => exact .cons ih h.hasType.1
+
+theorem IsDefEq.subst (W : Ctx.SubstEq Γ₀ σ σ' Γ) :
+    Γ ⊢ e1 ≡ e2 : A → Γ₀ ⊢ e1.subst σ ≡ e2.subst σ' : A.subst σ := sorry
+
+theorem Ctx.SubstEq.symm (W : Ctx.SubstEq Γ₀ σ σ' Γ) : Ctx.SubstEq Γ₀ σ' σ Γ := by
+  induction W with
+  | nil => exact .nil
+  | cons W hA h ih => exact .cons ih hA (.defeqDF (.subst W hA) h.symm)
 
 theorem Ctx.SubstEq.lookup (W : Ctx.SubstEq Γ₀ σ σ' Γ) :
     Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ := sorry
 
 theorem Ctx.SubstEq.lift (W : Ctx.SubstEq Γ₀ σ σ' Γ) (hA : Γ₀ ⊢ A.subst σ : .sort u) :
     Ctx.SubstEq (A.subst σ :: Γ₀) σ.lift σ'.lift (A :: Γ) := sorry
-
-theorem IsDefEq.subst (W : Ctx.SubstEq Γ₀ σ σ' Γ) :
-    Γ ⊢ e1 ≡ e2 : A → Γ₀ ⊢ e1.subst σ ≡ e2.subst σ' : A.subst σ := sorry
-
-theorem IsDefEq.hasType (H : Γ ⊢ e1 ≡ e2 : A) :
-    Γ ⊢ e1 ≡ e1 : A ∧ Γ ⊢ e2 ≡ e2 : A := ⟨H.trans H.symm, H.symm.trans H⟩
 
 theorem IsDefEq.weak' (W : Ctx.Lift' ρ Γ Γ') (H : Γ ⊢ e1 ≡ e2 : A) :
     Γ' ⊢ e1.lift' ρ ≡ e2.lift' ρ : A.lift' ρ := by
@@ -815,7 +832,7 @@ inductive WHRed (Γ : List SExpr) : SExpr → SExpr → Prop where
   | app : Γ ⊢ f ⤳ f' → Γ ⊢ .app f a ⤳ .app f' a
   | beta : Γ ⊢ .app (.lam A e) a ⤳ e.inst a
   | extra : Pat p r → p.MatchesS e m1 m2 → (dfs : List _).map (·.2) = r.2.defeqsS m1 m2 →
-    (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b :↑ A) → Γ ⊢ e ⤳ r.1.applyS m1 m2
+    (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b : A) → Γ ⊢ e ⤳ r.1.applyS m1 m2
 
 theorem WHRed.subst (W : Ctx.Subst HasType Δ σ Γ) :
     Γ ⊢ e1 ⤳ e2 → Δ ⊢ e1.subst σ ⤳ e2.subst σ

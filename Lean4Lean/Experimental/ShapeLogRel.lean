@@ -1607,7 +1607,7 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
           refine ⟨_, .inr ?_, fun z => (this z).trans ?_, .join this a2 (key _ _ H.1 hy)⟩
           · obtain rfl | ⟨g, rfl⟩ := eq <;> exact ⟨_, rfl⟩
           · simp [a1, or_imp, forall_and, and_comm, hy]
-      have ⟨g, _, a1, a2⟩ := main f' (fun _ => id)
+      have ⟨g, _, a1, a2⟩ := main f' fun _ => id
       refine .unlift le <| .mono h1 <| .unlift a4' <| .mono a4 <| .mono ?_ a2
       have ⟨x, y, hmem, hy⟩ := f'.non_bot
       obtain ⟨g, rfl⟩ : ∃ g', g = .lam g' := by
@@ -1636,7 +1636,11 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
     have b4' := Shape.HasType.mono_r (by simpa using b3.le_sort) .sort b4
     cases (Shape.lift_eq_bot le').1 (b4'.proofIrrel (b4'.mono_r b1 ((Shape.HasType.lift le').2 a4)))
     exact (Shape.lift_le_bot le).1 a1
-  | extra => sorry
+  | extra h1 h2 _ _ ih1 ih2 =>
+    refine ⟨?_, (ih1 W).2⟩
+    let ⟨p, r, m1, m2, dfs, a1, a2, a3, a4, a5⟩ := Params.extra_pat Γ₀ h1 h2
+    sorry
+
 
 structure LogRelBase (Γ : List SExpr) (n : Nat) where
   /-- Term validity: `M ≡ N : A` at element-shape `m` and type-shape `a`. -/
@@ -2268,31 +2272,31 @@ inductive LR.SubstWF (Γ₀ : List SExpr) : Subst → Subst → List SExpr → V
   | cons : LR.SubstWF Γ₀ σ.tail σ'.tail Γ ρ →
     (∀ {n a}, LE_Interp (n := n) ρ a A →
       ∃ n' a', n ≤ n' ∧ a.lift (m := n') ≤ a' ∧ LE_Interp ρ a' A ∧ a'.HasType .type) →
-    LE_Interp (n := n) ρ a A → x.HasType a →
+    LE_Interp (n := n) ρ a A → x.HasType a → Γ ⊢ A : .sort u →
     LR.Subst1 Γ₀ σ.head σ'.head A.lift (A.subst σ.tail) (A.subst σ'.tail) (ρ.push x) →
     LR.SubstWF Γ₀ σ σ' (A :: Γ) (ρ.push x)
 
 theorem LR.SubstWF.fits : LR.SubstWF Γ₀ σ σ' Γ ρ → ρ.Fits Γ₀ Γ
   | .id => .nil
-  | .cons W h1 h2 h3 _ => .cons W.fits h1 h2 h3
+  | .cons W h1 h2 h3 _ _ => .cons W.fits h1 h2 h3
 
 theorem LR.SubstWF.toSubstEq : LR.SubstWF Γ₀ σ σ' Γ ρ → Ctx.SubstEq Γ₀ σ σ' Γ
   | .id => .nil
-  | .cons W _ _ _ h0 => .cons W.toSubstEq h0.1
+  | .cons W _ _ _ hA h0 => .cons W.toSubstEq hA h0.1
 
 theorem LR.SubstWF.left (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : LR.SubstWF Γ₀ σ σ Γ ρ := by
   induction W with
   | id => exact .id
-  | cons _ h1 h2 h3 h0 ih =>
-    refine .cons ih h1 h2 h3 ⟨h0.1.hasType.1, fun _ a ha => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
+  | cons _ h1 h2 h3 hA h0 ih =>
+    refine .cons ih h1 h2 h3 hA ⟨h0.1.hasType.1, fun _ a ha => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
     · have ⟨⟨_, h1⟩, h2⟩ := (h0.2 a ha).1 ht; exact ⟨⟨_, h1.hasType.1⟩, (LR _).left_ty h2⟩
     · exact (LR _).left <| (h0.2 a ha).2 hM hmem
 
 theorem LR.SubstWF.symm (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : LR.SubstWF Γ₀ σ' σ Γ ρ := by
   induction W with
   | id => exact .id
-  | cons _ h1 h2 h3 h0 ih =>
-    refine .cons ih h1 h2 h3 ⟨?_, fun _ a ha => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
+  | cons _ h1 h2 h3 hA h0 ih =>
+    refine .cons ih h1 h2 h3 hA ⟨?_, fun _ a ha => ⟨fun ht => ?_, fun _ hM hmem => ?_⟩⟩
     · have ⟨⟨_, h1⟩, _⟩ := (h0.2 (n := 0) _ .bot).1 (.bot .sort)
       exact h1.defeqDF h0.1.symm
     · exact let ⟨⟨u, h1⟩, h2⟩ := (h0.2 a ha).1 ht; ⟨⟨u, h1.symm⟩, (LR _).symm_ty h2⟩
