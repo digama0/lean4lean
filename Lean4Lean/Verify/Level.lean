@@ -247,8 +247,8 @@ local instance : Std.LawfulBEqCmp (α := List Name) compare :=
   inferInstanceAs (Std.LawfulBEqCmp (List.compareLex Name.cmp))
 
 instance : LawfulBEq VarNode where
-  rfl {a} := by cases a <;> simp! [instBEqVarNode]
-  eq_of_beq {a b} := by cases a <;> cases b <;> simp! [instBEqVarNode]
+  rfl {a} := by cases a <;> simp! +instances [instBEqVarNode]
+  eq_of_beq {a b} := by cases a <;> cases b <;> simp! +instances [instBEqVarNode]
 
 @[reducible] local instance : Membership (List Name) NormLevel :=
   inferInstanceAs (Membership _ (Std.TreeMap _ _ compare))
@@ -550,10 +550,10 @@ theorem normalize_eval (hu : VLevel.ofLevel ls u = some u') :
   exact normalizeAux_eval hu (by simp) .nil
 
 theorem Node.eval_congr {a b : Node} (H : a == b) : a.eval ls ρ = b.eval ls ρ := by
-  simp [instBEqNode] at H; simp [H, eval]
+  simp +instances [instBEqNode] at H; simp [H, eval]
 
 theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.eval ls ρ := by
-  simp only [instBEqNormLevel, Std.TreeMap.all_eq_all_toList,
+  simp +instances only [instBEqNormLevel, Std.TreeMap.all_eq_all_toList,
     Bool.and_eq_true, List.all_eq_true] at H
   suffices ∀ {a b : NormLevel}, (∀ x ∈ a.toList, b.get? x.1 == some x.2) →
       a.eval ls ρ ≤ b.eval ls ρ from Nat.le_antisymm (this H.1) (this H.2)

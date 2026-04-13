@@ -94,7 +94,7 @@ theorem inferConstant.WF {c : VContext}
     have ⟨_, h4, _, h5, h6⟩ := c.trenv.find? eq1 <| by
       revert h2 h3
       simp [ConstantInfo.safety]
-      split <;> simp +contextual [DefinitionSafety.unsafe_le, *]
+      split <;> simp +contextual [*]
       split <;> simp [DefinitionSafety.le_safe, *]
       cases c.safety <;> decide
     have eq := h1.symm.trans h5
@@ -334,7 +334,7 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
       refine inferLet.loop.WF (Nat.succ_le_succ hn) (some nd :: nds)
         (by simp [hnds]) (by simp [hdrop]) (by simp [← eqfvs, harr])
         ?_ (by simp; rfl) ?_ (hr.2.2.mono fun _ => .tail _) ?_
-      · rw [he₀, eqfvs, ← eq]; simp; congr 2
+      · rw [he₀, eqfvs, ← eq]; simp [MLCtx.mkLetArg]; congr 2
         refine (FVarsIn.abstract_instantiate1 ((hr.2.2.instantiateList ?_ _).mono ?_)).symm
         · simp [← eqfvs, FVarsIn]; exact m.fvarRevList_prefix.subset
         · rintro _ h rfl; exact (mwf'.1.tr.wf.2.1 _ _ rfl).1 h

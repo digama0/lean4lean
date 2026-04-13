@@ -58,8 +58,8 @@ def checkName (env : Environment) (n : Name)
     if primitives.contains n then
       throw <| .other s!"unexpected use of primitive name {n}"
 
-open private subsumesInfo Kernel.Environment.mk moduleNames moduleNameMap parts toEffectiveImport
-  getData? from Lean.Environment
+open private subsumesInfo Kernel.Environment.mk EnvironmentHeader.mk moduleNames
+  moduleNameMap parts toEffectiveImport getData? from Lean.Environment
 
 def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
   Kernel.Environment.mk
@@ -69,7 +69,16 @@ def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
     (const2ModIdx := {})
     (extensions := #[])
     (irBaseExts := #[])
-    (header := { mainModule, trustLevel })
+    (header := EnvironmentHeader.mk
+      (mainModule := mainModule)
+      (trustLevel := trustLevel)
+      (isModule := false)
+      (imports := #[])
+      (regions := #[])
+      (modules := #[])
+      (moduleName2Idx := {})
+      (importAllModules := #[])
+      (moduleData := #[]))
 
 def throwAlreadyImported (s : ImportState) (const2ModIdx : Std.HashMap Name ModuleIdx)
     (modIdx : Nat) (cname : Name) : Except Exception α := do
@@ -104,6 +113,10 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
     for cname in data.extraConstNames do
       const2ModIdx := const2ModIdx.insertIfNew cname modIdx
+  let mut moduleName2Idx := {}
+  for _h : idx in [0:modules.size] do
+    let mod := modules[idx]
+    moduleName2Idx := moduleName2Idx.insert mod.module idx
 
   return Kernel.Environment.mk
     (constants := SMap.fromHashMap constantMap false)
@@ -112,8 +125,13 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
     (const2ModIdx := const2ModIdx)
     (extensions := #[])
     (irBaseExts := #[])
-    (header := {
-      trustLevel, imports, moduleData, mainModule, isModule := false
-      regions := modules.flatMap (parts · |>.map (·.2))
-      modules := modules.map toEffectiveImport
-    })
+    (header := EnvironmentHeader.mk
+      (mainModule := mainModule)
+      (trustLevel := trustLevel)
+      (isModule := false)
+      (imports := imports)
+      (regions := modules.flatMap (parts · |>.map (·.2)))
+      (modules := modules.map toEffectiveImport)
+      (moduleName2Idx := moduleName2Idx)
+      (importAllModules := #[])
+      (moduleData := moduleData))

@@ -58,6 +58,7 @@ theorem VState.WF.empty {env : Environment} {ves : VEnvs} {wf : ves.WF env}
   inferTypeC_wf := .empty
   whnfCore_wf := .empty
   whnf_wf := .empty
+  unfold_wf _ := by simp
 
 theorem M.WF.run {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     {x : M α} {Q} (H : x.WF (.mk' wf safety lparams) {} fun a _ => Q a) :

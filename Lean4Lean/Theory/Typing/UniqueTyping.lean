@@ -24,7 +24,6 @@ theorem IsDefEq.uniq (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
   clear h1 h2; intro e A B b n₁ n₂ n le₁ le₂ H1
   induction n using WellFounded.induction Nat.lt_wfRel.2
     generalizing n₁ n₂ Γ e A B b with | _ n IH
-  dsimp [Nat.lt_wfRel] at IH
   induction H1 generalizing B n₂ n with
   | bvar a1 a2 =>
     intro (.bvar b1 b2); cases a1.uniq b1

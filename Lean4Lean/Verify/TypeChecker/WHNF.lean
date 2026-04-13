@@ -157,8 +157,10 @@ theorem whnf'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     refine .pureBind ?_; unfold F2
     refine (reduceNat.WF he₁).bind fun _ _ _ h3 => ?_; split
     · exact .pure ⟨.trans h1 (h3 _ rfl).1, (h3 _ rfl).2.defeq c.Ewf c.Δwf eq⟩
-    refine .pureBind ?_; unfold F1; split <;> [skip; exact .pure ⟨h1, _, he₁, eq⟩]
-    have ⟨a1, _, a2, eq'⟩ := (unfoldDefinition.WF he₁ ‹_› :)
+    refine .pureBind ?_; unfold F1
+    refine (unfoldDefinition.WF he₁).bind fun _ _ _ H => ?_
+    split <;> [skip; exact .pure ⟨h1, _, he₁, eq⟩]
+    have ⟨a1, _, a2, eq'⟩ := H
     refine (ih a2).mono fun _ _ _ ⟨b1, b2⟩ => ?_
     exact ⟨h1.trans <| a1.trans b1, b2.defeq c.Ewf c.Δwf <| eq'.trans c.Ewf c.Δwf eq⟩
   refine .pureBind <| (this he).bind fun e₁ s _ ⟨h1, h2⟩ => ?_
