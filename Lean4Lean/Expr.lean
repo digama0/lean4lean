@@ -86,7 +86,7 @@ def strLitToConstructor (s : String) : Expr :=
   let listCons := .app (.const ``List.cons [.zero]) char
   let stringMk := .const ``String.ofList []
   let charOfNat := .const ``Char.ofNat []
-  .app stringMk <| s.foldr (init := listNil) fun c e =>
+  .app stringMk <| s.toList.foldr (init := listNil) fun c e => -- TODO: use String.foldr
     .app (.app listCons <| .app charOfNat (.lit (.natVal c.toNat))) e
 
 end Expr

@@ -86,7 +86,7 @@ theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
       substrEq.loop s' s ⟨b' + i⟩ ⟨b + i⟩ ⟨b' + n⟩ := by
     unfold substrEq.loop; simp [beq_comm, Decidable.or_iff_not_imp_left]
     refine imp_congr_right fun h1 => and_congr_right fun h2 => ?_
-    simp [h2, String.instHAddRawChar, Nat.add_assoc]
+    simp +instances [h2, String.instHAddRawChar, Nat.add_assoc]
     have := Char.utf8Size_pos (String.Pos.Raw.get s' ⟨b'+i⟩)
     exact Bool.eq_iff_iff.2 loop
   termination_by b + n - (b + i)
@@ -109,7 +109,7 @@ theorem beq_trans {s t : Substring.Raw} : s == t → t == u → s == u := by
        substrEq.loop s₂ s₃ ⟨b₂ + i⟩ ⟨b₃ + i⟩ ⟨b₂ + n⟩) := by
     unfold substrEq.loop; simp [Decidable.or_iff_not_imp_left]
     refine fun h1 => imp_congr_right fun h => ?_; let ⟨h1, h2⟩ := h1 h
-    simp [h1]; intro h3; simp [h1, h3, String.instHAddRawChar, Nat.add_assoc] at h2 ⊢
+    simp [h1]; intro h3; simp +instances [h1, h3, String.instHAddRawChar, Nat.add_assoc] at h2 ⊢
     have := Char.utf8Size_pos (String.Pos.Raw.get s₃ ⟨b₃+i⟩)
     refine Bool.eq_iff_iff.2 (loop h2)
   termination_by n - i
@@ -201,7 +201,7 @@ theorem toConstructor_hasLevelParam :
   cases l with simp [Literal.toConstructor]
   | natVal n => cases n <;> simp [natLitToConstructor, hasLevelParam', natZero, natSucc]
   | strVal s =>
-    simp [strLitToConstructor, hasLevelParam', String.foldr_eq]
+    simp [strLitToConstructor, hasLevelParam']
     induction s.toList <;> simp_all [hasLevelParam', Level.hasParam']
 
 protected theorem beq_iff_eq {m n : Literal} : m == n ↔ m = n := by
@@ -259,12 +259,12 @@ theorem Data.looseBVarRange_le : (Data.looseBVarRange d).toNat ≤ 2^20 - 1 := b
 theorem looseBVarRange_le : looseBVarRange e ≤ 2^20 - 1 := Data.looseBVarRange_le
 
 theorem _root_.UInt32.max_toNat (a b : UInt32) : (max a b).toNat = max a.toNat b.toNat := by
-  simp only [instMaxUInt32, maxOfLe, UInt32.le_iff_toNat_le, Nat.instMax]; split <;> rfl
+  simp +instances only [instMaxUInt32, maxOfLe, UInt32.le_iff_toNat_le, Nat.instMax]; split <;> rfl
 
 theorem mkAppData_looseBVarRange :
     (mkAppData fData aData).looseBVarRange = max fData.looseBVarRange aData.looseBVarRange := by
   have hm : max fData.looseBVarRange aData.looseBVarRange ≤ (Nat.pow 2 20 - 1).toUInt32 := by
-    dsimp [instMaxUInt32, maxOfLe]; split <;> exact Data.looseBVarRange_le
+    dsimp +instances [instMaxUInt32, maxOfLe]; split <;> exact Data.looseBVarRange_le
   rw [mkAppData_eq, mkAppData', if_pos hm]
   simp [Data.looseBVarRange] at hm
   dsimp only [Data.looseBVarRange, -Nat.reducePow]

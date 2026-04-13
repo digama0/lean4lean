@@ -332,21 +332,6 @@ def _root_.Lean4Lean.TypeChecker.ReductionStatus.WF.defeq
     ⟨a2.defeq c.Ewf c.Δwf h1, a3.defeq c.Ewf c.Δwf h2⟩
   | .bool _, h => fun hb => h1.symm.trans c.Ewf c.Δwf (h hb) |>.trans c.Ewf c.Δwf h2
 
-theorem unfoldDefinitionCore_is_some
-    (h1 : env.find? n = some ci) (h2 : ci.value? = some v) (h3 : ls.length = ci.numLevelParams) :
-    ∃ e₁, unfoldDefinitionCore env (.const n ls) = some e₁ := by
-  simp [unfoldDefinitionCore]
-  rw [isDelta_is_some.2 ⟨_, h1, ⟨_, h2⟩, _, rfl⟩]; simp [h3]
-
-theorem unfoldDefinition_is_some (h1 : env.find? n = some ci) (h2 : ci.value? = some v)
-    (h3 : e.getAppFn = .const n ls) (h4 : ls.length = ci.numLevelParams) :
-    ∃ e₁, unfoldDefinition env e = some e₁ := by
-  simp [unfoldDefinition]; revert h3; unfold Expr.getAppFn Expr.isApp; split
-  · rename_i f a
-    intro e; simp [e]
-    exact let ⟨_, h⟩ := unfoldDefinitionCore_is_some h1 h2 h4; h ▸ ⟨_, rfl⟩
-  · rintro rfl; exact unfoldDefinitionCore_is_some h1 h2 h4
-
 theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     (lazyDeltaReductionStep e₁ e₂).WF c s fun r _ => r.WF c e₁' e₂' true := by
@@ -358,9 +343,9 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
     have ⟨_, stk⟩ := AppStack.build (e.mkAppList_getAppArgsList ▸ he)
     have .const a1 a2 a3 := h3 ▸ stk.tr
     have ⟨b1, b2, b3, b4⟩ := c.trenv.find?_uniq h1 a1
-    let ⟨_, h⟩ := unfoldDefinition_is_some h1 h2 h3 (a3.trans b3.symm)
-    simp [delta, h]
-    have ⟨_, _, c1, c2⟩ := unfoldDefinition.WF he h
+    refine (unfoldDefinition.WF he).bind fun oe _ _ H => ?_
+    obtain _ | e' := oe; · cases H h1 h2 h3 (a3.trans b3.symm)
+    have ⟨_, _, c1, c2⟩ := H
     exact (whnfCore.WF c1).mono fun x _ _ h => h.2.defeq c.Ewf c.Δwf c2
   have hcont {s e₁ e₂} (he₁ : c.TrExpr e₁ e₁') (he₂ : c.TrExpr e₂ e₂') :
       (cont e₁ e₂).WF c s fun r _ => r.WF c e₁' e₂' true := by

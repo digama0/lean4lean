@@ -237,6 +237,10 @@ def WHNFCache.WF (c : VContext) (s : VState) (m : InferCache) : Prop :=
 
 theorem WHNFCache.WF.empty : WHNFCache.WF c s {} := fun _ => by simp
 
+def UnfoldCache.WF (c : VContext) (m : ExprMap Expr) : Prop :=
+  ∀ ⦃e e' : Expr⦄, m[e]? = some e' → ∃ n ls ci, e = .const n ls ∧
+      c.env.find? n = some ci ∧ e' = ci.instantiateValueLevelParams! ls
+
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
   ngen_wf : ∀ fv ∈ c.vlctx.fvars, s.ngen.Reserves fv
@@ -246,6 +250,7 @@ class VState.WF (c : VContext) (s : VState) where
   inferTypeC_wf : s.inferTypeC.WF c s
   whnfCore_wf : WHNFCache.WF c s s.whnfCoreCache
   whnf_wf : WHNFCache.WF c s s.whnfCache
+  unfold_wf : UnfoldCache.WF c s.unfold
 
 theorem VState.WF.find?_eq_none {id}
     (wf : VState.WF c s) (H : ¬s.ngen.Reserves id) : c.lctx'.find? id = none :=
@@ -450,7 +455,7 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
             fun _ h => by obtain _ | ⟨_, h⟩ := h <;> [exact h0; exact (a4 _ h).mono le]⟩
         rintro _ _ ⟨⟩; exact ⟨mt (a4 _) h1, hty.fvarsList.trans a2.fvars_sublist.subset⟩
       trctx, inferTypeI_wf := hic wf.inferTypeI_wf, inferTypeC_wf := hic wf.inferTypeC_wf
-      whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf }
+      whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf, unfold_wf := wf.unfold_wf }
   let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h1 _ mwf this a s' e
   refine have le' := le.trans hs2; ⟨s', hs1, le', ?_, hs4⟩
   have hic {ic} (H : InferCache.WF (c.withMLC m') s' ic) :
@@ -463,7 +468,7 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
     ectx := ⟨_, _, a1, .comp (.skip_fvar _ _ .refl) a2, a3⟩
     trctx := wf.trctx
     inferTypeI_wf := hic wf'.inferTypeI_wf, inferTypeC_wf := hic wf'.inferTypeC_wf
-    whnfCore_wf := hwc wf'.whnfCore_wf, whnf_wf := hwc wf'.whnf_wf
+    whnfCore_wf := hwc wf'.whnfCore_wf, whnf_wf := hwc wf'.whnf_wf, unfold_wf := wf'.unfold_wf
   }
 
 protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
@@ -501,7 +506,7 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
             fun _ h => by obtain _ | ⟨_, h⟩ := h <;> [exact h0; exact (a4 _ h).mono le]⟩
         rintro _ _ ⟨⟩; exact ⟨mt (a4 _) h1, hv.trans a2.fvars_sublist.subset⟩
       trctx, inferTypeI_wf := hic wf.inferTypeI_wf, inferTypeC_wf := hic wf.inferTypeC_wf
-      whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf }
+      whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf, unfold_wf := wf.unfold_wf }
   let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h1 _ mwf this a s' e
   refine ⟨s', hs1, le.trans hs2, ?_, hs4⟩
   have hic {ic} (H : InferCache.WF (c.withMLC m') s' ic) :
@@ -514,7 +519,7 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
     ectx := ⟨_, _, a1, .comp (.skip_fvar _ _ .refl) a2, a3⟩
     trctx := wf.trctx
     inferTypeI_wf := hic wf'.inferTypeI_wf, inferTypeC_wf := hic wf'.inferTypeC_wf
-    whnfCore_wf := hwc wf'.whnfCore_wf, whnf_wf := hwc wf'.whnf_wf
+    whnfCore_wf := hwc wf'.whnfCore_wf, whnf_wf := hwc wf'.whnf_wf, unfold_wf := wf'.unfold_wf
   }
 
 @[simp] def MLCtx.mkForall (c : MLCtx) (n) (hn : n ≤ c.length) (e : Expr) : Expr :=
@@ -564,6 +569,17 @@ termination_by structural n
   | n+1, .vlet _ _ _ _ _ _ c, h, e => c.mkLambda' n (Nat.le_of_succ_le_succ h) e
 termination_by structural n
 
+-- HACK: MLCtx.mkLet equation generation fails if this is inlined
+def MLCtx.mkLetArg (x : FVarId) (name : Name)
+    (ty val : Expr) (nd : Option Bool) (e : Expr) : Expr :=
+  let e' := Expr.abstract1 x e
+  if e'.hasLooseBVar' 0 then
+    .letE name ty val e' (nd.getD false)
+  else if let some nd := nd then
+    .letE name ty val e' nd
+  else
+    e'.lowerLooseBVars' 1 1
+
 @[simp] def MLCtx.mkLet (c : MLCtx) (n) (hn : n ≤ c.length)
     (nds : List (Option Bool)) (eq : nds.length = n) (e : Expr) (asForall := false) : Expr :=
   match n, c, hn, nds, eq, e with
@@ -572,14 +588,7 @@ termination_by structural n
     c.mkLet n (Nat.le_of_succ_le_succ h) nds (Nat.succ_inj.1 eq) <|
       if asForall then .forallE name ty (.abstract1 x e) bi else .lam name ty (.abstract1 x e) bi
   | n+1, .vlet x name ty val _ _ c, h, nd :: nds, eq, e =>
-    c.mkLet n (Nat.le_of_succ_le_succ h) nds (Nat.succ_inj.1 eq) <|
-      let e' := Expr.abstract1 x e
-      if e'.hasLooseBVar' 0 then
-        .letE name ty val e' (nd.getD false)
-      else if let some nd := nd then
-        .letE name ty val e' nd
-      else
-        e'.lowerLooseBVars' 1 1
+    c.mkLet n (Nat.le_of_succ_le_succ h) nds (Nat.succ_inj.1 eq) <| mkLetArg x name ty val nd e
 termination_by structural n
 
 variable! (henv : VEnv.WF env) in
@@ -709,10 +718,10 @@ theorem MLCtx.WF.mkLet_trS {c : MLCtx} (wf : c.WF env Us)
       exact .lam ⟨_, h4⟩ h3 (.abstract .zero H1)
     | .vlet x name ty val ty' val' c =>
       let ⟨h1, _, h3, h4, h5⟩ := wf; let _ :: _ := nds
-      refine ih h1 ?_ H2 ..; dsimp; split <;> [skip; split]
+      refine ih h1 ?_ H2 ..; dsimp [mkLetArg]; split <;> [skip; split]
       · exact .letE h5 h3 h4 (.abstract .zero H1)
       · exact .letE h5 h3 h4 (.abstract .zero H1)
-      · rename_i h _ _ _; simp at h
+      · rename_i h _ _; simp at h
         rw [Expr.lowerLooseBVars_eq_instantiate h (v := val)]
         exact .inst_let henv (.abstract .zero H1) h4
 
@@ -880,27 +889,56 @@ theorem isDelta_is_some : isDelta env e = some ci ↔
     simp_all [ConstantInfo.hasValue_eq, Option.isSome_iff_exists] <;>
     rintro rfl <;> assumption
 
-theorem unfoldDefinitionCore.WF {c : VContext} (he : c.TrExprS e e') :
-    unfoldDefinitionCore c.env e = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := by
-  simp [unfoldDefinitionCore]; (iterate 3 split <;> [skip; nofun])
-  rintro ⟨⟩; rename_i h1 h2
-  obtain ⟨_, h3, ⟨_, h4⟩, _, ⟨⟩⟩ := isDelta_is_some.1 h1
-  let .const a1 a2 a3 := he
-  have ⟨rfl, b1, b2, b3⟩ := c.trenv.find?_uniq h3 a1
-  simp [ConstantInfo.instantiateValueLevelParams!, ConstantInfo.value!_eq, h4]
-  have c1 := c.trenv.of_value h3 b1 h4 |>.instL c.Ewf (by trivial) a2 (b2.trans a3.symm)
-  have := c1.weakFV c.Ewf (.from_nil c.mlctx.noBV) c.Δwf
-  rw [c1.wf.closedN c.Ewf trivial |>.liftN_eq (Nat.zero_le _)] at this
-  simp [VExpr.instL] at this; rw [VLevel.inst_map_id] at this
-  · exact ⟨fun _ _ _ => c1.fvarsIn.mono nofun, this⟩
-  · exact (List.mapM_eq_some.1 a2).length_eq.symm.trans <| a3.trans b2.symm
+def UnfoldDefinition.WF (c : VContext) (e e₀ : Expr) (e' : VExpr) : Option Expr → Prop
+  | some e₁ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
+  | none => ∀ {{n ci v ls}}, c.env.find? n = some ci → ci.value? = some v →
+    e₀ = .const n ls → ls.length = ci.numLevelParams → False
 
-theorem unfoldDefinition.WF {c : VContext} (he : c.TrExprS e e') :
-    unfoldDefinition c.env e = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := by
-  simp [unfoldDefinition]; split <;> [split <;> rintro ⟨⟩; exact unfoldDefinitionCore.WF he]
-  rename_i f₁ eq
+theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+    RecM.WF c s (unfoldDefinitionCore e) fun oe _ => UnfoldDefinition.WF c e e e' oe := by
+  dsimp [unfoldDefinitionCore]
+  split <;> [refine .getEnv ?_; (rename_i H; exact .pure fun _ _ _ _ _ _ h => nomatch H _ _ h)]
+  split; rotate_left
+  · rename_i H; refine .pure ?_; rintro _ _ _ _ h1 h2 ⟨⟩
+    cases H _ (isDelta_is_some.2 ⟨_, h1, ⟨_, h2⟩, _, rfl⟩)
+  rename_i n ls oci ci h1
+  obtain ⟨_, h3, ⟨_, h4⟩, _, ⟨⟩⟩ := isDelta_is_some.1 h1
+  split <;> rename_i h2 <;> [refine .pureBind ?_; refine .pure ?_]; rotate_left
+  · simp at h2; rintro _ _ _ _ h1 _ ⟨⟩; cases h1 ▸ h3; exact h2
+  have : UnfoldDefinition.WF c (.const n ls) (.const n ls) e'
+      (some (ci.instantiateValueLevelParams! ls)) := by
+    let .const a1 a2 a3 := he
+    have ⟨rfl, b1, b2, b3⟩ := c.trenv.find?_uniq h3 a1
+    simp [ConstantInfo.instantiateValueLevelParams!, ConstantInfo.value!_eq, h4]
+    have c1 := c.trenv.of_value h3 b1 h4 |>.instL c.Ewf (by trivial) a2 (b2.trans a3.symm)
+    have := c1.weakFV c.Ewf (.from_nil c.mlctx.noBV) c.Δwf
+    rw [c1.wf.closedN c.Ewf trivial |>.liftN_eq (Nat.zero_le _)] at this
+    simp [VExpr.instL] at this; rw [VLevel.inst_map_id] at this
+    · exact ⟨fun _ _ _ => c1.fvarsIn.mono nofun, this⟩
+    · exact (List.mapM_eq_some.1 a2).length_eq.symm.trans <| a3.trans b2.symm
+  split <;> [rename_i h5; exact .pure this]
+  refine .pureBind <| .get ?_
+  split <;> [rename_i eq; refine .pureBind ?_]
+  · refine .stateWF fun wf => .pure ?_
+    obtain ⟨_, _, _, ⟨⟩, a1, rfl⟩ := wf.unfold_wf eq
+    cases h3.symm.trans a1; exact this
+  · refine .bind (Q := fun _ _ => True) ?_ fun _ _ _ _ => .pure this
+    rintro _ mwf wf _ _ ⟨⟩
+    refine ⟨{ s with toState := _ }, rfl, .rfl, { wf with unfold_wf := ?_ }, ⟨⟩⟩
+    intro e e'; simp only [Std.HashMap.getElem?_insert]
+    split <;> [rintro ⟨⟩; exact (wf.unfold_wf ·)]
+    rename_i eq; rw [BEq.comm, Expr.eqv_const] at eq
+    exact ⟨_, _, _, eq, h3, rfl⟩
+
+theorem unfoldDefinition.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+    RecM.WF c s (unfoldDefinition e) fun oe _ => UnfoldDefinition.WF c e e.getAppFn e' oe := by
+  simp [unfoldDefinition]; split; rotate_left
+  · rename_i h; refine (unfoldDefinitionCore.WF he).mono fun _ _ _ H => ?_
+    rwa [show e.getAppFn = e by revert h; unfold Expr.isApp Expr.getAppFn; split <;> simp]
   have ⟨f', stk⟩ := AppStack.build (e.mkAppList_getAppArgsList ▸ he)
-  have ⟨h1, h2⟩ := unfoldDefinitionCore.WF stk.tr eq
+  refine (unfoldDefinitionCore.WF stk.tr).bind fun oe _ _ H => ?_
+  cases oe <;> [exact .pure H; refine .pure ?_]
+  have ⟨h1, h2⟩ := H
   rw [Expr.mkAppRevRange_eq (l₁ := []) (l₂ := e.getAppArgsRevList) (l₃ := [])
     (by simp [Expr.getAppRevArgs_toList]) (by rfl) (by simp [Expr.getAppRevArgs_eq])]
   simp only [Expr.getAppArgsRevList_reverse]; constructor
