@@ -614,7 +614,7 @@ def isDefEqOffset (t s : Expr) : RecM LBool := do
   | some t', some s' => toLBoolM <| isDefEqCore t' s'
   | _, _ => return .undef
 
-def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := loop tn sn 1000 where
+def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := loop tn sn 100000 where
   loop tn sn
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
