@@ -443,7 +443,7 @@ def whnf' (e : Expr) : RecM Expr := do
     if let some t ← reduceNat t then return t
     let some t ← unfoldDefinition t | return t
     loop t fuel
-  let r ← loop e <| if (← readThe Context).eagerReduce then 100000 else 100000
+  let r ← loop e <| if (← readThe Context).eagerReduce then 1000000 else 1000000
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
@@ -614,7 +614,7 @@ def isDefEqOffset (t s : Expr) : RecM LBool := do
   | some t', some s' => toLBoolM <| isDefEqCore t' s'
   | _, _ => return .undef
 
-def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := loop tn sn 100000 where
+def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := loop tn sn 1000000 where
   loop tn sn
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
