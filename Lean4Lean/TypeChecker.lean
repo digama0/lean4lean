@@ -443,7 +443,7 @@ def whnf' (e : Expr) : RecM Expr := do
     if let some t ← reduceNat t then return t
     let some t ← unfoldDefinition t | return t
     loop t fuel
-  let r ← loop e <| if (← readThe Context).eagerReduce then 100000 else 1000
+  let r ← loop e <| if (← readThe Context).eagerReduce then 100000 else 100000
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
