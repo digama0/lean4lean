@@ -52,6 +52,16 @@ theorem List.Forall₂.trans (H : ∀ a b c, R a b → S b c → T a c)
 theorem List.Forall₂.and {l₁ l₂} (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ S l₁ l₂) :
     Forall₂ (fun x y => R x y ∧ S x y) l₁ l₂ := by induction h₁ <;> simp_all
 
+theorem List.Forall₂.and_mem {l₁ l₂} (H : Forall₂ R l₁ l₂) :
+    Forall₂ (fun x y => R x y ∧ x ∈ l₁ ∧ y ∈ l₂) l₁ l₂ :=
+  .trans (fun _ _ _ h1 h2 => ⟨h1.1 ▸ h2.1, h1.2, h2.2⟩)
+    (.rfl (R := fun x y => x = y ∧ x ∈ l₁) fun _ h => ⟨rfl, h⟩) <|
+  .trans (T := fun x y => R x y ∧ y ∈ l₂) (fun _ _ _ h1 h2 => by exact ⟨h2.1 ▸ h1, h2.2⟩) H <|
+  .rfl (R := fun x y => x = y ∧ y ∈ l₂) fun _ h => ⟨rfl, h⟩
+
+theorem List.Forall₂.zipWith_l {l₁ l₂} (H : ∀ a b, R a b → S a (f a b)) (h : Forall₂ R l₁ l₂) :
+    Forall₂ S l₁ (l₁.zipWith f l₂) := by induction h <;> simp [*]
+
 @[simp] theorem List.forall₂_map_left_iff {f : γ → α} :
     ∀ {l u}, Forall₂ R (map f l) u ↔ Forall₂ (fun c b => R (f c) b) l u
   | [], _ => by simp only [map, forall₂_nil_left_iff]
@@ -131,6 +141,9 @@ theorem List.idxOf_eq_length_iff [BEq α] [LawfulBEq α]
     · simp only [Ne.symm h, false_or]
       rw [← ih]
       exact Nat.succ_inj
+
+theorem List.perm_cons_of_mem {l : List α} (h : a ∈ l) : ∃ l', l.Perm (a :: l') := by
+  obtain ⟨l₁, l₂, rfl⟩ := List.append_of_mem h; exact ⟨_, List.perm_middle⟩
 
 instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
