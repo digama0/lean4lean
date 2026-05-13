@@ -220,15 +220,16 @@ noncomputable def Dom.out (x : Dom) : Option (SExprF Dom (Dom → Dom)) := by
   replace hy k : (y k).map .cast (.cast ∘ · ∘ .cast) = xf :=
     Option.some_inj.1 (eqy _ ▸ this k :)
   clear this
+  stop
   refine some <| xf.select
     (fun v S => ⟨fun k => have := S _ (hy k); _, _⟩)
     (fun f S => _)
-  | .bvar i => .bvar i
-  | .sort u => .sort u
-  | .const c ls => .const c ls
-  | .papp f a => .papp ⟨fun k => have := hy k; _, _⟩ _
-  | .lam A e => .lam _ _
-  | .forallE A e => .forallE _ _
+  -- | .bvar i => .bvar i
+  -- | .sort u => .sort u
+  -- | .const c ls => .const c ls
+  -- | .papp f a => .papp ⟨fun k => have := hy k; _, _⟩ _
+  -- | .lam A e => .lam _ _
+  -- | .forallE A e => .forallE _ _
   refine ⟨fun | 0 => () | n+1 => ?_, fun | 0 => rfl | n+1 => ?_⟩
   · exact some (x.map (·.1 n) ((·.1 n) ∘ · ∘ .mkN))
   · simp [DomN.down_succ, SExprF.map_comp]; congr 2
@@ -238,4 +239,4 @@ noncomputable def Dom.out (x : Dom) : Option (SExprF Dom (Dom → Dom)) := by
 
 def Dom.fin : FinElem → Dom
   | .bot => .bot
-  | .val => .bot
+  | .val _ => .bot

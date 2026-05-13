@@ -593,7 +593,7 @@ def Valuation.push (ρ : Valuation) (u : D) : Valuation
   | 0 => u
   | n+1 => ρ n
 
-def interp (ρ : Valuation) : Expr → D
+noncomputable def interp (ρ : Valuation) : Expr → D
   | .bvar i => ρ i
   | .U => .U
   | .app f a => .app (interp ρ f) (interp ρ a)
