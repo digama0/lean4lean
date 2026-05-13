@@ -557,6 +557,8 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
   | bvar : Lookup Γ i A → Γ ⊢ .bvar i : A
   | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
   | trans : Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
+  /-- Heterogeneous transitivity: middle term may be at a different sort. -/
+  | trans' : Γ ⊢ A ≡ B : .sort u → Γ ⊢ B ≡ C : .sort v → Γ ⊢ A ≡ C : .sort u
   | sort : Γ ⊢ .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
     Γ ⊢ .const c ls : (SExpr.mk ci.type).instL ls
@@ -581,27 +583,27 @@ axiom Params.extra_pat (Γ) : env.defeqs df → ls.length = df.uvars →
     (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b : A) ∧
     .instL ls (.mk df.rhs) = r.1.applyS m1 m2
 
-theorem IsDefEq.isType : Γ ⊢ e1 ≡ e2 : A → ∃ u, Γ ⊢ A : .sort u := sorry
-
-theorem IsDefEq.uniq_sort : Γ ⊢ e1 ≡ e2 : .sort u → Γ ⊢ e2 ≡ e3 : .sort v → u = v := sorry
-
 section
 local notation:65 (priority := high) Γ " ⊢ " e1 " : " A:36 => IsDefEqStrong Γ e1 e1 A
 local notation:65 (priority := high) Γ " ⊢ " e1 " ≡ " e2 " : " A:36 => IsDefEqStrong Γ e1 e2 A
 inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop where
-  | bvar : Lookup Γ i A → Γ ⊢ .bvar i : A
+  | bvar : Lookup Γ i A → Γ ⊢ A : .sort u → Γ ⊢ .bvar i : A
   | symm : Γ ⊢ e ≡ e' : A → Γ ⊢ e' ≡ e : A
   | trans : Γ ⊢ A : .sort u → Γ ⊢ e₁ ≡ e₂ : A → Γ ⊢ e₂ ≡ e₃ : A → Γ ⊢ e₁ ≡ e₃ : A
+  /-- Heterogeneous transitivity: middle term may be at a different sort. -/
+  | trans' : Γ ⊢ A ≡ B : .sort u → Γ ⊢ B ≡ C : .sort v → Γ ⊢ A ≡ C : .sort u
   | sort : Γ ⊢ .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
+    Γ ⊢ (SExpr.mk ci.type).instL ls : .sort u →
     Γ ⊢ .const c ls : (SExpr.mk ci.type).instL ls
-  | appDF : Γ ⊢ A : .sort u → A::Γ ⊢ B : .sort v →
-    Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
+  | appDF : Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
     Γ ⊢ B.inst a ≡ B.inst a' : .sort v →
     Γ ⊢ .app f a pat ≡ .app f' a' pat : B.inst a
-  | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ B : .sort v → A::Γ ⊢ body ≡ body' : B →
+  | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ B : .sort v →
+    A::Γ ⊢ body ≡ body' : B → A'::Γ ⊢ body ≡ body' : B →
     Γ ⊢ .lam A body ≡ .lam A' body' : .forallE A B
-  | forallEDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ body ≡ body' : .sort v →
+  | forallEDF : Γ ⊢ A ≡ A' : .sort u →
+    A::Γ ⊢ body ≡ body' : .sort v → A'::Γ ⊢ body ≡ body' : .sort v →
     Γ ⊢ .forallE A body ≡ .forallE A' body' : .sort (.imax u v)
   | defeqDF : Γ ⊢ A ≡ B : .sort u → Γ ⊢ e1 ≡ e2 : A → Γ ⊢ e1 ≡ e2 : B
   | beta : A::Γ ⊢ e : B → Γ ⊢ e' : A →
@@ -621,6 +623,53 @@ theorem IsDefEqStrong.defeq : IsDefEqStrong Γ e1 e2 A → Γ ⊢ e1 ≡ e2 : A 
 
 theorem IsDefEq.hasType (H : Γ ⊢ e1 ≡ e2 : A) :
     Γ ⊢ e1 ≡ e1 : A ∧ Γ ⊢ e2 ≡ e2 : A := ⟨H.trans H.symm, H.symm.trans H⟩
+
+section
+set_option hygiene false
+local notation:65 Γ " ⊢ " e " : " A:36 " !! " n:36 => HasTypeStratifiedS Γ e A true n
+local notation:65 Γ " ⊢ " e " :! " A:36 " !! " n:36 => HasTypeStratifiedS Γ e A false n
+
+/-- SExpr-side analog of `HasTypeStratified`: a typing derivation indexed by
+its tree depth `n`, used for well-founded induction on stratification. -/
+inductive HasTypeStratifiedS : List SExpr → SExpr → SExpr → Bool → Nat → Prop where
+  | bvar : Lookup Γ i A → Γ ⊢ A : .sort u !! n → Γ ⊢ .bvar i :! A !! n+1
+  | sort' : Γ ⊢ .sort l :! .sort (.succ l) !! n
+  | const :
+    env.constants c = some ci →
+    ls.length = ci.uvars →
+    Γ ⊢ (mk ci.type).instL ls : .sort u !! n →
+    Γ ⊢ .const c ls :! (mk ci.type).instL ls !! n+1
+  | app :
+    Γ ⊢ A : .sort u !! n →
+    A::Γ ⊢ B : .sort v !! n →
+    Γ ⊢ f : .forallE A B !! n →
+    Γ ⊢ a : A !! n →
+    Γ ⊢ B.inst a : .sort v !! n →
+    Γ ⊢ .app f a pat :! B.inst a !! n+1
+  | lam :
+    Γ ⊢ A : .sort u !! n →
+    A::Γ ⊢ B : .sort v !! n →
+    A::Γ ⊢ body : B !! n →
+    Γ ⊢ .forallE A B : .sort (.imax u v) !! n →
+    Γ ⊢ .lam A body :! .forallE A B !! n+1
+  | forallE :
+    Γ ⊢ A : .sort u !! n →
+    A::Γ ⊢ body : .sort v !! n →
+    Γ ⊢ .forallE A body :! .sort (.imax u v) !! n+1
+  | base : Γ ⊢ e :! A !! n → Γ ⊢ e : A !! n
+  | defeq : Γ ⊢ A ≡ B : .sort u →
+    Γ ⊢ A : .sort u !! n → Γ ⊢ B : .sort u !! n →
+    Γ ⊢ e : A !! n → Γ ⊢ e : B !! n+1
+end
+
+scoped notation:65 Γ " ⊢ " e " : " A:36 " !! " n:36 => HasTypeStratifiedS Γ e A true n
+scoped notation:65 Γ " ⊢ " e " :! " A:36 " !! " n:36 => HasTypeStratifiedS Γ e A false n
+
+theorem HasTypeStratifiedS.to_core (H : Γ ⊢ e : A !! n) :
+    ∃ A', Γ ⊢ e :! A' !! n := sorry
+
+theorem HasTypeStratifiedS.isType (H : HasTypeStratifiedS Γ e A b n) :
+    ∃ u, Γ ⊢ A : .sort u !! n - 1 := sorry
 
 def Ctx.WF : List SExpr → Prop
   | [] => True
@@ -688,6 +737,7 @@ theorem IsDefEq.weak' (W : Ctx.Lift' ρ Γ Γ') (H : Γ ⊢ e1 ≡ e2 : A) :
   | bvar h => refine .bvar (h.weak' W)
   | symm _ ih => exact .symm (ih W)
   | trans _ _ ih1 ih2 => exact .trans (ih1 W) (ih2 W)
+  | trans' _ _ ih1 ih2 => exact .trans' (ih1 W) (ih2 W)
   | sort => exact .sort
   | const h1 h2 => rw [(henv.closedC h1).mkS.instL.lift'_eq .zero]; exact .const h1 h2
   | appDF _ _ ih1 ih2 => exact SExpr.lift'_inst_hi .. ▸ .appDF (ih1 W) (ih2 W)
