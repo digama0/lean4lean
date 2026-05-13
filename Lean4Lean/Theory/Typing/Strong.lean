@@ -903,3 +903,19 @@ theorem HasTypeStrong.stratify (H : HasTypeStrong env U Γ e A b) :
     let ⟨n₁, ih1⟩ := ih1; let ⟨n₂, ih2⟩ := ih2; let ⟨n₃, ih3⟩ := ih3
     refine ⟨max n₁ (max n₂ n₃) + 1,
       .defeq h1 h2.defeq (ih1.mono ?_) (ih2.mono ?_) (ih3.mono ?_)⟩ <;> omega
+
+theorem HasTypeStratified.to_core (H : HasTypeStratified env U Γ e A true n) :
+    ∃ A', HasTypeStratified env U Γ e A' false n := by
+  generalize hb : true = b at H
+  induction H with cases hb
+  | base h _ => exact ⟨_, h⟩
+  | defeq _ _ _ _ _ _ _ ih3 => obtain ⟨A', hA'⟩ := ih3 rfl; exact ⟨A', hA'.mono (Nat.le_succ _)⟩
+
+theorem HasTypeStratified.isType (H : HasTypeStratified env U Γ e A b n) :
+    ∃ u, HasTypeStratified env U Γ A (.sort u) true (n - 1) := by
+  induction H with
+  | base _ ih => exact ih
+  | bvar _ h | const _ _ _ h | app _ _ _ _ _ _ h | lam _ _ _ h | defeq _ _ _ h => exact ⟨_, h⟩
+  | @sort' _ l _ _ _ h _ => exact ⟨_, .base (.sort' (l := l.succ) (l' := l.succ) h h rfl)⟩
+  | @forallE _ _ u _ _ v h1 h2 =>
+    exact ⟨_, .base (.sort' (l := .imax u v) (l' := .imax u v) ⟨h1, h2⟩ ⟨h1, h2⟩ rfl)⟩

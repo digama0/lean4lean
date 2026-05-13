@@ -2906,6 +2906,31 @@ theorem TShape.HasType.proofIrrel
   rw [TShape.LE.def hk.1 (Nat.zero_le _)]
   simp [TShape.bot, WShape.lift_bot, this]
 
+theorem WShape.HasType.retype (ha : HasType (n := n) a (.sort r))
+    (ha' : HasType a' (.sort r')) (le : a ≤ a') : HasType a (.sort r') := by
+  cases n with
+  | zero =>
+    cases ha.unfold with
+    | bot => exact .bot .sort
+    | sort => exact sort_le.1 le ▸ ha'
+  | succ n
+  cases ha.unfold with
+  | bot => exact .bot .sort
+  | sort => exact sort_le.1 le ▸ ha'
+  | forallE Ha
+  obtain ⟨_, _, le₁, le₂, rfl⟩ := WShape.forallE_le.1 le
+  have ⟨H1, H2⟩ := HasTypePi.iff'.1 Ha
+  obtain ⟨_, Ha', ⟨⟩⟩ := forallE_l.1 ha'
+  refine .forallE <| HasTypePi.iff'.2 ⟨H1, fun x => ?_⟩
+  exact retype (H2 _) ((HasTypePi.iff'.1 Ha').2 x) (WShapeFun.app_mono_l le₂ _)
+
+theorem TShape.HasType.retype (ha : HasType a (.sort r))
+    (ha' : HasType a' (.sort r')) (le : a ≤ a') : HasType a (.sort r') := by
+  let k := max a.1 a'.1; have hk := Nat.max_le.1 (Nat.le_refl k)
+  have ha := (TShape.HasType.def hk.1 (Nat.zero_le _)).1 ha
+  have ha' := (TShape.HasType.def hk.2 (Nat.zero_le _)).1 ha'
+  exact (TShape.HasType.def hk.1 (Nat.zero_le _)).2 <| ha.retype ha' le
+
 theorem WShape.HasDom.single :
     HasDom (WShapeFun.single x y) a ↔ x.HasType a ∨ y ≤ .bot ∧ a.HasType .type := by
   simp [HasDom.def, WShapeFun.mem_single]
@@ -3823,8 +3848,8 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
     have ⟨a', h1, h2, h3⟩ := hsort' H h; ⟨a', h1, h2, h3.toType⟩
   replace H := H.strong
   induction H generalizing m ρ with
-  | @bvar _ i A h =>
-    refine ⟨.rfl, fun h => ?_⟩
+  | @bvar _ i A _ h h2 ih =>
+    refine ⟨.rfl, fun h => ?_⟩; clear h2 ih
     generalize eq : SExpr.bvar i = M at h
     induction h with cases eq | bot => exact .mk .rfl .bot .bot (.bot_T' <| .bot .sort) | bvar a1
     induction W generalizing i A with
@@ -3841,6 +3866,9 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
     refine ⟨(ih1 W).1.trans (ih2 W).1, fun h => ?_⟩
     have ⟨_, _, le, a1, a2, a3⟩ := (ih2 W).2 ((ih1 W).1.1 h)
     exact ⟨_, _, le, (ih1 W).1.2 a1, a2, a3⟩
+  | trans' _ _ ih1 ih2 =>
+    refine ⟨(ih1 W).1.trans (ih2 W).1, fun h => ?_⟩
+    exact (ih1 W).2 h
   | @sort _ l =>
     refine ⟨.rfl, fun h => ?_⟩
     generalize eq : SExpr.sort l = M at h
@@ -3853,13 +3881,13 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
     induction h with cases eq
     | bot => exact .mk .rfl .bot .bot (.bot_T' <| .bot .sort)
     | const => sorry -- TODO: const case needs adaptation
-  | appDF _ _ _ _ _ ihA ihB ih1 ih2 ih3 =>
+  | appDF _ _ _ ih1 ih2 ih3 =>
     by_cases hm : m ≤ TShape.bot; · exact TShape.le_bot'.1 hm ▸ sound_bot
     refine ⟨⟨fun h => ?_, fun h => ?_⟩, sound_app (ih1 W).2 (hsort (ih3 W).2)⟩ <;>
       cases h with | bot => cases hm TShape.bot_le' | app h1 h2 h3
     · exact .app ((ih1 W).1.1 h1) ((ih2 W).1.1 h2) h3
     · exact .app ((ih1 W).1.2 h1) ((ih2 W).1.2 h2) h3
-  | @lamDF _ _ _ _ B _ body body' _ _ _ ih1 _ ih2 =>
+  | lamDF _ _ _ _ ih1 _ ih2 =>
     by_cases hm : m ≤ TShape.bot; · exact TShape.le_bot'.1 hm ▸ sound_bot
     refine ⟨⟨fun h => ?_, fun h => ?_⟩,
       sound_lam (hsort (ih1 W).2) fun h1 h2 => (ih2 (W.cons (hsort (ih1 W).2) h1 h2)).2⟩ <;>
@@ -3868,7 +3896,7 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
       exact (ih2 (W.cons (hsort (ih1 W).2) h1 h.T)).1.1 (h3 _ h)
     · refine .lam ((ih1 W).1.2 h1) h2 (fun _ h => ?_) h4
       exact (ih2 (W.cons (hsort (ih1 W).2) ((ih1 W).1.2 h1) h.T)).1.2 (h3 _ h)
-  | @forallEDF _ A _ _ body body' v _ _ ih1 ih2 =>
+  | forallEDF _ _ _ ih1 ih2 =>
     by_cases hm : m ≤ TShape.bot; · exact TShape.le_bot'.1 hm ▸ sound_bot
     refine ⟨⟨fun h => ?_, fun h => ?_⟩,
       sound_forallE (hsort' (ih1 W).2) fun h1 h2 => (ih2 (W.cons (hsort (ih1 W).2) h1 h2)).2⟩ <;>
@@ -3933,7 +3961,7 @@ theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A)
           |>.mono (WShape.LE.T <| (WShapeFun.app_of_mem hmem).2.trans x'app)
         cases this with | bot => cases hy rfl | @app _ n' f _ _ _ a' c1 c2 c3
         cases f using WShape.casesOn' with
-        | lam g _ => ?_
+        | lam g => ?_
         | _ => cases hy (TShape.le_bot.1 (c3.trans TShape.bot_le'))
         obtain ⟨x'', hle, mem⟩ := WShapeFun.app_eq g a'
         have le₁ := Nat.le_max_left n' n; have le₂ := Nat.le_max_right n' n
@@ -3997,6 +4025,7 @@ structure LogRel (Γ : List SExpr) (n : Nat) extends LogRelBase Γ n where
   symm : DefEq M N A m a → DefEq N M A m a
   symm_ty : TyDefEq M N m → TyDefEq N M m
   trans : DefEq M₁ M₂ A m a → DefEq M₂ M₃ A m a → DefEq M₁ M₃ A m a
+  trans' : DefEq A₁ A₂ (.sort u) a s → DefEq A₂ A₃ (.sort v) a (.sort r) → DefEq A₁ A₃ (.sort u) a s
   trans_ty : TyDefEq M₁ M₂ m → TyDefEq M₂ M₃ m → TyDefEq M₁ M₃ m
   conv : TyDefEq A B a → DefEq M N A m a → DefEq M N B m a
   mono_r_2 : a ≤ a' → m.HasType a → a'.HasType .type → DefEq M N A m a' → DefEq M N A m a
@@ -4046,6 +4075,11 @@ def LR0 : LogRel Γ 0 where
   trans {M₁ M₂ A m a M₃} := by
     dsimp [LR0.DefEq]; split <;> [trivial; skip]
     dsimp [LR0.TyDefEq]; split <;> [trivial; skip]
+    intro ⟨u, h1, h2⟩ ⟨u', h2', h3⟩
+    cases h2.determ .sort h2' .sort; exact ⟨u, h1, h3⟩
+  trans' {A₁ A₂ u a s A₃ v r} := by
+    dsimp [LR0.DefEq]; split <;> [(intros; trivial); skip]
+    dsimp [LR0.TyDefEq]; split <;> [(intros; trivial); skip]
     intro ⟨u, h1, h2⟩ ⟨u', h2', h3⟩
     cases h2.determ .sort h2' .sort; exact ⟨u, h1, h3⟩
   trans_ty {M₁ M₂ m M₃} := by
@@ -4184,9 +4218,7 @@ theorem LRS.TyDefEq.trans {IH : LogRel Γ n} :
           ⟨_, _, B₃, F₃, u', v', rM₂', rM₃, hB₂₃, hF₂₃, hValB₂₃, hE2⟩
     cases rM₂.determ .forallE rM₂' .forallE
     have hF₂₃' := hB₁₂.symm.defeqDF_l hF₂₃
-    cases hB₁₂.uniq_sort hB₂₃
-    cases hF₁₂.uniq_sort hF₂₃'
-    refine ⟨_, _, _, _, _, _, rM₁, rM₃, hB₁₂.trans hB₂₃, hF₁₂.trans hF₂₃',
+    refine ⟨_, _, _, _, _, _, rM₁, rM₃, hB₁₂.trans' hB₂₃, hF₁₂.trans' hF₂₃',
       IH.trans_ty hValB₁₂ hValB₂₃, fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩
     · exact ⟨(hE1.1 hp ha a1).1, (hE2.1 hp (hB₁₂.defeqDF ha) (IH.conv hValB₁₂ a1)).2⟩
     · exact IH.trans_ty (hE1.2 hp ha a1) (hE2.2 hp (hB₁₂.defeqDF ha) (IH.conv hValB₁₂ a1))
@@ -4399,14 +4431,17 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n+1) where
       intro ⟨B, F, u, v, rA, hA1, hA2, hA₂, hE, hP⟩ ⟨_, _, _, _, rA', _, _, _, _, hP'⟩
       cases rA.determ .forallE rA' .forallE
       exact ⟨_, _, _, _, rA, hA1, hA2, hA₂, hE, hP.trans hP'⟩
+  trans' {A₁ A₂ u a s A₃ v r} := by
+    dsimp [LRS.DefEq]; split <;> try intros; trivial
+    · exact .trans
+    · split <;> try intros; trivial
+      intro ⟨_, _, _, _, rA, _⟩; cases WHNF.sort.whRedS rA
   conv {A A' a M N m} := by
     dsimp [LRS.TyDefEq]; dsimp [LRS.DefEq]; split <;> (try · simp); dsimp
     intro ⟨B, F, B', F', u, v, rA, rA', hBB', hFF', hValB, hEdge⟩
     cases m using WShape.casesOn' with | lam => ?_ | _ => exact id
     intro ⟨_, _, _, v', rA₁, hA1, hValA, hA₂, hEdge₁, hP⟩
     cases rA.determ .forallE rA₁ .forallE
-    cases hA1.uniq_sort hBB'.hasType.1
-    cases hA₂.uniq_sort hFF'.hasType.1
     refine ⟨_, _, _, _, rA', hBB'.hasType.2, IH.left_ty (IH.symm_ty hValB),
       hBB'.defeqDF_l hFF'.hasType.2, ?_, ?_⟩
     · refine ⟨fun _ _ _ hp ha a1 => ?_, fun _ _ hp ha a1 => ?_⟩ <;>
@@ -4492,7 +4527,6 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n+1) where
               let ⟨B₁, F₁, B₂, F₂, u', v', rA', rA'', hBB_tgt, hFF_tgt, hValB_tgt, hEdge_tgt⟩ := hA
               cases rA.determ .forallE rA' .forallE
               cases rA.determ .forallE rA'' .forallE
-              cases hA₂.uniq_sort hFF_tgt
               refine ⟨_, _, _, _, rA, hBB_tgt.hasType.1, hValB_tgt, hA₂, hEdge_tgt, ?_⟩
               exact hP.mono_r_1 le1 le2 hm_lam hm'_lam hEdge_tgt
             · cases hgf2
@@ -4564,8 +4598,6 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n+1) where
       let ⟨_, _, _, _, u', v', rA', rB', hBB', hFF', hValB₂, hEdge₂⟩ := h2
       cases rA.determ .forallE rA' .forallE
       cases rB.determ .forallE rB' .forallE
-      cases hBB.uniq_sort hBB'.symm
-      cases hFF.uniq_sort hFF'.symm
       simp only [LRS.TyDefEq.forallE_iff, WShape.forallE_join_forallE hC.1 hC.2]
       have ht₁ := (WShape.HasTypePi.iff.1 hp₁).1.isType
       have ht₂ := (WShape.HasTypePi.iff.1 hp₂).1.isType
