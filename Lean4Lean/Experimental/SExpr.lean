@@ -3,11 +3,39 @@ import Lean4Lean.Theory.Typing.Pattern
 
 namespace Lean4Lean
 
+inductive Classification where
+  | ctor (arity : Nat)
+  | etaCtor (params args : Nat)
+  | symb (arity : Nat)
+
+def Pattern.WF (cl : Name → Option Classification) :
+    Pattern → (top : Bool := true) → (extra : Nat := 0) → Prop
+  | .const c, top, n => cl c = some (if top then .symb n else .ctor n)
+  | .var p, top, n => WF cl p top (n + 1)
+  | .app p p', top, n => WF cl p top (n + 1) ∧ WF cl p' false
+
 class Params where
   env : VEnv
   henv : env.Ordered
   univs : Nat
   Pat : (p : Pattern) → p.RHS × p.Check → Prop
+  classify : Name → Option Classification
+  pat_simple : Pat p r → ∃ sp : SimplePattern, p = sp.toPattern
+  pat_wf : Pat p r → p.WF classify
+  pat_uniq : Pat p₁ r → Pat p₂ r' → Subpattern p₃ p₁ → p₂.inter p₃ = some p₄ →
+    p₁ = p₂ ∧ p₂ = p₃ ∧ r ≍ r'
+  -- pat_wf : Pat p r → p.Matches e m1 m2 → HasType env univs Γ e A →
+  --   r.2.OK (IsDefEqU env univs Γ) m1 m2 → IsDefEqU env univs Γ e (r.1.apply m1 m2)
+  -- pat_app_l : Pat p r → Subpattern (.app p₁ p₂) p → ¬Subpattern (.app p₃ p₄) p₁
+  -- pat_app_l_uniq : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
+  --   Subpattern (.app p₁' p₂') p' → Subpattern (.var p₃) p₁ → p₁'.inter p₃ = none
+  -- pat_app_uniq : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
+  --   Subpattern (.app p₁' p₂') p' → Subpattern p₃ p₁ → Subpattern p₃' p₂' → p₃.inter p₃' = none
+  -- pat_app_r_arity : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
+  --   Subpattern (.app p₁' p₂') p' → Arity (.const c) n p₂ → Arity (.const c) n' p₂' → n = n'
+  -- extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
+  --   ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
+  --   df.rhs.instL ls = r.1.apply m1 m2
 open Params
 variable [Params]
 
@@ -479,20 +507,20 @@ theorem Ctx.Inter.right (H : Ctx.Inter Γ Γ₁ l₁ Γ₂ l₂ Δ) : Ctx.Lift' 
 theorem Ctx.Inter.left (H : Ctx.Inter Γ Γ₁ l₁ Γ₂ l₂ Δ) : Ctx.Lift' l₁ Γ₁ Δ := H.symm.right
 
 inductive _root_.Lean4Lean.Pattern.MatchesS :
-    (p : Pattern) → SExpr → (p.Path.1 → List SLevel) → (p.Path.2 → SExpr) → Prop
-  | const : MatchesS (.const c) (.const c ls) (fun _ => ls) nofun
+    (p : Pattern) → SExpr → List SLevel → (p.Path → SExpr) → Prop
+  | const : MatchesS (.const c) (.const c ls) ls nofun
   | var : MatchesS f f' f1 g1 → MatchesS (.var f) (.app f' a' true) f1 (·.elim a' g1)
   | app : MatchesS f f' f1 g1 → MatchesS a a' f2 g2 →
-    MatchesS (.app f a) (.app f' a' true) (Sum.elim f1 f2) (Sum.elim g1 g2)
+    MatchesS (.app f a) (.app f' a' true) f1 (Sum.elim g1 g2)
 
 def _root_.Lean4Lean.Pattern.RHS.applyS {p : Pattern}
-    (m1 : p.Path.1 → List SLevel) (m2 : p.Path.2 → SExpr) : p.RHS → SExpr
-  | .fixed path c _ => .instL (m1 path) (.mk c)
+    (m1 : List SLevel) (m2 : p.Path → SExpr) : p.RHS → SExpr
+  | .fixed c _ => .instL m1 (.mk c)
   | .var path => m2 path
   | .app f a => .app (f.applyS m1 m2) (a.applyS m1 m2)
 
 def _root_.Lean4Lean.Pattern.RHS.Closed {p : Pattern} : p.RHS → Prop
-  | .fixed _ c _ => c.Closed
+  | .fixed c _ => c.Closed
   | .var _ => True
   | .app f a => f.Closed ∧ a.Closed
 
@@ -503,7 +531,7 @@ def _root_.Lean4Lean.Pattern.RHS.Closed.applyS {p : Pattern} {m1 m2} :
   | .app .., h1, h2 => ⟨h1.1.applyS _ h2, h1.2.applyS _ h2⟩
 
 def _root_.Lean4Lean.Pattern.Check.defeqsS {p : Pattern}
-    (m1 : p.Path.1 → List SLevel) (m2 : p.Path.2 → SExpr) : p.Check → List (SExpr × SExpr)
+    (m1 : List SLevel) (m2 : p.Path → SExpr) : p.Check → List (SExpr × SExpr)
   | .true => []
   | .defeq a b rest => (a.applyS m1 m2, b.applyS m1 m2) :: rest.defeqsS m1 m2
 
