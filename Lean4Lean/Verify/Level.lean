@@ -1,8 +1,12 @@
-import Lean4Lean.Theory.VLevel
-import Lean4Lean.Level
-import Lean4Lean.Verify.Axioms
-import Std.Tactic.BVDecide
-import Std.Data.TreeMap.Lemmas
+module
+
+public import Lean4Lean.Theory.VLevel
+public import Lean4Lean.Level
+public import Lean4Lean.Verify.Axioms
+public import Std.Tactic.BVDecide
+public import Std.Data.TreeMap.Lemmas
+
+@[expose] public section
 
 namespace Lean
 

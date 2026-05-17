@@ -1,6 +1,10 @@
-import Batteries.Tactic.OpenPrivate
-import Lean4Lean.Std.Basic
-import Lean4Lean.Std.NodupKeys
+module
+
+public import Batteries.Tactic.OpenPrivate
+public import Lean4Lean.Std.Basic
+public import Lean4Lean.Std.NodupKeys
+
+@[expose] public section
 
 namespace Std.TreeMap
 

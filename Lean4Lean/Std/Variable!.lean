@@ -1,4 +1,8 @@
-import Lean
+module
+
+public import Lean
+
+@[expose] public section
 
 macro "variable!" args:(ppSpace colGt bracketedBinder)+ " in"
     cmd:ppDedent(command) : command => do

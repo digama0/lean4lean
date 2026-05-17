@@ -1,3 +1,5 @@
+module
+
 /-!
 # Partial formalization of Coquand & Huber, "An Adequacy Theorem for Dependent Type Theory"
 https://doi.org/10.1007/s00224-018-9879-9
@@ -829,3 +831,5 @@ theorem DefEqLamF.mono_r : DefEqF (n := n) B B .U a .U → DefEqPiF DefEqF B F F
 termination_by 2 * n + 1
 
 end
+
+@[expose] public section

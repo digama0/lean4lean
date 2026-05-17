@@ -1,8 +1,12 @@
-import Batteries.Lean.Expr
-import Lean4Lean.Std.Control
-import Lean4Lean.Std.ToExpr
-import Lean4Lean.Theory.VEnv
-import Lean4Lean.Inductive.Reduce
+module
+
+public import Batteries.Lean.Expr
+public import Lean4Lean.Std.Control
+public import Lean4Lean.Std.ToExpr
+public import Lean4Lean.Theory.VEnv
+public import Lean4Lean.Inductive.Reduce
+
+@[expose] public section
 
 namespace Lean4Lean
 

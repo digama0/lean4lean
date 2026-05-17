@@ -1,5 +1,9 @@
-import Std.Data.HashMap.Lemmas
-import Lean
+module
+
+public import Std.Data.HashMap.Lemmas
+public import Lean
+
+@[expose] public section
 
 namespace Std.Internal.List
 

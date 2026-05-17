@@ -1,4 +1,8 @@
-import Lean4Lean.Theory.VExpr
+module
+
+public import Lean4Lean.Theory.VExpr
+
+@[expose] public section
 
 namespace Lean4Lean
 

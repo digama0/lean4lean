@@ -1,5 +1,9 @@
-import Lean.Environment
-import Batteries.Tactic.OpenPrivate
+module
+
+public import Lean.Environment
+public import Batteries.Tactic.OpenPrivate
+
+@[expose] public section
 
 namespace Lean.Kernel.Environment
 

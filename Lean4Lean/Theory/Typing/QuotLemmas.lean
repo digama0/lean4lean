@@ -1,5 +1,9 @@
-import Lean4Lean.Theory.Typing.Env
-import Lean4Lean.Theory.Typing.Meta
+module
+
+public import Lean4Lean.Theory.Typing.Env
+public import Lean4Lean.Theory.Typing.Meta
+
+@[expose] public section
 
 namespace Lean4Lean
 namespace VEnv

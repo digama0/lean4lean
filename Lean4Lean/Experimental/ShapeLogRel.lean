@@ -1,4 +1,8 @@
-import Lean4Lean.Experimental.SExpr
+module
+
+public import Lean4Lean.Experimental.SExpr
+
+@[expose] public section
 
 namespace Lean4Lean
 

@@ -1,4 +1,8 @@
-import Lean.Environment
+module
+
+public import Lean.Environment
+
+@[expose] public section
 
 namespace Lean
 namespace Expr

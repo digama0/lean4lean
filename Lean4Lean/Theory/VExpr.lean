@@ -1,5 +1,9 @@
-import Lean
-import Lean4Lean.Theory.VLevel
+module
+
+public import Lean
+public import Lean4Lean.Theory.VLevel
+
+@[expose] public section
 
 namespace Lean4Lean
 

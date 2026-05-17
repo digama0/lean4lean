@@ -1,4 +1,8 @@
-import Lean4Lean.Std.Basic
+module
+
+public import Lean4Lean.Std.Basic
+
+@[expose] public section
 
 namespace Lean4Lean
 

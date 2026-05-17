@@ -1,5 +1,9 @@
-import Lean4Lean.Verify.Expr
-import Lean4Lean.Theory.VExpr
+module
+
+public import Lean4Lean.Verify.Expr
+public import Lean4Lean.Theory.VExpr
+
+@[expose] public section
 
 namespace Lean4Lean
 

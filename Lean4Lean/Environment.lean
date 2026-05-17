@@ -1,7 +1,11 @@
-import Lean4Lean.TypeChecker
-import Lean4Lean.Quot
-import Lean4Lean.Inductive.Add
-import Lean4Lean.Primitive
+module
+
+public import Lean4Lean.TypeChecker
+public import Lean4Lean.Quot
+public import Lean4Lean.Inductive.Add
+public import Lean4Lean.Primitive
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean hiding Environment Exception

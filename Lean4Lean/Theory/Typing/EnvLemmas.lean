@@ -1,7 +1,11 @@
-import Lean4Lean.Theory.Typing.Lemmas
-import Lean4Lean.Theory.Typing.Env
-import Lean4Lean.Theory.Typing.QuotLemmas
-import Lean4Lean.Theory.Typing.InductiveLemmas
+module
+
+public import Lean4Lean.Theory.Typing.Lemmas
+public import Lean4Lean.Theory.Typing.Env
+public import Lean4Lean.Theory.Typing.QuotLemmas
+public import Lean4Lean.Theory.Typing.InductiveLemmas
+
+@[expose] public section
 
 namespace Lean4Lean
 

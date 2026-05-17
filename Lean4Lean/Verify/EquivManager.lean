@@ -1,7 +1,11 @@
-import Batteries.Data.UnionFind.Lemmas
-import Lean4Lean.Verify.Environment.Lemmas
-import Lean4Lean.EquivManager
-import Lean4Lean.Verify.TypeChecker.Basic
+module
+
+public import Batteries.Data.UnionFind.Lemmas
+public import Lean4Lean.Verify.Environment.Lemmas
+public import Lean4Lean.EquivManager
+public import Lean4Lean.Verify.TypeChecker.Basic
+
+@[expose] public section
 
 namespace Lean4Lean.EquivManager
 open Lean hiding Environment Exception

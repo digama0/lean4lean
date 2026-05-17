@@ -1,5 +1,9 @@
-import Lean4Lean.Verify.TypeChecker.Reduce
-import Lean4Lean.Verify.EquivManager
+module
+
+public import Lean4Lean.Verify.TypeChecker.Reduce
+public import Lean4Lean.Verify.EquivManager
+
+@[expose] public section
 
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception

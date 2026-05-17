@@ -1,9 +1,13 @@
-import Batteries.Data.String.Lemmas
-import Lean4Lean.Verify.Typing.Expr
-import Lean4Lean.Verify.Expr
-import Lean4Lean.Theory.Typing.Strong
-import Lean4Lean.Theory.Typing.UniqueTyping
-import Lean4Lean.Instantiate
+module
+
+public import Batteries.Data.String.Lemmas
+public import Lean4Lean.Verify.Typing.Expr
+public import Lean4Lean.Verify.Expr
+public import Lean4Lean.Theory.Typing.Strong
+public import Lean4Lean.Theory.Typing.UniqueTyping
+public import Lean4Lean.Instantiate
+
+@[expose] public section
 
 namespace Lean4Lean
 open VEnv Lean

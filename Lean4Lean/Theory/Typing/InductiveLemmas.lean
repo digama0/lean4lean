@@ -1,6 +1,10 @@
-import Std
-import Lean4Lean.Theory.Typing.Lemmas
-import Lean4Lean.Theory.Typing.Env
+module
+
+public import Std
+public import Lean4Lean.Theory.Typing.Lemmas
+public import Lean4Lean.Theory.Typing.Env
+
+@[expose] public section
 
 namespace Lean4Lean
 namespace VEnv

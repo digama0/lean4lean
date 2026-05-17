@@ -1,7 +1,11 @@
-import Lean4Lean.Theory.Typing.Basic
-import Lean4Lean.Verify.NameGenerator
-import Lean4Lean.Verify.VLCtx
-import Lean4Lean.Verify.Axioms
+module
+
+public import Lean4Lean.Theory.Typing.Basic
+public import Lean4Lean.Verify.NameGenerator
+public import Lean4Lean.Verify.VLCtx
+public import Lean4Lean.Verify.Axioms
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean

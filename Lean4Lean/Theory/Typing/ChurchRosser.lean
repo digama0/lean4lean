@@ -1,6 +1,10 @@
-import Lean4Lean.Theory.Typing.Pattern
-import Lean4Lean.Theory.Typing.Strong
-import Lean4Lean.Theory.Typing.UniqueTyping
+module
+
+public import Lean4Lean.Theory.Typing.Pattern
+public import Lean4Lean.Theory.Typing.Strong
+public import Lean4Lean.Theory.Typing.UniqueTyping
+
+@[expose] public section
 
 namespace Lean4Lean
 namespace VEnv

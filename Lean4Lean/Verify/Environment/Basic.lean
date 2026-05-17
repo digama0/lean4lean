@@ -1,5 +1,9 @@
-import Lean4Lean.Verify.LocalContext
-import Lean4Lean.Theory.Typing.EnvLemmas
+module
+
+public import Lean4Lean.Verify.LocalContext
+public import Lean4Lean.Theory.Typing.EnvLemmas
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean hiding Environment Exception

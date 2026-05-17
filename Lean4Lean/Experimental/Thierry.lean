@@ -1,3 +1,7 @@
+module
+
+@[expose] public section
+
 /-!
 # Partial formalization of Coquand & Huber, "An Adequacy Theorem for Dependent Type Theory"
 https://doi.org/10.1007/s00224-018-9879-9
