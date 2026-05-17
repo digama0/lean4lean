@@ -5,6 +5,10 @@ import Lean.Util.InstantiateLevelParams
 namespace Lean
 namespace Expr
 
+/--
+Reduces an expression of the form (λ x₁ ... xₙ, x₁) a₁ ... aₙ aₙ₊₁ ... aₘ
+to aᵢ aₙ₊₁ ... aₘ.
+-/
 def cheapBetaReduce (e : Expr) : Expr := Id.run do
   if !e.isApp then return e
   let fn := e.getAppFn
