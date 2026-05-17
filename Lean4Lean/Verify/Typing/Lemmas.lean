@@ -268,7 +268,7 @@ theorem FVLift'.fvars_sublist (W : FVLift' Δ Δ' dk n k) : Δ.fvars <+ Δ'.fvar
   induction W with
   | refl => exact .refl _
   | skip_fvar _ _ _ ih => exact .cons _ ih
-  | cons_fvar _ _ _ _ ih => exact .cons₂ _ ih
+  | cons_fvar _ _ _ _ ih => exact .cons_cons _ ih
   | cons_bvar _ _ ih => exact ih
 
 theorem FVLift'.bvars_eq (W : FVLift' Δ Δ' dk n k) : Δ'.bvars = Δ.bvars := by
