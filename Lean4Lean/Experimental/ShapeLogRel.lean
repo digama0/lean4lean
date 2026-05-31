@@ -1,4 +1,5 @@
 import Lean4Lean.Experimental.SExpr
+import Mathlib.Logic.Basic
 
 namespace Lean4Lean
 
@@ -560,7 +561,7 @@ theorem Shape.plift_thm (le : n ≤ m) {s : Shape m} {t : Shape n} :
       go Shape.plift_thm le]; grind
   · cases t with simp [lift, sort, bot, Shape.LE.def]
     | lam => ?_ | _ => intros; subst_vars; simp
-    simp [go Shape.plift_thm le]; grind
+    simp [go Shape.plift_thm le]
   · cases t with simp [lift, sort, bot, Shape.LE.def, List.mapM_eq_some]
     | ctor => ?_ | _ => intros; subst_vars; simp
     refine ⟨fun _ => ?_, ?_, ?_⟩
@@ -568,11 +569,11 @@ theorem Shape.plift_thm (le : n ≤ m) {s : Shape m} {t : Shape n} :
       exact propext (Shape.plift_thm le).1
     · rintro ⟨rfl, h⟩; rename_i c l _ l'
       suffices ∃ z, l.Forall₂ (·.plift.2 = some ·) z ∧ z.Forall₂ LE l' from
-        have ⟨z, h1, h2⟩ := this; ⟨_, ⟨_, h1, rfl⟩, rfl, h2⟩
+        have ⟨z, h1, h2⟩ := this; ⟨_, h1, rfl, h2⟩
       induction h with | nil => exact ⟨_, .nil, .nil⟩ | cons h _ ih
       have ⟨a, a1, a2⟩ := (Shape.plift_thm le).2.1 h; have ⟨z, b1, b2⟩ := ih
       exact ⟨_, .cons a1 b1, .cons a2 b2⟩
-    · rintro ⟨z, ⟨a, h1, rfl⟩, h2, h3⟩; refine ⟨h2, h1.trans (fun _ _ _ h1 h3 => ?_) h3⟩
+    · rintro ⟨z, h1, h2, h3⟩; refine ⟨h2, h1.trans (fun _ _ _ h1 h3 => ?_) h3⟩
       exact (Shape.plift_thm le).2.2 ⟨_, h1, h3⟩
 
 omit [Params] in
@@ -841,8 +842,8 @@ theorem Shape.ListNonZero.lift_iff {n m} {x : List (Shape n)} (le : n ≤ m) :
     ListNonZero (x.map (lift m)) ↔ ListNonZero (n := n) x := by
   simp [ListNonZero]
   constructor
-  · exact fun ⟨_, ⟨_, h1, rfl⟩, h2⟩ => ⟨_, h1, mt ((Shape.lift_le_bot le).2 ∘ Shape.le_bot.1) h2⟩
-  · exact fun ⟨_, h1, h2⟩ => ⟨_, ⟨_, h1, rfl⟩, mt (Shape.le_bot.2 ∘ (Shape.lift_le_bot le).1) h2⟩
+  · exact fun ⟨_, h1, h2⟩ => ⟨_, h1, mt ((Shape.lift_le_bot le).2 ∘ Shape.le_bot.1) h2⟩
+  · exact fun ⟨_, h1, h2⟩ => ⟨_, h1, mt (Shape.le_bot.2 ∘ (Shape.lift_le_bot le).1) h2⟩
 
 theorem Shape.WF.lift_iff (le : n ≤ m) : WF (x.lift m) ↔ WF (n := n) x := by
   induction n generalizing m with | zero => cases m <;> cases x <;> trivial | succ n ih
@@ -2055,8 +2056,9 @@ theorem WShape.ctor'_join {l l' : List (WShape n)} {c : Name}
   · rw [dif_pos (key.mpr (.inl h1))]; simp [ctor, bot, Shape.join_bot]
     have h2' : ∀ x ∈ l', x.1 ≤ Shape.bot := by
       have ⟨hIs, hNZ⟩ : IsStruct c = true ∧ ¬ListNonZero l' := by
-        refine ⟨?_, fun hNZ => h2 fun _ => hNZ⟩
-        by_contra hIs; exact h2 fun h => (hIs h).elim
+        by_cases hIs : IsStruct c = true
+        · exact ⟨hIs, fun hNZ => h2 fun _ => hNZ⟩
+        · exact False.elim (h2 fun h => (hIs h).elim)
       simp [ListNonZero] at hNZ; exact hNZ
     congr 1; clear h1 h2 key key_NZ
     induction h with
@@ -2068,8 +2070,9 @@ theorem WShape.ctor'_join {l l' : List (WShape n)} {c : Name}
   · rw [dif_pos (key.mpr (.inr h2))]; simp [ctor, bot, Shape.bot_join]
     have h1' : ∀ x ∈ l, x.1 ≤ Shape.bot := by
       have ⟨hIs, hNZ⟩ : IsStruct c = true ∧ ¬ListNonZero l := by
-        refine ⟨?_, fun hNZ => h1 fun _ => hNZ⟩
-        by_contra hIs; exact h1 fun h => (hIs h).elim
+        by_cases hIs : IsStruct c = true
+        · exact ⟨hIs, fun hNZ => h1 fun _ => hNZ⟩
+        · exact False.elim (h1 fun h => (hIs h).elim)
       simp [ListNonZero] at hNZ; exact hNZ
     congr 1; clear h1 h2 key key_NZ
     induction h with
