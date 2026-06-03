@@ -35,7 +35,7 @@ inductive HasTypeS : List SExpr → SExpr → SExpr → Bool → Prop where
     Γ ⊨ .const c ls :! (mk ci.type).instL ls
   | app :
     Γ ⊨ f : .forallE A B → Γ ⊨ a : A →
-    Γ ⊨ .app f a pat :! B.inst a
+    Γ ⊨ .app f a :! B.inst a
   | lam :
     Γ ⊨ A : .sort u → A::Γ ⊨ body : B →
     Γ ⊨ .lam A body :! .forallE A B
@@ -107,7 +107,7 @@ theorem HasTypeS.uniq {Γ : List SExpr} {e A B : SExpr} {b₁ b₂ : Bool}
     let .const h_c' _ _ := H2_s
     obtain rfl := Option.some.inj (h_c.symm.trans h_c')
     exact transport h_T.hasType
-  | @app Γ' _ A _ a _ _ h_a ih_f _ =>
+  | @app Γ' _ A _ a _ h_a ih_f _ =>
     obtain ⟨_, H2_s, transport⟩ := H2.toStructural
     let .app h_f' _ := H2_s
     obtain ⟨_, h_pi_eq⟩ := ih_f h_f'
@@ -200,7 +200,7 @@ inductive IsDefEq' : List SExpr → SExpr → SExpr → SExpr → Prop where
   | const : env.constants c = some ci → ls.length = ci.uvars →
     Γ ⊢' .const c ls : (SExpr.mk ci.type).instL ls
   | appDF : Γ ⊢' f ≡ f' : .forallE A B → Γ ⊢' a ≡ a' : A →
-    Γ ⊢' .app f a pat ≡ .app f' a' pat : B.inst a
+    Γ ⊢' .app f a ≡ .app f' a' : B.inst a
   | lamDF : Γ ⊢' A ≡ A' : .sort u → A::Γ ⊢' body ≡ body' : B →
     Γ ⊢' .lam A body ≡ .lam A' body' : .forallE A B
   | forallEDF : Γ ⊢' A ≡ A' : .sort u → A::Γ ⊢' body ≡ body' : .sort v →

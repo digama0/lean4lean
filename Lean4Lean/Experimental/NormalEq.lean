@@ -135,7 +135,7 @@ theorem Typing.IsDefEqU.apply_pat
     (he : TY.HasType Γ (apply m1 m2 r) A) :
      TY.IsDefEqU Γ (apply m1 m2 r) (apply m1 m2' r) := by
   induction r generalizing A with simp [apply] at he ⊢
-  | fixed c _ => exact TY.refl he
+  | fixed c => exact TY.refl he
   | app hf ha ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := TY.app_inv he
     exact TY.appDF h1 (ih1 h1) h2 (ih2 h2)
@@ -504,7 +504,7 @@ theorem NormalEq.apply_pat
     (he : TY.HasType Γ (apply m1 m2 r) A) :
     NormalEq TY Γ (apply m1 m2 r) (apply m1 m2' r) := by
   induction r generalizing A with simp [apply] at he ⊢
-  | fixed c _ => exact .refl he
+  | fixed c => exact .refl he
   | app hf ha ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := TY.app_inv he
     exact .appDF h1 (TY.defeq_l (ih1 h1).defeq h1)

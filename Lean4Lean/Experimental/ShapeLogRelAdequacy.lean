@@ -143,8 +143,8 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
       obtain h | h := WShape.le_sort.1 hM.le_sort'
       · dsimp only at h; rw [h]; exact (LR _).bot hmem.isType
       · simp [WShape.ext_iff, WShape.forallE, WShape.sort, Shape.sort,
-          WShape.lam', WShape.lam, WShape.bot, Shape.bot] at h <;>
-        split at h <;> simp_all only [reduceCtorEq]
+          WShape.lam', WShape.lam, WShape.bot, WShape.ctor, WShape.indTy,
+          Shape.bot] at h <;> first | split at h <;> simp_all only [reduceCtorEq] | simp_all
   | @const c ci Γ ls _ h1 h2 h3 =>
     cases hM with | bot => exact .bot hmem.isType | const a1 _ a3 a4 a5 a6
     cases h1.symm.trans a1
@@ -152,7 +152,7 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
       from ⟨fun _ _ _ => ⟨this, this⟩, fun _ _ => this⟩
     intro σ; rw [(Params.henv.closedC h1).mkS.instL.subst_eq .zero]; clear σ
     sorry
-  | @appDF Γ F F' A B X X' v pat Hf Ha HBa ihf iha ihBa =>
+  | @appDF Γ F F' A B X X' v Hf Ha HBa ihf iha ihBa =>
     cases hM with | bot => exact .bot hmem.isType | @app _ nf_app f _ _ _ x hif hia le_m
     suffices ∀ {F F' X X' σ σ'}, SubstWF Γ₀ σ σ' Γ ρ →
         Γ ⊢ F ≡ F' : A.forallE B → Γ ⊢ X ≡ X' : A → Γ ⊢ B.inst X ≡ B.inst X' : .sort v →
@@ -260,11 +260,13 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
       cases hmem.unfold with
       | bot hm =>
         cases hm.unfold with
+        | bot | sort => cases n <;> trivial | indTy => trivial
         | forallE => exact this _ _ _ rfl .rfl
-        | _ => cases n <;> trivial
       | sort => cases n <;> let .lam _ _ _ h := hTerm <;> cases TShape.sort_not_le_lam' h
       | forallE => let .lam _ _ _ h := hTerm <;> cases TShape.forallE_not_le_lam' h
       | lam => exact this _ _ _ rfl .rfl
+      | ctor => let .lam _ _ _ h := hTerm; cases TShape.ctor_not_le_lam' h
+      | indTy => let .lam _ _ _ h := hTerm; cases TShape.indTy_not_le_lam' h
     rintro k a₁ a₂ rfl ⟨⟩
     have ⟨_, aty, _⟩ := WShape.HasType.forallE_l.1 hmem.isType
     have hTypA : Γ₀ ⊢ A.subst σ : .sort u :=
@@ -316,11 +318,13 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
     | bot hm =>
       cases hm.unfold with
       | forallE => let .sort h := hA; cases (TShape.LE.lift_r (by simp [TShape.sort])).1 h
-      | _ => cases n <;> exact .bot hmem.isType
+      | _ => exact .bot hmem.isType
     | sort => cases n <;> have .forallE _ _ _ _ h := hM <;> cases TShape.sort_not_le_forallE h
     | @lam _ f₀ =>
       revert hM; unfold WShape.lam'; split <;> [skip; exact fun _ => .bot hmem.isType]
       intro | .forallE _ _ _ _ h => cases TShape.lam_not_le_forallE h
+    | ctor => have .forallE _ _ _ _ h := hM; cases TShape.ctor_not_le_forallE h
+    | indTy => have .forallE _ _ _ _ h := hM; cases TShape.indTy_not_le_forallE h
     | @forallE k a₂ a₁ r aty
     have aty := WShape.HasTypePi.iff.1 aty
     have hA1 := hM.forallE_inv.1
@@ -397,6 +401,8 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
     | bot hm => exact (LR _).bot hm
     | sort => cases n <;> let .lam _ _ _ h := hM <;> cases TShape.sort_not_le_lam' h
     | forallE => let .lam _ _ _ h := hM; cases TShape.forallE_not_le_lam' h
+    | ctor => let .lam _ _ _ h := hM; cases TShape.ctor_not_le_lam' h
+    | indTy => let .lam _ _ _ h := hM; cases TShape.indTy_not_le_lam' h
     | lam htm
     revert hM hM' hmem; unfold WShape.lam'
     split <;> intro hM hM' hmem <;> [skip; exact (LR _).bot hmem.isType]

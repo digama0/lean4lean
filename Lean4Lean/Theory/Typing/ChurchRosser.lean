@@ -55,7 +55,7 @@ theorem IsDefEq.apply_pat
     (ih : ∀ a A, Γ ⊢ m2 a : A → Γ ⊢ m2 a ≡ m2' a)
     (he : Γ ⊢ apply m1 m2 r : A) : Γ ⊢ apply m1 m2 r ≡ apply m1 m2' r : A := by
   induction r generalizing A with simp [apply] at he ⊢
-  | fixed c _ => exact he
+  | fixed c => exact he
   | app hf ha ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := he.app_inv henv hΓ
     exact he.trans_l henv hΓ <| .appDF (ih1 h1) (ih2 h2)
@@ -454,7 +454,7 @@ theorem NormalEq.apply_pat
     (he : Γ ⊢ apply m1 m2 r : A) :
     Γ ⊢ apply m1 m2 r ≡ₚ apply m1 m2' r := by
   induction r generalizing A with simp [apply] at he ⊢
-  | fixed c _ => exact .refl he
+  | fixed c => exact .refl he
   | app hf ha ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := he.app_inv henv hΓ
     exact .appDF h1 (.defeqU_l henv hΓ ((ih1 h1).defeq hΓ) h1)
