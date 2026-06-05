@@ -1,5 +1,9 @@
-import Lean4Lean.Std.SMap
-import Lean4Lean.Verify.Environment.Basic
+module
+
+public import Lean4Lean.Std.SMap
+public import Lean4Lean.Verify.Environment.Basic
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean hiding Environment Exception

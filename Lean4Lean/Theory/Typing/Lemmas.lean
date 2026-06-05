@@ -1,5 +1,9 @@
-import Lean4Lean.Theory.Typing.Basic
-import Lean4Lean.Std.Variable!
+module
+
+public import Lean4Lean.Theory.Typing.Basic
+public import Lean4Lean.Std.Variable!
+
+@[expose] public section
 
 namespace Lean4Lean
 

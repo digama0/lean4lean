@@ -1,4 +1,8 @@
-import Lean.Declaration
+module
+
+public import Lean.Declaration
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean

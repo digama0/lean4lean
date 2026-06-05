@@ -1,6 +1,10 @@
-import Lean4Lean.Verify.TypeChecker.InferType
-import Lean4Lean.Verify.TypeChecker.WHNF
-import Lean4Lean.Verify.TypeChecker.IsDefEq
+module
+
+public import Lean4Lean.Verify.TypeChecker.InferType
+public import Lean4Lean.Verify.TypeChecker.WHNF
+public import Lean4Lean.Verify.TypeChecker.IsDefEq
+
+@[expose] public section
 
 namespace Lean4Lean
 

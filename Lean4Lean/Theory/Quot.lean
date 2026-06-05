@@ -1,5 +1,9 @@
-import Lean4Lean.Theory.VEnv
-import Lean4Lean.Theory.Meta
+module
+
+public import Lean4Lean.Theory.VEnv
+public import Lean4Lean.Theory.Meta
+
+@[expose] public section
 
 namespace Lean4Lean
 

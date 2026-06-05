@@ -1,5 +1,9 @@
-import Lean4Lean.Theory.Typing.EnvLemmas
-import Lean4Lean.Theory.Typing.Strong
+module
+
+public import Lean4Lean.Theory.Typing.EnvLemmas
+public import Lean4Lean.Theory.Typing.Strong
+
+@[expose] public section
 
 /-!
 A bunch of important structural theorems which we can't prove :(

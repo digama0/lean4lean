@@ -1,7 +1,11 @@
-import Lean.Data.SMap
-import Std.Data.HashMap.Lemmas
-import Lean4Lean.Std.HashMap
-import Lean4Lean.Std.PersistentHashMap
+module
+
+public import Lean.Data.SMap
+public import Std.Data.HashMap.Lemmas
+public import Lean4Lean.Std.HashMap
+public import Lean4Lean.Std.PersistentHashMap
+
+@[expose] public section
 
 namespace Lean.SMap
 

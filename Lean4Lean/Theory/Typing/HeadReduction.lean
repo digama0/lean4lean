@@ -1,4 +1,8 @@
-import Lean4Lean.Theory.Typing.ChurchRosser
+module
+
+public import Lean4Lean.Theory.Typing.ChurchRosser
+
+@[expose] public section
 
 /-!
 

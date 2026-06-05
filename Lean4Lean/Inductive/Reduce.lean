@@ -1,6 +1,10 @@
-import Lean.Structure
-import Lean4Lean.Expr
-import Lean4Lean.Environment.Basic
+module
+
+public import Lean.Structure
+public import Lean4Lean.Expr
+public import Lean4Lean.Environment.Basic
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean hiding Environment

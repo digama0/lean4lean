@@ -1,6 +1,10 @@
-import Lean4Lean.Verify.Environment.Lemmas
-import Lean4Lean.Verify.Typing.ConditionallyTyped
-import Lean4Lean.TypeChecker
+module
+
+public import Lean4Lean.Verify.Environment.Lemmas
+public import Lean4Lean.Verify.Typing.ConditionallyTyped
+public import Lean4Lean.TypeChecker
+
+@[expose] public section
 
 namespace Except
 

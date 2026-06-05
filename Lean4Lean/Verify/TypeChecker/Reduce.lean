@@ -1,4 +1,8 @@
-import Lean4Lean.Verify.TypeChecker.Basic
+module
+
+public import Lean4Lean.Verify.TypeChecker.Basic
+
+@[expose] public section
 
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception

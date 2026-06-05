@@ -1,6 +1,10 @@
-import Lean.Data.SMap
-import Std.Data.HashMap.Lemmas
-import Lean4Lean.Verify.Axioms
+module
+
+public import Lean.Data.SMap
+public import Std.Data.HashMap.Lemmas
+public import Lean4Lean.Verify.Axioms
+
+@[expose] public section
 
 namespace Lean.PersistentHashMap
 

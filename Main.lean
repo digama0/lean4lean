@@ -1,12 +1,16 @@
+module
+
 /-
 Copyright (c) 2023 Scott Morrison. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Scott Morrison
 -/
-import Lean.CoreM
-import Lean.Util.FoldConsts
-import Lean4Lean.Environment
-import Lake.Load.Manifest
+public import Lean.CoreM
+public import Lean.Util.FoldConsts
+public import Lean4Lean.Environment
+public import Lake.Load.Manifest
+
+@[expose] public section
 
 namespace Lean
 

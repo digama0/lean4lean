@@ -1,6 +1,10 @@
-import Lean.Expr
-import Lean.LocalContext
-import Lean.Util.InstantiateLevelParams
+module
+
+public import Lean.Expr
+public import Lean.LocalContext
+public import Lean.Util.InstantiateLevelParams
+
+@[expose] public section
 
 namespace Lean
 namespace Expr

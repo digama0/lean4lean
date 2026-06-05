@@ -1,10 +1,14 @@
-import Lean4Lean.Std.Basic
-import Lean4Lean.Verify.Axioms
-import Lean4Lean.Verify.Level
-import Lean4Lean.Expr
-import Lean4Lean.Instantiate
-import Batteries.Data.String.Lemmas
-import Std.Tactic.BVDecide
+module
+
+public import Lean4Lean.Std.Basic
+public import Lean4Lean.Verify.Axioms
+public import Lean4Lean.Verify.Level
+public import Lean4Lean.Expr
+public import Lean4Lean.Instantiate
+public import Batteries.Data.String.Lemmas
+public import Std.Tactic.BVDecide
+
+@[expose] public section
 
 namespace Lean
 

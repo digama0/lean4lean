@@ -1,4 +1,8 @@
-import Lean4Lean.Theory.Typing.Lemmas
+module
+
+public import Lean4Lean.Theory.Typing.Lemmas
+
+@[expose] public section
 
 namespace Lean4Lean
 namespace VEnv

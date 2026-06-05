@@ -1,8 +1,12 @@
-import Batteries.CodeAction
-import Batteries.Data.Array.Lemmas
-import Batteries.Data.HashMap.Basic
-import Batteries.Data.UnionFind.Basic
-import Batteries.Tactic.SeqFocus
+module
+
+public import Batteries.CodeAction
+public import Batteries.Data.Array.Lemmas
+public import Batteries.Data.HashMap.Basic
+public import Batteries.Data.UnionFind.Basic
+public import Batteries.Tactic.SeqFocus
+
+@[expose] public section
 
 open Std
 

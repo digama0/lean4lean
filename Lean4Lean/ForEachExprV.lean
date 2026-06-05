@@ -1,5 +1,9 @@
-import Lean.Expr
-import Lean.Util.MonadCache
+module
+
+public import Lean.Expr
+public import Lean.Util.MonadCache
+
+@[expose] public section
 
 /-!
 This is the same as `Expr.forEach` but it uses `StateT` instead of `StateRefT` to avoid opaques.

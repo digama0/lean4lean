@@ -1,4 +1,8 @@
-import Lean.LocalContext
+module
+
+public import Lean.LocalContext
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean

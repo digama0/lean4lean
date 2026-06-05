@@ -1,8 +1,12 @@
-import Batteries.Tactic.OpenPrivate
-import Lean4Lean.Environment.Basic
-import Lean4Lean.Expr
-import Lean4Lean.Instantiate
-import Lean4Lean.LocalContext
+module
+
+public import Batteries.Tactic.OpenPrivate
+public import Lean4Lean.Environment.Basic
+public import Lean4Lean.Expr
+public import Lean4Lean.Instantiate
+public import Lean4Lean.LocalContext
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean hiding Environment Exception

@@ -1,4 +1,8 @@
-import Lean4Lean.Theory.Typing.HeadReduction
+module
+
+public import Lean4Lean.Theory.Typing.HeadReduction
+
+@[expose] public section
 
 namespace Lean4Lean
 namespace VEnv

@@ -1,6 +1,10 @@
-import Batteries.Data.List.Basic
-import Lean4Lean.Environment.Basic
-import Lean4Lean.TypeChecker
+module
+
+public import Batteries.Data.List.Basic
+public import Lean4Lean.Environment.Basic
+public import Lean4Lean.TypeChecker
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean hiding Environment Exception

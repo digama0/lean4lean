@@ -1,5 +1,9 @@
-import Lean4Lean.Theory.Typing.Strong
-import Lean4Lean.Experimental.NormalEq
+module
+
+public import Lean4Lean.Theory.Typing.Strong
+public import Lean4Lean.Experimental.NormalEq
+
+@[expose] public section
 
 -- TODO: remove, this is now part of ChurchRosser.lean
 

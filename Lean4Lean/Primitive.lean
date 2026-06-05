@@ -1,5 +1,9 @@
-import Lean4Lean.TypeChecker
-import Lean4Lean.Environment.Basic
+module
+
+public import Lean4Lean.TypeChecker
+public import Lean4Lean.Environment.Basic
+
+@[expose] public section
 
 namespace Lean4Lean
 namespace Environment

@@ -1,10 +1,14 @@
-import Lean4Lean.Declaration
-import Lean4Lean.Level
-import Lean4Lean.Quot
-import Lean4Lean.Inductive.Reduce
-import Lean4Lean.Instantiate
-import Lean4Lean.ForEachExprV
-import Lean4Lean.EquivManager
+module
+
+public import Lean4Lean.Declaration
+public import Lean4Lean.Level
+public import Lean4Lean.Quot
+public import Lean4Lean.Inductive.Reduce
+public import Lean4Lean.Instantiate
+public import Lean4Lean.ForEachExprV
+public import Lean4Lean.EquivManager
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean hiding Environment Exception

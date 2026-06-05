@@ -1,7 +1,11 @@
-import Lean4Lean.Theory.Typing.Basic
-import Lean4Lean.Theory.VDecl
-import Lean4Lean.Theory.Quot
-import Lean4Lean.Theory.Inductive
+module
+
+public import Lean4Lean.Theory.Typing.Basic
+public import Lean4Lean.Theory.VDecl
+public import Lean4Lean.Theory.Quot
+public import Lean4Lean.Theory.Inductive
+
+@[expose] public section
 
 namespace Lean4Lean
 

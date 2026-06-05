@@ -1,4 +1,8 @@
-import Lean4Lean.Experimental.ShapeLogRel
+module
+
+public import Lean4Lean.Experimental.ShapeLogRel
+
+@[expose] public section
 
 namespace Lean4Lean
 

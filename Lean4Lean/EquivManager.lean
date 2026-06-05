@@ -1,5 +1,9 @@
-import Batteries.Data.UnionFind.Basic
-import Lean4Lean.PtrEq
+module
+
+public import Batteries.Data.UnionFind.Basic
+public import Lean4Lean.PtrEq
+
+@[expose] public section
 
 namespace Lean4Lean
 open Lean

@@ -1,7 +1,11 @@
-import Lean4Lean.Std.PersistentHashMap
-import Lean4Lean.Verify.Expr
-import Lean4Lean.Verify.Typing.Expr
-import Lean4Lean.Verify.Typing.Lemmas
+module
+
+public import Lean4Lean.Std.PersistentHashMap
+public import Lean4Lean.Verify.Expr
+public import Lean4Lean.Verify.Typing.Expr
+public import Lean4Lean.Verify.Typing.Lemmas
+
+@[expose] public section
 
 namespace Lean.LocalContext
 

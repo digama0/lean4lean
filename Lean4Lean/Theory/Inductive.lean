@@ -1,4 +1,8 @@
-import Lean4Lean.Theory.VDecl
+module
+
+public import Lean4Lean.Theory.VDecl
+
+@[expose] public section
 
 namespace Lean4Lean
 

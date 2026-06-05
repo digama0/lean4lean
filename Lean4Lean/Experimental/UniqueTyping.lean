@@ -1,4 +1,8 @@
-import Lean4Lean.Experimental.ShapeLogRelAdequacy
+module
+
+public import Lean4Lean.Experimental.ShapeLogRelAdequacy
+
+@[expose] public section
 
 /-! # Unique typing over the SExpr weak defeq.
 
