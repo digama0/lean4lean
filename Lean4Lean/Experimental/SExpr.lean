@@ -87,9 +87,6 @@ inductive SExpr where
   | bvar (i : Nat)
   | sort (u : SLevel)
   | const (c : Name) (ls : List SLevel)
-  /--  The `pat` annotation is true for applications that form part of a
-  pattern trigger. This prevents unnecessary competition with beta and eta rules,
-  which do not fire on pattern applications. -/
   | app (f a : SExpr)
   | lam (A e : SExpr)
   | forallE (A B : SExpr)
@@ -577,6 +574,11 @@ theorem Lookup.weak'_inv (W : Ctx.Lift' ρ Γ Γ')
   let ⟨_, h1, h2⟩ := H.weakU_inv W
   exact SExpr.lift'_inj.1 h1 ▸ h2
 
+theorem Lookup.uniq (hA : Lookup Γ i A) (hB : Lookup Γ i B) : A = B :=
+  match hA, hB with
+  | .zero, .zero => rfl
+  | .succ hA, .succ hB => Lookup.uniq hA hB ▸ rfl
+
 theorem Lookup.determ (H1 : Lookup Γ i A) (H2 : Lookup Γ i A') : A = A' := by
   induction H1 generalizing A' with obtain _ | r1 := H2
   | zero => rfl
@@ -614,6 +616,27 @@ axiom Params.extra_pat (Γ) : env.defeqs df → ls.length = df.uvars →
     (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b : A) ∧
     .instL ls (.mk df.rhs) = r.1.applyS m1 m2
 
+def CtorBundle.IsCtor (c : Name) : Prop :=
+  ∃ cl, Params.classify c = some cl ∧ cl matches .ctor .. | .etaCtor ..
+
+def CtorBundle.IsCtor.cl (H : CtorBundle.IsCtor c) :
+    {cl // Params.classify c = some cl ∧ cl matches .ctor .. | .etaCtor ..} := by
+  dsimp [CtorBundle.IsCtor] at H
+  match Params.classify c, H with
+  | some cl, H => refine ⟨cl, ?_⟩; obtain ⟨_, ⟨⟩, H⟩ := H; exact ⟨rfl, H⟩
+
+structure CtorBundle (c : Name) (cl : CtorBundle.IsCtor c) : Type where
+  I : Name
+  Ts : List SExpr
+  args : List SExpr
+  u : SLevel
+  hlen : Ts.length = cl.cl.1.arity
+  hclI : Params.classify I = some (.indTy args.length)
+  hu0 : u ≠ .zero
+
+def CtorBundle.rhs (H : CtorBundle c cl) (ls : List SLevel) : SExpr :=
+  H.Ts.foldr .forallE (H.args.foldr (fun A acc => acc.app A) (.const H.I ls))
+
 section
 local notation:65 (priority := high) Γ " ⊢ " e1 " : " A:36 => IsDefEqStrong Γ e1 e1 A
 local notation:65 (priority := high) Γ " ⊢ " e1 " ≡ " e2 " : " A:36 => IsDefEqStrong Γ e1 e2 A
@@ -626,8 +649,11 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
   | sort : Γ ⊢ .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
     Γ ⊢ (SExpr.mk ci.type).instL ls : .sort u →
+    (F : ∀ cl, CtorBundle c cl) →
+    (∀ cl, Γ ⊢ (SExpr.mk ci.type).instL ls ≡ (F cl).rhs ls : .sort (F cl).u) →
     Γ ⊢ .const c ls : (SExpr.mk ci.type).instL ls
-  | appDF : Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
+  | appDF : Γ ⊢ A : .sort u →
+    Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
     Γ ⊢ B.inst a ≡ B.inst a' : .sort v →
     Γ ⊢ .app f a ≡ .app f' a' : B.inst a
   | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ B : .sort v →
@@ -651,24 +677,6 @@ end
 
 theorem IsDefEq.strong : Γ ⊢ e1 ≡ e2 : A → IsDefEqStrong Γ e1 e2 A := sorry
 theorem IsDefEqStrong.defeq : IsDefEqStrong Γ e1 e2 A → Γ ⊢ e1 ≡ e2 : A := sorry
-
-theorem IsDefEqStrong.const_inv_l {Γ : List SExpr} {c : Name} {ls : List SLevel}
-    {N A : SExpr} (_h : IsDefEqStrong Γ (.const c ls) N A) :
-    ∃ (ci : _) (u : _), Params.env.constants c = some ci ∧ ls.length = ci.uvars ∧
-      IsDefEqStrong Γ A ((SExpr.mk ci.type).instL ls) (.sort u) := sorry
-
-theorem IsDefEqStrong.app_inv_l {Γ : List SExpr} {Mf Ma N A : SExpr}
-    (_h : IsDefEqStrong Γ (.app Mf Ma) N A) :
-    ∃ (B C : SExpr) (u : SLevel),
-      IsDefEqStrong Γ Mf Mf (.forallE B C) ∧
-      IsDefEqStrong Γ Ma Ma B ∧
-      IsDefEqStrong Γ A (C.inst Ma) (.sort u) := sorry
-
-theorem IsDefEqStrong.forallE_inv_l (h : IsDefEqStrong Γ (.forallE A B) (.forallE A B) V) :
-    ∃ (u_A u_B : SLevel),
-      IsDefEqStrong Γ A A (.sort u_A) ∧
-      IsDefEqStrong (A :: Γ) B B (.sort u_B) ∧
-      ∃ v, IsDefEqStrong Γ (.sort (.imax u_A u_B)) V (.sort v) := sorry
 
 theorem _root_.Lean4Lean.Params.ctor_ty
     (hcl1 : Params.classify c = some cl) (hcl2 : cl matches .ctor .. | .etaCtor ..)

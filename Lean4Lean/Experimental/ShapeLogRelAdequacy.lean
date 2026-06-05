@@ -152,7 +152,7 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
       from ⟨fun _ _ _ => ⟨this, this⟩, fun _ _ => this⟩
     intro σ; rw [(Params.henv.closedC h1).mkS.instL.subst_eq .zero]; clear σ
     sorry
-  | @appDF Γ F F' A B X X' v Hf Ha HBa ihf iha ihBa =>
+  | @appDF Γ A u F F' B X X' v _ Hf Ha HBa _ ihf iha ihBa =>
     cases hM with | bot => exact .bot hmem.isType | @app _ nf_app f _ _ _ x hif hia le_m
     suffices ∀ {F F' X X' σ σ'}, SubstWF Γ₀ σ σ' Γ ρ →
         Γ ⊢ F ≡ F' : A.forallE B → Γ ⊢ X ≡ X' : A → Γ ⊢ B.inst X ≡ B.inst X' : .sort v →
