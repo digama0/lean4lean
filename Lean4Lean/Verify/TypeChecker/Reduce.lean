@@ -93,11 +93,9 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
   refine let prims := _; have hprims : Environment.primitives = .ofList prims := rfl; ?_
   replace hprims {a} : Environment.primitives.contains a ↔ a ∈ prims := by
     simp [hprims, NameSet.contains, NameSet.ofList]
-  unfold reduceNat
-  extract_lets nargs F1 fn F2
-  split <;> [exact hP ▸ .pure nofun; refine .pureBind ?_]
-  unfold F2; split <;> (split <;> [skip; exact hP ▸ .pure nofun])
-  · rename_i _ h1 h2
+  unfold reduceNat; extract_lets nargs F1 fn
+  split <;> (split <;> [skip; exact hP ▸ .pure nofun])
+  · rename_i h1 h2
     simp [nargs, Expr.getAppNumArgs_eq] at h1; subst fn
     let .app f a := e; simp [Expr.appFn!, Expr.eqv_const] at h2 ⊢; subst h2
     let .app ha1 ha2 hf ha := he
@@ -112,7 +110,7 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
     refine have ⟨p1, p2⟩ := TrExprS.natLit c.hasPrimitives hn _; ⟨_, p1, ?_⟩
     refine p2.toU.symm.trans c.Ewf c.Δwf ?_
     exact ⟨_, ha1.appDF <| a3.of_r c.Ewf c.Δwf ha2⟩
-  · split <;> [rename_i f ls a b _ _ h2; exact hP ▸ .pure nofun]
+  · split <;> [rename_i f ls a b _ h2; exact hP ▸ .pure nofun]
     have hfun guard {g fc G} [DecidableRel guard] (hprim : fc ∈ prims)
         (heval : c.venv.ReflectsNatNatNat fc g) (hG : RecM.WF c s G P) :
         RecM.WF c s (do if f == fc then {return ← reduceBinNatOpG guard g a b}; G) P := by

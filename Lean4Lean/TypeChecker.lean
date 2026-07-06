@@ -397,7 +397,6 @@ def reduceBinNatPred (f : Nat → Nat → Bool) (a b : Expr) : RecM (Option Expr
   return toExpr <| f v1 v2
 
 def reduceNat (e : Expr) : RecM (Option Expr) := do
-  if e.hasFVar then return none
   let nargs := e.getAppNumArgs
   if nargs == 1 then
     let f := e.appFn!
