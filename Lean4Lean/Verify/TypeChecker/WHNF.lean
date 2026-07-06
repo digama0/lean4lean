@@ -163,7 +163,7 @@ theorem whnf'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     have ⟨a1, _, a2, eq'⟩ := H
     refine (ih a2).mono fun _ _ _ ⟨b1, b2⟩ => ?_
     exact ⟨h1.trans <| a1.trans b1, b2.defeq c.Ewf c.Δwf <| eq'.trans c.Ewf c.Δwf eq⟩
-  refine .pureBind <| (this he).bind fun e₁ s _ ⟨h1, h2⟩ => ?_
+  refine .readThe <| (this he).bind fun e₁ s _ ⟨h1, h2⟩ => ?_
   rintro _ mwf wf a s' ⟨⟩
   refine let s' := _; ⟨s', rfl, ?_⟩
   have hic {ic} (hic : WHNFCache.WF c s ic) : WHNFCache.WF c s (ic.insert e e₁) := by

@@ -5,6 +5,7 @@ import Lean4Lean.Inductive.Reduce
 import Lean4Lean.Instantiate
 import Lean4Lean.ForEachExprV
 import Lean4Lean.EquivManager
+import Lean4Lean.FuelConfig
 
 namespace Lean4Lean
 open Lean hiding Environment Exception
@@ -28,14 +29,16 @@ structure TypeChecker.Context where
   safety : DefinitionSafety := .safe
   eagerReduce := false
   lparams : List Name := []
+  fuel : FuelConfig := {}
 
 namespace TypeChecker
 
 abbrev M := ReaderT Context <| StateT State <| Except Exception
 
 def M.run (env : Environment) (safety : DefinitionSafety := .safe)
-    (lctx : LocalContext := {}) (lparams : List Name := []) (x : M α) : Except Exception α :=
-  x { env, safety, lctx, lparams } |>.run' {}
+    (lctx : LocalContext := {}) (lparams : List Name := []) (fuel : FuelConfig := {})
+    (x : M α) : Except Exception α :=
+  x { env, safety, lctx, lparams, fuel } |>.run' {}
 
 def M.runTermElab (m : M α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α := do
   ofExceptKernelException <| m.run (env := (← getEnv).toKernelEnv)
@@ -442,7 +445,8 @@ def whnf' (e : Expr) : RecM Expr := do
     if let some t ← reduceNat t then return t
     let some t ← unfoldDefinition t | return t
     loop t fuel
-  let r ← loop e <| if (← readThe Context).eagerReduce then 10000 else 1000
+  let ctx ← readThe Context
+  let r ← loop e <| if ctx.eagerReduce then ctx.fuel.whnfEager else ctx.fuel.whnf
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
@@ -613,7 +617,9 @@ def isDefEqOffset (t s : Expr) : RecM LBool := do
   | some t', some s' => toLBoolM <| isDefEqCore t' s'
   | _, _ => return .undef
 
-def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := loop tn sn 1000 where
+def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := do
+  loop tn sn (← readThe Context).fuel.lazyDelta
+where
   loop tn sn
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
@@ -712,7 +718,7 @@ def Methods.withFuel : Nat → Methods
       whnf := fun e => whnf' e (withFuel n)
       inferType := fun e i => inferType' e i (withFuel n) }
 
-def RecM.run (x : RecM α) : M α := x (Methods.withFuel 10000)
+def RecM.run (x : RecM α) : M α := do x (Methods.withFuel (← readThe Context).fuel.recDepth)
 
 def RecM.runTermElab (x : RecM α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α :=
   x.run.runTermElab safety
@@ -758,7 +764,7 @@ def etaExpand (e : Expr) : M Expr :=
         let args := args.push arg
         loop2 fvars args fuel <| ← whnf <| body.instantiate1 arg
     | _, it => return (← getLCtx).mkLambda fvars (mkAppN it args)
-    loop2 fvars #[] 1000 itType
+    loop2 fvars #[] (← readThe Context).fuel.etaExpand itType
   loop #[] e
 
 -- for testing:
