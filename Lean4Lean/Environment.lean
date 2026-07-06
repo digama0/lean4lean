@@ -16,43 +16,43 @@ def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := fa
   let sort ← checkType v.type
   _ ← ensureSort sort v.type
 
-def addAxiom (env : Environment) (v : AxiomVal) (check := true) :
+def addAxiom (env : Environment) (v : AxiomVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
   if check then
     _ ← (checkConstantVal env v.toConstantVal).run env
-      (safety := if v.isUnsafe then .unsafe else .safe) (lparams := v.levelParams)
+      (safety := if v.isUnsafe then .unsafe else .safe) (lparams := v.levelParams) (fuel := fuel)
   return env.add (.axiomInfo v)
 
-def addDefinition (env : Environment) (v : DefinitionVal) (check := true) :
-    Except Exception Environment := do
+def addDefinition (env : Environment) (v : DefinitionVal)
+    (check := true) (fuel : FuelConfig := {}) : Except Exception Environment := do
   if let .unsafe := v.safety then
     -- Meta definition can be recursive.
     -- So, we check the header, add, and then type check the body.
     if check then
       _ ← (checkConstantVal env v.toConstantVal).run env
-        (safety := .unsafe) (lparams := v.levelParams)
+        (safety := .unsafe) (lparams := v.levelParams) (fuel := fuel)
     let env' := env.add (.defnInfo v)
     if check then
       checkNoMVarNoFVar env' v.name v.value
-      M.run env' (safety := .unsafe) (lctx := {}) (lparams := v.levelParams) do
+      M.run env' (safety := .unsafe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.defnDecl v) valType
     return env'
   else
     if check then
-      M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) do
+      M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
         checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env (.defnDecl v) valType
     return env.add (.defnInfo v)
 
-def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
+def addTheorem (env : Environment) (v : TheoremVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
   if check then
     -- TODO(Leo): we must add support for handling tasks here
-    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) do
+    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
       if !(← isProp v.type) then
         throw <| .thmTypeIsNotProp env v.name v.type
       checkConstantVal env v.toConstantVal
@@ -61,23 +61,23 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) :
         throw <| .declTypeMismatch env (.thmDecl v) valType
   return env.add (.thmInfo v)
 
-def addOpaque (env : Environment) (v : OpaqueVal) (check := true) :
+def addOpaque (env : Environment) (v : OpaqueVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
   if check then
-    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) do
+    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
       checkConstantVal env v.toConstantVal
       let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.opaqueDecl v) valType
   return env.add (.opaqueInfo v)
 
-def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
-    Except Exception Environment := do
+def addMutual (env : Environment) (vs : List DefinitionVal)
+    (check := true) (fuel : FuelConfig := {}) : Except Exception Environment := do
   let v₀ :: _ := vs | throw <| .other "invalid empty mutual definition"
   if let .safe := v₀.safety then
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
   if check then
-    M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) do
+    M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
       for v in vs do
         if v.safety != v₀.safety then
           throw <| .other
@@ -87,7 +87,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
   for v in vs do
     env' := env'.add (.defnInfo v)
   if check then
-    M.run env' (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) do
+    M.run env' (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
       for v in vs do
         checkNoMVarNoFVar env' v.name v.value
         let valType ← TypeChecker.checkType v.value
@@ -96,15 +96,15 @@ def addMutual (env : Environment) (vs : List DefinitionVal) (check := true) :
   return env'
 
 /-- Type check given declaration and add it to the environment -/
-def addDecl (env : Environment) (decl : Declaration) (check := true) :
+def addDecl (env : Environment) (decl : Declaration) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
   match decl with
-  | .axiomDecl v => addAxiom env v check
-  | .defnDecl v => addDefinition env v check
-  | .thmDecl v => addTheorem env v check
-  | .opaqueDecl v => addOpaque env v check
-  | .mutualDefnDecl v => addMutual env v check
+  | .axiomDecl v => addAxiom env v check fuel
+  | .defnDecl v => addDefinition env v check fuel
+  | .thmDecl v => addTheorem env v check fuel
+  | .opaqueDecl v => addOpaque env v check fuel
+  | .mutualDefnDecl v => addMutual env v check fuel
   | .quotDecl => addQuot env
   | .inductDecl lparams nparams types isUnsafe =>
     let allowPrimitive ← checkPrimitiveInductive env lparams nparams types isUnsafe
-    addInductive env lparams nparams types isUnsafe allowPrimitive
+    addInductive env lparams nparams types isUnsafe allowPrimitive fuel

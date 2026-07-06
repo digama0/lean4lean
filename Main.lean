@@ -54,6 +54,7 @@ structure Context where
   verbose := false
   compare := false
   checkQuot := true
+  fuel : Lean4Lean.FuelConfig := {}
 
 structure State where
   env : Environment
@@ -122,7 +123,7 @@ def addDecl (d : Declaration) : M Unit := do
   if (← read).verbose then
     println! "adding {d.name}"
   let t1 ← IO.monoMsNow
-  match Lean4Lean.addDecl (← get).env d true with
+  match Lean4Lean.addDecl (← get).env d true (fuel := (← read).fuel) with
   | .ok env =>
     let t2 ← IO.monoMsNow
     if t2 - t1 > 1000 then
@@ -275,7 +276,8 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
   return (s.numAdded, s.env)
 
 open private ImportedModule.mk from Lean.Environment in
-unsafe def replayFromImports (module : Name) (verbose := false) (compare := false) : IO Nat := do
+unsafe def replayFromImports (module : Name) (verbose := false) (compare := false)
+    (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
   let mFile ← findOLean module
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
@@ -295,15 +297,16 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let (n, env') ← replay { newConstants, verbose, compare } env
+  let (n, env') ← replay { newConstants, verbose, compare, fuel } env
   (Environment.ofKernelEnv env').freeRegions
   parts.forM fun (_, region) => region.free
   pure n
 
 unsafe def replayFromFresh (module : Name)
-    (verbose := false) (compare := false) (decl : Option Name := none) : IO Nat := do
+    (verbose := false) (compare := false) (decl : Option Name := none)
+    (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
   Lean.withImportModules #[module] {} (trustLevel := 0) fun env => do
-    let ctx := { newConstants := env.constants.map₁, verbose, compare, checkQuot := false }
+    let ctx := { newConstants := env.constants.map₁, verbose, compare, checkQuot := false, fuel }
     Prod.fst <$> replay ctx (.empty module) decl
 
 /-- Read the name of the main module from the `lake-manifest`. -/
@@ -320,6 +323,54 @@ def getCurrentModule : IO Name := do
     -- Would be better to read the `.defaultTargets` from the
     -- `← getRootPackage` from `Lake`, but I can't make that work with the monads involved.
     return manifest.name.capitalize
+
+namespace Lean4Lean.FuelConfig
+
+/-- Serialize `cfg` to its JSON object map, or panic — it's derived so it must be an object. -/
+private def toObj (cfg : FuelConfig) : Std.TreeMap.Raw String Lean.Json compare :=
+  match Lean.toJson cfg with
+  | .obj m => m
+  | _ => panic! "FuelConfig.toJson produced a non-object"
+
+/-- Field names that `FuelConfig` accepts (derived from its JSON encoding). -/
+private def fieldNames : List String :=
+  (toObj {}).foldr (fun k _ acc => k :: acc) []
+
+/-- Layer a JSON object over an existing `FuelConfig`.
+
+Unknown fields are rejected up front (the derived `FromJson` silently ignores
+them, which we don't want for a config file); known fields are overlaid on top
+of the base config's own JSON serialization and the merged object is fed back
+through `fromJson?`, so value validation stays entirely in the derived parser. -/
+private def ofJson? (base : FuelConfig) (j : Lean.Json) : Except String FuelConfig := do
+  let .obj m := j | throw "config JSON must be an object"
+  let baseObj := toObj base
+  m.foldlM (init := ()) fun _ k _ => do
+    unless baseObj.contains k do
+      throw s!"unknown field '{k}' in config JSON (valid: {fieldNames})"
+  let merged := m.foldl (init := baseObj) (·.insert · ·)
+  Lean.fromJson? (.obj merged)
+
+/-- Read + parse a config file, layering over an existing base. -/
+private def ofFile (base : FuelConfig) (path : System.FilePath) : IO FuelConfig := do
+  let raw ← IO.FS.readFile path
+  let j ← IO.ofExcept (Lean.Json.parse raw)
+  IO.ofExcept (ofJson? base j)
+
+/-- Apply a single `--config:field=value` override.
+
+Value is parsed as JSON, then routed through `fuelConfigOfJson?` — so the CLI
+path and the file path share the same parser (and produce the same error
+messages for e.g. non-numeric values or unknown fields). -/
+private def applyFlag (cfg : FuelConfig) (field value : String) :
+    Except String FuelConfig := do
+  let jval ← match Lean.Json.parse value with
+    | .ok j => pure j
+    | .error _ => throw s!"could not parse value '{value}' for --config:{field} as JSON"
+  ofJson? cfg (.obj (Std.TreeMap.Raw.empty.insert field jval))
+    |>.mapError (s!"in --config:{field}={value}: " ++ ·)
+
+end Lean4Lean.FuelConfig
 
 /--
 Run as e.g. `lake exe lean4lean` to check everything in the current project.
@@ -338,6 +389,16 @@ unsafe def main (args : List String) : IO UInt32 := do
   let verbose := "-v" ∈ flags || "--verbose" ∈ flags
   let fresh : Bool := "--fresh" ∈ flags
   let compare : Bool := "--compare" ∈ flags
+  let mut fuel : Lean4Lean.FuelConfig := {}
+  for flag in flags do
+    if let some path := flag.dropPrefix? "--config=" then
+      fuel ← Lean4Lean.FuelConfig.ofFile fuel ⟨path.toString⟩
+    else if let some rest := flag.dropPrefix? "--config:" then
+      let [field, value] := rest.toString.splitOn "="
+        | throw <| IO.userError s!"malformed flag {flag}: expected --config:<field>=<value>"
+      match fuel.applyFlag field value with
+      | .ok f => fuel := f
+      | .error e => throw <| IO.userError e
   let readImport : Bool := "--import" ∈ flags
   if readImport then
     if fresh then
@@ -350,7 +411,7 @@ unsafe def main (args : List String) : IO UInt32 := do
     -- Lean's kernel interprets just the addition of `Quot as adding all of these so adding them
     -- multiple times leads to errors.
     constMap := constMap.erase `Quot.mk |>.erase `Quot.lift |>.erase `Quot.ind
-    let (n, _) ← replay { newConstants := constMap, verbose, compare, checkQuot := false } (.empty .anonymous) none
+    let (n, _) ← replay { newConstants := constMap, verbose, compare, checkQuot := false, fuel } (.empty .anonymous) none
     println! "checked {n} declarations"
     return 0
 
@@ -385,11 +446,11 @@ unsafe def main (args : List String) : IO UInt32 := do
         {targetModules}"
     for m in targetModules do
       if verbose then IO.println s!"replaying {m} with --fresh"
-      n := n + (← replayFromFresh m verbose compare)
+      n := n + (← replayFromFresh m verbose compare (fuel := fuel))
   else
     let mut tasks := #[]
     for m in targetModules do
-      tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare))
+      tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare (fuel := fuel)))
     let mut err := false
     for (m, t) in tasks do
       if verbose then IO.println s!"replaying {m}"

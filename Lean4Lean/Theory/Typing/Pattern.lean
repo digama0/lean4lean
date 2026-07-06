@@ -41,6 +41,16 @@ theorem Subpattern.antisymm {p₁ p₂} (H₁ : Subpattern p₁ p₂) (H₂ : Su
     have h₂ := h₂.sizeOf_le
     simp at H₁; omega
 
+inductive Arity (p : Pattern) : Nat → Pattern → Prop where
+  | refl : Arity p 0 p
+  | app : Arity p n f → Arity p (n+1) (.app f a)
+  | var : Arity p n f → Arity p (n+1) (.var f)
+
+theorem Arity.subpattern : Arity p n p' → Subpattern p p'
+  | .refl => .refl
+  | .app h => .appL h.subpattern
+  | .var h => .varL h.subpattern
+
 def Pattern.inter : Pattern → Pattern → Option Pattern
   | .const c, .const c' => if c = c' then some (.const c) else none
   | .app f a, .app f' a' => return .app (← f.inter f') (← a.inter a')
@@ -60,23 +70,23 @@ inductive Pattern.LE : Pattern → Pattern → Prop where
   | app : LE f f' → LE a a' → LE (.app f a) (.app f' a')
   | app_var : LE f f' → LE (.app f a) (.var f')
 
-def Pattern.Path : Pattern → Type × Type
-  | .const _ => (Unit, Empty)
-  | .app f a => (f.Path.1 ⊕ a.Path.1, f.Path.2 ⊕ a.Path.2)
-  | .var f => (f.Path.1, Option f.Path.2)
+def Pattern.Path : Pattern → Type
+  | .const _ => Empty
+  | .app f a => f.Path ⊕ a.Path
+  | .var f => Option f.Path
 
-inductive Pattern.Matches : (p : Pattern) → VExpr → (p.Path.1 → List VLevel) → (p.Path.2 → VExpr) → Prop
-  | const : Matches (.const c) (.const c ls) (fun _ => ls) nofun
+inductive Pattern.Matches : (p : Pattern) → VExpr → List VLevel → (p.Path → VExpr) → Prop
+  | const : Matches (.const c) (.const c ls) ls nofun
   | var : Matches f f' f1 g1 → Matches (.var f) (.app f' a') f1 (·.elim a' g1)
   | app : Matches f f' f1 g1 → Matches a a' f2 g2 →
-    Matches (.app f a) (.app f' a') (Sum.elim f1 f2) (Sum.elim g1 g2)
+    Matches (.app f a) (.app f' a') f1 (Sum.elim g1 g2)
 
 theorem Pattern.Matches.uniq {p : Pattern} {e : VExpr} {m1 m2 m1' m2'}
     (H1 : Pattern.Matches p e m1 m2) (H2 : Pattern.Matches p e m1' m2') : m1 = m1' ∧ m2 = m2' := by
-  induction H1 <;> cases H2
-  · simp
-  · next ih _ h => simp [ih h]
-  · next ih1 ih2 _ _ _ _ h1 h2 => simp [ih1 h1, ih2 h2]
+  induction H1 generalizing m1' with cases H2
+  | const => simp
+  | var _ ih => rename_i h; simp [ih h]
+  | app _ _ ih1 ih2 => rename_i h2 h1; simp [ih1 h1, ih2 h2]
 
 def Pattern.OnArgs (P : VExpr → Prop) : Pattern → Prop
   | .const .. => True
@@ -84,17 +94,16 @@ def Pattern.OnArgs (P : VExpr → Prop) : Pattern → Prop
   | .app f a => f.OnArgs P ∧ a.OnArgs P ∧ ∀ e m1 m2, a.Matches e m1 m2 → P e
 
 inductive Pattern.RHS (p : Pattern) where
-  | fixed (e : p.Path.1) (c : VExpr) (_ : c.Closed)
+  | fixed (c : VExpr) (_ : c.Closed)
   | app (f a : RHS p)
-  | var (e : p.Path.2)
+  | var (e : p.Path)
 
 inductive Pattern.Check (p : Pattern) where
   | true
   | defeq (x y : RHS p) (rest : Check p)
 
-def Pattern.RHS.apply {p : Pattern}
-    (m1 : p.Path.1 → List VLevel) (m2 : p.Path.2 → VExpr) : p.RHS → VExpr
-  | .fixed path c _ => c.instL (m1 path)
+def Pattern.RHS.apply {p : Pattern} (m1 : List VLevel) (m2 : p.Path → VExpr) : p.RHS → VExpr
+  | .fixed c _ => c.instL m1
   | .var path => m2 path
   | .app f a => .app (f.apply m1 m2) (a.apply m1 m2)
 
@@ -160,35 +169,35 @@ theorem Pattern.matches_inter {p q : Pattern} {e : VExpr} :
     (∃ r m1 m2, p.inter q = some r ∧ r.Matches e m1 m2) := by
   constructor
   · rintro ⟨⟨m1, m2, hp⟩, ⟨m3, m4, hq⟩⟩
-    induction hp generalizing q  <;> cases hq <;> simp [inter]
+    induction hp generalizing q m3 <;> cases hq <;> simp [inter]
     · case const.const => exact ⟨_, _, .const⟩
-    · case var.var ih _ _ _ ih' =>
+    · case var.var ih _ _ ih' =>
       have ⟨rf, mf1, mf2, hf1, hf2⟩ := ih _ _ ih'
       exact ⟨_, ⟨_, hf1, rfl⟩, _, _, .var hf2⟩
-    · case var.app ihf _ _ _ _ _ _ ihf' ha2 =>
+    · case var.app ihf _ _ _ _ _ ha2 ihf' =>
       have ⟨rf, mf1, mf2, hf1, hf2⟩ := ihf _ _ ihf'
       exact ⟨_, ⟨_, hf1, rfl⟩, _, _, .app hf2 ha2⟩
-    · case app.var ha2 ihf _ _ _ _ ihf' =>
+    · case app.var ha2 ihf _ _ _ ihf' =>
       have ⟨rf, mf1, mf2, hf1, hf2⟩ := ihf _ _ ihf'
       exact ⟨_, ⟨_, hf1, rfl⟩, _, _, .app hf2 ha2⟩
-    · case app.app ihf iha _ _ _ _ _ _ ihf' iha' =>
+    · case app.app ihf iha _ _ _ _ _ iha' ihf' =>
       have ⟨rf, mf1, mf2, hf1, hf2⟩ := ihf _ _ ihf'
       have ⟨ra, ma1, ma2, ha1, ha2⟩ := iha _ _ iha'
       exact ⟨_, ⟨_, hf1, _, ha1, rfl⟩, _, _, .app hf2 ha2⟩
   · rintro ⟨r, m1, m2, h1, h2⟩
-    induction p generalizing q e r <;> cases q <;> simp [inter] at h1 <;> [
+    induction p generalizing q e r m1 <;> cases q <;> simp [inter] at h1 <;> [
         obtain ⟨rfl, rfl⟩ := h1; obtain ⟨_, wf, _, wa, rfl⟩ := h1;
         obtain ⟨_, wf, rfl⟩ := h1; obtain ⟨_, wf, rfl⟩ := h1; obtain ⟨_, wf, rfl⟩ := h1
       ] <;> cases h2
     · exact ⟨⟨_, _, .const⟩, ⟨_, _, .const⟩⟩
-    · next ihf iha _ _ _ _ _ _ _ _ hf _ _ ha =>
+    · next ihf iha _ _ _ _ _ _ _ _ _ ha hf =>
       have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
       have ⟨⟨ma1, ma2, ha⟩, ⟨ma1', ma2', ha'⟩⟩ := iha _ _ _ wa ha
       exact ⟨⟨_, _, .app hf ha⟩, ⟨_, _, .app hf' ha'⟩⟩
-    · next ihf _ _ _ _ _ _ _ hf _ _ ha =>
+    · next ihf _ _ _ _ _ _ _ _ ha hf =>
       have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
       exact ⟨⟨_, _, .app hf ha⟩, ⟨_, _, .var hf'⟩⟩
-    · next ihf _ _ _ _ _ _ _ hf _ _ ha' =>
+    · next ihf _ _ _ _ _ _ _ _ ha' hf =>
       have ⟨⟨mf1, mf2, hf⟩, ⟨mf1', mf2', hf'⟩⟩ := ihf _ _ _ wf hf
       exact ⟨⟨_, _, .var hf⟩, ⟨_, _, .app hf' ha'⟩⟩
     · next ihf _ _ _ _ _ hf =>
@@ -197,13 +206,13 @@ theorem Pattern.matches_inter {p q : Pattern} {e : VExpr} :
 
 theorem Pattern.matches_determ
     (h1 : Matches p e m1 m2) (h2 : Matches p e m1' m2') : m1 = m1' ∧ m2 = m2' := by
-  induction h1 with
+  induction h1 generalizing m1' with
   | const => let .const := h2; simp
   | app l1 l2 ih1 ih2 => let .app r1 r2 := h2; simp [ih1 r1, ih2 r2]
   | var l1 ih1 => let .var r1 := h2; simp [ih1 r1]
 
 def Pattern.Check.OK (defeq : VExpr → VExpr → Prop) {p : Pattern}
-    (m1 : p.Path.1 → List VLevel) (m2 : p.Path.2 → VExpr) : p.Check → Prop
+    (m1 : List VLevel) (m2 : p.Path → VExpr) : p.Check → Prop
   | .true => True
   | .defeq a b rest => defeq (RHS.apply m1 m2 a) (RHS.apply m1 m2 b) ∧ rest.OK defeq m1 m2
 
@@ -213,3 +222,11 @@ theorem Pattern.Check.OK.map
       df (a.apply m1 m2) (b.apply m1 m2) → df' (a.apply m1' m2') (b.apply m1' m2'))
     (H : ck.OK df m1 m2) : ck.OK df' m1' m2' := by
   induction ck <;> simp [OK, *] at H ⊢; cases H; constructor <;> solve_by_elim
+
+inductive SimplePattern where
+  | iota (recursor : Name) (major : Nat) (constr : Name) (args : Nat)
+  | defn (head : Name)
+
+def SimplePattern.toPattern : SimplePattern → Pattern
+  | .defn c => .const c
+  | .iota r m c n => .app (.varN (.const r) m) (.varN (.const c) n)

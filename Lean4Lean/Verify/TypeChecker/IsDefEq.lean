@@ -509,7 +509,7 @@ theorem isDefEqCore'.WF {c : VContext} {s : VState}
   refine (isDefEqProofIrrel.WF a1 b1).bind fun _ _ _ h => ?_
   split
   · exact .pure fun hb => h (by simpa using hb)
-  refine .pureBind <| (lazyDeltaReduction.loop.WF a1 b1).bind fun _ _ _ h => ?_; split
+  refine .pureBind <| (lazyDeltaReduction.loop.WF a1 b1).readThe.bind fun _ _ _ h => ?_; split
   · cases h.1
   · exact .pure h
   have ⟨⟨e₁', c1, c4⟩, ⟨e₂', d1, d4⟩⟩ := h

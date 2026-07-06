@@ -540,10 +540,22 @@ theorem consN_consN : consN (.consN l a) b = .consN l (a + b) := by
 theorem consN_comp : consN (.comp l₁ l₂) n = .comp (.consN l₁ n) (.consN l₂ n) := by
   induction n <;> simp [*]
 
+@[simp] def dom : Lift → Nat
+  | .refl   => 0
+  | .skip l => l.dom
+  | .cons l => l.dom + 1
+
+@[simp] def size : Lift → Nat
+  | .refl   => 0
+  | .skip l => l.size + 1
+  | .cons l => l.size + 1
+
 @[simp] def depth : Lift → Nat
   | .refl   => 0
   | .skip l => l.depth + 1
   | .cons l => l.depth
+
+theorem dom_add_depth : dom l + depth l = size l := by induction l <;> simp! <;> omega
 
 theorem depth_comp : depth (.comp l₁ l₂) = l₁.depth + l₂.depth :=
   match l₂, l₁ with
@@ -603,6 +615,34 @@ theorem liftVar_consN_skipN : (consN (skipN refl n) k).liftVar i = liftVar n i k
 
 theorem liftVar_depth_zero (H : depth l = 0) : l.liftVar n = n := by
   induction l generalizing n <;> [skip; skip; cases n] <;> simp_all [depth]
+
+theorem le_liftVar {l : Lift} : n ≤ l.liftVar n := by
+  induction l generalizing n <;> [skip; skip; cases n] <;> simp_all; grind
+
+def inter : Lift → Lift → Lift
+  | refl, l | l, refl => l
+  | skip l₁, skip l₂ | skip l₁, cons l₂ | cons l₁, skip l₂ => skip (l₁.inter l₂)
+  | cons l₁, cons l₂ => cons (l₁.inter l₂)
+
+theorem inter_self : inter l l = l := by induction l <;> simp! [*]
+
+theorem inter_comm : inter l₁ l₂ = inter l₂ l₁ := by
+  induction l₁ generalizing l₂ <;> cases l₂ <;> simp! [*]
+
+theorem inter_assoc : inter (inter l₁ l₂) l₃ = inter l₁ (inter l₂ l₃) := by
+  induction l₁ generalizing l₂ l₃ <;> cases l₂ <;> cases l₃ <;> simp! [*]
+
+@[simp] def diff : Lift → Lift → Lift
+  | refl, _ => refl
+  | l, refl => l
+  | skip l₁, skip l₂ | cons l₁, skip l₂ => diff l₁ l₂
+  | skip l₁, cons l₂ => skip (diff l₁ l₂)
+  | cons l₁, cons l₂ => cons (l₁.diff l₂)
+
+@[simp] theorem diff_refl : diff l refl = l := by cases l <;> simp!
+
+theorem diff_comp : comp (diff l₁ l₂) l₂ = inter l₁ l₂ := by
+  induction l₁ generalizing l₂ <;> cases l₂ <;> simp! [*]
 
 def Fixes : Nat → Lift → Prop
   | 0,   _       => True

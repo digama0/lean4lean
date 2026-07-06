@@ -153,7 +153,7 @@ theorem ParRed.apply_pat {p : Pattern} (r : p.RHS) {m1 m2 m3}
 theorem Pattern.RHS.apply_liftN {p : Pattern} (r : p.RHS) {m1 m2} :
     (r.apply m1 m2).liftN k n = r.apply m1 (fun a => (m2 a).liftN k n) := by
   induction r with simp! [*]
-  | fixed _ _ h => exact instL_liftN.symm.trans ((h.liftN_eq (Nat.zero_le _)).symm ▸ rfl)
+  | fixed _ h => exact instL_liftN.symm.trans ((h.liftN_eq (Nat.zero_le _)).symm ▸ rfl)
 
 -- theorem IsDefEqU.applyL {p : Pattern} (r : p.RHS) {m1 m1' m2}
 --     (H : ∀ a, List.Forall₂ (· ≈ ·) (m1 a) (m1' a))
@@ -242,10 +242,10 @@ theorem CParRed.exists (H : TY.HasType Γ e A) : ∃ e', CParRed TY Γ e e' := b
       have ⟨_, he⟩ := e_ih.1.2.2.1 he
       have ⟨_, ha⟩ := e_ih.2.1 ha
       exact ⟨_, .beta he ha⟩
-    · suffices ∃ m3 : p.Path.2 → VExpr, ∀ a, CParRed TY Γ (m2 a) (m3 a) from
+    · suffices ∃ m3 : p.Path → VExpr, ∀ a, CParRed TY Γ (m2 a) (m3 a) from
         let ⟨_, h3⟩ := this; ⟨_, .extra h1 hp2 hp3 h3⟩
       clear H r h1 hp3
-      induction p generalizing e A with
+      induction p generalizing e m1 A with
       | const => exact ⟨nofun, nofun⟩
       | app f a ih1 ih2 =>
         let .app hm1 hm2 := hp2
@@ -351,7 +351,7 @@ theorem ParRed.triangle (H1 : TY.HasType Γ e A) (H : ParRed TY Γ e e') (H2 : C
     | extra h1 h2 => cases h2 with | app h | var h => cases h
   | @extra p r e m1 m2 Γ m2' l1 l2 l3 l4 ih =>
     have :
-      (∃ m3 m3' : p.Path.snd → VExpr, p.Matches e' m1 m3 ∧
+      (∃ m3 m3' : p.Path → VExpr, p.Matches e' m1 m3 ∧
         (∀ a, ParRed TY Γ (m2 a) (m3 a)) ∧
         (∀ a, ParRed TY Γ (m3 a) (m3' a)) ∧
         (∀ a, NormalEq TY Γ (m3' a) (m2' a))) ∨
@@ -360,7 +360,7 @@ theorem ParRed.triangle (H1 : TY.HasType Γ e A) (H : ParRed TY Γ e e') (H2 : C
         TY.Pat p' r ∧ p'.Matches e₁ m1 m2 ∧ r.2.OK (TY.IsDefEqU Γ) m1 m2 ∧
         (∀ a, ParRed TY Γ (m2 a) (m2' a)) ∧ e₁' = r.1.apply m1 m2') := by
       clear l1 l3 l4 r
-      induction H generalizing p A with
+      induction H generalizing p m1 A with
       | const =>
         cases id l2; exact .inl ⟨_, _, l2, nofun, fun _ => .rfl, nofun⟩
       | @app Γ f f' a a' hf ha ih1 ih2 =>
@@ -406,7 +406,7 @@ theorem ParRed.triangle (H1 : TY.HasType Γ e A) (H : ParRed TY Γ e e') (H2 : C
       obtain ⟨rfl, rfl, ⟨⟩⟩ := TY.pat_uniq l1 r1 h1 hr
       obtain ⟨rfl, rfl, ⟨⟩, ⟨⟩⟩ := h2 rfl; subst e
       obtain ⟨rfl, rfl⟩ := l2'.uniq r2
-      suffices ∃ m3' : p.Path.snd → VExpr,
+      suffices ∃ m3' : p.Path → VExpr,
           (∀ a, ParRed TY Γ (m3 a) (m3' a)) ∧
           (∀ a, NormalEq TY Γ (m3' a) (m2' a)) by
         let ⟨m3', h3, h4⟩ := this

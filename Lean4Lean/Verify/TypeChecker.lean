@@ -38,8 +38,9 @@ theorem RecM.WF.run {x : RecM α} (H : x.WF c s Q) : (RecM.run x).WF c s Q :=
   H _ Methods.withFuel.WF
 
 def VContext.mk' {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (safety : DefinitionSafety := .safe) (lparams : List Name := []) : VContext where
-  env; safety; lparams
+    (safety : DefinitionSafety := .safe) (lparams : List Name := [])
+    (fuel : FuelConfig := {}) : VContext where
+  env; safety; lparams; fuel
   venv := ves.venv safety
   hasPrimitives := wf.hasPrimitives
   safePrimitives := wf.safePrimitives
@@ -49,8 +50,8 @@ def VContext.mk' {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   lctx_eq := rfl
 
 theorem VState.WF.empty {env : Environment} {ves : VEnvs} {wf : ves.WF env}
-    {safety : DefinitionSafety} {lparams : List Name} :
-    VState.WF (.mk' wf safety lparams) {} where
+    {safety : DefinitionSafety} {lparams : List Name} {fuel : FuelConfig} :
+    VState.WF (.mk' wf safety lparams fuel) {} where
   trctx := .nil
   ngen_wf := nofun
   ectx := ⟨[], .refl, trivial, .refl, .empty, nofun⟩
@@ -61,8 +62,8 @@ theorem VState.WF.empty {env : Environment} {ves : VEnvs} {wf : ves.WF env}
   unfold_wf _ := by simp
 
 theorem M.WF.run {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    {x : M α} {Q} (H : x.WF (.mk' wf safety lparams) {} fun a _ => Q a) :
-    (M.run env safety {} lparams x).WF Q := by
+    {x : M α} {Q} (H : x.WF (.mk' wf safety lparams fuel) {} fun a _ => Q a) :
+    (M.run env safety {} lparams fuel x).WF Q := by
   intro a eq
   simp [M.run, Functor.map, Except.map] at eq
   split at eq <;> cases eq; rename_i eq

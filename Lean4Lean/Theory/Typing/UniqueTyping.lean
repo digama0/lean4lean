@@ -266,3 +266,14 @@ theorem IsType.weak'_iff (W : Ctx.Lift' l Γ Γ') :
 variable! (henv : VEnv.WF env) (hΓ : OnCtx Γ' (env.IsType U)) in
 theorem _root_.Lean4Lean.VExpr.WF.weak'_iff (W : Ctx.Lift' l Γ Γ') :
     VExpr.WF env U Γ' (e.lift' l) ↔ VExpr.WF env U Γ e := IsDefEqU.weak'_iff henv hΓ W
+
+variable! (henv : VEnv.WF env) in
+theorem _root_.Lean4Lean.OnCtx.weak'_inv
+    (W : Ctx.Lift' ρ Γ Γ') (H : OnCtx Γ' (env.IsType U)) : OnCtx Γ (env.IsType U) := by
+  generalize e : ρ.depth = n
+  induction n generalizing ρ Γ' with
+  | zero => simp [W.depth_zero e, H]
+  | succ n ih =>
+    obtain ⟨l, k, rfl, rfl⟩ := Lift.depth_succ e
+    have ⟨Γ₁, W1, W2⟩ := W.of_cons_skip
+    exact ih W1 (.weakN_inv henv W2 H) (by simp)

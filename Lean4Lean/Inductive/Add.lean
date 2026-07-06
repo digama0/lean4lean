@@ -35,6 +35,7 @@ structure Context where
   ngen : NameGenerator := { namePrefix := `_ind_fresh }
   safety : DefinitionSafety
   allowPrimitive : Bool
+  fuel : FuelConfig := {}
 
 abbrev M := ReaderT Context <| Except Exception
 
@@ -42,7 +43,7 @@ instance : MonadLocalNameGenerator M where
   withFreshId f c := f c.ngen.curr { c with ngen := c.ngen.next }
 
 instance (priority := low) : MonadLift TypeChecker.M M where
-  monadLift x c := x.run c.env c.safety c.lctx c.lparams
+  monadLift x c := x.run c.env c.safety c.lctx c.lparams (fuel := c.fuel)
 
 instance (priority := low+1) : MonadWithReaderOf LocalContext M where
   withReader f x := withReader (fun c => { c with lctx := f c.lctx }) x
@@ -90,7 +91,8 @@ def checkInductiveTypes
           if i != nparams then
             throw <| .other "number of parameters mismatch in inductive datatype declaration"
           k type stats nindices
-      loop stats (← whnf type) 0 0 1000 fun type stats nindices => do
+      let fuel := (← readThe Context).fuel.inductiveFuel
+      loop stats (← whnf type) 0 0 fuel fun type stats nindices => show M α from do
       let type ← ensureSort type
       let mut stats := stats
       let resultLevel := type.sortLevel!
@@ -168,7 +170,9 @@ def isValidIndApp? (stats : InductiveStats) (t : Expr) : Option Nat := do
       return i
   none
 
-def isRecArg (stats : InductiveStats) (t : Expr) : M (Option Nat) := loop t 1000 where
+def isRecArg (stats : InductiveStats) (t : Expr) : M (Option Nat) := do
+  loop t (← readThe Context).fuel.inductiveFuel
+where
   loop t
   | 0 => throw .deepRecursion
   | fuel+1 => do
@@ -178,7 +182,7 @@ def isRecArg (stats : InductiveStats) (t : Expr) : M (Option Nat) := loop t 1000
     loop (body.instantiate1 arg) fuel
 
 def checkPositivity (stats : InductiveStats) (t : Expr) (ctor : Name) (idx : Nat) :
-    M Unit := loop t 1000 where
+    M Unit := do loop t (← readThe Context).fuel.inductiveFuel where
   loop t
   | 0 => throw .deepRecursion
   | fuel+1 => do
@@ -228,7 +232,7 @@ def checkConstructors (indTypes : Array InductiveType)
               loop (body.instantiate1 arg) (i + 1) fuel
         else if !isValidIndAppIdx stats t idx then
           throw <| .other s!"invalid return type for '{n}'"
-      loop t 0 1000
+      loop t 0 (← readThe Context).fuel.inductiveFuel
 
 def declareConstructors (stats : InductiveStats)
     (indTypes : Array InductiveType) (isUnsafe : Bool) : M Environment :=
@@ -269,7 +273,7 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
           loop (body.instantiate1 arg) (i + 1) toCheck fuel
       else
         return toCheck.all type.getAppArgs.contains
-    loop ctor.type 0 #[] 1000
+    loop ctor.type 0 #[] (← readThe Context).fuel.inductiveFuel
   | _ => return false
 
 partial -- TODO: remove
@@ -314,7 +318,8 @@ def loopArgs1 (stats : InductiveStats) (type : Expr) (i : Nat) (indices : Array 
 variable (stats : InductiveStats) (indTypes : Array InductiveType) (elimLevel : Level) in
 def loopInd1 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α) : M α := do
   if _h : dIdx < indTypes.size then
-    loopArgs1 stats (← whnf indTypes[dIdx].type) 0 #[] 1000 fun indices =>
+    let ctx ← readThe Context
+    loopArgs1 stats (← whnf indTypes[dIdx].type) 0 #[] ctx.fuel.inductiveFuel fun indices =>
     let tTy := mkAppN (mkAppN stats.indConsts[dIdx]! stats.params) indices
     withLocalDecl `t .default tTy.consumeTypeAnnotations fun major => do
     let lctx ← getLCtx
@@ -327,8 +332,8 @@ def loopInd1 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α
 termination_by indTypes.size - dIdx
 
 variable (stats : InductiveStats) in
-def loopCtorArgs (t : Expr) (k : Expr → Array Expr → Array Expr → M α) : M α :=
-  loop t 0 #[] #[] 1000
+def loopCtorArgs (t : Expr) (k : Expr → Array Expr → Array Expr → M α) : M α := do
+  loop t 0 #[] #[] (← readThe Context).fuel.inductiveFuel
 where
   loop t i bu u
   | 0 => throw .deepRecursion
@@ -344,7 +349,7 @@ where
     else k t bu u
 
 def loopUArgs (ui : Expr) (k : Expr → Array Expr → M α) : M α := do
-  loop (← whnf (← inferType ui)) #[] 1000
+  loop (← whnf (← inferType ui)) #[] (← readThe Context).fuel.inductiveFuel
 where
   loop uiTy xs
   | 0 => throw .deepRecursion
@@ -674,7 +679,7 @@ def withParams (type : Expr) (nparams : Nat)
     let arg := .fvar id
     loop lctx (body.instantiate1 arg) (params.push arg) i
 
-def run (nparams : Nat) (types : List InductiveType) : M Result := do
+def run (fuel nparams : Nat) (types : List InductiveType) : M Result := do
   let I :: _ := types
     | throw <| .other s!"invalid empty (mutual) inductive datatype declaration, {""
         }it must contain at least one inductive type."
@@ -694,7 +699,7 @@ def run (nparams : Nat) (types : List InductiveType) : M Result := do
     else
       let aux2nested := s.nestedAux.foldl (fun m (e, n) => m.insert n (e.abstract params)) {}
       return { s with nparams := params.size, aux2nested, types := s.newTypes.toList }
-  loop 0 1000
+  loop 0 fuel
 end ElimNestedInductive
 
 def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
@@ -717,13 +722,13 @@ def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
   return (oldRecNames.toList, recMap)
 
 def Environment.addInductive (env : Environment) (lparams : List Name) (nparams : Nat)
-    (types : List InductiveType) (isUnsafe allowPrimitive : Bool) :
+    (types : List InductiveType) (isUnsafe allowPrimitive : Bool) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
-  let res ← ElimNestedInductive.run nparams types env
+  let res ← ElimNestedInductive.run fuel.inductiveFuel nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
   let env' ← AddInductive.run nparams res.types numNested
-    { env, allowPrimitive, lparams, safety := if isUnsafe then .unsafe else .safe }
+    { env, allowPrimitive, lparams, fuel, safety := if isUnsafe then .unsafe else .safe }
   if numNested = 0 then return env'
   let allIndNames := types.map (·.name)
   let (recNames', recNameMap') := mkAuxRecNameMap env' types

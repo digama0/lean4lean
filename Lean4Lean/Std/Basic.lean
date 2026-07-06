@@ -52,6 +52,16 @@ theorem List.Forall₂.trans (H : ∀ a b c, R a b → S b c → T a c)
 theorem List.Forall₂.and {l₁ l₂} (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ S l₁ l₂) :
     Forall₂ (fun x y => R x y ∧ S x y) l₁ l₂ := by induction h₁ <;> simp_all
 
+theorem List.Forall₂.and_mem {l₁ l₂} (H : Forall₂ R l₁ l₂) :
+    Forall₂ (fun x y => R x y ∧ x ∈ l₁ ∧ y ∈ l₂) l₁ l₂ :=
+  .trans (fun _ _ _ h1 h2 => ⟨h1.1 ▸ h2.1, h1.2, h2.2⟩)
+    (.rfl (R := fun x y => x = y ∧ x ∈ l₁) fun _ h => ⟨rfl, h⟩) <|
+  .trans (T := fun x y => R x y ∧ y ∈ l₂) (fun _ _ _ h1 h2 => by exact ⟨h2.1 ▸ h1, h2.2⟩) H <|
+  .rfl (R := fun x y => x = y ∧ y ∈ l₂) fun _ h => ⟨rfl, h⟩
+
+theorem List.Forall₂.zipWith_l {l₁ l₂} (H : ∀ a b, R a b → S a (f a b)) (h : Forall₂ R l₁ l₂) :
+    Forall₂ S l₁ (l₁.zipWith f l₂) := by induction h <;> simp [*]
+
 @[simp] theorem List.forall₂_map_left_iff {f : γ → α} :
     ∀ {l u}, Forall₂ R (map f l) u ↔ Forall₂ (fun c b => R (f c) b) l u
   | [], _ => by simp only [map, forall₂_nil_left_iff]
@@ -63,8 +73,8 @@ theorem List.Forall₂.and {l₁ l₂} (h₁ : Forall₂ R l₁ l₂) (h₂ : Fo
   | _, b :: u => by simp only [map, forall₂_cons_right_iff, forall₂_map_right_iff]
 
 theorem List.Forall₂.flip : ∀ {a b}, Forall₂ (flip R) b a → Forall₂ R a b
-  | _, _, Forall₂.nil => Forall₂.nil
-  | _ :: _, _ :: _, Forall₂.cons h₁ h₂ => Forall₂.cons h₁ h₂.flip
+  | _, _, .nil => .nil
+  | _, _, .cons h₁ h₂ => .cons h₁ h₂.flip
 
 theorem List.Forall₂.forall_exists_l {l₁ l₂} (h : Forall₂ R l₁ l₂) : ∀ a ∈ l₁, ∃ b ∈ l₂, R a b := by
   induction h with simp [*] | cons _ _ ih => exact fun a h => .inr (ih _ h)
@@ -73,8 +83,8 @@ theorem List.Forall₂.forall_exists_r {l₁ l₂} (h : Forall₂ R l₁ l₂) :
   h.flip.forall_exists_l
 
 theorem List.Forall₂.length_eq : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → length l₁ = length l₂
-  | _, _, Forall₂.nil => rfl
-  | _, _, Forall₂.cons _ h₂ => congrArg Nat.succ (Forall₂.length_eq h₂)
+  | _, _, .nil => rfl
+  | _, _, .cons _ h₂ => congrArg Nat.succ <| Forall₂.length_eq h₂
 
 theorem List.forall₂_eq {l₁ l₂ : List α} : Forall₂ Eq l₁ l₂ ↔ l₁ = l₂ :=
   ⟨fun h => by induction h <;> simp_all, (· ▸ .rfl fun _ _ => rfl)⟩
@@ -88,6 +98,9 @@ theorem List.Forall₂.append_of_right {l₁ l₂ r₁ r₂} (H : length r₁ = 
     Forall₂ R (l₁ ++ r₁) (l₂ ++ r₂) ↔ Forall₂ R l₁ l₂ ∧ Forall₂ R r₁ r₂ := by
   refine ⟨fun h => (append_of_left ?_).1 h, fun h => (append_of_left h.1.length_eq).2 h⟩
   simpa [H] using h.length_eq
+
+theorem List.Forall₂.reverse : Forall₂ R l.reverse l'.reverse ↔ Forall₂ R l l' := by
+  induction l generalizing l' <;> cases l' <;> simp [List.Forall₂.append_of_right, and_comm, *]
 
 theorem List.map_id''' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
   induction l <;> simp_all
@@ -131,6 +144,9 @@ theorem List.idxOf_eq_length_iff [BEq α] [LawfulBEq α]
     · simp only [Ne.symm h, false_or]
       rw [← ih]
       exact Nat.succ_inj
+
+theorem List.perm_cons_of_mem {l : List α} (h : a ∈ l) : ∃ l', l.Perm (a :: l') := by
+  obtain ⟨l₁, l₂, rfl⟩ := List.append_of_mem h; exact ⟨_, List.perm_middle⟩
 
 instance [BEq α] [LawfulBEq α] : PartialEquivBEq α where
   symm h := by simp at *; exact h.symm
