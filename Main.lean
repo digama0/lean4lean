@@ -274,7 +274,7 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
 
 open private ImportedModule.mk from Lean.Environment in
 unsafe def replayFromImports (module : Name) (verbose := false) (compare := false)
-    (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
+    (decl : Option Name := none) (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
   let mFile ← findOLean module
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
@@ -294,14 +294,13 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let (n, env') ← replay { newConstants, verbose, compare, fuel } env
+  let (n, env') ← replay { newConstants, verbose, compare, fuel } env decl
   (Environment.ofKernelEnv env').freeRegions
   parts.forM fun (_, region) => region.free
   pure n
 
-unsafe def replayFromFresh (module : Name)
-    (verbose := false) (compare := false) (decl : Option Name := none)
-    (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
+unsafe def replayFromFresh (module : Name) (verbose := false) (compare := false)
+    (decl : Option Name := none) (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
   Lean.withImportModules #[module] {} (trustLevel := 0) fun env => do
     let ctx := { newConstants := env.constants.map₁, verbose, compare, checkQuot := false, fuel }
     Prod.fst <$> replay ctx (.empty module) decl
@@ -388,6 +387,7 @@ unsafe def main (args : List String) : IO UInt32 := do
   let fresh : Bool := "--fresh" ∈ flags
   let compare : Bool := "--compare" ∈ flags
   let mut fuel : Lean4Lean.FuelConfig := {}
+  let mut onlyDecl : Option Name := none
   for flag in flags do
     if let some path := flag.dropPrefix? "--config=" then
       fuel ← Lean4Lean.FuelConfig.ofFile fuel ⟨path.toString⟩
@@ -397,6 +397,8 @@ unsafe def main (args : List String) : IO UInt32 := do
       match fuel.applyFlag field value with
       | .ok f => fuel := f
       | .error e => throw <| IO.userError e
+    else if let some rest := flag.dropPrefix? "--decl=" then
+      onlyDecl := some rest.toString.toName
   let targets ← do
     match args with
     | [] => pure [← getCurrentModule]
@@ -427,11 +429,11 @@ unsafe def main (args : List String) : IO UInt32 := do
         {targetModules}"
     for m in targetModules do
       if verbose then IO.println s!"replaying {m} with --fresh"
-      n := n + (← replayFromFresh m verbose compare (fuel := fuel))
+      n := n + (← replayFromFresh m verbose compare onlyDecl fuel)
   else
     let mut tasks := #[]
     for m in targetModules do
-      tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare (fuel := fuel)))
+      tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare onlyDecl fuel))
     let mut err := false
     for (m, t) in tasks do
       if verbose then IO.println s!"replaying {m}"
