@@ -72,7 +72,12 @@ abbrev RecM := ReaderT Methods M
 inductive ReductionStatus where
   | continue (tn sn : Expr)
   | unknown (tn sn : Expr)
-  | bool (b : Bool)
+  | true
+  | false (tn sn : Expr)
+
+def ReductionStatus.bool (tn sn : Expr) : Bool → ReductionStatus
+  | .true => .true
+  | .false => .false tn sn
 
 namespace Inner
 
@@ -285,8 +290,8 @@ def whnfFVar (e : Expr) (cheapRec cheapProj : Bool) : RecM Expr := do
     return ← whnfCore v cheapRec cheapProj
   return e
 
-def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
-  let mut c ← (if cheapProj then whnfCore struct cheapRec cheapProj else whnf struct)
+def reduceProjCore (idx : Nat) (struct : Expr) : RecM (Option Expr) := do
+  let mut c := struct
   if let .lit (.strVal s) := c then
     c ← whnf (.strLitToConstructor s)
   c.withApp fun mk args => do
@@ -294,6 +299,9 @@ def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (O
   let env ← getEnv
   let .ctorInfo mkInfo ← env.get mkC | return none
   return args[mkInfo.numParams + idx]?
+
+def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
+  reduceProjCore idx (← if cheapProj then whnfCore struct cheapRec cheapProj else whnf struct)
 
 def isLetFVar (lctx : LocalContext) (fvar : FVarId) : Bool :=
   lctx.find? fvar matches some (.ldecl ..)
@@ -571,8 +579,8 @@ def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
   let cont tn sn :=
     return match ← quickIsDefEq tn sn with
     | .undef => .continue tn sn
-    | .true => .bool true
-    | .false => .bool false
+    | .true => .true
+    | .false => .false tn sn
   match isDelta env tn, isDelta env sn with
   | none, none => return .unknown tn sn
   | some _, none =>
@@ -598,7 +606,7 @@ def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
       then
         if Level.isEquivList tn.getAppFn.constLevels! sn.getAppFn.constLevels! then
           if ← isDefEqArgs tn sn then
-            return .bool true
+            return .true
         cacheFailure tn sn
       cont (← delta tn) (← delta sn)
 
@@ -624,20 +632,36 @@ where
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
     let r ← isDefEqOffset tn sn
-    if r != .undef then return .bool (r == .true)
+    if r != .undef then return .bool tn sn (r == .true)
     if !tn.hasFVar && !sn.hasFVar || (← readThe Context).eagerReduce then
       if let some tn' ← reduceNat tn then
-        return .bool (← isDefEqCore tn' sn)
+        return .bool tn' sn (← isDefEqCore tn' sn)
       else if let some sn' ← reduceNat sn then
-        return .bool (← isDefEqCore tn sn')
+        return .bool tn sn' (← isDefEqCore tn sn')
     let env ← getEnv
     if let some tn' ← reduceNative env tn then
-      return .bool (← isDefEqCore tn' sn)
+      return .bool tn' sn (← isDefEqCore tn' sn)
     else if let some sn' ← reduceNative env sn then
-      return .bool (← isDefEqCore tn sn')
+      return .bool tn sn' (← isDefEqCore tn sn')
     match ← lazyDeltaReductionStep tn sn with
     | .continue tn sn => loop tn sn fuel
     | r => return r
+
+def lazyDeltaProjReduction (t s : Expr) (idx : Nat) : RecM Bool := do
+  loop t s (← readThe Context).fuel.lazyDelta
+where
+  finish tn sn := do
+    if let some tf ← reduceProjCore idx tn then
+      if let some sf ← reduceProjCore idx sn then
+        return ← isDefEqCore tf sf
+    isDefEqCore tn sn
+  loop tn sn
+  | 0 => throw .deterministicTimeout
+  | fuel+1 => do
+    match ← lazyDeltaReductionStep tn sn with
+    | .continue tn sn => loop tn sn fuel
+    | .true => return true
+    | .unknown tn sn | .false tn sn => finish tn sn
 
 def tryStringLitExpansionCore (t s : Expr) : RecM LBool := do
   let .lit (.strVal st) := t | return .undef
@@ -678,7 +702,8 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
 
   match ← lazyDeltaReduction tn sn with
   | .continue .. => unreachable!
-  | .bool b => return b
+  | .true => return true
+  | .false .. => return false
   | .unknown tn sn =>
 
   match tn, sn with
@@ -686,7 +711,7 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
     if tf == sf && Level.isEquivList tl sl then return true
   | .fvar tv, .fvar sv => if tv == sv then return true
   | .proj _ ti te, .proj _ si se =>
-    if ti == si then if ← isDefEq te se then return true
+    if ti == si then if ← lazyDeltaProjReduction te se ti then return true
   | _, _ => pure ()
 
   let tnn ← whnfCore tn
