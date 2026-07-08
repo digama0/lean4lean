@@ -296,7 +296,11 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
     newConstants := newConstants.insert name ci
   let (n, env') ← replay { newConstants, verbose, compare, fuel } env decl
   (Environment.ofKernelEnv env').freeRegions
-  parts.forM fun (_, region) => region.free
+  -- Note: This CANNOT be written `parts.forM fun ((_ : ModuleData), r) => r.free`
+  -- as this uses `parts` non-destructively so the `ModuleData` objects are freed
+  -- at the end of the function, after `free` has already run, causing a segfault.
+  -- Using `map` instead forces the `ModuleData` to be freed first, then the region pointers.
+  parts.map (·.2) |>.forM (·.free)
   pure n
 
 unsafe def replayFromFresh (module : Name) (verbose := false) (compare := false)
