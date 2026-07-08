@@ -418,7 +418,9 @@ unsafe def main (args : List String) : IO UInt32 := do
     let mut found := false
     for path in (← SearchPath.findAllWithExt sp "olean") do
       if let some m := (← searchModuleNameOfFileName path sp) then
-        if target.isPrefixOf m then
+        -- Match leanchecker: with `--fresh`, only exact match (single module);
+        -- without, prefix match to cover all submodules.
+        if !fresh && target.isPrefixOf m || target == m then
           targetModules := targetModules.insert m
           found := true
     if not found then
