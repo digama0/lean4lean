@@ -486,7 +486,7 @@ run_meta
   for c in Environment.primitives do
     match env.find? c with
     | some (.defnInfo v) =>
-      let (.true, _) ← Elab.Term.TermElabM.run (checkPrimitiveDef { v with })
+      let (.true, _) ← Elab.Term.TermElabM.run (checkPrimitiveDef v)
         | throwError "{v.name}"
     | some (.inductInfo _) | some (.ctorInfo _) => pure ()
     | r => throwError "unexpected primitive: {r.map (·.name)}"

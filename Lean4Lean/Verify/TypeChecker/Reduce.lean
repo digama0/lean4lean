@@ -139,3 +139,18 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
     refine have ⟨p1, p2⟩ := TrExprS.natLit c.hasPrimitives hn _; ⟨_, p1, ?_⟩
     refine p2.toU.symm.trans c.Ewf c.Δwf ?_
     exact ⟨_, ha1.appDF <| a3.of_r c.Ewf c.Δwf ha2⟩
+
+theorem reduceProjCore.WF (he : c.TrExprS (.proj n i e) e') :
+    RecM.WF c s (reduceProjCore i e) fun oe _ =>
+      ∀ e₁, oe = some e₁ → c.FVarsBelow (.proj n i e) e₁ ∧ c.TrExpr e₁ e' := sorry
+
+theorem reduceProj.WF (he : c.TrExprS (.proj n i e) e') :
+    RecM.WF c s (reduceProj i e cheapProj) fun oe _ =>
+      ∀ e₁, oe = some e₁ → c.FVarsBelow (.proj n i e) e₁ ∧ c.TrExpr e₁ e' := by
+  unfold reduceProj
+  have .proj (e' := s) a1 a2 := he
+  refine .bind (Q := fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ s) ?_ fun _ _ _ ⟨h1, h2⟩ => ?_
+  · split <;> [exact whnfCore.WF a1; exact whnf.WF a1]
+  have ⟨_, b1, b2⟩ := h2.proj c.Ewf c.Δwf a2
+  refine (reduceProjCore.WF b1).mono fun _ _ _ H _ eq => ?_
+  have ⟨c1, c2⟩ := H _ eq; exact ⟨h1.trans c1, c2.defeq c.Ewf c.Δwf b2⟩
