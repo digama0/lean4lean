@@ -245,7 +245,10 @@ def normalize' (l : Level) : Level := (Normalize.normalize l (paths := true)).to
 
 def isEquiv' (u v : Level) : Bool := u == v || Normalize.normalize u == Normalize.normalize v
 
-def isEquivList : List Level → List Level → Bool := List.all2 isEquiv'
+-- Match C++ `is_def_eq(levels, levels)`: use stdlib `Level.isEquiv`
+-- (which uses stdlib `normalize`, the same algorithm as C++), not L4L's
+-- `isEquiv'` (complete but algorithmically different).
+def isEquivList : List Level → List Level → Bool := List.all2 isEquiv
 
 def geq' (u v : Level) : Bool := (Normalize.normalize v).le (Normalize.normalize u)
 
