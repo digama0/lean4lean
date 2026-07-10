@@ -239,7 +239,7 @@ theorem WHNFCache.WF.empty : WHNFCache.WF c s {} := fun _ => by simp
 
 def UnfoldCache.WF (c : VContext) (m : ExprMap Expr) : Prop :=
   ∀ ⦃e e' : Expr⦄, m[e]? = some e' → ∃ n ls ci, e = .const n ls ∧
-      c.env.find? n = some ci ∧ e' = ci.instantiateValueLevelParams! ls
+      c.env.find? n = some ci ∧ e' = ci.instantiateValueLevelParams!Cpp ls
 
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
@@ -619,7 +619,7 @@ theorem mkForall_hasType {c : MLCtx}
     (hu : VLevel.ofLevel Us u = some u')
     (H2 : env.HasType Us.length c.vlctx.toCtx e' (.sort u')) (n hn)
     (hus : us.length = n) :
-    ∃ u₀', VLevel.ofLevel Us (List.foldl (fun x y => mkLevelIMax' y x) u us) = some u₀' ∧
+    ∃ u₀', VLevel.ofLevel Us (List.foldl (fun x y => mkLevelIMaxCpp y x) u us) = some u₀' ∧
     env.HasType Us.length (c.dropN n hn).vlctx.toCtx (c.mkForall' n hn e') (.sort u₀') := by
   subst hus
   induction hus generalizing c e' u u' with
@@ -906,10 +906,10 @@ theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e'
   split <;> rename_i h2 <;> [refine .pureBind ?_; refine .pure ?_]; rotate_left
   · simp at h2; rintro _ _ _ _ h1 _ ⟨⟩; cases h1 ▸ h3; exact h2
   have : UnfoldDefinition.WF c (.const n ls) (.const n ls) e'
-      (some (ci.instantiateValueLevelParams! ls)) := by
+      (some (ci.instantiateValueLevelParams!Cpp ls)) := by
     let .const a1 a2 a3 := he
     have ⟨rfl, b1, b2, b3⟩ := c.trenv.find?_uniq h3 a1
-    simp [ConstantInfo.instantiateValueLevelParams!, ConstantInfo.value!_eq, h4]
+    simp [ConstantInfo.instantiateValueLevelParams!Cpp, h4]
     have c1 := c.trenv.of_value h3 b1 h4 |>.instL c.Ewf (by trivial) a2 (b2.trans a3.symm)
     have := c1.weakFV c.Ewf (.from_nil c.mlctx.noBV) c.Δwf
     rw [c1.wf.closedN c.Ewf trivial |>.liftN_eq (Nat.zero_le _)] at this

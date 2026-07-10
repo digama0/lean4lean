@@ -70,7 +70,7 @@ theorem inferConstant.WF {c : VContext}
       exact (ih H.2).le fun _ ⟨_, h2⟩ => ⟨_, .cons h1 h2⟩
   split <;> [rename_i h1; exact .throw]
   have main {e'} (he : c.TrExprS (.const name ls) e') : ∃ e' ty',
-      c.TrTyping (.const name ls) (ci.instantiateTypeLevelParams ls) e' ty' := by
+      c.TrTyping (.const name ls) (ci.instantiateTypeLevelParamsCpp ls) e' ty' := by
     let .const h4 H' eq := id he
     have ⟨_, _, h5, h6⟩ := c.trenv.find?_uniq eq1 h4
     have H := List.mapM_eq_some.1 H'

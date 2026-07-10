@@ -1290,12 +1290,11 @@ theorem TrExpr.inst_let (henv : VEnv.WF env) (hΔ : VLCtx.WF env Us.length Δ)
 
 theorem ofLevel_mkLevelMax'
     (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :
-    ∃ w, VLevel.ofLevel Us (mkLevelMax' u v) = some w ∧ w ≈ .max u' v' := by
+    ∃ w, VLevel.ofLevel Us (mkLevelMaxCpp u v) = some w ∧ w ≈ .max u' v' := by
   let subsumes (u v : Level) : Bool :=
-    if v.isExplicit && u.getOffset ≥ v.getOffset then true
-    else match u with
-      | Level.max u₁ u₂ => v == u₁ || v == u₂
-      | _ => false
+    match u with
+    | Level.max u₁ u₂ => v == u₁ || v == u₂
+    | _ => false
   let mkLevelMaxCore (u v : Level) :=
     if u == v then u
     else if u.isZero then v
@@ -1311,25 +1310,13 @@ theorem ofLevel_mkLevelMax'
       (hu : VLevel.ofLevel Us u = some u')
       (hv : VLevel.ofLevel Us v = some v') : v'.LE u' := by
     simp [subsumes] at h
-    obtain ⟨h1, h2⟩ | h := h
-    · clear subsumes mkLevelMaxCore
-      induction v generalizing u u' v' with simp [VLevel.ofLevel] at hv h2 ⊢
-      | zero => subst v'; exact VLevel.zero_le
-      | succ _ ih =>
-        obtain ⟨_, hv, rfl⟩ := hv
-        generalize eq : u.getOffset' = n at h2
-        unfold Level.getOffset' at eq; split at eq <;> subst eq <;> [skip; cases h2]
-        simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
-        simp [Level.isExplicit] at h1
-        exact VLevel.succ_le_succ (ih hu hv h1.2 (Nat.le_of_succ_le_succ h2))
-      | _ => cases h1
-    · split at h <;> [skip; cases h]
-      simp [VLevel.ofLevel] at hu; obtain ⟨_, hu1, _, hu2, rfl⟩ := hu
-      simp at h; obtain rfl | rfl := h
-      · cases hv.symm.trans hu1
-        exact VLevel.le_max_left
-      · cases hv.symm.trans hu2
-        exact VLevel.le_max_right
+    split at h <;> [skip; cases h]
+    simp [VLevel.ofLevel] at hu; obtain ⟨_, hu1, _, hu2, rfl⟩ := hu
+    simp at h; obtain rfl | rfl := h
+    · cases hv.symm.trans hu1
+      exact VLevel.le_max_left
+    · cases hv.symm.trans hu2
+      exact VLevel.le_max_right
   simp only [mkLevelMaxCore]; split
   · simp_all; exact VLevel.max_self.symm
   split
@@ -1386,11 +1373,11 @@ theorem ofLevel_isNeverZero (h : VLevel.ofLevel Us u = some u') (H : u.isNeverZe
 
 theorem ofLevel_mkLevelIMax'
     (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :
-    ∃ w, VLevel.ofLevel Us (mkLevelIMax' u v) = some w ∧ w ≈ .imax u' v' := by
+    ∃ w, VLevel.ofLevel Us (mkLevelIMaxCpp u v) = some w ∧ w ≈ .imax u' v' := by
   let mkLevelIMaxCore (u v : Level) :=
-    if v.isNeverZero then mkLevelMax' u v
+    if v.isNeverZero then mkLevelMaxCpp u v
     else if v.isZero then v
-    else if u.isZero then v
+    else if u.isZero || u == .succ .zero then v
     else if u == v then u
     else .imax u v
   change ∃ w, VLevel.ofLevel Us (mkLevelIMaxCore u v) = some w ∧ w ≈ .imax u' v'
@@ -1401,8 +1388,10 @@ theorem ofLevel_mkLevelIMax'
   · let .zero := v; simp [VLevel.ofLevel] at h2; subst v'
     exact ⟨.zero, rfl, rfl⟩
   split
-  · let .zero := u; simp [VLevel.ofLevel] at h1; subst u'
-    exact ⟨_, h2, VLevel.zero_imax.symm⟩
+  · rename_i h; simp at h; obtain h | rfl := h
+    · let .zero := u; simp [VLevel.ofLevel] at h1; subst u'
+      exact ⟨_, h2, VLevel.zero_imax.symm⟩
+    · cases h1; exact ⟨_, h2, VLevel.one_imax.symm⟩
   split
   · simp_all; exact VLevel.imax_self.symm
   simp [VLevel.ofLevel]; exact ⟨_, ⟨_, h1, _, h2, rfl⟩, rfl⟩
@@ -1480,7 +1469,7 @@ end
 include henv hΔ
 
 theorem TrExprS.instL (H : TrExprS env ps Δ e e') :
-    TrExpr env Us (Δ.instL ls') (e.instantiateLevelParams ps ls) (e'.instL ls') := by
+    TrExpr env Us (Δ.instL ls') (e.instantiateLevelParamsCpp ps ls) (e'.instL ls') := by
   simp [Expr.instantiateLevelParams_eq]
   generalize (_ && _) = red, eqF : (fun x : Name => _) = F
   have Hls' := VLevel.WF.of_mapM_ofLevel Hls
@@ -1520,7 +1509,7 @@ theorem TrExprS.instL (H : TrExprS env ps Δ e e') :
       (VLCtx.instL_toCtx _ ▸ h2.instL Hls')
 
 theorem TrExpr.instL (H : TrExpr env ps Δ e e') :
-    TrExpr env Us (Δ.instL ls') (e.instantiateLevelParams ps ls) (e'.instL ls') :=
+    TrExpr env Us (Δ.instL ls') (e.instantiateLevelParamsCpp ps ls) (e'.instL ls') :=
   let ⟨_, s1, h1⟩ := H
   have Hls' := .of_mapM_ofLevel Hls
   (s1.instL henv hΔ Hls eq).defeq henv (hΔ.instL Hls') (VLCtx.instL_toCtx _ ▸ h1.instL Hls')

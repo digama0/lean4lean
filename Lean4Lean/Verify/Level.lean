@@ -1,6 +1,7 @@
 import Lean4Lean.Theory.VLevel
 import Lean4Lean.Level
 import Lean4Lean.Verify.Axioms
+import Lean4Lean.Instantiate
 import Std.Tactic.BVDecide
 import Std.Data.TreeMap.Lemmas
 
@@ -215,10 +216,10 @@ def substParams' (red : Bool) : Level → Level
   | .succ v     => .succ (substParams' (v.hasParam ∧ red) v)
   | .max v₁ v₂  =>
     let red := (v₁.hasParam ∨ v₂.hasParam) ∧ red
-    (if red then mkLevelMax' else .max) (substParams' red v₁) (substParams' red v₂)
+    (if red then mkLevelMaxCpp else .max) (substParams' red v₁) (substParams' red v₂)
   | .imax v₁ v₂ =>
     let red := (v₁.hasParam ∨ v₂.hasParam) ∧ red
-    (if red then mkLevelIMax' else .imax) (substParams' red v₁) (substParams' red v₂)
+    (if red then mkLevelIMaxCpp else .imax) (substParams' red v₁) (substParams' red v₂)
   | .param n => s n
   | u => u
 
@@ -228,9 +229,9 @@ theorem substParams_eq_self {u : Level} (h : u.hasParam' = false) :
 
 open private substParams.go from Lean.Level in
 @[simp] theorem substParams_eq (u : Level) (s : Name → Option Level) :
-    substParams u s = substParams' (fun x => (s x).getD (.param x)) true u := by
-  unfold substParams
-  induction u <;> simp [substParams.go, substParams', hasParam', ← Bool.or_eq_true] <;>
+    substParamsCpp u s = substParams' (fun x => (s x).getD (.param x)) true u := by
+  unfold substParamsCpp
+  induction u <;> simp [substParamsCpp.go, substParams', hasParam', ← Bool.or_eq_true] <;>
     split <;> simp [*, substParams_eq_self] <;> simp_all [substParams_eq_self]
 
 theorem substParams_id {u : Level} :

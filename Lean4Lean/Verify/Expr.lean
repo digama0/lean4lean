@@ -740,37 +740,35 @@ theorem instantiateLevelParamsCore_id {e : Expr} :
     instantiateLevelParamsCore' false .param e = e := by
   induction e <;> simp_all [instantiateLevelParamsCore', Level.substParams_id]
 
-open private instantiateLevelParamsCore.replaceFn from Lean.Util.InstantiateLevelParams in
 theorem instantiateLevelParamsCore_eq :
-    instantiateLevelParamsCore s e =
+    instantiateLevelParamsCoreCpp s e =
     instantiateLevelParamsCore' true (fun x => (s x).getD (.param x)) e := by
-  simp [instantiateLevelParamsCore]
+  simp [instantiateLevelParamsCoreCpp]
   have (e) (H : e.hasLevelParam' = true →
-        replaceNoCache (instantiateLevelParamsCore.replaceFn s) e =
+        replaceNoCache (instantiateLevelParamsCoreCpp.replaceFn s) e =
         instantiateLevelParamsCore' true (fun x => (s x).getD (Level.param x)) e) :
-      replaceNoCache (instantiateLevelParamsCore.replaceFn s) e =
+      replaceNoCache (instantiateLevelParamsCoreCpp.replaceFn s) e =
       instantiateLevelParamsCore' true (fun x => (s x).getD (Level.param x)) e := by
     cases eq : e.hasLevelParam' <;> [skip; exact H eq]
     rw [instantiateLevelParamsCore_eq_self eq]
     suffices ∀ f, f e = some e → replaceNoCache f e = e by
-      apply this; simp [instantiateLevelParamsCore.replaceFn, eq]
+      apply this; simp [instantiateLevelParamsCoreCpp.replaceFn, eq]
     intro f eq; cases e <;> simp only [replaceNoCache, eq]
   induction e <;> (
     refine this _ fun h => ?_
-    simp only [replaceNoCache, instantiateLevelParamsCore.replaceFn]
+    simp only [replaceNoCache, instantiateLevelParamsCoreCpp.replaceFn]
     simp [h]; clear this h
     simp_all [instantiateLevelParamsCore'])
 
-open private getParamSubst from Lean.Util.InstantiateLevelParams in
 theorem instantiateLevelParams_eq {e ps ls} :
-    instantiateLevelParams e ps ls =
+    instantiateLevelParamsCpp e ps ls =
     instantiateLevelParamsCore' (!ps.isEmpty && !ls.isEmpty)
       (fun x => ((ps.idxOf? x).bind (ls[·]?)).getD (.param x)) e := by
-  simp only [instantiateLevelParams]; rw [← Bool.not_or];
+  simp only [instantiateLevelParamsCpp]; rw [← Bool.not_or];
   cases eq : ps.isEmpty || ls.isEmpty <;> simp
   · clear eq
     simp [instantiateLevelParamsCore_eq, List.idxOf?]; congr; ext n; congr
-    induction ps generalizing ls <;> cases ls <;> simp [getParamSubst]
+    induction ps generalizing ls <;> cases ls <;> simp [instantiateLevelParamsCpp.go]
     split <;> simp [*, List.findIdx?_cons]; cases List.findIdx? .. <;> simp
   · refine instantiateLevelParamsCore_id.symm.trans ?_; congr; ext n
     cases ps <;> simp_all

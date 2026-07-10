@@ -95,6 +95,10 @@ theorem max_self : max a a ≈ a := by simp [equiv_def, eval]
 theorem zero_imax : imax zero a ≈ a := by
   simp [equiv_def, eval, Nat.imax, eq_comm (b := 0)]
 
+theorem one_imax : imax (succ zero) a ≈ a := by
+  simp [equiv_def, eval, Nat.imax]; intro ls
+  cases eval ls a <;> rfl
+
 theorem imax_zero : imax a zero ≈ zero := by simp [equiv_def, eval, Nat.imax]
 
 theorem imax_self : imax a a ≈ a := by

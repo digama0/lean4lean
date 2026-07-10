@@ -124,7 +124,7 @@ def inferConstant (tc : Context) (name : Name) (ls : List Level) (inferOnly : Bo
           s!"invalid declaration, safe declaration must not contain partial declaration '{e}'"
     for l in ls do
       checkLevel tc l
-  return info.instantiateTypeLevelParams ls
+  return info.instantiateTypeLevelParamsCpp ls
 
 def inferType (e : Expr) (inferOnly := true) : RecM Expr := fun m => m.inferType e inferOnly
 
@@ -153,7 +153,7 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
   | e => do
     let r ← inferType (e.instantiateRev fvars) inferOnly
     let s ← ensureSortCore r e
-    return .sort <| us.foldr mkLevelIMax' s.sortLevel!
+    return .sort <| us.foldr mkLevelIMaxCpp s.sortLevel!
 
 def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore t s
 
@@ -209,7 +209,7 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
   let [c] := I_val.ctors | fail
   if args.size != I_val.numParams + I_val.numIndices then fail
   let c_info ← env.get c
-  let mut r := c_info.instantiateTypeLevelParams I_levels
+  let mut r := c_info.instantiateTypeLevelParamsCpp I_levels
   for i in [:I_val.numParams] do
     let .forallE _ _ b _ ← whnf r | fail
     r := b.instantiate1 args[i]!
@@ -364,9 +364,9 @@ def unfoldDefinitionCore (e : Expr) : RecM (Option Expr) := do
   let env ← getEnv
   let some d := isDelta env e | return none
   unless ls.length == d.numLevelParams do return none
-  unless 0 < ls.length do return some (d.instantiateValueLevelParams! ls)
+  unless 0 < ls.length do return some (d.instantiateValueLevelParams!Cpp ls)
   if let some r := (← get).unfold[e]? then return some r
-  let r := d.instantiateValueLevelParams! ls
+  let r := d.instantiateValueLevelParams!Cpp ls
   modify fun s => { s with unfold := s.unfold.insert e r }
   return some r
 

@@ -1,5 +1,6 @@
 import Lean.Structure
 import Lean4Lean.Expr
+import Lean4Lean.Instantiate
 import Lean4Lean.Environment.Basic
 
 namespace Lean4Lean
@@ -74,7 +75,7 @@ def inductiveReduceRec [Monad m] (env : Environment) (e : Expr)
   let majorArgs := major.getAppArgs
   if rule.nfields > majorArgs.size then return none
   if ls.length != info.levelParams.length then return none
-  let mut rhs := rule.rhs.instantiateLevelParams info.levelParams ls
+  let mut rhs := rule.rhs.instantiateLevelParamsCpp info.levelParams ls
   rhs := mkAppRange rhs 0 info.getFirstIndexIdx recArgs
   rhs := mkAppRange rhs (majorArgs.size - rule.nfields) majorArgs.size majorArgs
   if majorIdx + 1 < recArgs.size then
