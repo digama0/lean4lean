@@ -544,8 +544,9 @@ def isDefEqApp (t s : Expr) : RecM Bool := do
   unless t.isApp && s.isApp do return false
   t.withApp fun tf tArgs =>
   s.withApp fun sf sArgs => do
+  -- Match C++ `is_def_eq_app`: always run `isDefEq tf sf` first (even on size mismatch).
+  unless ← isDefEq tf sf do return false
   if _h : tArgs.size = sArgs.size then
-    unless ← isDefEq tf sf do return false
     let rec loop i := do
       if _h : i < tArgs.size then
         unless ← isDefEq tArgs[i] sArgs[i] do return false

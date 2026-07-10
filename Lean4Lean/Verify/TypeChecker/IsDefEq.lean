@@ -239,11 +239,12 @@ theorem isDefEqApp.WF {c : VContext} {s : VState}
   unfold isDefEqApp; extract_lets F1
   split <;> [(refine .pureBind ?_; unfold F1); exact .pure nofun]
   rw [Expr.withApp_eq, Expr.withApp_eq]
-  split <;> [rename_i eq; exact .pure nofun]
   have ⟨_, he₁'⟩ := AppStack.build <| e₁.mkAppList_getAppArgsList ▸ he₁
   have ⟨_, he₂'⟩ := AppStack.build <| e₂.mkAppList_getAppArgsList ▸ he₂
   refine (isDefEq.WF he₁'.tr he₂'.tr).bind fun _ _ _ h => ?_; extract_lets F2
-  split <;> [(refine .pureBind ?_; unfold F2); exact .pure nofun]
+  split <;> [rename_i hb; exact .pure nofun]
+  refine .pureBind ?_; unfold F2
+  split <;> [rename_i eq; exact .pure nofun]
   let rec loop.WF {s args₁ args₂ f₁ f₂ f₁' f₂' eq i} (l₁ r₁ l₂ r₂)
       (h₁ : args₁.toList = l₁ ++ r₁) (hi₁ : l₁.length = i)
       (h₂ : args₂.toList = l₂ ++ r₂) (hi₂ : l₂.length = i)
