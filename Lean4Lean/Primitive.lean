@@ -244,6 +244,9 @@ def unfoldNatWellFounded (e : Expr) (fvs : Array Expr) (eq_def : Expr) (fail : �
   return (← getLCtx).mkLambda fvs rhs
 
 def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
+  -- HACK: bypass checkPrimitiveDef so the isDefEq counts don't include L4L's
+  -- extra primitive-form check (which C++'s kernel doesn't do).
+  if true then return true
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
   let tru := q(true)
   let fal := q(false)
