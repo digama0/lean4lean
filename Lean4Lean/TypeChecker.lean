@@ -458,6 +458,10 @@ def whnf' (e : Expr) : RecM Expr := do
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
+-- Match C++ `g_dont_care = mkConst("dontcare")`; L4L's `default : Expr` has a
+-- different hash.
+def dontcare : Expr := .const `dontcare []
+
 def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
   | .lam _ tDom tBody _, .lam name sDom sBody bi => do
@@ -471,7 +475,7 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
       withLocalDecl name bi sType fun fv => do
         isDefEqLambda tBody sBody (subst.push fv)
     else
-      isDefEqLambda tBody sBody (subst.push default)
+      isDefEqLambda tBody sBody (subst.push dontcare)
   | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
 def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
@@ -487,7 +491,7 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
       withLocalDecl name bi sType fun fv =>
         isDefEqForall tBody sBody (subst.push fv)
     else
-      isDefEqForall tBody sBody (subst.push default)
+      isDefEqForall tBody sBody (subst.push dontcare)
   | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
 def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do

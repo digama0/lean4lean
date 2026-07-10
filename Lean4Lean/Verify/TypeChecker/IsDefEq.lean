@@ -50,7 +50,7 @@ theorem isDefEqLambda.WF {c : VContext} {s : VState}
     have {bᵢ : Expr} {bᵢ'} (h : bᵢ.looseBVarRange' = 0)
         (a3 : TrExprS c'.venv c'.lparams ((none, .vlam t₂') :: c'.vlctx)
           (bᵢ.instantiateList fvs 1) bᵢ') :
-        ∃ e', (c.withMLC m).TrExprS (bᵢ.instantiateList (default :: fvs)) e' ∧
+        ∃ e', (c.withMLC m).TrExprS (bᵢ.instantiateList (dontcare :: fvs)) e' ∧
           c'.venv.IsDefEqU c'.lparams.length (t₂' :: c'.vlctx.toCtx) bᵢ' e'.lift := by
       simp; rw [← Expr.instantiateList_instantiate1_comm (by rfl)]
       let v : FVarId := ⟨s.ngen.curr⟩
@@ -67,7 +67,7 @@ theorem isDefEqLambda.WF {c : VContext} {s : VState}
       refine ⟨_, H, this.uniq c'.Ewf (.refl c'.Ewf hΔ) <| H.weakFV c'.Ewf (.skip_fvar _ _ .refl) hΔ⟩
     let ⟨_, a4, a5⟩ := this h.1 a3'
     let ⟨_, b4, b5⟩ := this h.2 b3
-    exact isDefEqLambda.WF (fvs := default :: fvs) (by simp [hsubst]) a4 b4
+    exact isDefEqLambda.WF (fvs := dontcare :: fvs) (by simp [hsubst]) a4 b4
       |>.mono fun _ _ _ h hb =>
       have hΓ := ⟨c'.Δwf, b1⟩
       have ⟨_, bb⟩ := eq.symm.trans c'.Ewf hΓ a5
@@ -120,7 +120,7 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
     have {bᵢ : Expr} {bᵢ'} (h : bᵢ.looseBVarRange' = 0)
         (a3 : TrExprS c'.venv c'.lparams ((none, .vlam t₂') :: c'.vlctx)
           (bᵢ.instantiateList fvs 1) bᵢ') :
-        ∃ e', (c.withMLC m).TrExprS (bᵢ.instantiateList (default :: fvs)) e' ∧
+        ∃ e', (c.withMLC m).TrExprS (bᵢ.instantiateList (dontcare :: fvs)) e' ∧
           c'.venv.IsDefEqU c'.lparams.length (t₂' :: c'.vlctx.toCtx) bᵢ' e'.lift := by
       simp; rw [← Expr.instantiateList_instantiate1_comm (by rfl)]
       let v : FVarId := ⟨s.ngen.curr⟩
@@ -137,7 +137,7 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
       refine ⟨_, H, this.uniq c'.Ewf (.refl c'.Ewf hΔ) <| H.weakFV c'.Ewf (.skip_fvar _ _ .refl) hΔ⟩
     let ⟨_, a4, a5⟩ := this h.1 a3'
     let ⟨_, b4, b5⟩ := this h.2 b3
-    exact isDefEqForall.WF (fvs := default :: fvs) (by simp [hsubst]) a4 b4
+    exact isDefEqForall.WF (fvs := dontcare :: fvs) (by simp [hsubst]) a4 b4
       |>.mono fun _ _ _ h hb =>
       have hΓ := ⟨c'.Δwf, b1⟩
       have bb := eq.symm.trans c'.Ewf hΓ a5 |>.trans c'.Ewf hΓ ((h hb).weak c'.Ewf (B := t₂'))
