@@ -54,6 +54,8 @@ structure Context where
   compare := false
   checkQuot := true
   fuel : Lean4Lean.FuelConfig := {}
+  /-- Emit per-decl `L4LSTATS` lines with `TypeChecker.Stats` counters (LEAN4LEAN_INSTR=1). -/
+  instr : Bool := false
 
 structure State where
   env : Environment
@@ -121,7 +123,32 @@ def Lean.Declaration.name : Declaration → String
 def addDecl (d : Declaration) : M Unit := do
   if (← read).verbose then
     println! "adding {d.name}"
+  if (← IO.getEnv "LEAN4LEAN_TC_HASH").isSome then
+    let name : Name := match d with
+      | .axiomDecl v => v.name
+      | .defnDecl v => v.name
+      | .thmDecl v => v.name
+      | .opaqueDecl v => v.name
+      | _ => `_other
+    IO.eprintln s!"DECL {name}"
   let t1 ← IO.monoMsNow
+  if (← read).instr then
+    match Lean4Lean.addDeclWithStats (← get).env d (fuel := (← read).fuel) with
+    | .ok (env, stats) =>
+      let t2 ← IO.monoMsNow
+      let mod := (← get).env.header.mainModule
+      IO.eprintln s!"L4LSTATS {mod}:{d.name}: isdefeq={stats.isDefEq} deq_fp={stats.deqFingerprint} whnf={stats.whnf} whnfcore={stats.whnfCore} unfold={stats.unfold} time_ms={t2 - t1}"
+      if (← IO.getEnv "LEAN4LEAN_TCSTEP").isSome then
+        let sortedTags := stats.deqPerTag.toArray.qsort (·.2 > ·.2)
+        for (tag, cnt) in sortedTags do
+          IO.eprintln s!"L4LTAG {mod}:{d.name}: {tag}={cnt}"
+      if t2 - t1 > 1000 then
+        let sorted := stats.unfoldPerConst.toArray.qsort (·.2 > ·.2)
+        for (n, c) in sorted.take 15 do
+          IO.eprintln s!"L4LUNFOLD {mod}:{d.name}: {c}× {n}"
+      modify fun s => { s with env, numAdded := s.numAdded + 1 }
+    | .error ex => throwKernelException ex
+    return
   match Lean4Lean.addDecl (← get).env d true (fuel := (← read).fuel) with
   | .ok env =>
     let t2 ← IO.monoMsNow
@@ -274,7 +301,7 @@ def replay (ctx : Context) (env : Environment) (decl : Option Name := none) :
 
 open private ImportedModule.mk from Lean.Environment in
 unsafe def replayFromImports (module : Name) (verbose := false) (compare := false)
-    (decl : Option Name := none) (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
+    (decl : Option Name := none) (fuel : Lean4Lean.FuelConfig := {}) (instr := false) : IO Nat := do
   let mFile ← findOLean module
   unless (← mFile.pathExists) do
     throw <| IO.userError s!"object file '{mFile}' of module {module} does not exist"
@@ -294,7 +321,7 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   let mut newConstants := {}
   for name in mod.constNames, ci in mod.constants do
     newConstants := newConstants.insert name ci
-  let (n, env') ← replay { newConstants, verbose, compare, fuel } env decl
+  let (n, env') ← replay { newConstants, verbose, compare, fuel, instr } env decl
   (Environment.ofKernelEnv env').freeRegions
   -- Note: This CANNOT be written `parts.forM fun ((_ : ModuleData), r) => r.free`
   -- as this uses `parts` non-destructively so the `ModuleData` objects are freed
@@ -304,9 +331,10 @@ unsafe def replayFromImports (module : Name) (verbose := false) (compare := fals
   pure n
 
 unsafe def replayFromFresh (module : Name) (verbose := false) (compare := false)
-    (decl : Option Name := none) (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
+    (decl : Option Name := none) (fuel : Lean4Lean.FuelConfig := {}) (instr := false) : IO Nat := do
   Lean.withImportModules #[module] {} (trustLevel := 0) fun env => do
-    let ctx := { newConstants := env.constants.map₁, verbose, compare, checkQuot := false, fuel }
+    let newConstants := env.constants.map₁
+    let ctx := { newConstants, verbose, compare, checkQuot := false, fuel, instr }
     Prod.fst <$> replay ctx (.empty module) decl
 
 /-- Read the name of the main module from the `lake-manifest`. -/
@@ -390,6 +418,7 @@ unsafe def main (args : List String) : IO UInt32 := do
   let verbose := "-v" ∈ flags || "--verbose" ∈ flags
   let fresh : Bool := "--fresh" ∈ flags
   let compare : Bool := "--compare" ∈ flags
+  let instr : Bool := "--instr" ∈ flags || (← IO.getEnv "LEAN4LEAN_INSTR").isSome
   let mut fuel : Lean4Lean.FuelConfig := {}
   let mut onlyDecl : Option Name := none
   for flag in flags do
@@ -435,11 +464,11 @@ unsafe def main (args : List String) : IO UInt32 := do
         {targetModules}"
     for m in targetModules do
       if verbose then IO.println s!"replaying {m} with --fresh"
-      n := n + (← replayFromFresh m verbose compare onlyDecl fuel)
+      n := n + (← replayFromFresh m verbose compare onlyDecl fuel instr)
   else
     let mut tasks := #[]
     for m in targetModules do
-      tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare onlyDecl fuel))
+      tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare onlyDecl fuel instr))
     let mut err := false
     for (m, t) in tasks do
       if verbose then IO.println s!"replaying {m}"

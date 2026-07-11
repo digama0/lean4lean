@@ -319,26 +319,19 @@ theorem tryUnfoldProjApp.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
 
 def _root_.Lean4Lean.TypeChecker.ReductionStatus.WF
     (c : VContext) (e₁' e₂' : VExpr) (allowContinue := false) : ReductionStatus → Prop
-  | .continue e₁ e₂ => allowContinue ∧ c.TrExpr e₁ e₁' ∧ c.TrExpr e₂ e₂'
-  | .unknown e₁ e₂ | .false e₁ e₂ => c.TrExpr e₁ e₁' ∧ c.TrExpr e₂ e₂'
-  | .true => c.IsDefEqU e₁' e₂'
-
-theorem _root_.Lean4Lean.TypeChecker.ReductionStatus.WF.bool
-    (H1 : c.TrExpr e₁ e₁') (H2 : c.TrExpr e₂ e₂') (H : b = true → c.IsDefEqU e₁' e₂') :
-    ReductionStatus.WF c e₁' e₂' allowContinue (.bool e₁ e₂ b) :=
-  match b with
-  | .false => ⟨H1, H2⟩
-  | .true => H rfl
+  | .continue e₁ e₂ | .false e₁ e₂ => allowContinue ∧ c.TrExpr e₁ e₁' ∧ c.TrExpr e₂ e₂'
+  | .unknown e₁ e₂ => c.TrExpr e₁ e₁' ∧ c.TrExpr e₂ e₂'
+  | .bool b => b → c.IsDefEqU e₁' e₂'
 
 def _root_.Lean4Lean.TypeChecker.ReductionStatus.WF.defeq
     (h1 : c.IsDefEqU e₁' e₁'') (h2 : c.IsDefEqU e₂' e₂'')
     (H : ReductionStatus.WF c e₁' e₂' ac r) : ReductionStatus.WF c e₁'' e₂'' ac r :=
   match r, H with
-  | .continue .., ⟨a1, a2, a3⟩ =>
+  | .continue .., ⟨a1, a2, a3⟩ | .false .., ⟨a1, a2, a3⟩  =>
     ⟨a1, a2.defeq c.Ewf c.Δwf h1, a3.defeq c.Ewf c.Δwf h2⟩
-  | .unknown .., ⟨a2, a3⟩ | .false .., ⟨a2, a3⟩ =>
+  | .unknown .., ⟨a2, a3⟩ =>
     ⟨a2.defeq c.Ewf c.Δwf h1, a3.defeq c.Ewf c.Δwf h2⟩
-  | .true, h => h1.symm.trans c.Ewf c.Δwf h |>.trans c.Ewf c.Δwf h2
+  | .bool _, h => fun hb => h1.symm.trans c.Ewf c.Δwf (h hb) |>.trans c.Ewf c.Δwf h2
 
 theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
@@ -351,7 +344,7 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
     have ⟨_, stk⟩ := AppStack.build (e.mkAppList_getAppArgsList ▸ he)
     have .const a1 a2 a3 := h3 ▸ stk.tr
     have ⟨b1, b2, b3, b4⟩ := c.trenv.find?_uniq h1 a1
-    refine (unfoldDefinition.WF he).bind fun oe _ _ H => ?_
+    refine .statsBind fun _ _ => (unfoldDefinition.WF he).bind fun oe _ _ H => ?_
     obtain _ | e' := oe; · cases H h1 h2 h3 (a3.trans b3.symm)
     have ⟨_, _, c1, c2⟩ := H
     exact (whnfCore.WF c1).mono fun x _ _ h => h.2.defeq c.Ewf c.Δwf c2
@@ -360,8 +353,8 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
     let ⟨_, se₁, de₁⟩ := he₁; let ⟨_, se₂, de₂⟩ := he₂
     refine (quickIsDefEq.WF se₁ se₂).bind fun _ _ _ h => .pure ?_; split
     · exact ⟨rfl, he₁, he₂⟩
-    · exact de₁.symm.trans c.Ewf c.Δwf (h rfl) |>.trans c.Ewf c.Δwf de₂
-    · exact ⟨he₁, he₂⟩
+    · exact fun _ => de₁.symm.trans c.Ewf c.Δwf (h rfl) |>.trans c.Ewf c.Δwf de₂
+    · exact ⟨rfl, he₁, he₂⟩
   split
   · exact .pure ⟨he₁.trExpr c.Ewf c.Δwf, he₂.trExpr c.Ewf c.Δwf⟩
   · refine (tryUnfoldProjApp.WF he₂).bind fun _ _ _ h => ?_; split
@@ -371,13 +364,16 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
     · exact hcont (h _ rfl).2 (he₂.trExpr c.Ewf c.Δwf)
     · exact (hdelta he₂ ‹_›).bind fun _ _ _ h => hcont (he₁.trExpr c.Ewf c.Δwf) h
   rename_i dt dt' hd1 hd2; extract_lets ht hs; split <;> [skip; split]
-  · exact (hdelta he₂ ‹_›).bind fun _ _ _ h => hcont (he₁.trExpr c.Ewf c.Δwf) h
-  · exact (hdelta he₁ ‹_›).bind fun _ _ _ h => hcont h (he₂.trExpr c.Ewf c.Δwf)
+  · refine .statsBind fun _ _ => ?_
+    exact (hdelta he₂ ‹_›).bind fun _ _ _ h => hcont (he₁.trExpr c.Ewf c.Δwf) h
+  · refine .statsBind fun _ _ => ?_
+    exact (hdelta he₁ ‹_›).bind fun _ _ _ h => hcont h (he₂.trExpr c.Ewf c.Δwf)
   have hF1 {s} : (F1 ⟨⟩).WF c s fun r _ => r.WF c e₁' e₂' true :=
     (hdelta he₁ ‹_›).bind fun _ _ _ h1 => (hdelta he₂ ‹_›).bind fun _ _ _ h2 => hcont h1 h2
-  refine .get ?_; split <;> [skip; exact hF1]
-  split <;> [skip; exact cacheFailure.WF.lift.bind fun _ _ _ _ => hF1]
-  rename_i h1 h2; simp at h1
+  refine .get ?_; split <;> [skip; (refine .get ?_; split <;> exact .statsBind fun _ _ => hF1)]
+  split <;> refine .statsBind fun _ _ => ?_ <;>
+    [skip; exact cacheFailure.WF.lift.bind fun _ _ _ _ => hF1]
+  rename_i h1 h2 _ _; simp at h1
   cases ptrEqConstantInfo_eq h1.1.1.2
   have ⟨n₁, b1₁, ⟨_, b2₁⟩, ls₁, b3₁⟩ := isDelta_is_some.1 hd1
   have ⟨n₂, b1₂, ⟨_, b2₂⟩, ls₂, b3₂⟩ := isDelta_is_some.1 hd2
@@ -394,8 +390,9 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
     ((List.mapM_eq_some.1 c2₁).length_eq.symm.trans c3₁)
     (Level.isEquivList_wf h2 c2₁ c2₂)
   refine (isDefEqArgs.WF ⟨_, stk₁.tr, _, stk₂.tr, _, this⟩ he₁ he₂).bind fun _ _ _ h => ?_
-  split <;> [skip; exact cacheFailure.WF.lift.bind fun _ _ _ _ => hF1]
-  exact .pure <| h ‹_›
+  split <;> refine .statsBind fun _ _ => ?_ <;>
+    [skip; exact cacheFailure.WF.lift.bind fun _ _ _ _ => hF1]
+  exact .pure fun _ => h ‹_›
 
 theorem isNatZero_wf {c : VContext} (H : isNatZero e) (h : c.TrExprS e e') : e' = .natZero := by
   have h1 : c.TrExprS (.lit (.natVal 0)) e' := by
@@ -439,20 +436,18 @@ theorem lazyDeltaReduction.loop.WF {c : VContext} {s : VState}
   induction n generalizing s e₁ e₂ e₁' e₂' with | zero => exact .throw | succ n ih
   unfold loop; extract_lets F1 F2 F3
   refine (isDefEqOffset.WF he₁ he₂).bind fun _ _ _ h => ?_; split
-  · refine .pure <| .bool (he₁.trExpr c.Ewf c.Δwf) (he₂.trExpr c.Ewf c.Δwf) fun hb => h ?_
+  · refine .pure fun hb => h ?_
     simpa using hb
   suffices hF2 : ∀ {s}, (F2 ⟨⟩).WF c s fun r _ => r.WF c e₁' e₂' by
     refine .pureBind <| .readThe ?_; split <;> [skip; exact hF2]
     refine (reduceNat.WF he₁).bind fun _ _ _ h => ?_; split
     · have ⟨_, a1, a2⟩ := (h _ rfl).2
       refine (isDefEqCore.WF a1 he₂).bind fun _ _ _ h => ?_
-      refine .pure <| .bool ⟨_, a1, a2⟩ (he₂.trExpr c.Ewf c.Δwf) fun hb => ?_
-      exact a2.symm.trans c.Ewf c.Δwf (h hb)
+      exact .pure fun hb => a2.symm.trans c.Ewf c.Δwf (h hb)
     refine (reduceNat.WF he₂).bind fun _ _ _ h => ?_; split
     · have ⟨_, a1, a2⟩ := (h _ rfl).2
       refine (isDefEqCore.WF he₁ a1).bind fun _ _ _ h => ?_
-      refine .pure <| .bool (he₁.trExpr c.Ewf c.Δwf) ⟨_, a1, a2⟩ fun hb => ?_
-      exact (h hb).trans c.Ewf c.Δwf a2
+      exact .pure fun hb => (h hb).trans c.Ewf c.Δwf a2
     exact hF2
   intro s; unfold F2; refine .getEnv ?_
   refine (M.WF.liftExcept reduceNative.WF).lift.bind fun _ _ _ h => ?_
@@ -461,9 +456,12 @@ theorem lazyDeltaReduction.loop.WF {c : VContext} {s : VState}
   split <;> [cases h _ rfl; skip]
   refine .pureBind ?_; unfold F1
   refine (lazyDeltaReductionStep.WF he₁ he₂).bind fun r _ _ h => ?_
-  cases r with | «continue» => ?_ | _ => exact .pure h
-  let ⟨_, ⟨_, a1, a2⟩, ⟨_, b1, b2⟩⟩ := h
-  exact (ih a1 b1).mono fun _ _ _ h => h.defeq a2 b2
+  cases r with
+  | «continue» =>
+    let ⟨_, ⟨_, a1, a2⟩, ⟨_, b1, b2⟩⟩ := h
+    exact (ih a1 b1).mono fun _ _ _ h => h.defeq a2 b2
+  | false => exact .pure nofun
+  | _ => exact .pure h
 
 theorem lazyDeltaProjReduction.finish.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS (.proj n₁ i e₁) e₁') (he₂ : c.TrExprS (.proj n₂ i e₂) e₂') :
@@ -493,9 +491,15 @@ theorem lazyDeltaProjReduction.loop.WF {c : VContext} {s : VState}
     have f1 := e1.uniq c.Ewf (.refl c.Δwf.toCtx) a2 c2
     have f2 := e2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 d2
     exact f1.symm.trans c.Ewf c.Δwf <| (h hb).trans c.Ewf c.Δwf f2
-  · exact .pure fun _ => a2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 h
-  all_goals
-    have ⟨⟨_, c1, c2⟩, ⟨_, d1, d2⟩⟩ := h
+  · exact .pure fun _ => a2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 (h ‹_›)
+  · have ⟨⟨_, c1, c2⟩, ⟨_, d1, d2⟩⟩ := h
+    have ⟨_, e1⟩ := a2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) c2.symm
+    have ⟨_, e2⟩ := b2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) d2.symm
+    refine (finish.WF (.proj c1 e1) (.proj d1 e2)).mono fun _ _ _ h hb => ?_
+    have f1 := e1.uniq c.Ewf (.refl c.Δwf.toCtx) a2 c2
+    have f2 := e2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 d2
+    exact f1.symm.trans c.Ewf c.Δwf <| (h hb).trans c.Ewf c.Δwf f2
+  · have ⟨_, ⟨_, c1, c2⟩, ⟨_, d1, d2⟩⟩ := h
     have ⟨_, e1⟩ := a2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) c2.symm
     have ⟨_, e2⟩ := b2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) d2.symm
     refine (finish.WF (.proj c1 e1) (.proj d1 e2)).mono fun _ _ _ h hb => ?_
@@ -523,9 +527,11 @@ theorem isDefEqUnitLike.WF {c : VContext} {s : VState}
 
 theorem isDefEqCore'.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (isDefEqCore' e₁ e₂) fun b _ => b = true → c.IsDefEqU e₁' e₂' := by
-  unfold isDefEqCore'; extract_lets F1 F2 F3
-  refine (quickIsDefEq.WF he₁ he₂).bind fun _ _ _ h => ?_
+    RecM.WF c s (isDefEqCore' e₁ e₂ tag) fun b _ => b = true → c.IsDefEqU e₁' e₂' := by
+  unfold isDefEqCore'; extract_lets _ _ F1 F2 F3 F4
+  suffices ∀ {s}, RecM.WF c s (F4 ⟨⟩) fun b _ => b = true → c.IsDefEqU e₁' e₂' by
+    split <;> exact .pureBind this
+  refine .statsBind fun _ _ => (quickIsDefEq.WF he₁ he₂).bind fun _ _ _ h => ?_
   split <;> [exact .pure fun hb => h (by simpa using hb); skip]
   refine .pureBind <| .readThe ?_
   suffices ∀ {s}, RecM.WF c s (F2 ⟨⟩) fun b _ => b = true → c.IsDefEqU e₁' e₂' by
@@ -558,8 +564,8 @@ theorem isDefEqCore'.WF {c : VContext} {s : VState}
   · exact .pure fun hb => h (by simpa using hb)
   refine .pureBind <| (lazyDeltaReduction.loop.WF a1 b1).readThe.bind fun _ _ _ h => ?_; split
   · cases h.1
-  · exact .pure fun _ => h
-  · exact .pure nofun
+  · cases h.1
+  · exact .pure h
   have ⟨⟨e₁', c1, c4⟩, ⟨e₂', d1, d4⟩⟩ := h
   refine .mono (Q := fun b _ => b = true → c.IsDefEqU e₁' e₂') ?_ fun _ _ _ h hb =>
     c4.symm.trans c.Ewf c.Δwf (h (by simpa using hb)) |>.trans c.Ewf c.Δwf d4

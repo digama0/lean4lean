@@ -36,8 +36,8 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     · let .mdata he := he
       exact (whnfCore'.WF he).bind fun _ _ _ h => hP ▸ .pure h
     · refine .getLCtx ?_; split <;> [exact hid; exact hG rfl]
-  simp [G]; refine fun hfull => .get ?_; split
-  · rename_i r eq; refine .stateWF fun wf => hP ▸ .pure ?_
+  unfold G; refine fun hfull => .statsBind fun _ _ => .get ?_; split
+  · rename_i r eq; refine .stateWF fun wf => .statsBind fun _ _ => hP ▸ .pure ?_
     have ⟨_, h1, h2, h3⟩ := (wf.whnfCore_wf eq).2.2.2.2 he.fvarsIn
     refine ⟨h1, h3.defeq c.Ewf c.Δwf ?_⟩
     exact h2.uniq c.Ewf (.refl c.Ewf c.Δwf) he
@@ -55,7 +55,7 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
       · exact he.fvarsIn.mono wf.ngen_wf
       · exact h2.fvarsIn.mono wf.ngen_wf
     exact hP ▸ ⟨.rfl, { wf with whnfCore_wf := hic wf.whnfCore_wf }, h1, h2⟩
-  unfold F; split <;> cases hfull
+  refine .pureBind ?_; unfold F; split <;> cases hfull
   · simp; exact hP ▸ whnfFVar.WF he
   · rename_i fn arg _; generalize eq : fn.app arg = e at *
     rw [Expr.withRevApp_eq]
@@ -138,8 +138,8 @@ theorem whnf'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     · let .mdata he := he
       exact (whnf'.WF he).bind fun _ _ _ h => hP ▸ .pure h
     · refine .getLCtx ?_; split <;> [exact hid; exact hG]
-  simp [G]; refine .get ?_; split
-  · rename_i r eq; refine .stateWF fun wf => hP ▸ .pure ?_
+  unfold G; refine .statsBind fun _ _ => .get ?_; split
+  · rename_i r eq; refine .stateWF fun wf => .statsBind fun _ _ => hP ▸ .pure ?_
     have ⟨_, h1, h2, h3⟩ := (wf.whnf_wf eq).2.2.2.2 he.fvarsIn
     refine ⟨h1, h3.defeq c.Ewf c.Δwf ?_⟩
     exact h2.uniq c.Ewf (.refl c.Ewf c.Δwf) he
@@ -147,19 +147,19 @@ theorem whnf'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   have {e e' s n} (he : c.TrExprS e e') : (loop e n).WF c s fun e₁ _ =>
       c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := by
     induction n generalizing s e e' with | zero => exact .throw | succ n ih => ?_
-    refine .getEnv <| (whnfCore'.WF he).bind fun e₁ s _ ⟨h1, _, he₁, eq⟩ => ?_
+    refine .statsBind fun _ _ => .getEnv <| (whnfCore'.WF he).bind fun e₁ s _ ⟨h1, _, he₁, eq⟩ => ?_
     refine (M.WF.liftExcept reduceNative.WF).lift.bind fun _ _ _ h3 => ?_
     extract_lets F1 F2; split <;> [cases h3 _ rfl; skip]
     refine .pureBind ?_; unfold F2
     refine (reduceNat.WF he₁).bind fun _ _ _ h3 => ?_; split
     · exact .pure ⟨.trans h1 (h3 _ rfl).1, (h3 _ rfl).2.defeq c.Ewf c.Δwf eq⟩
-    refine .pureBind ?_; unfold F1
+    refine .pureBind <| .statsBind fun _ _ => ?_
     refine (unfoldDefinition.WF he₁).bind fun _ _ _ H => ?_
     split <;> [skip; exact .pure ⟨h1, _, he₁, eq⟩]
     have ⟨a1, _, a2, eq'⟩ := H
     refine (ih a2).mono fun _ _ _ ⟨b1, b2⟩ => ?_
     exact ⟨h1.trans <| a1.trans b1, b2.defeq c.Ewf c.Δwf <| eq'.trans c.Ewf c.Δwf eq⟩
-  refine .readThe <| (this he).bind fun e₁ s _ ⟨h1, h2⟩ => ?_
+  refine .pureBind <| .readThe <| (this he).bind fun e₁ s _ ⟨h1, h2⟩ => ?_
   rintro _ mwf wf a s' ⟨⟩
   refine let s' := _; ⟨s', rfl, ?_⟩
   have hic {ic} (hic : WHNFCache.WF c s ic) : WHNFCache.WF c s (ic.insert e e₁) := by

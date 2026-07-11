@@ -11,7 +11,60 @@ namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
 
+/-- If `LEAN4LEAN_TC_HASH=1`, `isDefEqCore'` emits a `DEQ ...` line per call. -/
+initialize tcHashTrace : Bool ← return (← IO.getEnv "LEAN4LEAN_TC_HASH").isSome
+
+/-- Short string tag for the top-level structure of `e`, mirroring C++'s
+`head_str_for_trace` in `src/kernel/type_checker.cpp:1181` for direct diffing. -/
+def _root_.Lean.Expr.kindString : Expr → String
+  | .bvar i   => s!"bvar_{i}"
+  | .fvar id  => s!"fvar_{id.name}"
+  | .mvar id  => s!"mvar_{id.name}"
+  | .sort _   => "Sort"
+  | .const n _ => n.toString
+  | .lam ..   => "λ"
+  | .forallE .. => "∀"
+  | .letE ..  => "let"
+  | .lit _    => "lit"
+  | .mdata _ _ => "mdata"
+  | .proj s idx _ => s!"proj_{s}_{idx}"
+  | e@(.app ..) =>
+    let n := e.getAppNumArgs
+    match e.getAppFn with
+    | .const c _ => s!"{c}({n})"
+    | .lam ..    => s!"λ({n})"
+    | .fvar id   => s!"fvar_{id.name}({n})"
+    | .proj s idx _ => s!"proj_{s}_{idx}({n})"
+    | _          => s!"?({n})"
+
 abbrev InferCache := ExprMap Expr
+
+structure TypeChecker.Stats where
+  whnf      : Nat := 0
+  whnfHit   : Nat := 0
+  whnfIters : Nat := 0
+  whnfCore  : Nat := 0
+  whnfCoreHit : Nat := 0
+  unfold    : Nat := 0
+  unfoldHit : Nat := 0
+  unfoldFromWhnf : Nat := 0
+  unfoldFromLazyDelta : Nat := 0
+  lazyDeltaBothSameRegular : Nat := 0
+  lazyDeltaBothSameNonRegular : Nat := 0
+  lazyDeltaBothDifferent : Nat := 0
+  lazyDeltaArgsMatched : Nat := 0
+  lazyDeltaArgsFailed : Nat := 0
+  lazyDeltaFailedBefore : Nat := 0
+  isDefEq   : Nat := 0
+  /-- Polynomial hash of the sequence of (`t.hash`, `s.hash`) pairs seen at each
+      `isDefEqCore'` entry. Two kernels produce the same DEQ event sequence iff
+      they have the same fingerprint. -/
+  deqFingerprint : UInt64 := 0
+  unfoldPerConst : Std.HashMap Lean.Name Nat := {}
+  /-- Number of `isDefEqCore'` entries per `deqTag` caller-tag (mirrors C++
+      `caller_tag_scope` counts). Useful for bisecting divergences. -/
+  deqPerTag : Std.HashMap String Nat := {}
+  deriving Inhabited
 
 structure TypeChecker.State where
   ngen : NameGenerator := { namePrefix := `_kernel_fresh, idx := 0 }
@@ -22,6 +75,7 @@ structure TypeChecker.State where
   eqvManager : EquivManager := {}
   failure : Std.HashSet (Expr × Expr) := {}
   unfold : ExprMap Expr := {}
+  stats : TypeChecker.Stats := {}
 
 structure TypeChecker.Context where
   env : Environment
@@ -40,6 +94,12 @@ def M.run (env : Environment) (safety : DefinitionSafety := .safe)
     (x : M α) : Except Exception α :=
   x { env, safety, lctx, lparams, fuel } |>.run' {}
 
+/-- Same as `M.run` but returns the final `State` (so callers can read `Stats`). -/
+def M.runWithState (env : Environment) (safety : DefinitionSafety := .safe)
+    (lctx : LocalContext := {}) (lparams : List Name := []) (fuel : FuelConfig := {})
+    (x : M α) : Except Exception (α × State) :=
+  x { env, safety, lctx, lparams, fuel } |>.run {}
+
 def M.runTermElab (m : M α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α := do
   ofExceptKernelException <| m.run (env := (← getEnv).toKernelEnv)
     (lctx := ← getLCtx) (safety := safety) (lparams := (← get).levelNames)
@@ -47,6 +107,8 @@ def M.runTermElab (m : M α) (safety := DefinitionSafety.safe) : Elab.Term.TermE
 instance : MonadLift M Elab.Term.TermElabM := ⟨M.runTermElab⟩
 
 def getEnv : M Environment := return (← read).env
+
+def modifyStats (f : Stats → Stats) : M Unit := modify fun s => { s with stats := f s.stats }
 
 instance : MonadLCtx M where
   getLCtx := return (← read).lctx
@@ -62,7 +124,7 @@ instance (priority := low) : MonadWithReaderOf LocalContext M where
   withReader f := withReader fun s => { s with lctx := f s.lctx }
 
 structure Methods where
-  protected isDefEqCore : Expr → Expr → M Bool
+  protected isDefEqCore : Expr → Expr → (tag : String := "") → M Bool
   protected whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : M Expr
   protected whnf (e : Expr) : M Expr
   protected inferType (e : Expr) (inferOnly : Bool) : M Expr
@@ -72,12 +134,8 @@ abbrev RecM := ReaderT Methods M
 inductive ReductionStatus where
   | continue (tn sn : Expr)
   | unknown (tn sn : Expr)
-  | true
+  | bool (b : Bool)
   | false (tn sn : Expr)
-
-def ReductionStatus.bool (tn sn : Expr) : Bool → ReductionStatus
-  | .true => .true
-  | .false => .false tn sn
 
 namespace Inner
 
@@ -155,10 +213,10 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
     let s ← ensureSortCore r e
     return .sort <| us.foldr mkLevelIMaxCpp s.sortLevel!
 
-def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore t s
+def isDefEqCore (t s : Expr) (tag := "") : RecM Bool := fun m => m.isDefEqCore t s tag
 
-def isDefEq (t s : Expr) : RecM Bool := do
-  let r ← isDefEqCore t s
+def isDefEq (t s : Expr) (tag := "") : RecM Bool := do
+  let r ← isDefEqCore t s tag
   if r then
     modify fun st => { st with eqvManager := st.eqvManager.addEquiv t s }
   pure r
@@ -261,9 +319,9 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
         let dType := fType.bindingDomain!
         let ok ← if a.isAppOfArity ``eagerReduce 2 then
           withTheReader Context (fun s => {s with eagerReduce := true}) <|
-            isDefEq dType aType
+            isDefEq dType aType "inferApp"
         else
-          isDefEq dType aType
+          isDefEq dType aType "inferApp"
         if !ok then throw <| .appTypeMismatch (← getEnv) (← getLCtx) e fType aType
         pure <| fType.bindingBody!.instantiate1 a
     | .letE .. => inferLet e inferOnly
@@ -281,7 +339,7 @@ def reduceRecursor (e : Expr) (cheapRec := false) (cheapProj := false) : RecM (O
     if let some r ← quotReduceRec e whnf then
       return r
   let whnf' e := if cheapRec then whnfCore e cheapRec cheapProj else whnf e
-  if let some r ← inductiveReduceRec env e whnf' inferType isDefEq then
+  if let some r ← inductiveReduceRec env e whnf' inferType (isDefEq (tag := "")) then
     return r
   return none
 
@@ -312,7 +370,9 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
   | .mdata _ e => return ← whnfCore' e cheapRec cheapProj
   | .fvar id => if !isLetFVar (← getLCtx) id then return e
   | .app .. | .letE .. | .proj .. => pure ()
+  modifyStats fun s => { s with whnfCore := s.whnfCore + 1 }
   if let some r := (← get).whnfCoreCache[e]? then
+    modifyStats fun s => { s with whnfCoreHit := s.whnfCoreHit + 1 }
     return r
   let rec save r := do
     if !cheapRec && !cheapProj then
@@ -360,12 +420,17 @@ def isDelta (env : Environment) (e : Expr) : Option ConstantInfo := do
   none
 
 def unfoldDefinitionCore (e : Expr) : RecM (Option Expr) := do
-  let .const _ ls := e | return none
+  let .const cn ls := e | return none
   let env ← getEnv
   let some d := isDelta env e | return none
   unless ls.length == d.numLevelParams do return none
+  modifyStats fun s => { s with
+    unfold := s.unfold + 1
+    unfoldPerConst := s.unfoldPerConst.insert cn ((s.unfoldPerConst[cn]?.getD 0) + 1) }
   unless 0 < ls.length do return some (d.instantiateValueLevelParams!Cpp ls)
-  if let some r := (← get).unfold[e]? then return some r
+  if let some r := (← get).unfold[e]? then
+    modifyStats fun s => { s with unfoldHit := s.unfoldHit + 1 }
+    return some r
   let r := d.instantiateValueLevelParams!Cpp ls
   modify fun s => { s with unfold := s.unfold.insert e r }
   return some r
@@ -441,16 +506,20 @@ def whnf' (e : Expr) : RecM Expr := do
     if !isLetFVar (← getLCtx) id then
       return e
   | .lam .. | .app .. | .const .. | .letE .. | .proj .. => pure ()
+  modifyStats fun s => { s with whnf := s.whnf + 1 }
   -- check cache
   if let some r := (← get).whnfCache[e]? then
+    modifyStats fun s => { s with whnfHit := s.whnfHit + 1 }
     return r
   let rec loop t
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
+    modifyStats fun s => { s with whnfIters := s.whnfIters + 1 }
     let env ← getEnv
     let t ← whnfCore' t
     if let some t ← reduceNative env t then return t
     if let some t ← reduceNat t then return t
+    modifyStats fun s => { s with unfoldFromWhnf := s.unfoldFromWhnf + 1 }
     let some t ← unfoldDefinition t | return t
     loop t fuel
   let ctx ← readThe Context
@@ -458,8 +527,8 @@ def whnf' (e : Expr) : RecM Expr := do
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
--- Match C++ `g_dont_care = mkConst("dontcare")`; L4L's `default : Expr` has a
--- different hash.
+-- Match C++ `g_dont_care = mkConst("dontcare")`; L4L's `default : Expr`
+-- is ``.const `_inhabitedExprDummy []``, which hashes differently.
 def dontcare : Expr := .const `dontcare []
 
 def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
@@ -468,7 +537,7 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
     let sType ← if tDom == sDom then pure none else
       let sType := sDom.instantiateRev subst
       let tType := tDom.instantiateRev subst
-      if !(← isDefEq tType sType) then return false
+      if !(← isDefEq tType sType "lambdaDom") then return false
       pure (some sType)
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev subst)
@@ -476,7 +545,7 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
         isDefEqLambda tBody sBody (subst.push fv)
     else
       isDefEqLambda tBody sBody (subst.push dontcare)
-  | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
+  | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst) "lambdaBody"
 
 def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
@@ -484,7 +553,7 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
     let sType ← if tDom == sDom then pure none else
       let sType := sDom.instantiateRev subst
       let tType := tDom.instantiateRev subst
-      if !(← isDefEq tType sType) then return false
+      if !(← isDefEq tType sType "forallDom") then return false
       pure (some sType)
     if tBody.hasLooseBVars || sBody.hasLooseBVars then
       let sType := sType.getD (sDom.instantiateRev subst)
@@ -492,18 +561,18 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
         isDefEqForall tBody sBody (subst.push fv)
     else
       isDefEqForall tBody sBody (subst.push dontcare)
-  | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
+  | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst) "forallBody"
 
 def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
-  if ← modifyGet fun (.mk a1 a2 a3 a4 a5 a6 a7 (eqvManager := m)) =>
+  if ← modifyGet fun (.mk a1 a2 a3 a4 a5 a6 a7 a8 (eqvManager := m)) =>
     let (b, m) := m.isEquiv useHash t s
-    (b, .mk a1 a2 a3 a4 a5 a6 a7 (eqvManager := m))
+    (b, .mk a1 a2 a3 a4 a5 a6 a7 a8 (eqvManager := m))
   then return .true
   match t, s with
   | .lam .., .lam .. => toLBoolM <| isDefEqLambda t s
   | .forallE .., .forallE .. => toLBoolM <| isDefEqForall t s
   | .sort a1, .sort a2 => pure (a1.isEquiv a2).toLBool
-  | .mdata _ a1, .mdata _ a2 => toLBoolM <| isDefEq a1 a2
+  | .mdata _ a1, .mdata _ a2 => toLBoolM <| isDefEq a1 a2 "mdata"
   | .mvar .., .mvar .. => unreachable!
   | .lit a1, .lit a2 => pure (a1 == a2).toLBool
   | _, _ => return .undef
@@ -511,7 +580,7 @@ def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
 def isDefEqArgs (t s : Expr) : RecM Bool := do
   match t, s with
   | .app tf ta, .app sf sa =>
-    if !(← isDefEq ta sa) then return false
+    if !(← isDefEq ta sa "isDefEqArgs") then return false
     isDefEqArgs tf sf
   | .app .., _ | _, .app .. => return false
   | _, _ => return true
@@ -519,7 +588,7 @@ def isDefEqArgs (t s : Expr) : RecM Bool := do
 def tryEtaExpansionCore (t s : Expr) : RecM Bool := do
   if t.isLambda && !s.isLambda then
     let .forallE name ty _ bi ← whnf (← inferType s) | return false
-    isDefEq t (.lam name ty (.app s (.bvar 0)) bi)
+    isDefEq t (.lam name ty (.app s (.bvar 0)) bi) "etaExpand"
   else return false
 
 def tryEtaExpansion (t s : Expr) : RecM Bool :=
@@ -531,10 +600,11 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
   let .ctorInfo fInfo ← env.get f | return false
   unless s.getAppNumArgs == fInfo.numParams + fInfo.numFields do return false
   unless env.isStructureLike fInfo.induct do return false
-  unless ← isDefEq (← inferType t) (← inferType s) do return false
+  unless ← isDefEq (← inferType t) (← inferType s) "etaStruct.type" do return false
   let args := s.getAppArgs
   for h : i in [fInfo.numParams:args.size] do
-    unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) args[i] do return false
+    unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) args[i] "etaStruct.proj" do
+      return false
   return true
 
 def tryEtaStruct (t s : Expr) : RecM Bool :=
@@ -544,12 +614,13 @@ def isDefEqApp (t s : Expr) : RecM Bool := do
   unless t.isApp && s.isApp do return false
   t.withApp fun tf tArgs =>
   s.withApp fun sf sArgs => do
-  -- Match C++ `is_def_eq_app`: always run `isDefEq tf sf` first (even on size mismatch).
-  unless ← isDefEq tf sf do return false
+  -- Match C++ `is_def_eq_app`: always run `isDefEq tf sf` first (even on size
+  -- mismatch) so the isDefEqApp.fn counter increments the same way C++'s does.
+  unless ← isDefEq tf sf "isDefEqApp.fn" do return false
   if _h : tArgs.size = sArgs.size then
     let rec loop i := do
       if _h : i < tArgs.size then
-        unless ← isDefEq tArgs[i] sArgs[i] do return false
+        unless ← isDefEq tArgs[i] sArgs[i] "isDefEqApp.arg" do return false
         loop (i+1)
       else return true
     loop 0
@@ -558,7 +629,7 @@ def isDefEqApp (t s : Expr) : RecM Bool := do
 def isDefEqProofIrrel (t s : Expr) : RecM LBool := do
   let tType ← inferType t
   if !(← isProp tType) then return .undef
-  toLBoolM <| isDefEq tType (← inferType s)
+  toLBoolM <| isDefEq tType (← inferType s) "proofIrrel"
 
 def failedBefore (failure : Std.HashSet (Expr × Expr)) (t s : Expr) : Bool :=
   if t.hash < s.hash then
@@ -580,11 +651,13 @@ def tryUnfoldProjApp (e : Expr) : RecM (Option Expr) := do
 
 def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
   let env ← getEnv
-  let delta e := do whnfCore (← unfoldDefinition e).get! (cheapProj := true)
+  let delta e := do
+    modifyStats fun s => { s with unfoldFromLazyDelta := s.unfoldFromLazyDelta + 1 }
+    whnfCore (← unfoldDefinition e).get! (cheapProj := true)
   let cont tn sn :=
     return match ← quickIsDefEq tn sn with
     | .undef => .continue tn sn
-    | .true => .true
+    | .true => .bool true
     | .false => .false tn sn
   match isDelta env tn, isDelta env sn with
   | none, none => return .unknown tn sn
@@ -602,17 +675,27 @@ def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
     let ht := dt.hints
     let hs := ds.hints
     if ht.lt' hs then
+      modifyStats fun s => { s with lazyDeltaBothDifferent := s.lazyDeltaBothDifferent + 1 }
       cont tn (← delta sn)
     else if hs.lt' ht then
+      modifyStats fun s => { s with lazyDeltaBothDifferent := s.lazyDeltaBothDifferent + 1 }
       cont (← delta tn) sn
     else
       if tn.isApp && sn.isApp && ptrEqConstantInfo dt ds && dt.hints.isRegular
         && !failedBefore (← get).failure tn sn
       then
+        modifyStats fun s => { s with lazyDeltaBothSameRegular := s.lazyDeltaBothSameRegular + 1 }
         if Level.isEquivList tn.getAppFn.constLevels! sn.getAppFn.constLevels! then
           if ← isDefEqArgs tn sn then
-            return .true
+            modifyStats fun s => { s with lazyDeltaArgsMatched := s.lazyDeltaArgsMatched + 1 }
+            return .bool true
+          else
+            modifyStats fun s => { s with lazyDeltaArgsFailed := s.lazyDeltaArgsFailed + 1 }
         cacheFailure tn sn
+      else if tn.isApp && sn.isApp && ptrEqConstantInfo dt ds && failedBefore (← get).failure tn sn then
+        modifyStats fun s => { s with lazyDeltaFailedBefore := s.lazyDeltaFailedBefore + 1 }
+      else
+        modifyStats fun s => { s with lazyDeltaBothSameNonRegular := s.lazyDeltaBothSameNonRegular + 1 }
       cont (← delta tn) (← delta sn)
 
 @[inline] def isNatZero (t : Expr) : Bool :=
@@ -627,7 +710,7 @@ def isDefEqOffset (t s : Expr) : RecM LBool := do
   if isNatZero t && isNatZero s then
     return .true
   match isNatSuccOf? t, isNatSuccOf? s with
-  | some t', some s' => toLBoolM <| isDefEqCore t' s'
+  | some t', some s' => toLBoolM <| isDefEqCore t' s' "natSucc"
   | _, _ => return .undef
 
 def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := do
@@ -637,19 +720,20 @@ where
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
     let r ← isDefEqOffset tn sn
-    if r != .undef then return .bool tn sn (r == .true)
+    if r != .undef then return .bool (r == .true)
     if !tn.hasFVar && !sn.hasFVar || (← readThe Context).eagerReduce then
       if let some tn' ← reduceNat tn then
-        return .bool tn' sn (← isDefEqCore tn' sn)
+        return .bool (← isDefEqCore tn' sn "reduceNat_t")
       else if let some sn' ← reduceNat sn then
-        return .bool tn sn' (← isDefEqCore tn sn')
+        return .bool (← isDefEqCore tn sn' "reduceNat_s")
     let env ← getEnv
     if let some tn' ← reduceNative env tn then
-      return .bool tn' sn (← isDefEqCore tn' sn)
+      return .bool (← isDefEqCore tn' sn "reduceNative_t")
     else if let some sn' ← reduceNative env sn then
-      return .bool tn sn' (← isDefEqCore tn sn')
+      return .bool (← isDefEqCore tn sn' "reduceNative_s")
     match ← lazyDeltaReductionStep tn sn with
     | .continue tn sn => loop tn sn fuel
+    | .false .. => return .bool false
     | r => return r
 
 def lazyDeltaProjReduction (t s : Expr) (idx : Nat) : RecM Bool := do
@@ -658,21 +742,21 @@ where
   finish tn sn := do
     if let some tf ← reduceProjCore idx tn then
       if let some sf ← reduceProjCore idx sn then
-        return ← isDefEqCore tf sf
-    isDefEqCore tn sn
+        return ← isDefEqCore tf sf "projField"
+    isDefEqCore tn sn "projFallback"
   loop tn sn
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
     match ← lazyDeltaReductionStep tn sn with
     | .continue tn sn => loop tn sn fuel
-    | .true => return true
+    | .bool r => return r
     | .unknown tn sn | .false tn sn => finish tn sn
 
 def tryStringLitExpansionCore (t s : Expr) : RecM LBool := do
   let .lit (.strVal st) := t | return .undef
   let .app sf _ := s | return .undef
   unless sf == .const ``String.ofList [] do return .undef
-  toLBoolM <| isDefEqCore (.strLitToConstructor st) s
+  toLBoolM <| isDefEqCore (.strLitToConstructor st) s "strLit"
 
 def tryStringLitExpansion (t s : Expr) : RecM LBool := do
   match ← tryStringLitExpansionCore t s with
@@ -686,9 +770,22 @@ def isDefEqUnitLike (t s : Expr) : RecM Bool := do
   let .inductInfo { isRec := false, ctors := [c], numIndices := 0, .. } ← env.get I
     | return false
   let .ctorInfo { numFields := 0, .. } ← env.get c | return false
-  isDefEqCore tType (← inferType s)
+  isDefEqCore tType (← inferType s) "unitLike"
 
-def isDefEqCore' (t s : Expr) : RecM Bool := do
+def isDefEqCore' (t s : Expr) (tag := "") : RecM Bool := do
+  -- Polynomial fingerprint over the sequence of (t.hash, s.hash) pairs at each
+  -- isDefEqCore' entry. Two kernels with matching fingerprints ran the same
+  -- sequence of defeq checks.
+  let th : UInt64 := t.hash
+  let sh : UInt64 := s.hash
+  if tcHashTrace then
+    dbg_trace s!"DEQ [{tag}] t={th} s={sh} tk={t.kindString} sk={s.kindString}"
+  modifyStats fun st => { st with
+    isDefEq := st.isDefEq + 1
+    deqFingerprint :=
+      st.deqFingerprint * 1099511628211 + th * 65537 + sh
+    deqPerTag := st.deqPerTag.insert tag
+      ((st.deqPerTag[tag]?.getD 0) + 1) }
   let r ← quickIsDefEq t s (useHash := true)
   if r != .undef then return r == .true
 
@@ -706,9 +803,8 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   if r != .undef then return r == .true
 
   match ← lazyDeltaReduction tn sn with
-  | .continue .. => unreachable!
-  | .true => return true
-  | .false .. => return false
+  | .continue .. | .false .. => unreachable!
+  | .bool b => return b
   | .unknown tn sn =>
 
   match tn, sn with
@@ -722,7 +818,7 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   let tnn ← whnfCore tn
   let snn ← whnfCore sn
   if !(ptrEqExpr tnn tn && ptrEqExpr snn sn) then
-    return ← isDefEqCore tnn snn
+    return ← isDefEqCore tnn snn "reWhnf"
 
   if ← isDefEqApp tn sn then return true
   if ← tryEtaExpansion tn sn then return true
@@ -738,12 +834,12 @@ open Inner
 
 def Methods.withFuel : Nat → Methods
   | 0 =>
-    { isDefEqCore := fun _ _ => throw .deepRecursion
+    { isDefEqCore := fun _ _ _ => throw .deepRecursion
       whnfCore := fun _ _ _ => throw .deepRecursion
       whnf := fun _ => throw .deepRecursion
       inferType := fun _ _ => throw .deepRecursion }
   | n + 1 =>
-    { isDefEqCore := fun t s => isDefEqCore' t s (withFuel n)
+    { isDefEqCore := fun t s tag => isDefEqCore' t s tag (withFuel n)
       whnfCore := fun e r p => whnfCore' e r p (withFuel n)
       whnf := fun e => whnf' e (withFuel n)
       inferType := fun e i => inferType' e i (withFuel n) }
@@ -765,7 +861,7 @@ def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
 def checkType (e : Expr) : M Expr := (Inner.inferType e (inferOnly := false)).run
 
-def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
+def isDefEq (t s : Expr) (tag := "") : M Bool := (Inner.isDefEq t s tag).run
 
 def isProp (t : Expr) : M Bool := (Inner.isProp t).run
 

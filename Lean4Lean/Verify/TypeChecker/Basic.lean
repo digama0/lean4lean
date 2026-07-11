@@ -312,7 +312,7 @@ theorem M.WF.le {c : VContext} {s : VState} {Q R} {x : M α}
 
 structure Methods.WF (m : Methods) where
   isDefEqCore : c.TrExprS e₁ e₁' → c.TrExprS e₂ e₂' →
-    (m.isDefEqCore e₁ e₂).WF c s fun b _ => b → c.IsDefEqU e₁' e₂'
+    (m.isDefEqCore e₁ e₂ tag).WF c s fun b _ => b → c.IsDefEqU e₁' e₂'
   whnfCore : c.TrExprS e e' →
     (m.whnfCore e cheapRec cheapProj).WF c s fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
   whnf : c.TrExprS e e' →
@@ -364,6 +364,14 @@ theorem RecM.WF.le {c : VContext} {s : VState} {Q R} {x : RecM α}
 
 theorem RecM.WF.pureBind {c : VContext} {s : VState} {f : β → RecM α} {Q}
     {x : β} (H : WF c s (f x) Q) : ((Pure.pure x : RecM β) >>= f).WF c s Q := H
+
+theorem M.WF.modifyStats {c : VContext} {s : VState} {f} :
+    (modifyStats f).WF c s fun _ _ => True := by
+  rintro h _ _ ⟨⟩; exact ⟨_, rfl, .rfl, { h with }, trivial⟩
+
+theorem RecM.WF.statsBind {c : VContext} {s : VState} {f} {g : Unit → RecM α} {P}
+    (H : ∀ s', s ≤ s' → (g ⟨⟩).WF c s' P) : (monadLift (modifyStats f) >>= g).WF c s P :=
+  .bind (.lift .modifyStats) fun _ _ h _ => H _ h
 
 theorem get.WF {c : VContext} {s : VState} :
     M.WF c s get fun a s' => s.toState = a ∧ s = s' := by
@@ -852,7 +860,7 @@ theorem whnf.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
 
 theorem isDefEqCore.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (isDefEqCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' :=
+    RecM.WF c s (isDefEqCore e₁ e₂ tag) fun b _ => b → c.IsDefEqU e₁' e₂' :=
   fun _ wf => wf.isDefEqCore he₁ he₂
 
 theorem inferType.WF' {c : VContext} {s : VState} (h1 : e.FVarsIn (· ∈ c.vlctx.fvars))
@@ -916,10 +924,11 @@ theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e'
     simp [VExpr.instL] at this; rw [VLevel.inst_map_id] at this
     · exact ⟨fun _ _ _ => c1.fvarsIn.mono nofun, this⟩
     · exact (List.mapM_eq_some.1 a2).length_eq.symm.trans <| a3.trans b2.symm
+  refine .statsBind fun _ _ => ?_
   split <;> [rename_i h5; exact .pure this]
   refine .pureBind <| .get ?_
   split <;> [rename_i eq; refine .pureBind ?_]
-  · refine .stateWF fun wf => .pure ?_
+  · refine .stateWF fun wf => .statsBind fun _ _ => .pure ?_
     obtain ⟨_, _, _, ⟨⟩, a1, rfl⟩ := wf.unfold_wf eq
     cases h3.symm.trans a1; exact this
   · refine .bind (Q := fun _ _ => True) ?_ fun _ _ _ _ => .pure this
