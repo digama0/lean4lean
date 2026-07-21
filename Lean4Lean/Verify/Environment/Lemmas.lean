@@ -66,13 +66,20 @@ theorem Aligned.addInduct (H : AddInduct C₁ venv₁ decl C₂ venv₂)
     (h : Aligned safety C₁ venv₁) : Aligned safety C₂ venv₂ := by
   -- Intended route: walk `H.cis` (via `H.tr`/`H.map_eq`/`H.consts`), applying
   -- `Aligned.const` once per registered constant to grow `C₁ → C₂`.
-  -- IOTA-TODO(soundness): two gaps block completing this against the *batch*
-  -- `AddInduct` witness. (1) `Aligned` is generated only by `addConst`/`addDefEq`
-  -- steps and has no constructor for the ι-rule `addPat` stage that `venv₂ =
-  -- venv₁.addInduct decl` ends with, so `venv₂` is not `Aligned`-reachable.
-  -- (2) `AddInduct` records the batch `env_eq` and final-env `consts`, not the
-  -- per-step `addConst` witnesses `Aligned.const` consumes; recovering them means
+  -- IOTA-TODO(soundness): the enriched `AddInduct` now supplies the constant-side
+  -- data needed downstream (`wf`, `rec_find`, `value_find`), but two gaps still
+  -- block reconstructing an `Aligned` *witness* against the batch `AddInduct`.
+  -- (1) `Aligned` is generated only by `addConst`/`addDefEq` steps and has no
+  -- constructor for the ι-rule `addPat` stage that `venv₂ = venv₁.addInduct decl`
+  -- ends with, so `venv₂` is not `Aligned`-reachable; closing this needs a new
+  -- `Aligned` constructor (e.g. `| pat : Aligned C v → Aligned C (v.addPat p r)`)
+  -- and matching cases in `find?_iff`/`find?`/`find?_uniq`. (2) `AddInduct`
+  -- records the batch `env_eq` and final-env `consts`, not the per-step
+  -- `addConst` witnesses `Aligned.const` consumes; recovering them means
   -- re-deriving `addInduct`'s internal step order, deliberately avoided here.
+  -- NOTE: `pats_iota` no longer depends on this (it uses `TrEnv'.constMap_wf`,
+  -- which bypasses `Aligned`); this `sorry` only taints the `Aligned`-routed
+  -- `find?`/`of_value` family, not the ι-reduction handback interface.
   sorry
 
 theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := by
@@ -85,6 +92,70 @@ theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := b
   | induct _ h _ ih => exact ih.addInduct h
 
 theorem TrEnv'.map_wf (H : TrEnv' safety C Q venv) : C.WF := H.aligned.map_wf
+
+/-! ### Constant-map well-formedness and recursor lookup, independent of `Aligned`
+
+`pats_iota` (below) needs `SMap.WF` of the constant map at every step of the
+`TrEnv'` derivation (to reason about `find?` across insertions) and a way to pull
+a `recInfo` lookup back across the `quot` step. Both are provided here directly
+from the `TrEnv'`/`AddQuot`/`AddInduct` data, without routing through `Aligned`
+(whose `addInduct` case is still an `IOTA-TODO`). -/
+
+/-- Pull a `recInfo` lookup back across one fresh non-`recInfo` insertion: since
+the inserted value is not a `recInfo`, a `recInfo` resolved in the extended map
+was already resolved before the insertion. -/
+theorem pull_recInfo {m : ConstMap} {name recName : Name} {q : ConstantInfo}
+    {rval : RecursorVal} (wf : m.WF) (hq : ∀ v, q ≠ .recInfo v)
+    (h : (m.insert name q).find? recName = some (.recInfo rval)) :
+    m.find? recName = some (.recInfo rval) := by
+  rw [wf.find?_insert] at h; split at h
+  · exact absurd (Option.some.inj h) (hq rval)
+  · exact h
+
+/-- WF-preservation combinator for one `AddQuot1` step: the fresh insertion keeps
+the map `SMap.WF`, so a property of the extended WF map transfers. -/
+theorem AddQuot1.wf {P : ConstMap → VEnv → Prop} {Q : Prop} {name kind ci'}
+    (H1 : ∀ m env, m.WF → P m env → Q)
+    (m env) (wf : m.WF) (H2 : AddQuot1 name kind ci' P m env) : Q := by
+  let ⟨_, _, _, _, h2, _, h4⟩ := H2
+  exact H1 _ _ (wf.insert _ _ h2) h4
+
+/-- Adding the quotient constants preserves constant-map well-formedness. -/
+theorem AddQuot.wf (H : AddQuot C₁ C₂ env₁ env₂) (wf : C₁.WF) : C₂.WF := by
+  dsimp [AddQuot] at H
+  refine (AddQuot1.wf <| AddQuot1.wf <| AddQuot1.wf <| AddQuot1.wf ?_) _ _ wf H
+  rintro m env hwf ⟨rfl, _⟩; exact hwf
+
+/-- Pull-back combinator for one `AddQuot1` step: the inserted quotient constant
+is a `quotInfo`, so a `recInfo` lookup passes through it. -/
+theorem AddQuot1.pull {P : ConstMap → VEnv → Prop} {name kind ci' recName rval}
+    (H1 : ∀ m env, m.WF → P m env → m.find? recName = some (.recInfo rval))
+    (m env) (wf : m.WF) (H2 : AddQuot1 name kind ci' P m env) :
+    m.find? recName = some (.recInfo rval) := by
+  let ⟨_, _, _, _, h2, _, h4⟩ := H2
+  exact pull_recInfo wf (fun _ => by nofun) (H1 _ _ (wf.insert _ _ h2) h4)
+
+/-- A `recInfo` resolvable after adding the quotient constants was already
+resolvable before: `addQuot` only registers `quotInfo` constants. -/
+theorem AddQuot.pull {recName rval} (H : AddQuot C₁ C₂ env₁ env₂) (wf : C₁.WF)
+    (hfind : C₂.find? recName = some (.recInfo rval)) :
+    C₁.find? recName = some (.recInfo rval) := by
+  dsimp [AddQuot] at H
+  refine (AddQuot1.pull <| AddQuot1.pull <| AddQuot1.pull <| AddQuot1.pull ?_) _ _ wf H
+  rintro m env hwf ⟨rfl, _⟩; exact hfind
+
+/-- Constant-map well-formedness of a translated environment, proved directly by
+induction on `TrEnv'` (each step is a fresh insertion or an `AddQuot`/`AddInduct`
+batch that preserves `SMap.WF`). Unlike `TrEnv'.map_wf`, this does not route
+through `Aligned`, so it is free of the `Aligned.addInduct` placeholder. -/
+theorem TrEnv'.constMap_wf (H : TrEnv' safety C Q venv) : C.WF := by
+  induction H with
+  | empty => exact .empty
+  | «axiom» _ h2 _ _ _ ih => exact ih.insert _ _ h2
+  | defn _ h2 _ _ _ ih => exact ih.insert _ _ h2
+  | «opaque» _ h2 _ _ _ ih => exact ih.insert _ _ h2
+  | quot _ h2 _ ih => exact h2.wf ih
+  | induct _ h2 _ ih => exact h2.wf ih
 
 theorem Aligned.find? (H : Aligned safety C venv)
     (h : C.find? name = some ci) (hs : safety ≤ ci.safety) :
@@ -178,14 +249,12 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
     obtain h | ⟨rfl, rfl⟩ := this wf.map_wf (ih _ _ wf' h5)
     · exact h
     · contradiction
-  | induct _ _ _ _ =>
-    -- IOTA-TODO(soundness): with the batch `AddInduct` witness, splitting whether
-    -- `name` is one of the freshly-registered inductive/constructor/recursor
-    -- constants (all of which have `value? = none`, contradicting `hv`) or was
-    -- already present in `C` (→ `ih`) requires decomposing the `foldl`-of-inserts
-    -- from `map_eq` and threading `SMap.WF` across it, which the recorded fields
-    -- do not supply (no per-insert freshness). Left as an adequacy gap.
-    sorry
+  | induct _ hadd H ih =>
+    -- The freshly-registered inductive/constructor/recursor constants all carry
+    -- `value? = none` (`AddInduct.novalue`), so `hv : ci.value? = some v` forces
+    -- `name` to have been present already in `C` (`AddInduct.value_find`); then
+    -- `ih` applies and the result is carried forward by `≤`-monotonicity.
+    exact (ih (hadd.value_find h hv)).mono hadd.le
 
 nonrec theorem TrEnv.of_value (H : TrEnv safety env venv) (h : env.find? name = some ci)
     (hs : safety ≤ ci.safety) (hv : ci.value? = some v) :
@@ -202,6 +271,47 @@ redex, with its side conditions discharged) into a definitional equality. Both
 are stated in terms the erasure consumer re-pins against.
 -/
 
+/-- `TrEnv'`-level ι-rule lookup, stated against the constant map's own `find?`.
+By induction on the derivation: the recursor `recInfo` is registered by exactly
+one `induct` step (`AddInduct.rec_find` splits whether the current `find?` is the
+freshly-added recursor or an older one), where `VEnv.addInduct_pat` supplies the
+`pat`; every later step carries it forward by `.pats`-monotonicity. -/
+theorem TrEnv'.pats_iota {safety : DefinitionSafety} {C : ConstMap} {Q : Bool}
+    {venv : VEnv} {recName cName : Name} {rval : RecursorVal} {rule : RecursorRule}
+    (H : TrEnv' safety C Q venv)
+    (hrule : rval.rules.find? (·.ctor == cName) = some rule)
+    (hrec : C.find? recName = some (.recInfo rval)) :
+    ∃ r, venv.pats
+      (SimplePattern.iota recName rval.getMajorIdx cName
+        (rval.numParams + rule.nfields)).toPattern r := by
+  induction H with
+  | empty => simp [SMap.find?] at hrec
+  | «axiom» _ _ _ h4 h5 ih =>
+    rw [h5.constMap_wf.find?_insert] at hrec; split at hrec
+    · exact absurd hrec (by nofun)
+    · let ⟨r, hp⟩ := ih hrec; exact ⟨r, (VEnv.addConst_le h4).pats hp⟩
+  | defn _ _ _ h4 h5 ih =>
+    rw [h5.constMap_wf.find?_insert] at hrec; split at hrec
+    · exact absurd hrec (by nofun)
+    · let ⟨r, hp⟩ := ih hrec
+      exact ⟨r, ((VEnv.addConst_le h4).trans VEnv.addDefEq_le).pats hp⟩
+  | «opaque» _ _ _ h4 h5 ih =>
+    rw [h5.constMap_wf.find?_insert] at hrec; split at hrec
+    · exact absurd hrec (by nofun)
+    · let ⟨r, hp⟩ := ih hrec; exact ⟨r, (VEnv.addConst_le h4).pats hp⟩
+  | quot _ h2 h3 ih =>
+    let ⟨r, hp⟩ := ih (h2.pull h3.constMap_wf hrec)
+    exact ⟨r, h2.le.pats hp⟩
+  | induct _ hadd h3 ih =>
+    rcases hadd.rec_find hrec with hC | ⟨r, hr, hname, hmaj, hpar, hrules⟩
+    · let ⟨r, hp⟩ := ih hC; exact ⟨r, hadd.le.pats hp⟩
+    · obtain ⟨hctor, hmem⟩ : rule.ctor = cName ∧ rule ∈ rval.rules :=
+        ⟨by simpa using List.find?_some hrule, List.mem_of_find?_eq_some hrule⟩
+      obtain ⟨ru, hru, hructor, hrunf, hclosed⟩ := hrules rule hmem
+      have hpat := VEnv.addInduct_pat hr hru hclosed hadd.env_eq
+      rw [← hname, ← hmaj, ← hpar, ← hrunf, ← hctor, ← hructor]
+      exact ⟨_, hpat⟩
+
 /-- The ι-reduction rule of a recursor rule resolvable in `env` is registered in
 the translated environment's `pats`. The pattern counts mirror the theory's
 `VEnv.addInduct_pat`: the recursor spine is `recName` applied through its major
@@ -214,17 +324,9 @@ theorem TrEnv.pats_iota {safety : DefinitionSafety} {env : Environment} {venv : 
     ∃ r, venv.pats
       (SimplePattern.iota recName rval.getMajorIdx cName
         (rval.numParams + rule.nfields)).toPattern r := by
-  -- IOTA-TODO(soundness): route via `VEnv.addInduct_pat`. Induct on `H`
-  -- (`TrEnv'`); the `induct` case exposes `AddInduct … decl …` whose `env_eq`
-  -- feeds `addInduct_pat` to yield this entry *when* `(recName, cName)` belong to
-  -- `decl` — with matching counts `r.name/r.getMajorIdx/r.numParams` ↔ `rval`
-  -- and `ru.ctor/ru.nfields` ↔ `rule` — and every other `TrEnv'` case carries it
-  -- forward by `.pats`-monotonicity (`AddInduct.le`/`addConst_le`/`addDefEq_le`).
-  -- The missing link is the correspondence between the kernel `RecursorVal`
-  -- resolved from `env` and the theory `VRecursor ∈ decl.recs` that owns it,
-  -- which neither `TrEnv'` nor `AddInduct` currently tracks. Left as an
-  -- adequacy gap.
-  sorry
+  refine TrEnv'.pats_iota H hrule ?_
+  have h : env.constants.find?' recName = some (.recInfo rval) := hrec
+  rwa [(TrEnv'.constMap_wf H).find?'_eq_find?] at h
 
 /-- A registered ι rule, matched against a well-typed redex with its `Realizes`
 side conditions discharged, gives a definitional equality between the redex and

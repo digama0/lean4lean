@@ -1,5 +1,6 @@
 import Lean4Lean.Verify.LocalContext
 import Lean4Lean.Theory.Typing.EnvLemmas
+import Lean4Lean.Std.SMap
 
 namespace Lean4Lean
 open Lean hiding Environment Exception
@@ -78,7 +79,19 @@ Fields:
   constructors, and recursors all have `value? = none`);
 * `map_eq` — `m₂` is `m₁` extended by inserting each `cis` name;
 * `env_eq` — the model side is `env₁.addInduct decl`;
-* `consts` — every registered constant is present in the resulting `env₂`. -/
+* `consts` — every registered constant is present in the resulting `env₂`;
+* `wf` — registering the batch preserves constant-map well-formedness (`m₂ =
+  env.constants` for the resulting kernel environment, which is `SMap.WF`);
+* `rec_find` — the recursor correspondence load-bearing for ι-reduction: any
+  `recInfo` resolvable in `m₂` is either already resolvable in `m₁` or is one of
+  `decl`'s theory recursors `r ∈ decl.recs`, with the telescope counts
+  (`getMajorIdx`, `numParams`) and the per-rule data (`ctor`, `nfields`, and
+  reduct closedness) agreeing between the kernel `RecursorVal`/`RecursorRule`
+  and the theory `VRecursor`/`VRecRule`. This is what ties a kernel-side
+  recursor lookup to the `VEnv.addInduct_pat` ι-rule statement;
+* `value_find` — a value-carrying constant resolvable in `m₂` was already
+  resolvable in `m₁`: the registered constants (`novalue`) all have
+  `value? = none`, so they are never value-carrying. -/
 structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     (m₂ : ConstMap) (env₂ : VEnv) where
   cis : List (ConstantInfo × VConstant)
@@ -87,6 +100,16 @@ structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
   map_eq : m₂ = cis.foldl (fun m p => m.insert p.1.name p.1) m₁
   env_eq : env₁.addInduct decl = some env₂
   consts : ∀ p ∈ cis, env₂.constants p.1.name = some p.2
+  wf : m₁.WF → m₂.WF
+  rec_find : ∀ {recName : Name} {rval : RecursorVal},
+    m₂.find? recName = some (.recInfo rval) →
+    m₁.find? recName = some (.recInfo rval) ∨
+    ∃ r ∈ decl.recs,
+      r.name = recName ∧ r.getMajorIdx = rval.getMajorIdx ∧ r.numParams = rval.numParams ∧
+      ∀ rule ∈ rval.rules, ∃ ru ∈ r.rules,
+        ru.ctor = rule.ctor ∧ ru.nfields = rule.nfields ∧ ru.rhs.Closed
+  value_find : ∀ {name : Name} {ci : ConstantInfo} {v : Expr},
+    m₂.find? name = some ci → ci.value? = some v → m₁.find? name = some ci
 
 theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
