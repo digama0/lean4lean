@@ -383,3 +383,39 @@ inductive SimplePattern where
 def SimplePattern.toPattern : SimplePattern → Pattern
   | .defn c => .const c
   | .iota r m c n => .app (.varN (.const r) m) (.varN (.const c) n)
+
+/-- The path selecting the `i`-th argument (0-indexed) of a `q.varN k`
+sub-pattern. A `q.varN k` pattern matches a spine `q' a₀ … a_{k-1}`; the
+outermost `.var` (added last) captures the last argument `a_{k-1}` at path
+`none`, so argument `i` sits at `someᵏ⁻¹⁻ⁱ none`. Validated against
+`Pattern.Matches`: for a spine, the matcher's hole function composed with
+`varN_pathOf k i` returns `aᵢ`. -/
+def Pattern.varN_pathOf {q : Pattern} : (k i : Nat) → i < k → (q.varN k).Path
+  | k+1, i, _ =>
+    if _hik : i = k then (none : Option (q.varN k).Path)
+    else some (Pattern.varN_pathOf (q := q) k i (by omega))
+
+/-- The ι-reduction reduct as a pattern `RHS`, for a recursor with `np`
+parameters, `nm` motives, `nmin` minors, `nind` indices, firing on a
+constructor with `nf` fields. `rhs` is the closed kernel rule template
+`fun params motives minors fields => …`. The reduct applies `rhs` to the
+recursor's parameters/motives/minors (rec-side holes `[0, np+nm+nmin)`) and
+then the constructor's fields (ctor-side holes `[np, np+nf)`) — exactly the
+argument slicing performed by `inductiveReduceRec` (drop the recursor's own
+indices and major; take the constructor arguments past its parameters). The
+recursive calls, if any, are already inside `rhs` and re-fire through this same
+rule. -/
+def SimplePattern.iotaRHS (r c : Name) (np nm nmin nind nf : Nat)
+    (rhs : VExpr) (hrhs : rhs.Closed) :
+    (SimplePattern.iota r (np+nm+nmin+nind) c (np+nf)).toPattern.RHS :=
+  let recHoles : List (SimplePattern.iota r (np+nm+nmin+nind) c (np+nf)).toPattern.RHS :=
+    (List.range (np+nm+nmin)).pmap
+      (fun i (hi : i < np+nm+nmin+nind) =>
+        Pattern.RHS.var (Sum.inl (Pattern.varN_pathOf (q := .const r) (np+nm+nmin+nind) i hi)))
+      (fun _ hi => by have := List.mem_range.1 hi; omega)
+  let ctorHoles : List (SimplePattern.iota r (np+nm+nmin+nind) c (np+nf)).toPattern.RHS :=
+    (List.range nf).pmap
+      (fun j (hj : np+j < np+nf) =>
+        Pattern.RHS.var (Sum.inr (Pattern.varN_pathOf (q := .const c) (np+nf) (np+j) hj)))
+      (fun _ hj => by have := List.mem_range.1 hj; omega)
+  (recHoles ++ ctorHoles).foldl Pattern.RHS.app (Pattern.RHS.fixed rhs hrhs)
