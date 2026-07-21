@@ -64,6 +64,67 @@ theorem Pattern.inter_self (p : Pattern) : p.inter p = some p := by induction p 
 theorem Pattern.inter_comm (p q : Pattern) : p.inter q = q.inter p := by
   induction p generalizing q <;> cases q <;> simp [*, eq_comm, inter] <;> split <;> simp [*]
 
+/-! ### Combinatorics of constructor spines `(.const c).varN k`
+
+The redex pattern of an ι rule (`SimplePattern.iota`) is a *constructor spine*
+`(.const r).varN M` (a recursor head applied to `M` argument holes) applied to
+another constructor spine `(.const c).varN N`. These lemmas capture the two facts
+about such spines used to discharge the structural `Params` side-conditions:
+a spine contains no application node, and two spines intersect only when their
+heads and lengths agree. -/
+
+/-- Every subpattern of a constructor spine `(.const c).varN k` is a shorter spine
+`(.const c).varN i` with `i ≤ k`. -/
+theorem Pattern.subpattern_varN_const {c : Name} {q : Pattern} :
+    ∀ {k}, Subpattern q ((Pattern.const c).varN k) → ∃ i ≤ k, q = (Pattern.const c).varN i
+  | 0, h => by
+    simp only [Pattern.varN] at h
+    cases h; exact ⟨0, Nat.le_refl _, rfl⟩
+  | k+1, h => by
+    simp only [Pattern.varN] at h
+    cases h with
+    | refl => exact ⟨k+1, Nat.le_refl _, rfl⟩
+    | varL h =>
+      obtain ⟨i, hi, rfl⟩ := subpattern_varN_const h
+      exact ⟨i, Nat.le_succ_of_le hi, rfl⟩
+
+/-- A constructor spine `(.const c).varN k` contains no application subpattern:
+it is a stack of `.var`s over a `.const`. -/
+theorem Pattern.not_app_subpattern_varN_const {c : Name} {a b : Pattern} {k} :
+    ¬ Subpattern (.app a b) ((Pattern.const c).varN k) := by
+  intro h
+  obtain ⟨i, _, hi⟩ := Pattern.subpattern_varN_const h
+  cases i <;> simp [Pattern.varN] at hi
+
+/-- Two constructor spines intersect (`Pattern.inter`) to `some` only when their
+heads *and* lengths agree, and then the intersection is that same spine. -/
+theorem Pattern.varN_const_inter {a b : Name} :
+    ∀ {m n r}, ((Pattern.const a).varN m).inter ((Pattern.const b).varN n) = some r →
+      a = b ∧ m = n ∧ r = (Pattern.const a).varN m
+  | 0, 0, r, h => by
+    simp only [Pattern.varN, Pattern.inter] at h
+    split at h <;> simp_all [Pattern.varN]
+  | 0, n+1, r, h => by simp [Pattern.varN, Pattern.inter] at h
+  | m+1, 0, r, h => by simp [Pattern.varN, Pattern.inter] at h
+  | m+1, n+1, r, h => by
+    simp only [Pattern.varN, Pattern.inter] at h
+    cases hr' : ((Pattern.const a).varN m).inter ((Pattern.const b).varN n) with
+    | none => rw [hr'] at h; simp at h
+    | some r' =>
+      obtain ⟨rfl, rfl, rfl⟩ := Pattern.varN_const_inter hr'
+      rw [hr'] at h
+      simp at h
+      exact ⟨rfl, rfl, by simp only [Pattern.varN, ← h]⟩
+
+/-- Constructor spines are equal only when heads and lengths agree: `(.const _).varN`
+is injective in both its head and its arity. -/
+theorem Pattern.varN_const_inj {a b : Name} {m n}
+    (h : (Pattern.const a).varN m = (Pattern.const b).varN n) : a = b ∧ m = n := by
+  have hi : ((Pattern.const a).varN m).inter ((Pattern.const b).varN n)
+      = some ((Pattern.const a).varN m) := by rw [← h]; exact Pattern.inter_self _
+  obtain ⟨rfl, rfl, _⟩ := Pattern.varN_const_inter hi
+  exact ⟨rfl, rfl⟩
+
 inductive Pattern.LE : Pattern → Pattern → Prop where
   | refl : LE p p
   | var : LE f f' → LE (.var f) (.var f')
