@@ -185,15 +185,19 @@ namespace VEnv
 
 theorem addConst_le {env env' : VEnv} (h : env.addConst n ci = some env') : env ≤ env' := by
   unfold addConst at h; split at h <;> cases h
-  exact ⟨fun _ => by simp; split <;> simp_all, by simp [*]⟩
+  exact ⟨fun _ => by simp; split <;> simp_all, by simp [*], id⟩
 
 theorem addConst_self {env env' : VEnv} (h : env.addConst n ci = some env') :
     env'.constants n = some ci := by
   unfold addConst at h; split at h <;> cases h; simp
 
-theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df := ⟨id, .inr⟩
+theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df := ⟨id, .inr, id⟩
 
 theorem addDefEq_self {env : VEnv} : (env.addDefEq df).defeqs df := .inl rfl
+
+theorem addPat_le {env : VEnv} {p r} : env ≤ env.addPat p r := ⟨id, id, .inr⟩
+
+theorem addPat_self {env : VEnv} {p r} : (env.addPat p r).pats p r := .inl ⟨rfl, rfl⟩
 
 def HasObjects (env : VEnv) : List VObject → Prop
   | [] => True
