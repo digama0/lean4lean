@@ -81,6 +81,11 @@ inductive IsDefEqStrong : List VExpr → VExpr → VExpr → VExpr → Prop wher
     Γ ⊢ df.lhs.instL ls : df.type.instL ls →
     Γ ⊢ df.rhs.instL ls : df.type.instL ls →
     Γ ⊢ df.lhs.instL ls ≡ df.rhs.instL ls : df.type.instL ls
+  | pat {p : Pattern} {r : p.RHS × p.Check} {m1 m2 chk} :
+    env.pats p r → p.Matches e m1 m2 → Γ ⊢ e : A →
+    r.2.Realizes m1 m2 chk →
+    (∀ t ∈ chk, Γ ⊢ t.1 ≡ t.2.1 : t.2.2) →
+    Γ ⊢ e ≡ r.1.apply m1 m2 : A
 
 end
 
@@ -179,6 +184,12 @@ theorem IsDefEqStrong.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEqStrong U 
       hA2.instL.liftN_eq (Nat.zero_le _),
       hA3.instL.liftN_eq (Nat.zero_le _)] at ih4 ih5 ⊢
     exact IsDefEqStrong.extra h1 h2 h3 h4 h5 h6 h7 (ih4 W) (ih5 W)
+  | pat hp hm _ hr _ ihe ihall =>
+    rw [Pattern.RHS.liftN_apply]
+    refine .pat hp (Pattern.matches_liftN.2 ⟨_, hm, fun _ => rfl⟩) (ihe W) hr.map_liftN ?_
+    intro t ht
+    obtain ⟨t0, ht0, rfl⟩ := List.mem_map.1 ht
+    exact ihall t0 ht0 W
 
 theorem IsDefEqStrong.defeq (H : IsDefEqStrong env U Γ e1 e2 A) : env.IsDefEq U Γ e1 e2 A := by
   induction H with
@@ -195,6 +206,7 @@ theorem IsDefEqStrong.defeq (H : IsDefEqStrong env U Γ e1 e2 A) : env.IsDefEq U
   | eta _ _ _ _ _ _ _ _ _ _ _ ih => exact .eta ih
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 => exact .extra h1 h2 h3
+  | pat hp hm _ hr _ ihe ihall => exact .pat hp hm ihe hr ihall
 
 variable! {env env' : VEnv} (henv : env ≤ env') in
 theorem IsDefEqStrong.mono
@@ -215,6 +227,7 @@ theorem IsDefEqStrong.mono
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 h4 _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>
     exact .extra (henv.2 h1) h2 h3 h4 ih1 ih2 ih3 ih4 ih5
+  | pat hp hm _ hr _ ihe ihall => exact .pat (henv.3 hp) hm ihe hr ihall
 
 variable! (henv : Ordered env) in
 theorem IsDefEqStrong.weak0 (H : env.IsDefEqStrong U [] e1 e2 A) :
@@ -255,6 +268,9 @@ theorem EqUpToLevels.instL (H : env.IsDefEqStrong U' Γ e1 e2 A) :
   | defeqDF _ _ _ _ ih => exact ih
   | beta _ _ _ _ _ _ _ _ ih1 _ ih3 ih4 _ ih6 => exact ⟨.app (.lam ih1.1 ih3.1) ih4.1, ih6.2⟩
   | eta _ _ _ _ _ _ _ _ ih1 _ _ ih4 ih5 => exact ⟨.lam ih1.1 (.app ih5.1 .bvar), ih4.1⟩
+  -- IOTA-TODO(soundness): EqUpToLevels of a pat-reduction reduct under two ≈ level
+  -- substitutions — needs an EqUpToLevels congruence for `RHS.apply`
+  | pat _ _ _ _ _ ihe _ => exact ⟨ihe.1, sorry⟩
 
 
 variable! {env : VEnv} (W : OnCtx Γ fun _ A => A.LevelWF U) in
@@ -330,6 +346,12 @@ theorem IsDefEqStrong.instL (H : env.IsDefEqStrong U Γ e1 e2 A) :
     simp [VExpr.instL, VExpr.instL_instL] at ih1 ih2 ih3 ih4 ih5 ⊢
     exact .extra h1 (by simp [VLevel.WF.inst hls]) (by simp [h3])
       (.inst hls) ih1 ih2 ih3 ih4 ih5
+  | pat hp hm _ hr _ ihe ihall =>
+    rw [Pattern.RHS.instL_apply]
+    refine .pat hp (Pattern.matches_instL hm) ihe hr.map_instL ?_
+    intro t ht
+    obtain ⟨t0, ht0, rfl⟩ := List.mem_map.1 ht
+    exact ihall t0 ht0
 
 def CtxStrong (env : VEnv) (U Γ) :=
   OnCtx Γ fun Γ A => ∃ u, env.IsDefEqStrong U Γ A A (.sort u)
@@ -415,6 +437,12 @@ theorem IsDefEqStrong.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : env.
       hA2.instL.instN_eq (Nat.zero_le _),
       hA3.instL.instN_eq (Nat.zero_le _)] at ih4 ih5 ⊢
     exact .extra h1 h2 h3 h4 h5 h6 h7 (ih4 W hΓ) (ih5 W hΓ)
+  | pat hp hm _ hr _ ihe ihall =>
+    rw [Pattern.RHS.instN_apply]
+    refine .pat hp (Pattern.matches_instN hm) (ihe W hΓ) hr.map_instN ?_
+    intro t ht
+    obtain ⟨t0, ht0, rfl⟩ := List.mem_map.1 ht
+    exact ihall t0 ht0 W hΓ
 
 theorem IsDefEqStrong.defeqDF_l (henv : Ordered env) (hΓ : CtxStrong env U Γ)
     (h1 : env.IsDefEqStrong U Γ A A' (.sort u))
@@ -473,6 +501,11 @@ theorem IsDefEqStrong.forallE_inv' (hΓ : CtxStrong env U Γ)
     have C2 := (A2.instL h2).defeq.closedN henv ⟨⟨⟩, C1⟩
     rw [C1.liftN_eq (Nat.zero_le _), C2.liftN_eq (by exact Nat.le_refl _)] at this
     simpa [liftN]
+  | pat _ _ _ _ _ ihe _ =>
+    obtain eq | eq := eq
+    · exact ihe hΓ (.inl eq)
+    -- IOTA-TODO(soundness): forallE-inversion through a pat (ι-)reduction reduct
+    · exact sorry
   | _ => nomatch eq
 
 variable! (henv : Ordered env) (envIH : env.OnTypes (EnvStrong env)) in
@@ -499,6 +532,7 @@ theorem IsDefEqStrong.isType' (hΓ : CtxStrong env U Γ) (H : env.IsDefEqStrong 
   | extra h1 h2 =>
     have ⟨_, h⟩ := (envIH.2 h1).2.2.1
     exact ⟨_, (h.instL h2).weak0 henv⟩
+  | pat _ _ _ _ _ ihe _ => exact ihe hΓ
 
 theorem IsDefEqStrong.instDF
     (henv : Ordered env) (hΓ : CtxStrong env U Γ) (hu : u.WF U) (hv : v.WF U)
@@ -604,6 +638,9 @@ theorem EqUpToLevels.defeq (H : env.IsDefEqStrong U Γ e1 e2 A)
     have c2 := ih2 trivial H2 (EqUpToLevels.refl (by trivial) h7).2
     refine .weak0 henv <| c1.trans <| .trans ?_ c2.symm
     exact .extra h1 h2 h3 h4 h5 h6 h7 h6 h7
+  -- IOTA-TODO(soundness): EqUpToLevels.defeq for a pat-reduction — reconstruct a
+  -- pat derivation for the level-variant endpoints of the reduct
+  | pat _ _ _ _ _ _ _ => exact sorry
 
 variable! (henv : Ordered env) (envIH : env.OnTypes (EnvStrong env)) in
 theorem IsDefEq.strong' (hΓ : CtxStrong env U Γ)
@@ -662,6 +699,8 @@ theorem IsDefEq.strong' (hΓ : CtxStrong env U Γ)
     let ⟨⟨hl, ⟨_, ht⟩, _⟩, hr, _, _⟩ := envIH.2 h1
     exact .extra h1 h2 h3 (.inst h2) (ht.instL h2)
       (hl.instL h2) (hr.instL h2) ((hl.instL h2).weak0 henv) ((hr.instL h2).weak0 henv)
+  | pat hp hm _ hr _ ihe ihall =>
+    exact .pat hp hm (ihe hΓ) hr fun t ht => ihall t ht hΓ
 
 theorem CtxStrong.strong' (henv : Ordered env) (envIH : env.OnTypes (EnvStrong env))
     (hΓ : OnCtx Γ (env.IsType U)) : CtxStrong env U Γ := by
@@ -741,6 +780,9 @@ theorem IsDefEqStrong.hasType' {env : VEnv}
     refine ⟨.base <| .lam h1 h2 ih1.1 ih2.1 (.base this) ?_, ih4.1⟩
     exact .base <| .forallE h1 h2 ih1.1 ih2.1
   | extra h1 h2 h3 h4 h5 h6 h7 _ _ _ _ _ ih4 ih5 => exact ⟨ih4.1, ih5.1⟩
+  | pat _ _ _ _ _ ihe _ =>
+    -- IOTA-TODO(soundness): strong (HasTypeStrong) typing of a pat-reduction reduct
+    exact ⟨ihe.1, sorry⟩
 
 theorem HasTypeStrong.refl {env : VEnv}
     (H : env.HasTypeStrong U Γ e A b) : env.IsDefEqStrong U Γ e e A := by

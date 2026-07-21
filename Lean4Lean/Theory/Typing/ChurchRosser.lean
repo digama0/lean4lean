@@ -1382,3 +1382,8 @@ theorem IsDefEq.church_rosser
     have ⟨_, _, _, _, a1, a2, a3, a4⟩ := extra_pat h1 h2 h3 (Γ := Γ)
     refine have h := .extra h1 h2 h3; mk h (.tail .rfl (.extra a1 a2 a3 fun _ => .rfl)) .rfl ?_
     exact a4 ▸ .refl h.hasType.2
+  | pat _ _ _ _ _ _ _ =>
+    -- IOTA-TODO(soundness): Church-Rosser (confluence) for a pat (ι-)reduction step —
+    -- needs a bridge from `env.pats` to the abstract `Params.Pat` reduction so the
+    -- reduct can be reached by a `ParRed.extra` step, then joined
+    exact sorry

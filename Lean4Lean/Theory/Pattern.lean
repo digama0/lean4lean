@@ -223,6 +223,159 @@ theorem Pattern.Check.OK.map
     (H : ck.OK df m1 m2) : ck.OK df' m1' m2' := by
   induction ck <;> simp [OK, *] at H ⊢; cases H; constructor <;> solve_by_elim
 
+/-- `ck.Realizes m1 m2 chk` says the typed-triple list `chk : List (lhs, rhs, ty)`
+enumerates exactly the `defeq` entries of `ck`, with each triple's `lhs`/`rhs`
+being the corresponding `RHS.apply`ied sides (the type is carried by `chk`,
+since `Check` does not record it). This is a *pure* predicate — it mentions no
+definitional-equality relation — so it can sit in the `IsDefEq` inductive
+alongside the strictly-positive premise `∀ t ∈ chk, IsDefEq Γ t.1 t.2.1 t.2.2`
+without tripping the positivity checker. Bridged to `Check.OK` by
+`Realizes.toOK` / `OK.exists_realizer`. -/
+def Pattern.Check.Realizes {p : Pattern} (m1 : List VLevel) (m2 : p.Path → VExpr) :
+    p.Check → List (VExpr × VExpr × VExpr) → Prop
+  | .true, [] => True
+  | .true, _ :: _ => False
+  | .defeq a b rest, t :: ts =>
+    t.1 = RHS.apply m1 m2 a ∧ t.2.1 = RHS.apply m1 m2 b ∧ rest.Realizes m1 m2 ts
+  | .defeq _ _ _, [] => False
+
+/-- If `chk` realizes `ck` and every triple in `chk` is related by `rel` at its
+type, then `ck.OK (untyped rel) holds`. Used to feed the `pat` rule's premises
+into the abstract `Check.OK`-based development. -/
+theorem Pattern.Check.Realizes.toOK {defeq : VExpr → VExpr → Prop} {p : Pattern}
+    {ck : p.Check} {m1 m2 chk} (hr : ck.Realizes m1 m2 chk)
+    (h : ∀ t ∈ chk, defeq t.1 t.2.1) : ck.OK defeq m1 m2 := by
+  induction ck generalizing chk with
+  | true => trivial
+  | defeq a b rest ih =>
+    match chk, hr with
+    | t :: ts, ⟨e1, e2, hr⟩ =>
+      exact ⟨e1 ▸ e2 ▸ h t (.head _), ih hr fun t ht => h t (.tail _ ht)⟩
+
+/-- Conversely, from `ck.OK (fun a b => ∃ t, rel a b t)` extract a realizer
+`chk` (choosing each type from the existential) together with the per-triple
+relation. Used to *construct* a `pat` derivation from an abstract
+`Check.OK (IsDefEqU …)` hypothesis. -/
+theorem Pattern.Check.OK.exists_realizer {rel : VExpr → VExpr → VExpr → Prop} {p : Pattern}
+    {ck : p.Check} {m1 m2} (H : ck.OK (fun a b => ∃ t, rel a b t) m1 m2) :
+    ∃ chk, ck.Realizes m1 m2 chk ∧ ∀ t ∈ chk, rel t.1 t.2.1 t.2.2 := by
+  induction ck with
+  | true => exact ⟨[], trivial, nofun⟩
+  | defeq a b rest ih =>
+    obtain ⟨⟨t, h1⟩, h2⟩ := H
+    obtain ⟨chk, hr, hall⟩ := ih h2
+    refine ⟨(_, _, t) :: chk, ⟨rfl, rfl, hr⟩, ?_⟩
+    rintro t' ht'
+    rcases List.mem_cons.1 ht' with rfl | ht'
+    · exact h1
+    · exact hall _ ht'
+
+/-! ### Transport helpers for the `pat` reduction rule
+
+These bridge `Pattern.RHS.apply` / `Pattern.Matches` / `Pattern.Check.Realizes`
+with `ClosedN`, `LevelWF`, lifting, instantiation and level-instantiation, so
+that the `pat` cases of the `IsDefEq` recursions in `Theory.Typing` are
+mechanical. -/
+
+/-- If every hole `m2 x` is `ClosedN k`, then the reduct `r.apply m1 m2` is
+`ClosedN k`. -/
+theorem Pattern.RHS.apply_closedN {p : Pattern} {m1 : List VLevel} {m2 : p.Path → VExpr} {k}
+    (hm : ∀ x, (m2 x).ClosedN k) : ∀ r : p.RHS, (r.apply m1 m2).ClosedN k
+  | .fixed _ hc => (VExpr.ClosedN.instL (ls := m1) hc).mono (Nat.zero_le _)
+  | .var path => hm path
+  | .app f a => ⟨apply_closedN hm f, apply_closedN hm a⟩
+
+/-- The holes produced by matching a `ClosedN k`-bounded expression are all
+`ClosedN k`. -/
+theorem Pattern.Matches.closedN {p : Pattern} {e m1 m2 k}
+    (H : p.Matches e m1 m2) (he : e.ClosedN k) : ∀ x, (m2 x).ClosedN k := by
+  induction H with
+  | const => exact nofun
+  | var _ ih => rintro (_|x); exacts [he.2, ih he.1 x]
+  | app _ _ ih1 ih2 => rintro (x|x); exacts [ih1 he.1 x, ih2 he.2 x]
+
+/-- If the match levels `m1` are all `WF U` and every hole is `LevelWF U`, then
+the reduct `r.apply m1 m2` is `LevelWF U`. -/
+theorem Pattern.RHS.apply_levelWF {p : Pattern} {m1 : List VLevel} {m2 : p.Path → VExpr} {U}
+    (hm1 : ∀ l ∈ m1, l.WF U) (hm2 : ∀ x, (m2 x).LevelWF U) :
+    ∀ r : p.RHS, (r.apply m1 m2).LevelWF U
+  | .fixed _ _ => VExpr.LevelWF.instL hm1
+  | .var path => hm2 path
+  | .app f a => ⟨apply_levelWF hm1 hm2 f, apply_levelWF hm1 hm2 a⟩
+
+/-- Matching a `LevelWF U` expression yields `WF U` levels and `LevelWF U`
+holes. -/
+theorem Pattern.Matches.levelWF {p : Pattern} {e m1 m2 U}
+    (H : p.Matches e m1 m2) (he : e.LevelWF U) :
+    (∀ l ∈ m1, l.WF U) ∧ (∀ x, (m2 x).LevelWF U) := by
+  induction H with
+  | const => exact ⟨he, nofun⟩
+  | var _ ih =>
+    obtain ⟨h1, h2⟩ := ih he.1
+    exact ⟨h1, by rintro (_|x); exacts [he.2, h2 x]⟩
+  | app _ _ ih1 ih2 =>
+    obtain ⟨h1, h2⟩ := ih1 he.1; obtain ⟨_, h3⟩ := ih2 he.2
+    exact ⟨h1, by rintro (x|x); exacts [h2 x, h3 x]⟩
+
+/-- `RHS.apply` commutes with level instantiation. -/
+theorem Pattern.RHS.instL_apply {p : Pattern} {m1 : List VLevel} {m2 : p.Path → VExpr} {ls}
+    (r : p.RHS) :
+    (r.apply m1 m2).instL ls = r.apply (m1.map (VLevel.inst ls)) (fun x => (m2 x).instL ls) := by
+  induction r with
+  | fixed c hc => simp [apply, VExpr.instL_instL]
+  | var path => simp [apply]
+  | app f a ihf iha => simp [apply, VExpr.instL, ihf, iha]
+
+/-- `Matches` transports under level instantiation. -/
+theorem Pattern.matches_instL {p : Pattern} {e m1 m2 ls}
+    (H : p.Matches e m1 m2) :
+    p.Matches (e.instL ls) (m1.map (VLevel.inst ls)) fun x => (m2 x).instL ls := by
+  induction H with
+  | const => erw [show (fun _ : Empty => _) = _ by ext ⟨⟩]; exact .const
+  | var _ ih =>
+    rw [(_ : (fun _ => _) = _)]; exact ih.var
+    ext (_|_) <;> rfl
+  | app _ _ ih1 ih2 =>
+    rw [(_ : (fun _ => _) = _)]; exact ih1.app ih2
+    ext (_|_) <;> rfl
+
+/-- `Realizes` transports under lifting: lifting all three components of every
+triple keeps the realizer valid for the lifted holes. -/
+theorem Pattern.Check.Realizes.map_liftN {p : Pattern} {m1 m2} {ck : p.Check} {chk} {n k}
+    (hr : ck.Realizes m1 m2 chk) :
+    ck.Realizes m1 (fun x => (m2 x).liftN n k)
+      (chk.map fun t => (t.1.liftN n k, t.2.1.liftN n k, t.2.2.liftN n k)) := by
+  induction ck generalizing chk with
+  | true => cases chk <;> simp_all [Realizes]
+  | defeq a b rest ih =>
+    match chk, hr with
+    | t :: ts, ⟨h1, h2, hr⟩ =>
+      exact ⟨by simp [h1, RHS.liftN_apply], by simp [h2, RHS.liftN_apply], ih hr⟩
+
+/-- `Realizes` transports under instantiation. -/
+theorem Pattern.Check.Realizes.map_instN {p : Pattern} {m1 m2} {ck : p.Check} {chk} {e₀ k}
+    (hr : ck.Realizes m1 m2 chk) :
+    ck.Realizes m1 (fun x => (m2 x).inst e₀ k)
+      (chk.map fun t => (t.1.inst e₀ k, t.2.1.inst e₀ k, t.2.2.inst e₀ k)) := by
+  induction ck generalizing chk with
+  | true => cases chk <;> simp_all [Realizes]
+  | defeq a b rest ih =>
+    match chk, hr with
+    | t :: ts, ⟨h1, h2, hr⟩ =>
+      exact ⟨by simp [h1, RHS.instN_apply], by simp [h2, RHS.instN_apply], ih hr⟩
+
+/-- `Realizes` transports under level instantiation. -/
+theorem Pattern.Check.Realizes.map_instL {p : Pattern} {m1 m2} {ck : p.Check} {chk} {ls}
+    (hr : ck.Realizes m1 m2 chk) :
+    ck.Realizes (m1.map (VLevel.inst ls)) (fun x => (m2 x).instL ls)
+      (chk.map fun t => (t.1.instL ls, t.2.1.instL ls, t.2.2.instL ls)) := by
+  induction ck generalizing chk with
+  | true => cases chk <;> simp_all [Realizes]
+  | defeq a b rest ih =>
+    match chk, hr with
+    | t :: ts, ⟨h1, h2, hr⟩ =>
+      exact ⟨by simp [h1, RHS.instL_apply], by simp [h2, RHS.instL_apply], ih hr⟩
+
 inductive SimplePattern where
   | iota (recursor : Name) (major : Nat) (constr : Name) (args : Nat)
   | defn (head : Name)

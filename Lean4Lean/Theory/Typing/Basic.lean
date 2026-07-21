@@ -53,6 +53,11 @@ inductive IsDefEq : List VExpr → VExpr → VExpr → VExpr → Prop where
   | extra :
     env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     Γ ⊢ df.lhs.instL ls ≡ df.rhs.instL ls : df.type.instL ls
+  | pat {p : Pattern} {r : p.RHS × p.Check} {m1 m2 chk} :
+    env.pats p r → p.Matches e m1 m2 → Γ ⊢ e : A →
+    r.2.Realizes m1 m2 chk →
+    (∀ t ∈ chk, Γ ⊢ t.1 ≡ t.2.1 : t.2.2) →
+    Γ ⊢ e ≡ r.1.apply m1 m2 : A
 
 end
 
