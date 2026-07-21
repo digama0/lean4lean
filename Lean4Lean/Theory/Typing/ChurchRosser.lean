@@ -1,4 +1,4 @@
-import Lean4Lean.Theory.Typing.Pattern
+import Lean4Lean.Theory.Pattern
 import Lean4Lean.Theory.Typing.Strong
 import Lean4Lean.Theory.Typing.UniqueTyping
 
