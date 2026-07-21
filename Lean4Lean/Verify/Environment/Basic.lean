@@ -62,13 +62,38 @@ nonrec theorem AddQuot.to_addQuot (H : AddQuot m₁ m₂ env₁ env₂) : env₁
 nonrec theorem AddQuot.le (H : AddQuot m₁ m₂ env₁ env₂) : env₁ ≤ env₂ :=
   open AddQuot1 in (le <| le <| le <| le fun _ _ h => h.2 ▸ VEnv.addDefEq_le) _ _ H
 
-inductive AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
-    (m₂ : ConstMap) (env₂ : VEnv) : Prop
-  -- TODO
+/-- Refinement witness that translating an inductive declaration extends the
+constant map `m₁ → m₂` and the model environment `env₁ → env₂` coherently.
 
-nonrec theorem AddInduct.to_addInduct
+Rather than re-deriving `VEnv.addInduct`'s internal step order, this *bakes* the
+theory result: `env_eq` records the whole `addInduct` in one shot, and the list
+`cis` records the constant infos it registers (type formers, constructors, and
+recursors, in `addInduct` order) paired with their model constants. `.safe` is
+hardcoded exactly as `AddQuot` does; unsafe-inductive support (which would relax
+the safety bound and admit reserved/`block` names) is future work.
+
+Fields:
+* `tr` — each registered constant translates (`TrConstant`) and is fresh in `m₁`;
+* `novalue` — each registered constant carries no value (inductive types,
+  constructors, and recursors all have `value? = none`);
+* `map_eq` — `m₂` is `m₁` extended by inserting each `cis` name;
+* `env_eq` — the model side is `env₁.addInduct decl`;
+* `consts` — every registered constant is present in the resulting `env₂`. -/
+structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
+    (m₂ : ConstMap) (env₂ : VEnv) where
+  cis : List (ConstantInfo × VConstant)
+  tr : ∀ p ∈ cis, TrConstant .safe env₁ p.1 p.2 ∧ m₁.find? p.1.name = none
+  novalue : ∀ p ∈ cis, p.1.value? = none
+  map_eq : m₂ = cis.foldl (fun m p => m.insert p.1.name p.1) m₁
+  env_eq : env₁.addInduct decl = some env₂
+  consts : ∀ p ∈ cis, env₂.constants p.1.name = some p.2
+
+theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
-  nomatch H
+  H.env_eq
+
+theorem AddInduct.le (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁ ≤ env₂ :=
+  VEnv.addInduct_le H.env_eq
 
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
