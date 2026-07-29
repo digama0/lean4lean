@@ -500,7 +500,9 @@ namespace ElimNestedInductive
 structure Result where
   ngen : NameGenerator
   nparams : Nat
-  aux2nested : NameMap Expr -- exprs contain `nparams` loose bvars
+  lctx : LocalContext
+  params : Array Expr -- the fvars declared in `lctx`
+  aux2nested : NameMap Expr -- exprs are open over `params`, like the C++ `m_aux2nested`
   types : List InductiveType
 
 instance [MonadStateOf NameGenerator m] : MonadNameGenerator m where
@@ -542,11 +544,11 @@ def restoreNested (r : Result) (env' : Environment) (e : Expr)
     if let some nested := r.aux2nested.find? c then
       let args := t.getAppArgs
       assert! args.size ≥ r.nparams
-      return mkAppRange (nested.instantiateRev As) r.nparams args.size args
+      return mkAppRange ((nested.abstract r.params).instantiateRev As) r.nparams args.size args
     let (nested, auxI_name) ← r.getNestedIfAuxCtor env' c
     let args := t.getAppArgs
     assert! args.size ≥ r.nparams
-    let nested' := nested.instantiateRev As
+    let nested' := (nested.abstract r.params).instantiateRev As
     nested'.withApp fun I I_args => do
     let .const I_c I_ls := I | unreachable!
     let c' := .const (c.replacePrefix auxI_name I_c) I_ls
@@ -611,8 +613,8 @@ def isNestedInductiveApp? (e : Expr) : M (Option InductiveVal) := do
       isNested := true
   if !isNested then return none
   if looseBVars then
-    throw <| .other "invalid nested inductive datatype '{fn
-      }', nested inductive datatypes parameters cannot contain local variables."
+    throw <| .other s!"invalid nested inductive datatype '{fn}', \
+      nested inductive datatypes parameters cannot contain local variables."
   return some ci
 
 def instantiateForallParams (e : Expr) (hi : Nat) (params : Array Expr) :
@@ -681,9 +683,9 @@ def withParams (type : Expr) (nparams : Nat)
 
 def run (fuel nparams : Nat) (types : List InductiveType) : M Result := do
   let I :: _ := types
-    | throw <| .other s!"invalid empty (mutual) inductive datatype declaration, {""
-        }it must contain at least one inductive type."
-  withParams I.type nparams fun _ _ params => do
+    | throw <| .other s!"invalid empty (mutual) inductive datatype declaration, \
+        it must contain at least one inductive type."
+  withParams I.type nparams fun lctx _ params => do
   let rec loop i
   | 0 => throw <| .other "deep recursion: ElimNestedInductive.run.loop"
   | fuel+1 => do
@@ -697,8 +699,8 @@ def run (fuel nparams : Nat) (types : List InductiveType) : M Result := do
       modify fun s => { s with newTypes := s.newTypes.set! i { indType with ctors } }
       loop (i+1) fuel
     else
-      let aux2nested := s.nestedAux.foldl (fun m (e, n) => m.insert n (e.abstract params)) {}
-      return { s with nparams := params.size, aux2nested, types := s.newTypes.toList }
+      let aux2nested := s.nestedAux.foldl (fun m (e, n) => m.insert n e) {}
+      return { s with nparams := params.size, lctx, params, aux2nested, types := s.newTypes.toList }
   loop 0 fuel
 end ElimNestedInductive
 
@@ -727,8 +729,9 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
   let res ← ElimNestedInductive.run fuel.inductiveFuel nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
+  let safety := if isUnsafe then .unsafe else .safe
   let env' ← AddInductive.run nparams res.types numNested
-    { env, allowPrimitive, lparams, fuel, safety := if isUnsafe then .unsafe else .safe }
+    { env, allowPrimitive, lparams, fuel, safety }
   if numNested = 0 then return env'
   let allIndNames := types.map (·.name)
   let (recNames', recNameMap') := mkAuxRecNameMap env' types
@@ -756,3 +759,6 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
       modify (·.add <| .ctorInfo { ctor with type := newType })
     processRec (mkRecName indType.name)
   recNames'.forM processRec
+  TypeChecker.M.run (← get) (safety := safety) (lctx := res.lctx)
+      (lparams := lparams) (fuel := fuel) do
+    res.aux2nested.forM fun _ e => do _ ← TypeChecker.checkType e
