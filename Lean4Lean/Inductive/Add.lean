@@ -500,6 +500,7 @@ namespace ElimNestedInductive
 structure Result where
   ngen : NameGenerator
   nparams : Nat
+  lctx : LocalContext
   aux2nested : NameMap Expr -- exprs contain `nparams` loose bvars
   types : List InductiveType
 
@@ -611,8 +612,8 @@ def isNestedInductiveApp? (e : Expr) : M (Option InductiveVal) := do
       isNested := true
   if !isNested then return none
   if looseBVars then
-    throw <| .other "invalid nested inductive datatype '{fn
-      }', nested inductive datatypes parameters cannot contain local variables."
+    throw <| .other s!"invalid nested inductive datatype '{fn}', \
+      nested inductive datatypes parameters cannot contain local variables."
   return some ci
 
 def instantiateForallParams (e : Expr) (hi : Nat) (params : Array Expr) :
@@ -681,9 +682,9 @@ def withParams (type : Expr) (nparams : Nat)
 
 def run (fuel nparams : Nat) (types : List InductiveType) : M Result := do
   let I :: _ := types
-    | throw <| .other s!"invalid empty (mutual) inductive datatype declaration, {""
-        }it must contain at least one inductive type."
-  withParams I.type nparams fun _ _ params => do
+    | throw <| .other s!"invalid empty (mutual) inductive datatype declaration, \
+        it must contain at least one inductive type."
+  withParams I.type nparams fun lctx _ params => do
   let rec loop i
   | 0 => throw <| .other "deep recursion: ElimNestedInductive.run.loop"
   | fuel+1 => do
@@ -698,7 +699,7 @@ def run (fuel nparams : Nat) (types : List InductiveType) : M Result := do
       loop (i+1) fuel
     else
       let aux2nested := s.nestedAux.foldl (fun m (e, n) => m.insert n (e.abstract params)) {}
-      return { s with nparams := params.size, aux2nested, types := s.newTypes.toList }
+      return { s with nparams := params.size, lctx, aux2nested, types := s.newTypes.toList }
   loop 0 fuel
 end ElimNestedInductive
 
@@ -727,8 +728,9 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
   let res ← ElimNestedInductive.run fuel.inductiveFuel nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
+  let safety := if isUnsafe then .unsafe else .safe
   let env' ← AddInductive.run nparams res.types numNested
-    { env, allowPrimitive, lparams, fuel, safety := if isUnsafe then .unsafe else .safe }
+    { env, allowPrimitive, lparams, fuel, safety }
   if numNested = 0 then return env'
   let allIndNames := types.map (·.name)
   let (recNames', recNameMap') := mkAuxRecNameMap env' types
@@ -756,3 +758,6 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
       modify (·.add <| .ctorInfo { ctor with type := newType })
     processRec (mkRecName indType.name)
   recNames'.forM processRec
+  TypeChecker.M.run (← get) (safety := safety) (lctx := res.lctx)
+      (lparams := lparams) (fuel := fuel) do
+    res.aux2nested.forM fun _ e => do _ ← TypeChecker.checkType e
