@@ -250,12 +250,6 @@ theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
     br.toUInt64.toBitVec
   bv_decide
 
-theorem Data.looseBVarRange_le : (Data.looseBVarRange d).toNat ≤ 2^20 - 1 := by
-  rw [Data.looseBVarRange]
-  suffices (UInt64.shiftRight d 44).toNat ≤ 2 ^ 20 - 1 by simp; omega
-  show d.toBitVec >>> 44#64 ≤ 0xfffff#64
-  bv_decide
-
 theorem looseBVarRange_le : looseBVarRange e ≤ 2^20 - 1 := Data.looseBVarRange_le
 
 theorem _root_.UInt32.max_toNat (a b : UInt32) : (max a b).toNat = max a.toNat b.toNat := by
