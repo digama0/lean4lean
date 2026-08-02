@@ -55,43 +55,30 @@ theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := b
     d.toUInt64.toBitVec <<< 40#64) >>> 40#64 = d.toUInt64.toBitVec
   bv_decide
 
-theorem mkData_hasParam : (mkData h d hmv hp).hasParam = hp := by
+theorem mkData_flags :
+    (mkData h d hmv hp).hasMVar = hmv ∧ (mkData h d hmv hp).hasParam = hp := by
   rw [mkData_eq, mkData']
-  simp [Data.hasParam, (· == ·), ← UInt64.toBitVec_inj]
+  simp [Data.hasMVar, Data.hasParam, (· == ·), ← UInt64.toBitVec_inj]
   have hd : min d (2 ^ 24 - 1) ≤ 2 ^ 24 - 1 := Nat.min_le_right ..
-  generalize min d (2 ^ 24 - 1) = d at hd
-  have : d.toUInt64.toNat = d := by simp; omega
-  have : d.toUInt64.toBitVec ≤ 0xffffff#64 := (this ▸ hd :)
+  generalize min d (2 ^ 24 - 1) = d' at hd
+  have hnat : d'.toUInt64.toNat = d' := by simp; omega
+  have : d'.toUInt64.toBitVec ≤ 0xffffff#64 := (hnat ▸ hd :)
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
   have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
   have := hb hmv; have := hb hp
-  let L := ((
+  let data :=
     h.toUInt32.toUInt64.toBitVec +
     hmv.toUInt64.toBitVec <<< 32#64 +
     hp.toUInt64.toBitVec <<< 33#64 +
-    d.toUInt64.toBitVec <<< 40#64) >>> 33#64) &&& 1#64
-  change decide (L = 1#64) = hp
-  rw [show L = hp.toUInt64.toBitVec by bv_decide]
-  cases hp <;> decide
+    d'.toUInt64.toBitVec <<< 40#64
+  change
+    decide (data >>> 32#64 &&& 1#64 = 1#64) = hmv ∧
+    decide (data >>> 33#64 &&& 1#64 = 1#64) = hp
+  bv_decide
 
-theorem mkData_hasMVar : (mkData h d hmv hp).hasMVar = hmv := by
-  rw [mkData_eq, mkData']
-  simp [Data.hasMVar, (· == ·), ← UInt64.toBitVec_inj]
-  have hd : min d (2 ^ 24 - 1) ≤ 2 ^ 24 - 1 := Nat.min_le_right ..
-  generalize min d (2 ^ 24 - 1) = d at hd
-  have : d.toUInt64.toNat = d := by simp; omega
-  have : d.toUInt64.toBitVec ≤ 0xffffff#64 := (this ▸ hd :)
-  have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
-  have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
-  have := hb hmv; have := hb hp
-  let L := ((
-    h.toUInt32.toUInt64.toBitVec +
-    hmv.toUInt64.toBitVec <<< 32#64 +
-    hp.toUInt64.toBitVec <<< 33#64 +
-    d.toUInt64.toBitVec <<< 40#64) >>> 32#64) &&& 1#64
-  change decide (L = 1#64) = hmv
-  rw [show L = hmv.toUInt64.toBitVec by bv_decide]
-  cases hmv <;> decide
+theorem mkData_hasParam : (mkData h d hmv hp).hasParam = hp := mkData_flags.2
+
+theorem mkData_hasMVar : (mkData h d hmv hp).hasMVar = hmv := mkData_flags.1
 
 def hasParam' : Level → Bool
   | .param .. => true
