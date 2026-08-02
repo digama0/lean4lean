@@ -1,5 +1,5 @@
 name = "lean4lean"
-defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verify"]
+defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verify", "Lean4Lean.Tests"]
 
 [[require]]
 name = "batteries"
@@ -16,6 +16,10 @@ globs = ["Lean4Lean.Theory.*"]
 [[lean_lib]]
 name = "Lean4Lean.Verify"
 globs = ["Lean4Lean.Verify.*"]
+
+[[lean_lib]]
+name = "Lean4Lean.Tests"
+globs = ["Lean4Lean.Tests.*"]
 
 [[lean_lib]]
 name = "Lean4Lean.Experimental"
