@@ -189,8 +189,11 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let r := r.cheapBetaReduce
     return (← getLCtx).mkForall fvars r
 
-def isProp (e : Expr) : RecM Bool :=
-  return (← whnf (← inferType e)) == .prop
+def getSortLevel (e : Expr) : RecM Level := do
+  let .sort u ← ensureSortCore (← inferType e) e | unreachable!
+  return u
+
+def isProp (e : Expr) : RecM Bool := return (← getSortLevel e).isAlwaysZero
 
 def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Expr := do
   let e := Expr.proj typeName idx struct
@@ -208,16 +211,16 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
   for i in [:I_val.numParams] do
     let .forallE _ _ b _ ← whnf r | fail
     r := b.instantiate1 args[i]!
-  let isPropType ← isProp type
+  let maybePropType := !(← getSortLevel type).isNeverZero
   for i in [:idx] do
     let .forallE _ dom b _ ← whnf r | fail
     if b.hasLooseBVars then
-      if isPropType then if !(← isProp dom) then fail
+      if maybePropType then if !(← isProp dom) then fail
       r := b.instantiate1 (.proj I_name i struct)
     else
       r := b
   let .forallE _ dom _ _ ← whnf r | fail
-  if isPropType then if !(← isProp dom) then fail
+  if maybePropType then if !(← isProp dom) then fail
   return dom
 
 def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do

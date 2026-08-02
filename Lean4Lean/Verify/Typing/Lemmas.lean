@@ -1384,6 +1384,19 @@ theorem ofLevel_isNeverZero (h : VLevel.ofLevel Us u = some u') (H : u.isNeverZe
     obtain ⟨_, h1, _, h2, rfl⟩ := h
     simp [VLevel.eval, Nat.imax, ih2 h2 H ls]
 
+theorem ofLevel_isAlwaysZero (h : VLevel.ofLevel Us u = some u') (H : u.isAlwaysZero) :
+    u' ≈ .zero := by
+  induction u generalizing u' with
+    simp [Level.isAlwaysZero, VLevel.ofLevel] at H h <;> subst_vars <;>
+    refine VLevel.equiv_def.2 fun ls => ?_
+  | zero => rfl
+  | max _ _ ih1 ih2 =>
+    obtain ⟨_, h1, _, h2, rfl⟩ := h
+    simp [VLevel.eval, VLevel.equiv_def.1 (ih1 h1 H.1) ls, VLevel.equiv_def.1 (ih2 h2 H.2) ls]
+  | imax _ _ _ ih2 =>
+    obtain ⟨_, _, _, h2, rfl⟩ := h
+    simp [VLevel.eval, Nat.imax, VLevel.equiv_def.1 (ih2 h2 H) ls]
+
 theorem ofLevel_mkLevelIMax'
     (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :
     ∃ w, VLevel.ofLevel Us (mkLevelIMax' u v) = some w ∧ w ≈ .imax u' v' := by

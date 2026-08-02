@@ -7,17 +7,6 @@ namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 open Kernel
 
-theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
-    RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
-      (∃ u, e1 = .sort u) ∧ c.TrExpr e1 e' ∧ c.FVarsBelow e e1 := by
-  simp [ensureSortCore]; split
-  · let .sort _ := e
-    exact .pure ⟨⟨_, rfl⟩, he.trExpr c.Ewf c.Δwf, .rfl⟩
-  refine (whnf.WF he).bind fun e _ _ ⟨hb, he⟩ => ?_; split
-  · let .sort _ := e
-    exact .pure ⟨⟨_, rfl⟩, he, hb⟩
-  exact .getEnv <| .getLCtx .throw
-
 theorem ensureForallCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (ensureForallCore e e₀) fun e1 _ => c.FVarsBelow e e1 ∧
       c.TrExpr e1 e' ∧ ∃ name ty body bi, e1 = .forallE name ty body bi := by

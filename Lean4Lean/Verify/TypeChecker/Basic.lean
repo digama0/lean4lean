@@ -943,3 +943,14 @@ theorem unfoldDefinition.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   simp only [Expr.getAppArgsRevList_reverse]; constructor
   · exact (e.mkAppList_getAppArgsList ▸ h1.mkAppList :)
   · exact h2.rebuild_mkAppList c.Ewf c.Δwf stk.tr (e.mkAppList_getAppArgsList ▸ he :)
+
+theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+    RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
+      (∃ u, e1 = .sort u) ∧ c.TrExpr e1 e' ∧ c.FVarsBelow e e1 := by
+  simp [ensureSortCore]; split
+  · let .sort _ := e
+    exact .pure ⟨⟨_, rfl⟩, he.trExpr c.Ewf c.Δwf, .rfl⟩
+  refine (whnf.WF he).bind fun e _ _ ⟨hb, he⟩ => ?_; split
+  · let .sort _ := e
+    exact .pure ⟨⟨_, rfl⟩, he, hb⟩
+  exact .getEnv <| .getLCtx .throw
