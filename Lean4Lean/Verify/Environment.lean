@@ -71,11 +71,13 @@ private theorem TypeChecker.M.WF.pureBind {c : TypeChecker.VContext}
 
 /-- What the primitive-definition recognizer must establish beyond ordinary type checking.
 This is kept separate from declaration checking so that the remaining metatheory does not
-depend on the recognizer's syntactic implementation. -/
-structure PrimitiveResult (v : DefinitionVal) (allow : Bool) : Prop where
+depend on the recognizer's syntactic implementation. Primitive semantics are claimed only
+in well-formed extensions of the environment in which recognition ran. -/
+structure PrimitiveResult (checked : VEnv) (v : DefinitionVal) (allow : Bool) : Prop where
   safe : allow = true → v.safety = .safe
   no_level_params : allow = true → v.levelParams = []
-  preserves : allow = true → ∀ {venv env' : VEnv} {ci' : VDefVal},
+  preserves : allow = true → ∀ {safety : DefinitionSafety} {venv env' : VEnv} {ci' : VDefVal},
+    checked ≤ venv → venv.WF →
     venv.HasPrimitives →
     TrDefVal safety venv (.defnInfo v) ci' → ci'.WF venv →
     venv.addConst v.name ci'.toVConstant = some env' →
@@ -85,7 +87,7 @@ structure PrimitiveResult (v : DefinitionVal) (allow : Bool) : Prop where
 theorem checkPrimitiveDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) :
     (Environment.checkPrimitiveDef v).WF (.mk' wf .safe v.levelParams) {} fun allow _ =>
-      PrimitiveResult v allow := by
+      PrimitiveResult (ves.venv .safe) v allow := by
   sorry
 
 theorem checkConstantValCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
@@ -102,6 +104,7 @@ theorem checkConstantValCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF e
   refine (TypeChecker.M.WF.liftExcept
     (checkName.WF (wf.tr (safety := safety)).map_wf ci.name allowPrimitive)).bind
     fun _ _ _ hname => ?_
+  -- Duplicate level parameters are rejected operationally; no later proof needs that fact.
   refine (TypeChecker.M.WF.liftExcept (Except.WF.trivial _)).bind fun _ _ _ _ => ?_
   refine (TypeChecker.M.WF.liftExcept
     (checkNoMVarNoFVar.WF env ci.name ci.type)).bind fun _ _ _ hclosed => ?_
@@ -198,7 +201,7 @@ theorem checkDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       if !(← TypeChecker.isDefEq valueType v.type) then
         throw <| Exception.declTypeMismatch env (.defnDecl v) valueType) : TypeChecker.M Unit).WF
       (.mk' wf .safe v.levelParams) {} fun _ _ =>
-        ∃ allow : Bool, ∃ ci' : VDefVal, PrimitiveResult v allow ∧
+        ∃ allow : Bool, ∃ ci' : VDefVal, PrimitiveResult (ves.venv .safe) v allow ∧
           v.levelParams.length = ci'.uvars ∧
           TrExprS (ves.venv .safe) v.levelParams [] v.type ci'.type ∧
           v.name = ci'.name ∧
@@ -325,19 +328,34 @@ theorem VEnv.HasPrimitives.addConst {env env' : VEnv} (H : env.HasPrimitives)
   have newContains (n : Name) : env.contains n → env'.contains n := by
     rintro ⟨ci, hci⟩
     exact ⟨ci, le.constants hci⟩
-  have primBool : Environment.primitives.contains ``Bool = true := by native_decide
-  have primBoolFalse : Environment.primitives.contains ``Bool.false = true := by native_decide
-  have primBoolTrue : Environment.primitives.contains ``Bool.true = true := by native_decide
-  have primNat : Environment.primitives.contains ``Nat = true := by native_decide
-  have primNatZero : Environment.primitives.contains ``Nat.zero = true := by native_decide
-  have primNatSucc : Environment.primitives.contains ``Nat.succ = true := by native_decide
+  let prims := [
+    ``Bool, ``Bool.false, ``Bool.true,
+    ``Nat, ``Nat.zero, ``Nat.succ,
+    ``Nat.add, ``Nat.pred, ``Nat.sub, ``Nat.mul, ``Nat.pow,
+    ``Nat.gcd, ``Nat.mod, ``Nat.div, ``Nat.beq, ``Nat.ble,
+    ``Nat.bitwise, ``Nat.land, ``Nat.lor, ``Nat.xor,
+    ``Nat.shiftLeft, ``Nat.shiftRight,
+    ``String.ofList, ``Char.ofNat]
+  have hprims : Environment.primitives = .ofList prims := rfl
+  replace hprims {n} : Environment.primitives.contains n ↔ n ∈ prims := by
+    simp [hprims, NameSet.contains, NameSet.ofList]
+  have primBool : Environment.primitives.contains ``Bool = true := hprims.2 (by simp [prims])
+  have primBoolFalse : Environment.primitives.contains ``Bool.false = true :=
+    hprims.2 (by simp [prims])
+  have primBoolTrue : Environment.primitives.contains ``Bool.true = true :=
+    hprims.2 (by simp [prims])
+  have primNat : Environment.primitives.contains ``Nat = true := hprims.2 (by simp [prims])
+  have primNatZero : Environment.primitives.contains ``Nat.zero = true :=
+    hprims.2 (by simp [prims])
+  have primNatSucc : Environment.primitives.contains ``Nat.succ = true :=
+    hprims.2 (by simp [prims])
   have prim (n : Name) (h : n ∈ [``Nat.add, ``Nat.sub, ``Nat.mul, ``Nat.pow, ``Nat.gcd,
       ``Nat.mod, ``Nat.div, ``Nat.beq, ``Nat.ble, ``Nat.land, ``Nat.lor, ``Nat.xor,
       ``Nat.shiftLeft, ``Nat.shiftRight, ``Char.ofNat, ``String.ofList]) :
       Environment.primitives.contains n = true := by
     simp at h
     rcases h with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
-      rfl | rfl | rfl | rfl | rfl <;> native_decide
+      rfl | rfl | rfl | rfl | rfl <;> exact hprims.2 (by simp [prims])
   constructor
   · intro h
     let ⟨h1, h2⟩ := H.bool (oldContains _ primBool h)
@@ -648,7 +666,10 @@ theorem addNonrecursiveDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves
     have hci' := hci.mono (hmono.trans (wf.mono hs))
     cases allow with
     | false => exact (wf.hasPrimitives.addConst (hnonprim rfl) hadd).addDefEq
-    | true => exact hp.preserves rfl wf.hasPrimitives htr' hci' hadd
+    | true =>
+      exact hp.preserves (safety := safety) (venv := ves.venv safety)
+        (env' := base) (ci' := ci') rfl (wf.mono DefinitionSafety.le_safe)
+        (wf.tr (safety := safety)).wf wf.hasPrimitives htr' hci' hadd
 
 theorem addDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) :
@@ -674,7 +695,9 @@ theorem addTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : T
     (hprop.mono hle) hadd old
 
 /-- Extract the header facts retained by `TrEnv'` from a successful opaque check.
-The current relation does not represent soundness of the opaque-body checker. -/
+The current relation does not represent soundness of the opaque-body checker. Since the
+implementation has no separate free-variable pass for the body, this proof extracts the
+successful checked prefix directly rather than applying `TypeChecker.M.WF`. -/
 theorem checkOpaqueHeader.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : OpaqueVal) :
     (TypeChecker.M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := {}) (do
@@ -749,6 +772,8 @@ theorem addMutual.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
   sorry
 
+/-- This is currently vacuous in the non-initialized case: `TrEnv` cannot contain the
+inductive `Eq` declaration until `AddInduct` is implemented. -/
 theorem addQuot.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
     (Environment.addQuot env).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
@@ -769,7 +794,9 @@ theorem addInductiveDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   sorry
 
 /-- Successful checked declaration addition preserves well-formedness and extends every
-safety-indexed abstract environment. -/
+safety-indexed abstract environment. Recursive unsafe definitions, mutual definitions,
+and inductives remain explicit model-extension boundaries; quotient initialization is
+vacuous until the inductive boundary is implemented. -/
 theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration) :
     (addDecl env decl).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
