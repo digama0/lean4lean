@@ -134,7 +134,7 @@ set_option allowUnsafeReducibility true
 attribute [local reducible] Data
 
 theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := by
-  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
+  rw [mkData_eq, mkData', Nat.min_eq_left (Nat.le_sub_one_of_lt H), Data.depth]
   have : d.toUInt64.toUInt32.toNat = d := by simp; omega
   refine .trans ?_ this; congr 2
   rw [← UInt64.toBitVec_inj]
@@ -150,9 +150,13 @@ theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := b
     d.toUInt64.toBitVec <<< 40#64) >>> 40#64 = d.toUInt64.toBitVec
   bv_decide
 
-theorem mkData_hasParam (H : d < 2 ^ 24) : (mkData h d hmv hp).hasParam = hp := by
-  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
+theorem mkData_hasParam : (mkData h d hmv hp).hasParam = hp := by
+  rw [mkData_eq, mkData']
   simp [Data.hasParam, (· == ·), ← UInt64.toBitVec_inj]
+  have hd : min d (2 ^ 24 - 1) ≤ 2 ^ 24 - 1 := Nat.min_le_right ..
+  generalize min d (2 ^ 24 - 1) = d at hd
+  have : d.toUInt64.toNat = d := by simp; omega
+  have : d.toUInt64.toBitVec ≤ 0xffffff#64 := (this ▸ hd :)
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
   have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
   have := hb hmv; have := hb hp
@@ -165,9 +169,13 @@ theorem mkData_hasParam (H : d < 2 ^ 24) : (mkData h d hmv hp).hasParam = hp := 
   rw [show L = hp.toUInt64.toBitVec by bv_decide]
   cases hp <;> decide
 
-theorem mkData_hasMVar (H : d < 2 ^ 24) : (mkData h d hmv hp).hasMVar = hmv := by
-  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
+theorem mkData_hasMVar : (mkData h d hmv hp).hasMVar = hmv := by
+  rw [mkData_eq, mkData']
   simp [Data.hasMVar, (· == ·), ← UInt64.toBitVec_inj]
+  have hd : min d (2 ^ 24 - 1) ≤ 2 ^ 24 - 1 := Nat.min_le_right ..
+  generalize min d (2 ^ 24 - 1) = d at hd
+  have : d.toUInt64.toNat = d := by simp; omega
+  have : d.toUInt64.toBitVec ≤ 0xffffff#64 := (this ▸ hd :)
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
   have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
   have := hb hmv; have := hb hp
@@ -179,6 +187,28 @@ theorem mkData_hasMVar (H : d < 2 ^ 24) : (mkData h d hmv hp).hasMVar = hmv := b
   change decide (L = 1#64) = hmv
   rw [show L = hmv.toUInt64.toBitVec by bv_decide]
   cases hmv <;> decide
+
+def hasParam' : Level → Bool
+  | .param .. => true
+  | .zero | .mvar .. => false
+  | .succ l => l.hasParam'
+  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasParam' || l₂.hasParam'
+
+/-- The cached `hasParam` bit agrees with structural traversal. -/
+@[simp] theorem hasParam_eq (l : Level) : l.hasParam = l.hasParam' := by
+  change l.data.hasParam = l.hasParam'
+  induction l <;> simp [Level.data, hasParam', mkData_hasParam, *]
+
+def hasMVar' : Level → Bool
+  | .mvar .. => true
+  | .zero | .param .. => false
+  | .succ l => l.hasMVar'
+  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasMVar' || l₂.hasMVar'
+
+/-- The cached `hasMVar` bit agrees with structural traversal. -/
+@[simp] theorem hasMVar_eq (l : Level) : l.hasMVar = l.hasMVar' := by
+  change l.data.hasMVar = l.hasMVar'
+  induction l <;> simp [Level.data, hasMVar', mkData_hasMVar, *]
 
 theorem ofLevel_of_not_hasParam (Us) {l : Level}
     (hl : l.hasParam' = false) (hmv : l.hasMVar' = false) :

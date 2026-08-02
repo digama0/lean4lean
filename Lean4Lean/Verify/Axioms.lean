@@ -252,37 +252,29 @@ end
 `Total.normalize` above is a total copy of it. -/
 axiom normalize_eq : normalize = Total.normalize
 
+/--
+The depth is clamped at `2 ^ 24 - 1` rather than guarded. The C++ implementation instead calls
+`lean_internal_panic` when the depth does not fit in 24 bits, which prints a message and calls
+`exit(1)`: that branch never returns a `Level.Data`, so `mkData` (an `opaque` declaration) is
+unconstrained there and no running program can observe which value we pick. Clamping keeps the
+`hasMVar` and `hasParam` bits, so `hasParam_eq` and `hasMVar_eq` hold unconditionally.
+
+Writing the branch as `panic! "universe level depth is too big"`, as the pre-`extern` Lean
+definition did, evaluates to `0` in the logic and so drops both flag bits. That is jointly
+inconsistent with `hasParam_eq` and `hasMVar_eq`: `Level.succ` of a level of cached depth
+`2 ^ 24 - 1` would report `hasParam = false` however many `Level.param`s it contains, while
+`hasParam'` reports `true`. Building a level that deep aborts the real implementation, so
+nothing is lost by ruling the case out here.
+-/
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
-  if depth > Nat.pow 2 24 - 1 then panic! "universe level depth is too big"
-  else
-    h.toUInt32.toUInt64 +
-    hasMVar.toUInt64.shiftLeft 32 +
-    hasParam.toUInt64.shiftLeft 33 +
-    depth.toUInt64.shiftLeft 40
+  h.toUInt32.toUInt64 +
+  hasMVar.toUInt64.shiftLeft 32 +
+  hasParam.toUInt64.shiftLeft 33 +
+  (min depth (2 ^ 24 - 1)).toUInt64.shiftLeft 40
 
 /-- This exists only for the bit-twiddling proofs, it shouldn't appear
 in the main results, which use the functions below instead -/
 axiom mkData_eq : @mkData = @mkData'
-
-def hasParam' : Level → Bool
-  | .param .. => true
-  | .zero | .mvar .. => false
-  | .succ l => l.hasParam'
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasParam' || l₂.hasParam'
-
-/-- This was false prior to the fix of lean4#8554; it should now be provable
-using `mkData_eq` and friends, but this has not been done yet -/
-@[simp] axiom hasParam_eq (l : Level) : l.hasParam = l.hasParam'
-
-def hasMVar' : Level → Bool
-  | .mvar .. => true
-  | .zero | .param .. => false
-  | .succ l => l.hasMVar'
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasMVar' || l₂.hasMVar'
-
-/-- This was false prior to the fix of lean4#8554; it should now be provable
-using `mkData_eq` and friends, but this has not been done yet -/
-@[simp] axiom hasMVar_eq (l : Level) : l.hasMVar = l.hasMVar'
 
 /-- This is because the `BEq` instance is implemented in C++ -/
 @[instance] axiom instLawfulBEqLevel : LawfulBEq Level
