@@ -345,9 +345,9 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
       save e
 
 def isDelta (env : Environment) (e : Expr) : Option ConstantInfo := do
-  if let .const c _ := e.getAppFn then
+  if let .const c ls := e.getAppFn then
     if let some ci := env.find? c then
-      if ci.hasValue then
+      if ci.hasValue && ls.length == ci.numLevelParams then
         return ci
   none
 
@@ -355,7 +355,6 @@ def unfoldDefinitionCore (e : Expr) : RecM (Option Expr) := do
   let .const _ ls := e | return none
   let env ← getEnv
   let some d := isDelta env e | return none
-  unless ls.length == d.numLevelParams do return none
   unless 0 < ls.length do return some (d.instantiateValueLevelParams! ls)
   if let some r := (← get).unfold[e]? then return some r
   let r := d.instantiateValueLevelParams! ls
