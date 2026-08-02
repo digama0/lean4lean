@@ -81,11 +81,11 @@ axiom findAux_isSome {α β} [BEq α] {node : Node α β} (i : USize) (a : α) :
 
 end PersistentHashMap
 
--- FIXME: lean4#8464
 open private mkAppRangeAux from Lean.Expr in
-axiom Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Expr) :
+theorem Expr.mkAppRangeAux.eq_def (n : Nat) (args : Array Expr) (i : Nat) (e : Expr) :
   mkAppRangeAux n args i e =
-    if i < n then mkAppRangeAux n args (i + 1) (mkApp e args[i]!) else e
+    if i < n then mkAppRangeAux n args (i + 1) (mkApp e args[i]!) else e := by
+  rw [mkAppRangeAux]
 
 namespace Syntax
 
