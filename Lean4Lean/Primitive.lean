@@ -244,6 +244,7 @@ def unfoldNatWellFounded (e : Expr) (fvs : Array Expr) (eq_def : Expr) (fail : �
   return (← getLCtx).mkLambda fvs rhs
 
 def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
+  unless v.safety == .safe do return false
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
   let tru := q(true)
   let fal := q(false)

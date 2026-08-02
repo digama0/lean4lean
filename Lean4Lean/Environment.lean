@@ -80,22 +80,25 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
   if let .safe := v₀.safety then
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
   if check then
-    M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
+    M.run env (safety := v₀.safety) (lctx := {}) (lparams := []) (fuel := fuel) do
       for v in vs do
-        if v.safety != v₀.safety then
-          throw <| .other
-            "invalid mutual definition, declarations must have the same safety annotation"
-        checkConstantVal env v.toConstantVal
+        -- The C++ checker is shared across the loop, but `check` receives each value's lparams.
+        withTheReader TypeChecker.Context (fun ctx => { ctx with lparams := v.levelParams }) do
+          if v.safety != v₀.safety then
+            throw <| .other
+              "invalid mutual definition, declarations must have the same safety annotation"
+          checkConstantVal env v.toConstantVal
   let mut env' := env
   for v in vs do
     env' := env'.add (.defnInfo v)
   if check then
-    M.run env' (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
+    M.run env' (safety := v₀.safety) (lctx := {}) (lparams := []) (fuel := fuel) do
       for v in vs do
-        checkNoMVarNoFVar env' v.name v.value
-        let valType ← TypeChecker.checkType v.value
-        if !(← isDefEq valType v.type) then
-          throw <| .declTypeMismatch env' (.mutualDefnDecl vs) valType
+        withTheReader TypeChecker.Context (fun ctx => { ctx with lparams := v.levelParams }) do
+          checkNoMVarNoFVar env' v.name v.value
+          let valType ← TypeChecker.checkType v.value
+          if !(← isDefEq valType v.type) then
+            throw <| .declTypeMismatch env' (.mutualDefnDecl vs) valType
   return env'
 
 /-- Type check given declaration and add it to the environment -/
