@@ -4,7 +4,7 @@ namespace Lean4Lean.Tests.Toolchain
 
 open Lean Lean4Lean TypeChecker TypeChecker.Inner
 
-theorem theoremOpacity : True := trivial
+theorem theoremDelta : True := trivial
 
 theorem proofOnlyDependency : True := trivial
 theorem dependencyOnlyInProof : True := proofOnlyDependency
@@ -16,10 +16,18 @@ run_meta
   let env ← getEnv
   let kenv := env.toKernelEnv
 
-  let some thmInfo := kenv.find? ``theoremOpacity
-    | throwError "theorem-opacity test declaration is missing"
+  let some thmInfo := kenv.find? ``theoremDelta
+    | throwError "theorem-delta test declaration is missing"
+  -- lean4#12973 flipped `ConstantInfo.hasValue` for theorems, but left
+  -- `constant_info::has_value()` -- the predicate `type_checker::is_delta` consults --
+  -- alone, so the kernel still delta-unfolds theorems. `isDelta` must follow the kernel,
+  -- not `hasValue`.
   unless !thmInfo.hasValue do
-    throwError "theorem values must not be delta-reducible"
+    throwError "expected `ConstantInfo.hasValue` to exclude theorems as of lean4#12973"
+  unless thmInfo.deltaValue?.isSome do
+    throwError "theorem values must remain delta-reducible"
+  unless (isDelta kenv (.const ``theoremDelta [])).isSome do
+    throwError "isDelta rejected a theorem, diverging from `type_checker::is_delta`"
 
   unless (isDelta kenv (.const ``Nat.add [.zero])).isNone do
     throwError "isDelta accepted an invalid universe arity"

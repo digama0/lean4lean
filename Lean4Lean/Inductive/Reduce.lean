@@ -44,7 +44,7 @@ def expandEtaStruct (eType e : Expr) : Expr :=
   pure result
 
 def toCtorWhenStruct (inductName : Name) (e : Expr) : m Expr := do
-  if !env.isStructureLike inductName || (e.isConstructorApp?' env).isSome then
+  if !env.isNonRecStructure inductName || (e.isConstructorApp?' env).isSome then
     return e
   let eType ← whnf (← inferType e)
   if !eType.getAppFn.isConstOf inductName then return e

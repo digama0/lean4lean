@@ -43,9 +43,10 @@ def primitives : NameSet := .ofList [
 /--
 Returns true iff `constName` is a non-recursive inductive datatype that has only one constructor and no indices.
 
-Such types have special kernel support. This must be in sync with `is_structure_like`.
+Such types have special kernel support (e.g. the eta rule).
+This must be in sync with `is_non_rec_structure()`.
 -/
-def isStructureLike (env : Environment) (constName : Name) : Bool :=
+def isNonRecStructure (env : Environment) (constName : Name) : Bool :=
   match env.find? constName with
   | some (.inductInfo { isRec := false, ctors := [_], numIndices := 0, .. }) => true
   | _ => false
