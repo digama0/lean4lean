@@ -172,7 +172,7 @@ theorem quickIsDefEq.WF {c : VContext} {s : VState}
       isDefEqForall.WF (subst := #[]) (fvs := []) rfl (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
   · have .sort hu := he₁; have .sort hv := he₂
     refine .pure fun h => ⟨_, .sortDF (.of_ofLevel hu) (.of_ofLevel hv) ?_⟩
-    exact Level.isEquiv'_wf (toLBool_true.1 h) hu hv
+    exact Level.isEquiv_wf (toLBool_true.1 h) hu hv
   · let .mdata he₁ := he₁; let .mdata he₂ := he₂
     exact .toLBoolM <| isDefEq.WF he₁ he₂
   · cases he₁

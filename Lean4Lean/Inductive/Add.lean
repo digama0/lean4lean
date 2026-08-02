@@ -99,7 +99,7 @@ def checkInductiveTypes
       if stats.indConsts.isEmpty then
         let lctx := (← read).lctx
         stats := { stats with lctx, resultLevel, isNotZero := resultLevel.isNeverZero }
-      else if !resultLevel.isEquiv' stats.resultLevel then
+      else if !resultLevel.isEquiv stats.resultLevel then
         throw <| .other "mutually inductive types must live in the same universe"
       stats := { stats with
         nindices := stats.nindices.push nindices
@@ -223,7 +223,7 @@ def checkConstructors (indTypes : Array InductiveType)
             loop (body.instantiate1 param) (i + 1) fuel
           else
             let s ← ensureType dom
-            unless stats.resultLevel.isZero || stats.resultLevel.geq' s.sortLevel! do
+            unless stats.resultLevel.isZero || stats.resultLevel.geq s.sortLevel! do
               throw <| .other s!"universe level of type_of(arg #{i + 1}) of '{n}' \
                 is too big for the corresponding inductive datatype"
             if !isUnsafe then
