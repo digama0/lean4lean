@@ -81,7 +81,7 @@ structure PrimitiveResult (v : DefinitionVal) (allow : Bool) : Prop where
     venv.addConst v.name ci'.toVConstant = some env' →
     (env'.addDefEq ci'.toDefEq).HasPrimitives
 
-/-- Verification boundary for the kernel's syntactic primitive-definition recognizer. -/
+/-- Verification boundary for Lean4Lean's syntactic primitive-definition recognizer. -/
 theorem checkPrimitiveDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) :
     (Environment.checkPrimitiveDef v).WF (.mk' wf .safe v.levelParams) {} fun allow _ =>
@@ -156,24 +156,6 @@ theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     refine .pure ⟨value', hvalue, ?_⟩
     have heq : equal = true := by cases equal <;> simp_all
     exact hhasType.defeqU_r (wf.tr (safety := safety)).wf (by trivial) (hequal heq)
-
-theorem checkValue.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (decl : Declaration) (ci : ConstantInfo) (ci' : VConstVal)
-    (hci : TrConstVal safety (ves.venv safety) ci ci') (state : TypeChecker.VState := {}) :
-    ((do
-      Environment.checkNoMVarNoFVar env ci.name ci.value!
-      let valueType ← TypeChecker.checkType ci.value!
-      if !(← TypeChecker.isDefEq valueType ci.type) then
-        throw <| Exception.declTypeMismatch env decl valueType) : TypeChecker.M Unit).WF
-      (.mk' wf safety ci.levelParams) state fun _ _ =>
-        ∃ ci'' : VDefVal, TrDefVal safety (ves.venv safety) ci ci'' ∧ ci''.WF (ves.venv safety) := by
-  refine (checkBody.WF wf decl ci.name ci.levelParams ci.type ci.value! ci'.type hci.1.2.2 state).mono
-    fun _ _ _ ⟨value', hvalue, hvalueType⟩ => ?_
-  refine ⟨{ name := ci'.name, uvars := ci'.uvars, type := ci'.type, value := value' },
-    ⟨hci, hvalue⟩, ?_⟩
-  change (ves.venv safety).HasType ci'.uvars [] value' ci'.type
-  rw [← hci.1.2.1]
-  exact hvalueType
 
 theorem checkTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : TheoremVal) :
@@ -624,8 +606,9 @@ theorem addAxiom.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : Axi
   · exact .axiom htr
       (by rwa [← old.map_wf.find?'_eq_find?]) hci hadd old
 
-/-- Verification boundary for the recursive unsafe-definition path, whose body is checked
-after the declaration has been inserted into the environment. -/
+/-- Model-extension boundary for the unsafe-definition path. The kernel checks the body
+after inserting the declaration, while `VDecl.WF.def` currently requires it to be
+well-formed before insertion; recursive references therefore need a stronger relation. -/
 theorem addUnsafeDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hunsafe : v.safety = .unsafe) :
     (addDefinition env v).WF fun env' =>
@@ -690,6 +673,8 @@ theorem addTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : T
   exact .thm htr' (by rwa [← old.map_wf.find?'_eq_find?]) (hbody.mono hle)
     (hprop.mono hle) hadd old
 
+/-- Extract the header facts retained by `TrEnv'` from a successful opaque check.
+The current relation does not represent soundness of the opaque-body checker. -/
 theorem checkOpaqueHeader.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : OpaqueVal) :
     (TypeChecker.M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := {}) (do
@@ -755,7 +740,9 @@ theorem checkEqType.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
     exact False.elim <| (wf.tr (safety := .unsafe)).no_inductInfo hfind'
   | _ => simp_all [( · >>= · ), Except.bind, pure, Pure.pure, Except.pure]
 
-/-- Verification boundary for recursive mutual unsafe/partial definitions. -/
+/-- Model-extension boundary for mutual definitions. Their bodies are checked after all
+declarations are inserted, but the current `TrEnv` relation only adds definitions whose
+bodies are already well-formed in the preceding environment. -/
 theorem addMutual.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (vs : List DefinitionVal) :
     (addMutual env vs).WF fun env' =>
@@ -770,10 +757,14 @@ theorem addQuot.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
   · exact .pure ⟨ves, wf, fun _ => VEnv.LE.rfl⟩
   · exact (checkEqType.WF wf).bind fun _ h => False.elim h
 
-/-- Verification boundary for inductive declarations and their generated constants. -/
-theorem addInductive.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+/-- Model-extension boundary for inductive declarations. `AddInduct` currently has no
+constructors, so the postcondition cannot yet represent a successfully added inductive. -/
+theorem addInductiveDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (lparams : List Name) (nparams : Nat) (types : List InductiveType) (isUnsafe : Bool) :
-    (addDecl env (.inductDecl lparams nparams types isUnsafe)).WF fun env' =>
+    ((do
+      let allowPrimitive ← Environment.checkPrimitiveInductive env lparams nparams types isUnsafe
+      Environment.addInductive env lparams nparams types isUnsafe allowPrimitive {}) :
+      Except Exception Environment).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
   sorry
 
@@ -790,4 +781,4 @@ theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : D
   | mutualDefnDecl vs => exact addMutual.WF wf vs
   | quotDecl => exact addQuot.WF wf
   | inductDecl lparams nparams types isUnsafe =>
-    exact addInductive.WF wf lparams nparams types isUnsafe
+    exact addInductiveDecl.WF wf lparams nparams types isUnsafe

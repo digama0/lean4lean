@@ -106,6 +106,8 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.thmInfo ci)) Q env'
+  /-- Opaque bodies do not contribute definitional equalities, so `TrEnv'` retains only
+  the checked header. Soundness of the opaque-body checker is not represented here. -/
   | opaque {ci' : VConstVal} :
     TrConstVal safety env (.opaqueInfo ci) ci' →
     C.find? ci.name = none → ci'.toVConstant.WF env →
