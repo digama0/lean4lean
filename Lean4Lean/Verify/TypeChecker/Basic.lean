@@ -239,7 +239,7 @@ theorem WHNFCache.WF.empty : WHNFCache.WF c s {} := fun _ => by simp
 
 def UnfoldCache.WF (c : VContext) (m : ExprMap Expr) : Prop :=
   ∀ ⦃e e' : Expr⦄, m[e]? = some e' → ∃ n ls ci, e = .const n ls ∧
-      c.env.find? n = some ci ∧ e' = ci.instantiateValueLevelParams! ls
+      c.env.find? n = some ci ∧ e' = Inner.instantiateDeltaValue ci ls
 
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
@@ -883,15 +883,15 @@ theorem whnfCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   fun _ wf => wf.whnfCore he
 
 theorem isDelta_is_some : isDelta env e = some ci ↔
-    ∃ n, env.find? n = some ci ∧ (∃ v, ci.value? = some v) ∧ ∃ ls, e.getAppFn = .const n ls := by
-  simp [isDelta]
+    ∃ n, env.find? n = some ci ∧ (∃ v, ci.deltaValue? = some v) ∧
+      ∃ ls, e.getAppFn = .const n ls ∧ ls.length = ci.numLevelParams := by
+  simp only [isDelta]
   split <;> [split <;> [split; skip]; skip] <;>
-    simp_all [ConstantInfo.hasValue_eq, Option.isSome_iff_exists] <;>
-    rintro rfl <;> assumption
+    simp_all [Option.isSome_iff_exists] <;> grind
 
 def UnfoldDefinition.WF (c : VContext) (e e₀ : Expr) (e' : VExpr) : Option Expr → Prop
   | some e₁ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
-  | none => ∀ {{n ci v ls}}, c.env.find? n = some ci → ci.value? = some v →
+  | none => ∀ {{n ci v ls}}, c.env.find? n = some ci → ci.deltaValue? = some v →
     e₀ = .const n ls → ls.length = ci.numLevelParams → False
 
 theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
@@ -899,17 +899,15 @@ theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e'
   dsimp [unfoldDefinitionCore]
   split <;> [refine .getEnv ?_; (rename_i H; exact .pure fun _ _ _ _ _ _ h => nomatch H _ _ h)]
   split; rotate_left
-  · rename_i H; refine .pure ?_; rintro _ _ _ _ h1 h2 ⟨⟩
-    cases H _ (isDelta_is_some.2 ⟨_, h1, ⟨_, h2⟩, _, rfl⟩)
+  · rename_i H; refine .pure ?_; rintro _ _ _ _ h1 h2 ⟨⟩ hlen
+    cases H _ (isDelta_is_some.2 ⟨_, h1, ⟨_, h2⟩, _, rfl, hlen⟩)
   rename_i n ls oci ci h1
-  obtain ⟨_, h3, ⟨_, h4⟩, _, ⟨⟩⟩ := isDelta_is_some.1 h1
-  split <;> rename_i h2 <;> [refine .pureBind ?_; refine .pure ?_]; rotate_left
-  · simp at h2; rintro _ _ _ _ h1 _ ⟨⟩; cases h1 ▸ h3; exact h2
+  obtain ⟨_, h3, ⟨_, h4⟩, _, ⟨⟩, hlen⟩ := isDelta_is_some.1 h1
   have : UnfoldDefinition.WF c (.const n ls) (.const n ls) e'
-      (some (ci.instantiateValueLevelParams! ls)) := by
+      (some (instantiateDeltaValue ci ls)) := by
     let .const a1 a2 a3 := he
     have ⟨rfl, b1, b2, b3⟩ := c.trenv.find?_uniq h3 a1
-    simp [ConstantInfo.instantiateValueLevelParams!, ConstantInfo.value!_eq, h4]
+    simp [instantiateDeltaValue, h4]
     have c1 := c.trenv.of_value h3 b1 h4 |>.instL c.Ewf (by trivial) a2 (b2.trans a3.symm)
     have := c1.weakFV c.Ewf (.from_nil c.mlctx.noBV) c.Δwf
     rw [c1.wf.closedN c.Ewf trivial |>.liftN_eq (Nat.zero_le _)] at this

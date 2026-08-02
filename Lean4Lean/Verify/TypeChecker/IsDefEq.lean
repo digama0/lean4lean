@@ -339,7 +339,7 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
   refine .getEnv ?_; extract_lets delta cont F1 F2
   have hdelta {s e e' ci} (he : c.TrExprS e e') (H : isDelta c.env e = some ci) :
       (delta e).WF c s fun r _ => c.TrExpr r e' := by
-    let ⟨n, h1, ⟨_, h2⟩, ls, h3⟩ := isDelta_is_some.1 H
+    let ⟨n, h1, ⟨_, h2⟩, ls, h3, _⟩ := isDelta_is_some.1 H
     have ⟨_, stk⟩ := AppStack.build (e.mkAppList_getAppArgsList ▸ he)
     have .const a1 a2 a3 := h3 ▸ stk.tr
     have ⟨b1, b2, b3, b4⟩ := c.trenv.find?_uniq h1 a1
@@ -371,8 +371,8 @@ theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
   split <;> [skip; exact cacheFailure.WF.lift.bind fun _ _ _ _ => hF1]
   rename_i h1 h2; simp at h1
   cases ptrEqConstantInfo_eq h1.1.1.2
-  have ⟨n₁, b1₁, ⟨_, b2₁⟩, ls₁, b3₁⟩ := isDelta_is_some.1 hd1
-  have ⟨n₂, b1₂, ⟨_, b2₂⟩, ls₂, b3₂⟩ := isDelta_is_some.1 hd2
+  have ⟨n₁, b1₁, ⟨_, b2₁⟩, ls₁, b3₁, _⟩ := isDelta_is_some.1 hd1
+  have ⟨n₂, b1₂, ⟨_, b2₂⟩, ls₂, b3₂, _⟩ := isDelta_is_some.1 hd2
   simp [b3₁, b3₂, Expr.constLevels!] at h2
   have ⟨_, stk₁⟩ := AppStack.build (e₁.mkAppList_getAppArgsList ▸ he₁)
   have ⟨_, stk₂⟩ := AppStack.build (e₂.mkAppList_getAppArgsList ▸ he₂)

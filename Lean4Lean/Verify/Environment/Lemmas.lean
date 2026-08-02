@@ -1,4 +1,5 @@
 import Lean4Lean.Std.SMap
+import Lean4Lean.Declaration
 import Lean4Lean.Verify.Environment.Basic
 
 namespace Lean4Lean
@@ -138,7 +139,7 @@ theorem TrEnv.find?_uniq (H : TrEnv safety env venv)
   H.aligned.find?_uniq (H.map_wf.find?'_eq_find? _ ▸ h) hs
 
 theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci)
-    (hs : safety ≤ ci.safety) (hv : ci.value? = some v) :
+    (hs : safety ≤ ci.safety) (hv : ci.deltaValue? = some v) :
     TrExpr venv ci.levelParams [] v (.const ci.name (VLevel.params ci.levelParams.length)) := by
   have {C n ci'} (hC : C.WF) :
       (SMap.insert C n ci').find? name = some ci →
@@ -172,6 +173,6 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
   | induct _ h1 H ih => cases h1
 
 nonrec theorem TrEnv.of_value (H : TrEnv safety env venv) (h : env.find? name = some ci)
-    (hs : safety ≤ ci.safety) (hv : ci.value? = some v) :
+    (hs : safety ≤ ci.safety) (hv : ci.deltaValue? = some v) :
     TrExpr venv ci.levelParams [] v (.const ci.name (VLevel.params ci.levelParams.length)) :=
   H.of_value (by rwa [← H.map_wf.find?'_eq_find?]) hs hv

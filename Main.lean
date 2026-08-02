@@ -32,11 +32,12 @@ namespace ConstantInfo
 
 /-- Return all names appearing in the type or value of a `ConstantInfo`. -/
 def getUsedConstants (c : ConstantInfo) : NameSet :=
-  c.type.getUsedConstants' ++ match c.value? with
+  -- The kernel does not unfold theorem or opaque values, but replaying them still
+  -- requires their proof/body dependencies to be present in the environment.
+  c.type.getUsedConstants' ++ match c.value? (allowOpaque := true) with
   | some v => v.getUsedConstants'
   | none => match c with
     | .inductInfo val => .ofList val.ctors
-    | .opaqueInfo val => val.value.getUsedConstants'
     | .ctorInfo val => ({} : NameSet).insert val.name
     | .recInfo val => .ofList val.all
     | _ => {}
@@ -149,7 +150,7 @@ deriving instance BEq for RecursorVal
 def Lean.Expr.hasStrLit (e : Expr) : Bool := (e.find? isStringLit).isSome
 
 def Lean.ConstantInfo.hasStrLit (ci : ConstantInfo) : Bool :=
-  ci.type.hasStrLit || ci.value?.any (·.hasStrLit)
+  ci.type.hasStrLit || (ci.value? (allowOpaque := true)).any (·.hasStrLit)
 
 mutual
 /--

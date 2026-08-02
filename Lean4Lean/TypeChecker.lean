@@ -345,20 +345,22 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
       save e
 
 def isDelta (env : Environment) (e : Expr) : Option ConstantInfo := do
-  if let .const c _ := e.getAppFn then
+  if let .const c ls := e.getAppFn then
     if let some ci := env.find? c then
-      if ci.hasValue then
+      if ci.deltaValue?.isSome && ls.length == ci.numLevelParams then
         return ci
   none
+
+def instantiateDeltaValue (ci : ConstantInfo) (ls : List Level) : Expr :=
+  ci.deltaValue?.get!.instantiateLevelParams ci.levelParams ls
 
 def unfoldDefinitionCore (e : Expr) : RecM (Option Expr) := do
   let .const _ ls := e | return none
   let env ← getEnv
   let some d := isDelta env e | return none
-  unless ls.length == d.numLevelParams do return none
-  unless 0 < ls.length do return some (d.instantiateValueLevelParams! ls)
+  unless 0 < ls.length do return some (instantiateDeltaValue d ls)
   if let some r := (← get).unfold[e]? then return some r
-  let r := d.instantiateValueLevelParams! ls
+  let r := instantiateDeltaValue d ls
   modify fun s => { s with unfold := s.unfold.insert e r }
   return some r
 
@@ -518,7 +520,7 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
   let env ← getEnv
   let .ctorInfo fInfo ← env.get f | return false
   unless s.getAppNumArgs == fInfo.numParams + fInfo.numFields do return false
-  unless env.isStructureLike fInfo.induct do return false
+  unless env.isNonRecStructure fInfo.induct do return false
   unless ← isDefEq (← inferType t) (← inferType s) do return false
   let args := s.getAppArgs
   for h : i in [fInfo.numParams:args.size] do

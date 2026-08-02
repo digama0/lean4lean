@@ -1,10 +1,10 @@
 name = "lean4lean"
-defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verify"]
+defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verify", "Lean4Lean.Tests"]
 
 [[require]]
 name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
-rev = "v4.29.0"
+rev = "v4.30.0"
 
 [[lean_lib]]
 name = "Lean4Lean"
@@ -16,6 +16,16 @@ globs = ["Lean4Lean.Theory.*"]
 [[lean_lib]]
 name = "Lean4Lean.Verify"
 globs = ["Lean4Lean.Verify.*"]
+
+# `Lean4Lean.Tests.Toolchain` imports `Main` (for the replay helpers). Declaring `Main` as a
+# library as well as the `lean4lean` exe root gives lake the dependency edge; without it the
+# test module only builds when `Main.olean` happens to already exist.
+[[lean_lib]]
+name = "Main"
+
+[[lean_lib]]
+name = "Lean4Lean.Tests"
+globs = ["Lean4Lean.Tests.*"]
 
 [[lean_lib]]
 name = "Lean4Lean.Experimental"
