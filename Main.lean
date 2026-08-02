@@ -32,8 +32,8 @@ namespace ConstantInfo
 
 /-- Return all names appearing in the type or value of a `ConstantInfo`. -/
 def getUsedConstants (c : ConstantInfo) : NameSet :=
-  -- The kernel does not unfold theorem or opaque values, but replaying them still
-  -- requires their proof/body dependencies to be present in the environment.
+  -- Replay needs dependencies from theorem proofs and opaque bodies even though
+  -- `ConstantInfo.value?` hides both by default.
   c.type.getUsedConstants' ++ match c.value? (allowOpaque := true) with
   | some v => v.getUsedConstants'
   | none => match c with

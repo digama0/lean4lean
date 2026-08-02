@@ -9,7 +9,8 @@ opaques do not. This mirrors the C++ `constant_info::has_value()`/`get_value()` 
 
 This is deliberately *not* `ConstantInfo.value?`, whose meaning changed in lean4#12973: it now
 excludes theorems, but `constant_info::has_value()` was left untouched by that PR, so the kernel
-still delta-unfolds theorems (`type_checker::is_delta` is its only consumer in `src/kernel`).
+still delta-unfolds theorems: `type_checker::is_delta` uses this predicate to select candidates,
+and `instantiate_value_lparams` uses it before reading their values.
 -/
 def ConstantInfo.deltaValue? : ConstantInfo → Option Expr
   | .defnInfo {value, ..} => some value
