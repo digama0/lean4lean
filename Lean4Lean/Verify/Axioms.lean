@@ -269,8 +269,14 @@ definition of `mkData` that preceded the `@[extern]` one. `panic!` evaluates to 
 logic, which drops both flag bits, and that is inconsistent with each of `hasParam_eq` and
 `hasMVar_eq` separately: `Level.succ` of a level of cached depth `2 ^ 24 - 1` would report
 `hasParam = false` however many `Level.param`s it contains, while `hasParam'` reports `true`.
-That was the soundness bug of leanprover/lean4#8554, fixed by leanprover/lean4#8559; the issue
-proposed saturating the depth, and the merged fix aborts instead.
+That was the soundness bug reported in leanprover/lean4#8554, fixed for `Level` by
+leanprover/lean4#8559 and for `Expr` by leanprover/lean4#8560, which moved the checks into C++
+so that they abort.
+
+Saturating here is not a claim that the kernel saturates; it does not, it aborts. It is a claim
+about which total function to pick for a branch on which the kernel returns nothing, and the
+only requirements on that pick are that it agree with the kernel everywhere the kernel returns,
+and that it keep the cached fields conservative.
 -/
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
   h.toUInt32.toUInt64 +
