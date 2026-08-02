@@ -3,7 +3,7 @@ import Lean4Lean.Std.Variable!
 
 namespace Lean4Lean
 
-open VExpr
+open Lean4Lean VExpr
 
 inductive Ctx.LiftN (n : Nat) : Nat → List VExpr → List VExpr → Prop where
   | zero (As) (h : As.length = n := by rfl) : Ctx.LiftN n 0 Γ (As ++ Γ)

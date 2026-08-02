@@ -1,6 +1,8 @@
 import Lean4Lean.Theory.Typing.Lemmas
 
 namespace Lean4Lean
+open Lean4Lean
+
 namespace VEnv
 
 open VExpr

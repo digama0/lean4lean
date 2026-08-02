@@ -37,9 +37,10 @@ theorem WF.pureBind  {f : β → Except ε α} {Q}
 end Except
 
 namespace Lean4Lean
+open Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
-open scoped List
+open scoped _root_.List
 
 namespace EquivManager
 

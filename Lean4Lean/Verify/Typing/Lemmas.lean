@@ -6,8 +6,8 @@ import Lean4Lean.Theory.Typing.UniqueTyping
 import Lean4Lean.Instantiate
 
 namespace Lean4Lean
-open VEnv Lean
-open scoped List
+open Lean4Lean VEnv Lean
+open scoped _root_.List
 
 theorem fvarsIn_iff : FVarsIn P e ↔ (∀ fv ∈ e.fvarsList, P fv) ∧ FVarsIn (fun _ => True) e := by
   induction e <;> simp [FVarsIn, Expr.fvarsList, *] <;> grind

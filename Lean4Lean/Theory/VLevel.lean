@@ -1,6 +1,7 @@
 import Lean4Lean.Std.Basic
 
 namespace Lean4Lean
+open Lean4Lean
 
 export Lean (Name)
 

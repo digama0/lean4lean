@@ -3,6 +3,8 @@ import Lean4Lean.Theory.Typing.Strong
 import Lean4Lean.Theory.Typing.UniqueTyping
 
 namespace Lean4Lean
+open Lean4Lean
+
 namespace VEnv
 
 open VExpr

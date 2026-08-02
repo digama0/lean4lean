@@ -3,6 +3,8 @@ import Lean4Lean.Verify.Expr
 import Lean4Lean.Verify.Typing.Expr
 import Lean4Lean.Verify.Typing.Lemmas
 
+open Lean4Lean
+
 namespace Lean.LocalContext
 
 noncomputable def toList (lctx : LocalContext) : List LocalDecl :=
@@ -181,7 +183,7 @@ end Lean.LocalContext
 namespace Lean4Lean
 
 open Lean
-open scoped List
+open scoped _root_.List
 
 attribute [-simp] List.filterMap_reverse
 

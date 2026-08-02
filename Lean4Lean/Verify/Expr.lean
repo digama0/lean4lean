@@ -6,6 +6,8 @@ import Lean4Lean.Instantiate
 import Batteries.Data.String.Lemmas
 import Std.Tactic.BVDecide
 
+open Lean4Lean
+
 namespace Lean
 
 instance : LawfulBEq FVarId where

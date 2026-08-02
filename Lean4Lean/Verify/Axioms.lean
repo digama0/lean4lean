@@ -12,7 +12,7 @@ axiom all_eq_all_toList {p : α → β → Bool} :
 
 end Std.TreeMap
 
-open scoped List
+open scoped _root_.List
 namespace Lean
 
 noncomputable def PersistentArrayNode.toList' : PersistentArrayNode α → List α :=
