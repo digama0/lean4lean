@@ -253,18 +253,24 @@ end
 axiom normalize_eq : normalize = Total.normalize
 
 /--
-The depth is clamped at `2 ^ 24 - 1` rather than guarded. The C++ implementation instead calls
-`lean_internal_panic` when the depth does not fit in 24 bits, which prints a message and calls
-`exit(1)`: that branch never returns a `Level.Data`, so `mkData` (an `opaque` declaration) is
-unconstrained there and no running program can observe which value we pick. Clamping keeps the
-`hasMVar` and `hasParam` bits, so `hasParam_eq` and `hasMVar_eq` hold unconditionally.
+A total specification of the `opaque` `mkData`. Wherever the C++ `lean_level_mk_data` returns,
+`mkData'` agrees with it.
 
-Writing the branch as `panic! "universe level depth is too big"`, as the pre-`extern` Lean
-definition did, evaluates to `0` in the logic and so drops both flag bits. That is jointly
-inconsistent with `hasParam_eq` and `hasMVar_eq`: `Level.succ` of a level of cached depth
-`2 ^ 24 - 1` would report `hasParam = false` however many `Level.param`s it contains, while
-`hasParam'` reports `true`. Building a level that deep aborts the real implementation, so
-nothing is lost by ruling the case out here.
+The depth is saturated at `2 ^ 24 - 1`. The C++ instead calls `lean_internal_panic` when the
+depth does not fit in 24 bits, which prints to stderr and calls `exit(1)`, so it returns no
+`Level.Data` at all on those inputs and pins down nothing there. Saturating keeps the `hasMVar`
+and `hasParam` bits, which is what makes `hasParam_eq` and `hasMVar_eq` hold unconditionally.
+This is not a claim that the implementation computes this value: `mkData_eq` is a specification
+chosen for the opaque constant, and results proved from it transfer to the implementation only
+for runs that do not abort.
+
+This branch used to read `panic! "universe level depth is too big"`, copied from the Lean
+definition of `mkData` that preceded the `@[extern]` one. `panic!` evaluates to `0` in the
+logic, which drops both flag bits, and that is inconsistent with each of `hasParam_eq` and
+`hasMVar_eq` separately: `Level.succ` of a level of cached depth `2 ^ 24 - 1` would report
+`hasParam = false` however many `Level.param`s it contains, while `hasParam'` reports `true`.
+That was the soundness bug of leanprover/lean4#8554, fixed by leanprover/lean4#8559; the issue
+proposed saturating the depth, and the merged fix aborts instead.
 -/
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
   h.toUInt32.toUInt64 +
