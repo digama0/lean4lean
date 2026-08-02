@@ -1,4 +1,4 @@
-import Main
+import Lean4Lean.Replay
 
 namespace Lean4Lean.Tests.Toolchain
 
