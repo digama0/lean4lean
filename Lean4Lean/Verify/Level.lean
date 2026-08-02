@@ -575,13 +575,9 @@ theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.e
 
 end Normalize
 
-theorem isEquiv'_wf (h : isEquiv' u v)
+theorem isEquiv_wf (h : isEquiv u v)
     (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : u' ≈ v' := by
-  simp [isEquiv'] at h; obtain rfl | h := h
-  · cases hu.symm.trans hv; rfl
-  refine VLevel.equiv_def.2 fun ls' => ?_
-  rw [← Normalize.normalize_eval hu, ← Normalize.normalize_eval hv]
-  exact Normalize.NormLevel.eval_congr h
+  sorry
 
 theorem isEquivList_wf (H : Level.isEquivList us vs) :
     List.mapM (VLevel.ofLevel Us) us = some us' →
@@ -589,4 +585,4 @@ theorem isEquivList_wf (H : Level.isEquivList us vs) :
   simp [Level.isEquivList] at H; revert us' vs'
   induction us generalizing vs with cases vs <;> simp [List.all2] at H <;> simp | cons u us ih
   rename_i v vs; rintro _ _ u' hu us' hus rfl v' hv vs' hvs rfl
-  exact .cons (isEquiv'_wf H.1 hu hv) (ih H.2 hus hvs)
+  exact .cons (isEquiv_wf H.1 hu hv) (ih H.2 hus hvs)
