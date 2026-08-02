@@ -74,6 +74,7 @@ If you run this as is (with no additional arguments), it will check every olean 
     * `Axioms.lean`: theorems about upstream opaques that shouldn't be opaque
     * `Expr.lean`: correctness of basics on `Expr`
     * `Level.lean`: correctness of basics on `Level`
+    * `Level/Std.lean`: soundness of the standard-library level operations
     * `VLCtx.lean`: a "translation context" suitable for translating expressions
     * `LocalContext.lean`: properties of lean's `LocalContext` type
     * `NameGenerator.lean`: properties of the fresh name generator

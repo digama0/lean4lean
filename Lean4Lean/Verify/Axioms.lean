@@ -113,6 +113,10 @@ end Syntax
 
 namespace Level
 
+-- The semantic specification of the opaque `Level.normalize` cannot be stated
+-- until its evaluator is defined; see `Lean.Level.Semantics.eval_normalize` in
+-- `Lean4Lean.Verify.Level.Std` for that additional trust assumption.
+
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
   if depth > Nat.pow 2 24 - 1 then panic! "universe level depth is too big"
   else

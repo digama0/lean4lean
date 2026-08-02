@@ -1,5 +1,6 @@
 import Lean4Lean.Theory.VLevel
 import Lean4Lean.Level
+import Lean4Lean.Verify.Level.Std
 import Lean4Lean.Verify.Axioms
 import Std.Tactic.BVDecide
 import Std.Data.TreeMap.Lemmas
@@ -597,8 +598,12 @@ theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.e
 end Normalize
 
 theorem isEquiv_wf (h : isEquiv u v)
-    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : u' ≈ v' := by
-  sorry
+    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : u' ≈ v' :=
+  Semantics.isEquiv_wf h hu hv
+
+theorem geq_wf (h : geq u v)
+    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : v' ≤ u' :=
+  Semantics.geq_wf h hu hv
 
 theorem isEquivList_wf (H : Level.isEquivList us vs) :
     List.mapM (VLevel.ofLevel Us) us = some us' →
