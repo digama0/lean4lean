@@ -28,6 +28,10 @@ theorem TrDefVal.mono {env env' : VEnv} (henv : env ≤ env')
     (H : TrDefVal safety env ci ci') : TrDefVal safety env' ci ci' :=
   ⟨H.1.mono henv, H.2.mono henv⟩
 
+theorem TrOpaqueVal.mono {env env' : VEnv} (henv : env ≤ env')
+    (H : TrOpaqueVal safety env ci ci') : TrOpaqueVal safety env' ci ci' :=
+  ⟨H.1.mono henv, H.2.mono henv⟩
+
 variable (safety : DefinitionSafety) in
 inductive Aligned : ConstMap → VEnv → Prop where
   | empty : Aligned {} .empty
@@ -80,6 +84,7 @@ theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := b
   | «axiom» h1 h2 _ h _ ih => exact ih.const h2 h1 h rfl
   | «opaque» h1 h2 _ h _ ih => exact ih.const h2 h1.1.1 h rfl
   | defn h1 h2 _ h _ ih => exact (ih.const h2 h1.1.1 h rfl).defeq
+  | «theorem» h1 h2 _ h _ ih => exact (ih.const h2 h1.1.1 h rfl).defeq
   | unsafeDefn h1 h2 _ h _ _ _ ih => exact (ih.const h2 h1.1 h rfl).defeq
   | quot _ h _ ih => exact ih.addQuot h
   | induct _ h _ ih => exact ih.addInduct h
@@ -170,6 +175,15 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
     · cases hv
       have := VEnv.IsDefEq.extra0 VEnv.addDefEq_self <|
         (H.defn h2 h3 h4 h1).wf.ordered.defEqWF VEnv.addDefEq_self
+      let ⟨⟨⟨b1, b2, b3⟩, b4⟩, b5⟩ := h2
+      refine ⟨_, b5.mono le, b2.symm ▸ b4.symm ▸ ⟨_, this.symm⟩⟩
+  | «theorem» h2 h3 h4 h1 H ih =>
+    have' le := (VEnv.addConst_le h1).trans VEnv.addDefEq_le
+    obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
+    · exact (ih h).mono le
+    · cases hv
+      have := VEnv.IsDefEq.extra0 VEnv.addDefEq_self <|
+        (H.theorem h2 h3 h4 h1).wf.ordered.defEqWF VEnv.addDefEq_self
       let ⟨⟨⟨b1, b2, b3⟩, b4⟩, b5⟩ := h2
       refine ⟨_, b5.mono le, b2.symm ▸ b4.symm ▸ ⟨_, this.symm⟩⟩
   | unsafeDefn h2 h3 _ h1 hvalue _ H ih =>

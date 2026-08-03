@@ -72,9 +72,10 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) (fuel : Fuel
   if check then
     -- TODO(Leo): we must add support for handling tasks here
     M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
+      checkConstantVal env v.toConstantVal
       if !(← isProp v.type) then
         throw <| .thmTypeIsNotProp env v.name v.type
-      checkConstantVal env v.toConstantVal
+      checkNoMVarNoFVar env v.name v.value
       let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.thmDecl v) valType
@@ -83,8 +84,10 @@ def addTheorem (env : Environment) (v : TheoremVal) (check := true) (fuel : Fuel
 def addOpaque (env : Environment) (v : OpaqueVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
   if check then
-    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
+    M.run env (safety := if v.isUnsafe then .unsafe else .safe)
+        (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
       checkConstantVal env v.toConstantVal
+      checkNoMVarNoFVar env v.name v.value
       let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.opaqueDecl v) valType
