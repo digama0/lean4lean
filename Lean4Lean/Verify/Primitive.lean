@@ -1218,17 +1218,22 @@ theorem VEnv.ReflectsNatNatNat.of_modCore_equations (henv : VEnv.WF env)
     (hcf : env.IsDefEqU 0 [] (.const ``Nat.mod []) f)
     (htop : ∀ a b,
       if 0 < b ∧ b ≤ a then
-        ∃ hy hfuel, env.IsDefEqU 0 []
-          (.app (.app f (.natLit a)) (.natLit b))
-          (.natModGo b (a + 1) a hy hfuel)
+        ∃ hy hfuel,
+          env.HasType 0 [] (.natModGo b (a + 1) a hy hfuel) .nat ∧
+          env.IsDefEqU 0 []
+            (.app (.app f (.natLit a)) (.natLit b))
+            (.natModGo b (a + 1) a hy hfuel)
       else
         env.IsDefEqU 0 []
           (.app (.app f (.natLit a)) (.natLit b)) (.natLit a))
     (hgo : ∀ y fuel x hy hfuel,
+      env.HasType 0 [] (.natModGo y (fuel + 1) x hy hfuel) .nat →
       if y ≤ x then
-        ∃ hy' hfuel', env.IsDefEqU 0 []
-          (.natModGo y (fuel + 1) x hy hfuel)
-          (.natModGo y fuel (x - y) hy' hfuel')
+        ∃ hy' hfuel',
+          env.HasType 0 [] (.natModGo y fuel (x - y) hy' hfuel') .nat ∧
+          env.IsDefEqU 0 []
+            (.natModGo y (fuel + 1) x hy hfuel)
+            (.natModGo y fuel (x - y) hy' hfuel')
       else
         env.IsDefEqU 0 []
           (.natModGo y (fuel + 1) x hy hfuel) (.natLit x)) :
@@ -1245,20 +1250,22 @@ theorem VEnv.ReflectsNatNatNat.of_modCore_equations (henv : VEnv.WF env)
     have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit x [])
     exact h₁.app_same henv trivial (.app (hf 0 []) (hlit x [])) (hlit y [])
   have goEval (y : Nat) (hypos : 0 < y) :
-      ∀ fuel x hy hfuel, x < fuel → env.IsDefEqU 0 []
+      ∀ fuel x hy hfuel, x < fuel →
+        env.HasType 0 [] (.natModGo y fuel x hy hfuel) .nat →
+        env.IsDefEqU 0 []
         (.natModGo y fuel x hy hfuel) (.natLit (x.mod y)) := by
     intro fuel
     induction fuel with
-    | zero => intro x _ _ hlt; omega
+    | zero => intro x _ _ hlt _; omega
     | succ fuel ih =>
-      intro x hy hfuel hlt
-      have hg := hgo y fuel x hy hfuel
+      intro x hy hfuel hlt hcallT
+      have hg := hgo y fuel x hy hfuel hcallT
       split at hg
       · rename_i hyx
-        obtain ⟨hy', hfuel', hg⟩ := hg
+        obtain ⟨hy', hfuel', hrecT, hg⟩ := hg
         have hsubx : x - y < x := Nat.sub_lt_self hypos hyx
         have hsubfuel : x - y < fuel := by omega
-        have hrec := ih (x - y) hy' hfuel' hsubfuel
+        have hrec := ih (x - y) hy' hfuel' hsubfuel hrecT
         have heq : x.mod y = (x - y).mod y := by
           simpa [hypos, hyx] using Nat.mod_eq x y
         rw [heq]
@@ -1271,9 +1278,10 @@ theorem VEnv.ReflectsNatNatNat.of_modCore_equations (henv : VEnv.WF env)
   have ht := htop a b
   split at ht
   · rename_i hab
-    obtain ⟨hy, hfuel, ht⟩ := ht
+    obtain ⟨hy, hfuel, hcallT, ht⟩ := ht
     exact (hcfApp a b).trans henv trivial <|
-      ht.trans henv trivial (goEval b hab.1 (a + 1) a hy hfuel (by omega))
+      ht.trans henv trivial
+        (goEval b hab.1 (a + 1) a hy hfuel (by omega) hcallT)
   · rename_i hab
     have heq : a.mod b = a := by
       simpa [hab] using Nat.mod_eq a b
@@ -6231,6 +6239,7 @@ theorem checkPrimitiveDef.natMod.WF {c : VContext} {s : VState}
       v.levelParams = [] ∧
       c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
       c.IsDefEqU zL zR ∧ Rcond ∧
+      c.HasType go' goTy' ∧
       c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR' := by
   simp only [checkPrimitiveDef, hname]
   refine getEnv.WF.bind ?_
@@ -6253,7 +6262,7 @@ theorem checkPrimitiveDef.natMod.WF {c : VContext} {s : VState}
             refine checkTypeIsDefEqGuard.bind_WF hle hleUnique hleTy
               (fun {_} {_} => .throw) fun _ _ => ?_
             refine checkTypeIsDefEqGuard.bind_WF hgo hgoUnique hgoTy
-              (fun {_} {_} => .throw) fun _ _ => ?_
+              (fun {_} {_} => .throw) fun _ hgoHas => ?_
             exact (hnatLECheck hclparams (fun {_} {_} => .throw)).bind
               fun _ _ _ hcond =>
               checkTypeDiscard.bind_WF htopR.fvarsIn fun _ =>
@@ -6264,7 +6273,8 @@ theorem checkPrimitiveDef.natMod.WF {c : VContext} {s : VState}
                   by_cases hb : b = true
                   · rw [if_pos hb]
                     exact .pure fun _ =>
-                      ⟨hlparams, htyEq, hzEq, hcond, htopEq, hgoEq hb⟩
+                      ⟨hlparams, htyEq, hzEq, hcond, hgoHas,
+                        htopEq, hgoEq hb⟩
                   · rw [if_neg hb]
                     exact .throw
           · rw [if_neg hb]
