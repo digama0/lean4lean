@@ -101,13 +101,13 @@ theorem checkConstantVal.WF
   exact checkConstantValBody.WF.mono fun _ _ _ hbody =>
     ⟨hname.1, hname.2, hbody⟩
 
-theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+theorem checkBodyCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (decl : Declaration) (name : Name) (levelParams : List Name)
     (type value : Expr) (type' : VExpr)
     (hdeclType : TrExprS (ves.venv safety) levelParams [] type type')
+    (hclosed : value.hasMVar = false ∧ value.hasFVar = false)
     (state : TypeChecker.VState := {}) :
     ((do
-      Lean.Kernel.Environment.checkNoMVarNoFVar env name value
       let valueType ← TypeChecker.checkType value
       if !(← TypeChecker.isDefEq valueType type) then
         throw <| Exception.declTypeMismatch env decl valueType) :
@@ -115,8 +115,6 @@ theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       (.mk' wf safety levelParams) state fun _ _ =>
         ∃ value', TrExprS (ves.venv safety) levelParams [] value value' ∧
           (ves.venv safety).HasType levelParams.length [] value' type' := by
-  refine (TypeChecker.M.WF.liftExcept checkNoMVarNoFVar.WF).bind
-    fun _ _ _ hclosed => ?_
   have hfvars : value.FVarsIn
       (· ∈ (TypeChecker.VContext.mk' wf safety levelParams).vlctx.fvars) := by
     apply fvarsIn_iff.mpr
@@ -135,6 +133,25 @@ theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     have heq : equal = true := by cases equal <;> simp_all
     exact hhasType.defeqU_r (wf.tr (safety := safety)).wf trivial
       (hequal heq)
+
+theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (decl : Declaration) (name : Name) (levelParams : List Name)
+    (type value : Expr) (type' : VExpr)
+    (hdeclType : TrExprS (ves.venv safety) levelParams [] type type')
+    (state : TypeChecker.VState := {}) :
+    ((do
+      Lean.Kernel.Environment.checkNoMVarNoFVar env name value
+      let valueType ← TypeChecker.checkType value
+      if !(← TypeChecker.isDefEq valueType type) then
+        throw <| Exception.declTypeMismatch env decl valueType) :
+      TypeChecker.M Unit).WF
+      (.mk' wf safety levelParams) state fun _ _ =>
+        ∃ value', TrExprS (ves.venv safety) levelParams [] value value' ∧
+          (ves.venv safety).HasType levelParams.length [] value' type' := by
+  refine (TypeChecker.M.WF.liftExcept checkNoMVarNoFVar.WF).bind
+    fun _ state' _ hclosed => ?_
+  exact checkBodyCore.WF wf decl name levelParams type value type'
+    hdeclType hclosed state'
 
 theorem checkDefinitionBody.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
@@ -1400,6 +1417,149 @@ theorem VEnvs.WF.addPartialDefinition_of_not_primitive
     · simp only [ves', hs, ↓reduceIte]
       exact VEnv.LE.rfl
 
+theorem VEnvs.WF.addUnsafeAxiom_of_not_primitive
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    {v : AxiomVal} {v' : VConstant}
+    (hunsafe : v.isUnsafe = true)
+    (hfresh : env.find? v.name = none)
+    (htr : TrConstant .unsafe (ves.venv .unsafe) (.axiomInfo v) v')
+    (hvWF : v'.WF (ves.venv .unsafe))
+    (hn : ¬Lean.Kernel.Environment.primitives.contains v.name) :
+    ∃ ves' : VEnvs, ves'.WF (env.add (.axiomInfo v)) ∧
+      (∀ safety, ves.venv safety ≤ ves'.venv safety) ∧
+      (ves.venv .unsafe).addConst v.name v' = some (ves'.venv .unsafe) := by
+  classical
+  have haddExists (safety : DefinitionSafety) :
+      ∃ out, (ves.venv safety).addConst v.name v' = some out :=
+    TrEnv.addConst_of_find?_eq_none (wf.tr (safety := safety)) hfresh
+  let added (safety : DefinitionSafety) :=
+    Classical.choose (haddExists safety)
+  have hadd (safety : DefinitionSafety) :
+      (ves.venv safety).addConst v.name v' = some (added safety) :=
+    Classical.choose_spec (haddExists safety)
+  let ves' : VEnvs :=
+    ⟨fun safety => if safety ≤ .unsafe then added safety else ves.venv safety⟩
+  refine ⟨ves', ?_, ?_, ?_⟩
+  · refine {
+      tr := ?_
+      hasPrimitives := ?_
+      safePrimitives := ?_
+      mono := ?_ }
+    · intro safety
+      by_cases hs : safety ≤ .unsafe
+      · have hbase : ves.venv .unsafe ≤ ves.venv safety := wf.mono hs
+        have htr' : TrConstant safety (ves.venv safety) (.axiomInfo v) v' :=
+          (htr.sf_mono hs).mono hbase
+        simpa [ves', hs] using
+          TrEnv.addAxiom (wf.tr (safety := safety)) htr' hfresh
+            (hvWF.mono hbase) (hadd safety)
+      · simpa [ves', hs] using
+          TrEnv.block (ci := .axiomInfo v)
+            (wf.tr (safety := safety)) hfresh (by
+              simpa [ConstantInfo.safety, ConstantInfo.isUnsafe,
+                ConstantInfo.isPartial, hunsafe] using hs)
+    · intro safety
+      by_cases hs : safety ≤ .unsafe
+      · simp only [ves', hs, ↓reduceIte]
+        exact (wf.hasPrimitives (safety := safety)).addConst_of_not_primitive
+          (hadd safety) hn
+      · simpa [ves', hs] using wf.hasPrimitives (safety := safety)
+    · intro n ci hfind hprim
+      exact Environment.safePrimitives_add_of_not_primitive
+        (ci := .axiomInfo v) (wf.tr (safety := .safe)).map_wf
+        hfresh wf.safePrimitives hn hfind hprim
+    · intro safety safety' hs
+      by_cases hu : safety ≤ .unsafe
+      · by_cases hu' : safety' ≤ .unsafe
+        · simp only [ves', hu, hu', ↓reduceIte]
+          exact VEnv.addConst_mono (wf.mono hs)
+            (hadd safety') (hadd safety)
+        · simp only [ves', hu, hu', ↓reduceIte]
+          exact (wf.mono hs).trans (VEnv.addConst_le (hadd safety))
+      · have hu' : ¬safety' ≤ .unsafe := fun h =>
+          hu (DefinitionSafety.le_trans hs h)
+        simpa [ves', hu, hu'] using wf.mono hs
+  · intro safety
+    by_cases hs : safety ≤ .unsafe
+    · simp only [ves', hs, ↓reduceIte]
+      exact VEnv.addConst_le (hadd safety)
+    · simp only [ves', hs, ↓reduceIte]
+      exact VEnv.LE.rfl
+  · simpa [ves', DefinitionSafety.le_rfl] using hadd .unsafe
+
+theorem VEnvs.WF.addUnsafeDefinition_of_not_primitive
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    {v : DefinitionVal} {v' : VDefVal} {out : VEnv}
+    (hsafety : v.safety = .unsafe)
+    (hfresh : env.find? v.name = none)
+    (hheader : TrConstVal .unsafe (ves.venv .unsafe)
+      (.defnInfo v) v'.toVConstVal)
+    (hheaderWF : v'.toVConstant.WF (ves.venv .unsafe))
+    (hadd : (ves.venv .unsafe).addConst v.name v'.toVConstant = some out)
+    (hvalue : TrExprS out v.levelParams [] v.value v'.value)
+    (hvalueWF : v'.WF out)
+    (hn : ¬Lean.Kernel.Environment.primitives.contains v.name) :
+    ∃ ves' : VEnvs, ves'.WF (env.add (.defnInfo v)) ∧
+      ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  let ves' : VEnvs := ⟨fun safety => if safety ≤ .unsafe then
+    out.addDefEq v'.toDefEq else ves.venv safety⟩
+  refine ⟨ves', ?_, ?_⟩
+  · refine {
+      tr := ?_
+      hasPrimitives := ?_
+      safePrimitives := ?_
+      mono := ?_ }
+    · intro safety
+      by_cases hs : safety ≤ .unsafe
+      · have heq := DefinitionSafety.le_antisymm hs
+            (DefinitionSafety.unsafe_le (a := safety))
+        subst safety
+        simpa [ves'] using TrEnv.addUnsafeDefinition
+          (wf.tr (safety := .unsafe)) hheader hfresh hheaderWF hadd
+          hvalue hvalueWF
+      · simpa [ves', hs] using
+          TrEnv.block (ci := .defnInfo v)
+            (wf.tr (safety := safety)) hfresh (by
+              simpa [ConstantInfo.defnInfo_safety, hsafety] using hs)
+    · intro safety
+      by_cases hs : safety ≤ .unsafe
+      · have heq := DefinitionSafety.le_antisymm hs
+            (DefinitionSafety.unsafe_le (a := safety))
+        subst safety
+        simp only [ves', DefinitionSafety.le_rfl, ↓reduceIte]
+        exact (wf.hasPrimitives (safety := .unsafe)).addDef_of_not_primitive
+          hadd hn
+      · simpa [ves', hs] using wf.hasPrimitives (safety := safety)
+    · intro n ci hfind hprim
+      exact Environment.safePrimitives_add_of_not_primitive
+        (ci := .defnInfo v) (wf.tr (safety := .safe)).map_wf
+        hfresh wf.safePrimitives hn hfind hprim
+    · intro safety safety' hs
+      by_cases hu : safety ≤ .unsafe
+      · have heq := DefinitionSafety.le_antisymm hu
+            (DefinitionSafety.unsafe_le (a := safety))
+        subst safety
+        by_cases hu' : safety' ≤ .unsafe
+        · have heq' := DefinitionSafety.le_antisymm hu'
+              (DefinitionSafety.unsafe_le (a := safety'))
+          subst safety'
+          exact VEnv.LE.rfl
+        · simp only [ves', DefinitionSafety.le_rfl, hu', ↓reduceIte]
+          exact (wf.mono DefinitionSafety.unsafe_le).trans <|
+            (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
+      · have hu' : ¬safety' ≤ .unsafe := fun h =>
+          hu (DefinitionSafety.le_trans hs h)
+        simpa [ves', hu, hu'] using wf.mono hs
+  · intro safety
+    by_cases hs : safety ≤ .unsafe
+    · have heq := DefinitionSafety.le_antisymm hs
+          (DefinitionSafety.unsafe_le (a := safety))
+      subst safety
+      simp only [ves', DefinitionSafety.le_rfl, ↓reduceIte]
+      exact (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
+    · simp only [ves', hs, ↓reduceIte]
+      exact VEnv.LE.rfl
+
 theorem addDefinition.WF_safe_of_not_primitive
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hsafety : v.safety = .safe)
@@ -2398,6 +2558,75 @@ theorem addDefinition.WF_partial
   · exact addDefinition.WF_partial_of_not_primitive wf v hsafety hn
   · exact addDefinition.WF_partial_of_primitive wf v hsafety
       (Classical.byContradiction fun h => hn h)
+
+theorem addDefinition.WF_unsafe
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hsafety : v.safety = .unsafe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  refine (checkConstantVal.WF
+    (c := .mk' wf .unsafe v.levelParams) (s := {})
+    (env := env) (v := v.toConstantVal)
+    (wf.tr (safety := .unsafe)).map_wf).run wf |>.bind
+      fun _ hchecked => ?_
+  obtain ⟨hfresh, hreserved, type', htype, htypeWF⟩ := hchecked
+  have hn : ¬Lean.Kernel.Environment.primitives.contains v.name := by
+    intro hp
+    have := hreserved hp
+    contradiction
+  let header : AxiomVal := { v.toConstantVal with isUnsafe := true }
+  let vconst : VConstant := {
+    uvars := v.levelParams.length
+    type := type' }
+  have hheaderTr : TrConstant .unsafe (ves.venv .unsafe)
+      (.axiomInfo header) vconst := by
+    exact ⟨by
+      simp [ConstantInfo.safety, ConstantInfo.isUnsafe,
+        ConstantInfo.isPartial, header], rfl, htype⟩
+  have hheaderWF : vconst.WF (ves.venv .unsafe) := htypeWF
+  obtain ⟨vesH, wfH, hmonoH, haddH⟩ :=
+    wf.addUnsafeAxiom_of_not_primitive (v := header) (v' := vconst)
+      (by simp [header]) hfresh hheaderTr hheaderWF hn
+  refine checkNoMVarNoFVar.WF.bind fun _ hclosed => ?_
+  have htypeH : TrExprS (vesH.venv .unsafe) v.levelParams []
+      v.type type' := htype.mono (hmonoH .unsafe)
+  have hbodyRun := (checkBodyCore.WF
+    (env := env.add (.axiomInfo header)) wfH
+    (.defnDecl v) v.name v.levelParams v.type v.value type'
+    htypeH hclosed).run wfH
+  simp only [header, Bool.not_eq_true'] at hbodyRun
+  refine hbodyRun.map fun _ hbody => ?_
+  obtain ⟨value', hvalue, hvalueWF⟩ := hbody
+  let v' : VDefVal := {
+    name := v.name
+    uvars := v.levelParams.length
+    type := type'
+    value := value' }
+  have hfinalHeader : TrConstVal .unsafe (ves.venv .unsafe)
+      (.defnInfo v) v'.toVConstVal := by
+    exact ⟨⟨by
+      rw [ConstantInfo.defnInfo_safety, hsafety]
+      exact DefinitionSafety.le_rfl,
+      rfl, htype⟩, rfl⟩
+  have hfinalHeaderWF : v'.toVConstant.WF (ves.venv .unsafe) :=
+    htypeWF
+  exact wf.addUnsafeDefinition_of_not_primitive hsafety hfresh
+    hfinalHeader hfinalHeaderWF (by simpa [v', vconst] using haddH)
+    (by simpa [v'] using hvalue) (by simpa [v'] using hvalueWF) hn
+
+theorem addDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  cases hsafety : v.safety with
+  | «unsafe» => exact addDefinition.WF_unsafe wf v hsafety
+  | safe => exact addDefinition.WF_safe wf v hsafety
+  | «partial» => exact addDefinition.WF_partial wf v hsafety
 
 
 
