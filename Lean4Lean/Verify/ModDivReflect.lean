@@ -562,10 +562,12 @@ inductive VEnv.NatDivGoEquationTranslation (env : VEnv) : Prop where
         (mkApp2 q(@LE.le Nat _)
           (mkApp q(Nat.succ) (.bvar 0))
           (mkApp q(Nat.succ) (.bvar 1))) hTyR)
+      (yTyLType : env.IsType 0 [] yTyL)
       (hyTyLType : env.IsType 0 [yTyL] hyTyL)
       (fuelTyLType : env.IsType 0 [hyTyL, yTyL] fuelTyL)
       (xTyLType : env.IsType 0 [fuelTyL, hyTyL, yTyL] xTyL)
       (hTyLType : env.IsType 0 [xTyL, fuelTyL, hyTyL, yTyL] hTyL)
+      (yTyRType : env.IsType 0 [] yTyR)
       (hyTyRType : env.IsType 0 [yTyR] hyTyR)
       (fuelTyRType : env.IsType 0 [hyTyR, yTyR] fuelTyR)
       (xTyRType : env.IsType 0 [fuelTyR, hyTyR, yTyR] xTyR)
@@ -625,8 +627,8 @@ theorem VEnv.NatDivGoEquationTranslation.of_checked
                         yTyR hyTyR fuelTyR xTyR hTyR bodyR
                         hyTyLS hhyTyLS hfuelTyLS hxTyLS hhTyLS
                         hyTyRS hhyTyRS hfuelTyRS hxTyRS hhTyRS
-                        hhyTyLType hfuelTyLType hxTyLType hhTyLType
-                        hhyTyRType hfuelTyRType hxTyRType hhTyRType
+                        hyTyLType hhyTyLType hfuelTyLType hxTyLType hhTyLType
+                        hyTyRType hhyTyRType hfuelTyRType hxTyRType hhTyRType
                         hbodyL hbodyR heq
 
 end Lean4Lean.Environment
