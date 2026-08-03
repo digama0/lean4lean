@@ -1083,20 +1083,42 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
       q(∀ n, Nat.succ Nat.zero ≤ n → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
     let go := mkApp5 q(Nat.modCore.go)
     let c := Condition.natLE; c.check fail (ite := true) (dite := true)
-    withLocalDecl `x .default q(Nat) fun x => do
-    withLocalDecl `y .default q(Nat) fun y => do
+    let x := .bvar 1
+    let y := .bvar 0
     let sx := succ x
-    let e := c.reflectedITE q(Nat) #[y, sx] (c.reflectedDITE #[one, y]
-      (go y (.bvar 0) (succ sx) sx (mkApp q(Nat.lt_succ_self) sx)) sx) sx
-    _ ← checkType e
-    unless ← isDefEq (mod sx y) e do fail
-    withLocalDecl `hy .default (le one y) fun hy => do
-    withLocalDecl `fuel .default q(Nat) fun fuel => do
-    withLocalDecl `h .default (le (succ x) (succ fuel)) fun h => do
-    let e := c.reflectedDITE #[y, x] (go y hy fuel (sub x y)
-      (mkApp6 q(@Nat.div_rec_fuel_lemma) x y fuel hy (.bvar 0) h)) x
-    _ ← checkType e
-    unless ← isDefEq (go y hy (succ fuel) x h) e do fail
+    let topR := .lam0 q(Nat) <| .lam0 q(Nat) <|
+      c.reflectedITE q(Nat) #[y, sx]
+        (c.reflectedDITE #[one, y]
+          (go (.bvar 1) (.bvar 0) (succ (succ (.bvar 2)))
+            (succ (.bvar 2))
+            (mkApp q(Nat.lt_succ_self) (succ (.bvar 2))))
+          (succ (.bvar 2))) sx
+    _ ← checkType topR
+    unless ← isDefEq
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| mod sx y) topR do fail
+    let y := .bvar 4
+    let hy := .bvar 3
+    let fuel := .bvar 2
+    let x := .bvar 1
+    let h := .bvar 0
+    let goR := .lam0 q(Nat) <|
+      .lam0 (le one (.bvar 0)) <|
+      .lam0 q(Nat) <| .lam0 q(Nat) <|
+      .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
+      c.reflectedDITE #[y, x]
+        (go (.bvar 5) (.bvar 4) (.bvar 3)
+          (sub (.bvar 2) (.bvar 5))
+          (mkApp6 q(@Nat.div_rec_fuel_lemma)
+            (.bvar 2) (.bvar 5) (.bvar 3) (.bvar 4)
+            (.bvar 0) (.bvar 1)))
+        (.bvar 2)
+    _ ← checkType goR
+    unless ← isDefEq
+      (.lam0 q(Nat) <|
+       .lam0 (le one (.bvar 0)) <|
+       .lam0 q(Nat) <| .lam0 q(Nat) <|
+       .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
+       go y hy (succ fuel) x h) goR do fail
   | ``Nat.div =>
     unless env.contains ``Nat.sub && env.contains ``Bool && v.levelParams.isEmpty do fail
     -- div : Nat → Nat → Nat
@@ -1108,19 +1130,37 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← isDefEq (← checkType q(Nat.div.go))
       q(∀ y, Nat.succ Nat.zero ≤ y → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
     let go := mkApp5 q(Nat.div.go)
-    withLocalDecl `x .default q(Nat) fun x => do
-    withLocalDecl `y .default q(Nat) fun y => do
-    let e := c.reflectedDITE #[one, y]
-      (go y (.bvar 0) (succ x) x (mkApp q(Nat.lt_succ_self) x)) zero
-    _ ← checkType e
-    unless ← isDefEq (div x y) e do fail
-    withLocalDecl `hy .default (le one y) fun hy => do
-    withLocalDecl `fuel .default q(Nat) fun fuel => do
-    withLocalDecl `h .default (le (succ x) (succ fuel)) fun h => do
-    let e := c.reflectedDITE #[y, x] (succ (go y hy fuel (sub x y)
-      (mkApp6 q(@Nat.div_rec_fuel_lemma) x y fuel hy (.bvar 0) h))) zero
-    _ ← checkType e
-    unless ← isDefEq (go y hy (succ fuel) x h) e do fail
+    let x := .bvar 1
+    let y := .bvar 0
+    let topR := .lam0 q(Nat) <| .lam0 q(Nat) <|
+      c.reflectedDITE #[one, y]
+        (go (.bvar 1) (.bvar 0) (succ (.bvar 2)) (.bvar 2)
+          (mkApp q(Nat.lt_succ_self) (.bvar 2))) zero
+    _ ← checkType topR
+    unless ← isDefEq
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| div x y) topR do fail
+    let y := .bvar 4
+    let hy := .bvar 3
+    let fuel := .bvar 2
+    let x := .bvar 1
+    let h := .bvar 0
+    let goR := .lam0 q(Nat) <|
+      .lam0 (le one (.bvar 0)) <|
+      .lam0 q(Nat) <| .lam0 q(Nat) <|
+      .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
+      c.reflectedDITE #[y, x]
+        (succ (go (.bvar 5) (.bvar 4) (.bvar 3)
+          (sub (.bvar 2) (.bvar 5))
+          (mkApp6 q(@Nat.div_rec_fuel_lemma)
+            (.bvar 2) (.bvar 5) (.bvar 3) (.bvar 4)
+            (.bvar 0) (.bvar 1)))) zero
+    _ ← checkType goR
+    unless ← isDefEq
+      (.lam0 q(Nat) <|
+       .lam0 (le one (.bvar 0)) <|
+       .lam0 q(Nat) <| .lam0 q(Nat) <|
+       .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
+       go y hy (succ fuel) x h) goR do fail
   | ``Nat.gcd =>
     unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
