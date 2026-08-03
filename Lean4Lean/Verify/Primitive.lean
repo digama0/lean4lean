@@ -6709,6 +6709,70 @@ theorem checkPrimitiveDef.charOfNat.WF {c : VContext} {s : VState}
         · exact .throw
   · exact .throw
 
+theorem checkPrimitiveDef.charOfNat.WF_typed {c : VContext} {s : VState}
+    (hname : v.name = ``Char.ofNat)
+    (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS v.type ty')
+    (hchar : c.TrExprS q(Char) .char) :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b →
+      v.levelParams = [] ∧ c.venv.contains ``Nat ∧
+      c.venv.IsDefEqU c.lparams.length [] ty' (.forallE .nat .char) := by
+  simp only [checkPrimitiveDef, hname]
+  refine getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  split
+  · rename_i hdeps
+    have hdeps' : c.env.contains ``Nat = true ∧
+        v.levelParams = [] := by simpa using hdeps
+    have hnat : c.venv.contains ``Nat :=
+      Environment.VContext.contains_safe_primitive c hdeps'.1 (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    simp only [pure_bind]
+    refine M.WF.bind (f := fun _ => do
+      let b ← isDefEq v.type q(Nat → Char)
+      if b = true then pure true else do
+        throw <| .other s!"invalid form for primitive def {``Char.ofNat}"
+        pure true) (ensureType.WF hchar) ?_
+    intro _ _ _ hcharTy
+    ·
+      obtain ⟨char', hcharS, u, u', rfl, hu, hcharHas⟩ := hcharTy
+      have hcharEq : char' = .char :=
+        hcharS.unique (by trivial) hchar
+      subst char'
+      let Δ1 : VLCtx := [(none, .vlam .nat)]
+      have hnat0 := TrExprS.natType_of_contains
+        c.hasPrimitives hnat c.lparams []
+      have hchar0 : TrExprS c.venv c.lparams [] q(Char) .char := by
+        change TrExprS c.venv c.lparams c.vlctx _ _ at hchar
+        rwa [hvlctx] at hchar
+      have hchar1 : TrExprS c.venv c.lparams Δ1 q(Char) .char :=
+        TrExprS.closed_weak c.Ewf hchar0 (.skip (.vlam .nat) .refl)
+      have hcharHas0 : c.venv.HasType c.lparams.length []
+          .char (.sort u') := by
+        change c.venv.HasType c.lparams.length c.vlctx.toCtx
+          .char (.sort u') at hcharHas
+        simpa [hvlctx] using hcharHas
+      have hcharType : c.venv.IsType c.lparams.length [] .char :=
+        ⟨u', hcharHas0⟩
+      have hcharType1 : c.venv.IsType c.lparams.length [.nat] .char :=
+        ⟨u', hcharHas0.weak0 c.Ewf⟩
+      have hcanon0 : TrExprS c.venv c.lparams [] q(Nat → Char)
+          (.forallE .nat .char) :=
+        .forallE hnat0.2 hcharType1 hnat0.1 hchar1
+      have hcanon : c.TrExprS q(Nat → Char) (.forallE .nat .char) := by
+        change TrExprS c.venv c.lparams c.vlctx _ _
+        rw [hvlctx]
+        exact hcanon0
+      exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+        split
+        · have htyEq := htyEq (by assumption)
+          change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at htyEq
+          rw [hvlctx] at htyEq
+          exact .pure fun _ => ⟨hdeps'.2, hnat, htyEq⟩
+        · exact .throw
+  · exact .throw
+
 theorem checkPrimitiveDef.stringOfList.WF {c : VContext} {s : VState}
     (hname : v.name = ``String.ofList) (hty : c.TrExprS v.type ty')
     (hchar : c.TrExprS q(Char) .char)
