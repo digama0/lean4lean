@@ -5672,6 +5672,61 @@ theorem Reflection.checkITE.bind_WF {c : VContext} {s : VState}
   exact (Reflection.checkITE.WF hite hite_unique hiteTy htrueL htrueR
     hfalseL hfalseR (fun _ => hfail)).bind fun _ s' _ h => hnext s' h
 
+/-- The equations checked for an arbitrary reflection implementation's
+nondependent selector.  Keeping the source translations makes this usable
+for `Reflection.defn₁` as well as the equality-specific `defn₂` certificate. -/
+def VEnv.ReflectionITEChecked (env : VEnv) (r : Reflection) : Prop :=
+  ∃ trueL trueR falseL falseR,
+    TrExprS env [] []
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+        mkApp3 r.ite (.bvar 1) q(true) (.bvar 0)) trueL ∧
+    TrExprS env [] []
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+        .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 1) trueR ∧
+    env.IsDefEqU 0 [] trueL trueR ∧
+    TrExprS env [] []
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+        mkApp3 r.ite (.bvar 1) q(false) (.bvar 0)) falseL ∧
+    TrExprS env [] []
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+        .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0) falseR ∧
+    env.IsDefEqU 0 [] falseL falseR
+
+theorem VEnv.ReflectionITEChecked.mono {env env' : VEnv} (hle : env ≤ env')
+    (h : VEnv.ReflectionITEChecked env r) : VEnv.ReflectionITEChecked env' r := by
+  rcases h with ⟨tl, tr, fl, fr, htl, htr, hteq, hfl, hfr, hfeq⟩
+  exact ⟨tl, tr, fl, fr, htl.mono hle, htr.mono hle, hteq.mono hle,
+    hfl.mono hle, hfr.mono hle, hfeq.mono hle⟩
+
+theorem Reflection.checkITE.WF.checked {c : VContext} {s : VState}
+    {r : Reflection} {fail : ∀ {α}, M α}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hite : c.TrExprS r.ite ite') (hite_unique : TrExprS.IsUnique r.ite)
+    (hiteTy : c.TrExprS (.arrow q(Prop) <| .arrow q(Bool) <|
+      .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) q(∀ α : Type, α → α → α)) iteTy')
+    (htrueL : c.TrExprS
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+        mkApp3 r.ite (.bvar 1) q(true) (.bvar 0)) trueL')
+    (htrueR : c.TrExprS
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+        .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 1) trueR')
+    (hfalseL : c.TrExprS
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+        mkApp3 r.ite (.bvar 1) q(false) (.bvar 0)) falseL')
+    (hfalseR : c.TrExprS
+      (.lam0 q(Prop) <| .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+        .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0) falseR')
+    (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
+    M.WF c s (r.checkITE fail) fun _ _ =>
+      VEnv.ReflectionITEChecked c.venv r := by
+  refine (Reflection.checkITE.WF hite hite_unique hiteTy htrueL htrueR
+    hfalseL hfalseR (fun _ => hfail)).mono fun _ _ _ h => ?_
+  rcases h with ⟨_, hteq, hfeq⟩
+  change TrExprS c.venv c.lparams c.vlctx _ _ at htrueL htrueR hfalseL hfalseR
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hteq hfeq
+  rw [hlparams, hvlctx] at htrueL htrueR hfalseL hfalseR hteq hfeq
+  exact ⟨_, _, _, _, htrueL, htrueR, hteq, hfalseL, hfalseR, hfeq⟩
+
 theorem Reflection.checkNatDITE.WF {c : VContext} {s : VState}
     {r : Reflection} {fail : ∀ {α}, M α}
     (hnot : c.TrExprS q(Not) not') (hnot_unique : TrExprS.IsUnique q(Not))
@@ -5724,6 +5779,98 @@ theorem Reflection.checkNatDITE.WF {c : VContext} {s : VState}
   refine isDefEqGuard.bind_WF htrueL htrueR hfail fun _ htrueEq => ?_
   exact (isDefEqGuard.WF hfalseL hfalseR hfail).mono fun _ _ _ hfalseEq =>
     ⟨htrueEq, hfalseEq⟩
+
+/-- The two dependent-selector equations retained from
+`Reflection.checkNatDITE`. -/
+def VEnv.ReflectionNatDITEChecked (env : VEnv) (r : Reflection) : Prop :=
+  ∃ trueL trueR falseL falseR,
+    TrExprS env [] []
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(true)) <|
+       mkApp5 r.natDITE (.bvar 3) q(true) (.bvar 0) (.bvar 2) (.bvar 1)) trueL ∧
+    TrExprS env [] []
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(true)) <|
+       mkApp (.bvar 2) (mkApp2 r.ofTrue (.bvar 3) (.bvar 0))) trueR ∧
+    env.IsDefEqU 0 [] trueL trueR ∧
+    TrExprS env [] []
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(false)) <|
+       mkApp5 r.natDITE (.bvar 3) q(false) (.bvar 0) (.bvar 2) (.bvar 1)) falseL ∧
+    TrExprS env [] []
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(false)) <|
+       mkApp (.bvar 1) (mkApp2 r.ofFalse (.bvar 3) (.bvar 0))) falseR ∧
+    env.IsDefEqU 0 [] falseL falseR
+
+theorem VEnv.ReflectionNatDITEChecked.mono {env env' : VEnv}
+    (hle : env ≤ env') (h : VEnv.ReflectionNatDITEChecked env r) :
+    VEnv.ReflectionNatDITEChecked env' r := by
+  rcases h with ⟨tl, tr, fl, fr, htl, htr, hteq, hfl, hfr, hfeq⟩
+  exact ⟨tl, tr, fl, fr, htl.mono hle, htr.mono hle, hteq.mono hle,
+    hfl.mono hle, hfr.mono hle, hfeq.mono hle⟩
+
+theorem Reflection.checkNatDITE.WF.checked {c : VContext} {s : VState}
+    {r : Reflection} {fail : ∀ {α}, M α}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hnot : c.TrExprS q(Not) not') (hnot_unique : TrExprS.IsUnique q(Not))
+    (hnotTy : c.TrExprS q(Prop → Prop) notTy')
+    (hdite : c.TrExprS r.natDITE dite') (hdite_unique : TrExprS.IsUnique r.natDITE)
+    (hditeTy : c.TrExprS (.arrow q(Prop) <| .arrow q(Bool) <|
+      .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
+      .arrow (.arrow (.bvar 2) q(Nat)) <|
+      .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) q(Nat)) diteTy')
+    (hofTrue : c.TrExprS r.ofTrue ofTrue')
+    (hofTrue_unique : TrExprS.IsUnique r.ofTrue)
+    (hofTrueTy : c.TrExprS (.arrow q(Prop) <|
+      .arrow (mkApp2 r.type (.bvar 0) q(true)) (.bvar 1)) ofTrueTy')
+    (hofFalse : c.TrExprS r.ofFalse ofFalse')
+    (hofFalse_unique : TrExprS.IsUnique r.ofFalse)
+    (hofFalseTy : c.TrExprS (.arrow q(Prop) <|
+      .arrow (mkApp2 r.type (.bvar 0) q(false)) (mkApp q(Not) (.bvar 1))) ofFalseTy')
+    (htrueL : c.TrExprS
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(true)) <|
+       mkApp5 r.natDITE (.bvar 3) q(true) (.bvar 0) (.bvar 2) (.bvar 1)) trueL')
+    (htrueR : c.TrExprS
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(true)) <|
+       mkApp (.bvar 2) (mkApp2 r.ofTrue (.bvar 3) (.bvar 0))) trueR')
+    (hfalseL : c.TrExprS
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(false)) <|
+       mkApp5 r.natDITE (.bvar 3) q(false) (.bvar 0) (.bvar 2) (.bvar 1)) falseL')
+    (hfalseR : c.TrExprS
+      (.lam0 q(Prop) <|
+       .lam0 (.arrow (.bvar 0) q(Nat)) <|
+       .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+       .lam0 (mkApp2 r.type (.bvar 2) q(false)) <|
+       mkApp (.bvar 1) (mkApp2 r.ofFalse (.bvar 3) (.bvar 0))) falseR')
+    (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
+    M.WF c s (r.checkNatDITE fail) fun _ _ =>
+      VEnv.ReflectionNatDITEChecked c.venv r := by
+  refine (Reflection.checkNatDITE.WF hnot hnot_unique hnotTy hdite hdite_unique
+    hditeTy hofTrue hofTrue_unique hofTrueTy hofFalse hofFalse_unique hofFalseTy
+    htrueL htrueR hfalseL hfalseR hfail).mono fun _ _ _ h => ?_
+  rcases h with ⟨hteq, hfeq⟩
+  change TrExprS c.venv c.lparams c.vlctx _ _ at htrueL htrueR hfalseL hfalseR
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hteq hfeq
+  rw [hlparams, hvlctx] at htrueL htrueR hfalseL hfalseR hteq hfeq
+  exact ⟨_, _, _, _, htrueL, htrueR, hteq, hfalseL, hfalseR, hfeq⟩
 
 theorem Reflection.checkNatDITE.bind_WF {c : VContext} {s : VState}
     {r : Reflection} {fail : ∀ {α}, M α} {next : M β} {Q}
