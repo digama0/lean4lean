@@ -8,10 +8,11 @@ open Lean VEnv
 condition helpers used by its successor equation, reflects `Nat.bitwise` in
 all future well-formed environments. -/
 theorem NatBitwiseFixCertificate.NormalizedValid.reflects
-    {c : TypeChecker.VContext} {r : NatBitwiseFixCertificate}
+    {c : TypeChecker.VContext} {env : VEnv} {r : NatBitwiseFixCertificate}
     {bitwise : Expr} {g ite decide : VExpr}
     (hv : r.NormalizedValid c bitwise)
     (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hle : c.venv ≤ env) (hwf : env.WF)
     (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
     (hbeqC : c.venv.contains ``Nat.beq)
     (haddC : c.venv.contains ``Nat.add)
@@ -20,17 +21,17 @@ theorem NatBitwiseFixCertificate.NormalizedValid.reflects
     (hadd : c.venv.ReflectsNatNatNat ``Nat.add Nat.add)
     (hmod : c.venv.ReflectsNatNatNat ``Nat.mod Nat.mod)
     (hdiv : c.venv.ReflectsNatNatNat ``Nat.div Nat.div)
-    (hbitwise : TrExprS c.venv [] [] bitwise g)
-    (hf : ∀ U Γ, c.venv.HasType U Γ (.const ``Nat.bitwise [])
+    (hbitwise : TrExprS env [] [] bitwise g)
+    (hf : ∀ U Γ, env.HasType U Γ (.const ``Nat.bitwise [])
       (.forallE (.forallE .bool <| .forallE .bool .bool) <|
         .forallE .nat <| .forallE .nat .nat))
-    (hcf : c.venv.IsDefEqU 0 [] (.const ``Nat.bitwise []) g)
+    (hcf : env.IsDefEqU 0 [] (.const ``Nat.bitwise []) g)
     (hiteS : TrExprS c.venv [] [] Condition.bool.boolNatITE ite)
     (hite : c.venv.ReflectsBoolNatITE ite)
     (hdecideS : TrExprS c.venv [] [] Condition.natEqDecideFn decide)
     (hdecide : Lean4Lean.Environment.VEnv.ReflectsNatEqDecide
       c.venv decide) :
-    c.venv.ReflectsNatBitwise ``Nat.bitwise := by
+    env.ReflectsNatBitwise ``Nat.bitwise := by
   rcases hv with
     ⟨hcore, htop, hzero, hzeroRight, hsucc, hcall⟩
   rcases hcore.normalizeAux with ⟨heager, htrue, _hfalse⟩
@@ -79,7 +80,7 @@ theorem NatBitwiseFixCertificate.NormalizedValid.reflects
   change c.venv.HasType c.lparams.length c.vlctx.toCtx
     callV callTy at hcallT
   rw [hlparams, hvlctx] at hel her heeq htl htr hteq htopL htopR htopEq hzeroL hzeroR hzeroEq hzeroRightL hzeroRightR hzeroRightEq hsuccL hsuccR hsuccEq hcallS hcallT
-  have wf := c.Ewf
+  have baseWf := c.Ewf
   have hprim := c.hasPrimitives
   have hctors :=
     Lean4Lean.Environment.VEnv.HasNatBoolConstructors.of_primitives
@@ -88,57 +89,58 @@ theorem NatBitwiseFixCertificate.NormalizedValid.reflects
       TrExprS c.venv [] [] q(WellFounded.Nat.eager) eager ∧
       c.venv.IsDefEqU 0 [] (.app eager (.natLit n)) (.natLit n) := by
     simpa [hcore.eagerFn_eq, Expr.instantiate1'] using
-      (VEnv.eager_natLit_of_aux_equations wf hprim hnat
+      (VEnv.eager_natLit_of_aux_equations baseWf hprim hnat
         hbeqC hel her heeq htl htr hteq (n := n))
-  have hgT := (hcf.of_l wf trivial (hf 0 [])).hasType.2
+  have hgT := (hcf.of_l hwf trivial (hf 0 [])).hasType.2
   intro _
   refine ⟨hf, ?_⟩
   intro env' le wf' op f hop a b
-  have hctors' := hctors.mono le
+  have baseLe : c.venv ≤ env' := hle.trans le
+  have hctors' := hctors.mono baseLe
   have hite' : env'.ReflectsBoolNatITE ite :=
-    ⟨hite.1.mono le, fun x y z => (hite.2 x y z).mono le⟩
+    ⟨hite.1.mono baseLe, fun x y z => (hite.2 x y z).mono baseLe⟩
   have hdecide' : Lean4Lean.Environment.VEnv.ReflectsNatEqDecide
-      env' decide := hdecide.mono le
+      env' decide := hdecide.mono baseLe
   have haddC' : env'.contains ``Nat.add :=
-    let ⟨ci, hci⟩ := haddC; ⟨ci, le.constants hci⟩
+    let ⟨ci, hci⟩ := haddC; ⟨ci, baseLe.constants hci⟩
   have hmodC' : env'.contains ``Nat.mod :=
-    let ⟨ci, hci⟩ := hmodC; ⟨ci, le.constants hci⟩
+    let ⟨ci, hci⟩ := hmodC; ⟨ci, baseLe.constants hci⟩
   have hdivC' : env'.contains ``Nat.div :=
-    let ⟨ci, hci⟩ := hdivC; ⟨ci, le.constants hci⟩
+    let ⟨ci, hci⟩ := hdivC; ⟨ci, baseLe.constants hci⟩
   have hadd' : env'.ReflectsNatNatNat ``Nat.add Nat.add := by
     intro _
-    exact ⟨fun U Γ => ((hadd haddC).1 U Γ).mono le,
-      fun x y => ((hadd haddC).2 x y).mono le⟩
+    exact ⟨fun U Γ => ((hadd haddC).1 U Γ).mono baseLe,
+      fun x y => ((hadd haddC).2 x y).mono baseLe⟩
   have hmod' : env'.ReflectsNatNatNat ``Nat.mod Nat.mod := by
     intro _
-    exact ⟨fun U Γ => ((hmod hmodC).1 U Γ).mono le,
-      fun x y => ((hmod hmodC).2 x y).mono le⟩
+    exact ⟨fun U Γ => ((hmod hmodC).1 U Γ).mono baseLe,
+      fun x y => ((hmod hmodC).2 x y).mono baseLe⟩
   have hdiv' : env'.ReflectsNatNatNat ``Nat.div Nat.div := by
     intro _
-    exact ⟨fun U Γ => ((hdiv hdivC).1 U Γ).mono le,
-      fun x y => ((hdiv hdivC).2 x y).mono le⟩
+    exact ⟨fun U Γ => ((hdiv hdivC).1 U Γ).mono baseLe,
+      fun x y => ((hdiv hdivC).2 x y).mono baseLe⟩
   have heager' (n) : ∃ eager,
       TrExprS env' [] [] q(WellFounded.Nat.eager) eager ∧
       env'.IsDefEqU 0 [] (.app eager (.natLit n)) (.natLit n) := by
     rcases heagerBase n with ⟨eager, hs, he⟩
-    exact ⟨eager, hs.mono le, he.mono le⟩
+    exact ⟨eager, hs.mono baseLe, he.mono baseLe⟩
   have htop' := NatBitwiseFixCertificate.top_semantics wf' hctors'
     (r := r) (callV := callV) (callTy := callTy)
-    (htopL.mono le) (htopR.mono le) (htopEq.mono le)
-    (hbitwise.mono le) (hgT.mono le) (hcallS.mono le)
-    (hcallT.mono le) heager'
+    (htopL.mono baseLe) (htopR.mono baseLe) (htopEq.mono baseLe)
+    (hbitwise.mono le) (hgT.mono le) (hcallS.mono baseLe)
+    (hcallT.mono baseLe) heager'
   have hzero' := NatBitwiseFixCertificate.zero_semantics wf' hctors'
-    (hzeroL.mono le) (hzeroR.mono le) (hzeroEq.mono le)
-    (hiteS.mono le) hite'
+    (hzeroL.mono baseLe) (hzeroR.mono baseLe) (hzeroEq.mono baseLe)
+    (hiteS.mono baseLe) hite'
   have hzeroRight' :=
     NatBitwiseFixCertificate.zero_right_semantics wf' hctors'
-      (hzeroRightL.mono le) (hzeroRightR.mono le)
-      (hzeroRightEq.mono le) (hiteS.mono le) hite'
+      (hzeroRightL.mono baseLe) (hzeroRightR.mono baseLe)
+      (hzeroRightEq.mono baseLe) (hiteS.mono baseLe) hite'
   have hsucc' := NatBitwiseFixCertificate.succ_semantics wf' hctors'
     haddC' hmodC' hdivC' hadd' hmod' hdiv'
-    (hdecideS.mono le) hdecide'
-    (hsuccL.mono le) (hsuccR.mono le) (hsuccEq.mono le)
-    (hiteS.mono le) hite'
+    (hdecideS.mono baseLe) hdecide'
+    (hsuccL.mono baseLe) (hsuccR.mono baseLe) (hsuccEq.mono baseLe)
+    (hiteS.mono baseLe) hite'
   have hfix := VEnv.evalNatBitwise_of_fix_relation wf'
     (VEnv.BitwiseGoCall env' r op) (g := g) (op := op) (f := f)
     (htop' op hop.1)
