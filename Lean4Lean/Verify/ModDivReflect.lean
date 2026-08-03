@@ -207,7 +207,8 @@ theorem VEnv.instantiate_natDivTop_equation
 /-- Normalize a translated top-level division RHS to the canonical checked
 dependent selector, then select the branch determined by `0 < b`. -/
 theorem VEnv.select_natDivTop_rhs
-    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    {env : VEnv} (wf : env.WF)
+    (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
     (hctors : VEnv.HasNatBoolConstructors env)
     (hbleC : env.contains ``Nat.ble)
     (cert : VEnv.NatLESelectorCertificate env)
@@ -283,7 +284,7 @@ theorem VEnv.select_natDivTop_rhs
               cases hbLit.1 with
               | lit _ hbS => simpa [Literal.toConstructor] using hbS
             have hbool := Condition.natBLE_application_eval_of_args
-              wf hprim hctors hbleC honeS hbCtorS
+              wf hbleR hctors hbleC honeS hbCtorS
               (by simpa [natDivTopBleInst, Lean.mkAppN] using hbleS')
             have heqs := cert.dite_equations wf
             split
@@ -539,7 +540,8 @@ theorem VEnv.natDivTopElse_beta
 /-- The checked closed top-level division equation has exactly the semantic
 shape required by `ReflectsNatNatNat.of_divCore_equations`. -/
 theorem VEnv.natDivTop_semantics
-    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    {env : VEnv} (wf : env.WF)
+    (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
     (hctors : VEnv.HasNatBoolConstructors env)
     (hbleC : env.contains ``Nat.ble)
     (cert : VEnv.NatLESelectorCertificate env)
@@ -565,7 +567,7 @@ theorem VEnv.natDivTop_semantics
   obtain ⟨rhs, hrhs, htop⟩ := VEnv.instantiate_natDivTop_equation
     wf hctors hdivFn hdivFnClosed hl hr heq a b
   obtain ⟨pV, bleV, HV, tV, eV, hpS, hbleS, hHS, htS, heS, hselect⟩ :=
-    VEnv.select_natDivTop_rhs wf hprim hctors hbleC cert a b hrhs
+    VEnv.select_natDivTop_rhs wf hbleR hctors hbleC cert a b hrhs
   have haT := (hctors.natLitS a (Us := []) (Δ := [])).2
   have hbT := (hctors.natLitS b (Us := []) (Δ := [])).2
   have hcallT : env.HasType 0 []
@@ -1287,7 +1289,8 @@ def natDivGoTargetInst (e : VExpr) (y : Nat)
 /-- Select the concrete branch of the retained recursive RHS after all five
 target binders have been semantically instantiated. -/
 theorem VEnv.select_natDivGo_rhs
-    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    {env : VEnv} (wf : env.WF)
+    (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
     (hctors : VEnv.HasNatBoolConstructors env)
     (hbleC : env.contains ``Nat.ble)
     (cert : VEnv.NatLESelectorCertificate env)
@@ -1368,7 +1371,7 @@ theorem VEnv.select_natDivGo_rhs
       hxClosed.instN_eq (Nat.zero_le _),
       hhfuelClosed.instN_eq (Nat.zero_le _),
       hrditeClosed.instN_eq (Nat.zero_le _)] using hrhsT
-  have ⟨hbleFnT, _⟩ := hprim.natBLE hbleC
+  have ⟨hbleFnT, _⟩ := hbleR hbleC
   obtain ⟨ci, hci, _, hlen⟩ := (hbleFnT 0 []).const_inv wf trivial
   have hfnS : TrExprS env [] [] q(Nat.ble) (.const ``Nat.ble []) :=
     .const hci rfl hlen
@@ -1385,7 +1388,7 @@ theorem VEnv.select_natDivGo_rhs
   split
   · rename_i hyx
     have hble : Nat.ble y x = true := Nat.ble_eq_true_of_le hyx
-    obtain ⟨proof, hselect⟩ := cert.selectDITETrue wf hprim hctors hbleC
+    obtain ⟨proof, hselect⟩ := cert.selectDITETrue wf hbleR hctors hbleC
       hbleGlobalS hble hcallT
     exact ⟨proof, by
       simpa [pI, HI, tI, eI, bleI, natDivGoTargetInst, VExpr.inst,
@@ -1404,7 +1407,7 @@ theorem VEnv.select_natDivGo_rhs
       cases h : Nat.ble y x with
       | false => rfl
       | true => exact False.elim (hyx (Nat.ble_eq.mp h))
-    obtain ⟨proof, hselect⟩ := cert.selectDITEFalse wf hprim hctors hbleC
+    obtain ⟨proof, hselect⟩ := cert.selectDITEFalse wf hbleR hctors hbleC
       hbleGlobalS hble hcallT
     exact ⟨proof, by
       simpa [pI, HI, tI, eI, bleI, natDivGoTargetInst, VExpr.inst,
@@ -1614,7 +1617,8 @@ def natDivGoBranchInst (e : VExpr) (y : Nat)
 /-- Beta-reduce the selected true recursive branch and evaluate its retained
 `Nat.sub` argument, while preserving the generated recursive fuel proof. -/
 theorem VEnv.natDivGoThen_beta
-    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    {env : VEnv} (wf : env.WF)
+    (hsubR : env.ReflectsNatNatNat ``Nat.sub Nat.sub)
     (hctors : VEnv.HasNatBoolConstructors env)
     (hsubC : env.contains ``Nat.sub)
     {yTy hyTy fuelTy xTy hTy tV hy hfuel proof R A B : VExpr}
@@ -1651,7 +1655,7 @@ theorem VEnv.natDivGoThen_beta
   have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
   have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
   have hsuccClosed := (hsuccT.closedN' wf.ordered.closed trivial).1
-  have hsubT := (hprim.natSub hsubC).1 0 []
+  have hsubT := (hsubR hsubC).1 0 []
   have hsubClosed := (hsubT.closedN' wf.ordered.closed trivial).1
   have happT' := happT
   simp [propI, hfuelLocal, hfuelI, natDivGoTargetInst, natDivGoBranchInst,
@@ -1723,7 +1727,7 @@ theorem VEnv.natDivGoThen_beta
     hbodyResultT.app_inv wf.ordered trivial
   obtain ⟨_, _, hprefix₄T, hhfuelIT⟩ := hcallT.app_inv wf.ordered trivial
   obtain ⟨_, _, hprefix₃T, hsubArgT⟩ := hprefix₄T.app_inv wf.ordered trivial
-  have hsubEq := (hprim.natSub hsubC).2 x y
+  have hsubEq := (hsubR hsubC).2 x y
   have hprefix₄Eq := hsubEq.app_arg wf trivial hprefix₃T hsubArgT
   have hcallEq := hprefix₄Eq.app_same wf trivial hprefix₄T hhfuelIT
   have hsuccEq := hcallEq.app_arg wf trivial hsuccFnT hcallT
@@ -1850,7 +1854,9 @@ theorem VEnv.align_natDivGo_final_proof
 /-- The checked recursive division equation has the exact operational shape
 required by `ReflectsNatNatNat.of_divCore_equations`. -/
 theorem VEnv.natDivGo_semantics
-    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    {env : VEnv} (wf : env.WF)
+    (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
+    (hsubR : env.ReflectsNatNatNat ``Nat.sub Nat.sub)
     (hctors : VEnv.HasNatBoolConstructors env)
     (hbleC : env.contains ``Nat.ble)
     (hsubC : env.contains ``Nat.sub)
@@ -1920,7 +1926,7 @@ theorem VEnv.natDivGo_semantics
         hsuccClosed.instN_eq (Nat.zero_le _)] using hinstEq
     have hrhsT := (hEq.of_l wf trivial hcallT).hasType.2
     obtain ⟨tV, eV, htS, heS, hselect⟩ :=
-      VEnv.select_natDivGo_rhs wf hprim hctors hbleC selector rightS
+      VEnv.select_natDivGo_rhs wf hbleR hctors hbleC selector rightS
         y fuel x hhyL hhfuelL hrhsT
     split
     · rename_i hyx
@@ -1928,7 +1934,7 @@ theorem VEnv.natDivGo_semantics
       obtain ⟨proof, hselect⟩ := hselect
       have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
       obtain ⟨hfuel', hrecT, hbranch⟩ := VEnv.natDivGoThen_beta
-        wf hprim hctors hsubC htS y fuel x hhyL hhfuelL hbranchT
+        wf hsubR hctors hsubC htS y fuel x hhyL hhfuelL hbranchT
       exact ⟨hy, hfuel', hrecT,
         hEq.trans wf trivial hselect |>.trans wf trivial hbranch⟩
     · rename_i hyx
@@ -1938,5 +1944,109 @@ theorem VEnv.natDivGo_semantics
       have hbranch := VEnv.natDivGoElse_beta
         wf hctors heS y fuel x hhyL hhfuelL hbranchT
       exact hEq.trans wf trivial hselect |>.trans wf trivial hbranch
+
+/-- Turn the semantic evidence retained by the `Nat.div` primitive checker
+into conservation of the complete primitive-reflection invariant. -/
+theorem checkPrimitiveDef.natDiv.WF.conservesHasPrimitives
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {src : DefinitionVal} {v : VDefVal} {env' : VEnv}
+    {go' goTy' topL' topR' goL' goR' : VExpr}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hnat : c.venv.contains ``Nat) (hbool : c.venv.contains ``Bool)
+    (hbleC : c.venv.contains ``Nat.ble)
+    (hsubC : c.venv.contains ``Nat.sub)
+    (hdiv : c.TrExprS src.value v.value)
+    (hgoS : c.TrExprS q(Nat.div.go) go')
+    (hgoTyS : c.TrExprS
+      q(∀ y, Nat.succ Nat.zero ≤ y →
+        ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy')
+    (htopL : c.TrExprS (natDivTopEquation src.value).1 topL')
+    (htopR : c.TrExprS (natDivTopEquation src.value).2 topR')
+    (hgoL : c.TrExprS natDivGoEquation.1 goL')
+    (hgoR : c.TrExprS natDivGoEquation.2 goR')
+    (hname : v.name = ``Nat.div)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.div v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      ∃ selector : VEnv.NatLESelectorCertificate c.venv,
+        c.HasType go' goTy' ∧
+        c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR') :
+    TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with
+    ⟨hsrcParams, hty, selector, hgoHas, htopEq, hgoEq⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hdiv
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hgoS
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hgoTyS
+  change TrExprS c.venv c.lparams c.vlctx _ _ at htopL
+  change TrExprS c.venv c.lparams c.vlctx _ _ at htopR
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hgoL
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hgoR
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at htopEq
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hgoEq
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hgoHas
+  rw [hclparams, hvlctx] at hdiv hgoS hgoTyS htopL htopR hgoL hgoR
+  rw [hclparams, hvlctx] at hty htopEq hgoEq hgoHas
+  let env'' := env'.addDefEq v.toDefEq
+  have hle : c.venv ≤ env'' :=
+    (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
+  have hctors : VEnv.HasNatBoolConstructors env'' :=
+    (VEnv.HasNatBoolConstructors.of_primitives
+      c.hasPrimitives hbool hnat).mono hle
+  have hbleC' : env''.contains ``Nat.ble :=
+    let ⟨ci, hci⟩ := hbleC
+    ⟨ci, hle.constants hci⟩
+  have hsubC' : env''.contains ``Nat.sub :=
+    let ⟨ci, hci⟩ := hsubC
+    ⟨ci, hle.constants hci⟩
+  have hbleR : env''.ReflectsNatNatBool ``Nat.ble Nat.ble :=
+    (c.hasPrimitives.natBLE.addConst hadd (by decide)).addDefEq
+  have hsubR : env''.ReflectsNatNatNat ``Nat.sub Nat.sub :=
+    (c.hasPrimitives.natSub.addConst hadd (by decide)).addDefEq
+  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.div [])
+      (.forallE .nat <| .forallE .nat .nat) :=
+    VEnv.HasType.const_of_type_defeq hwf (by
+      change env'.constants ``Nat.div = some v.toVConstant
+      exact VEnv.addConst_self hadd) hvuvars (hty.mono hle) U Γ
+  have hcf := VDefVal.const_defeq_value hwf hvuvars
+  rw [hname] at hcf
+  have hdivT : env''.HasType 0 [] v.value
+      (.forallE .nat <| .forallE .nat .nat) :=
+    (hcf.of_l hwf trivial (hf 0 [])).hasType.2
+  have hgoShape : go' = .const ``Nat.div.go [] := by
+    cases hgoS with
+    | const _ hus _ =>
+      simp at hus
+      subst hus
+      rfl
+  subst go'
+  have htop := VEnv.natDivTop_semantics hwf hbleR hctors hbleC'
+    (selector.mono hle) (hdiv.mono hle)
+    hdiv.closed.looseBVarRange_zero hdivT
+    (htopL.mono hle) (htopR.mono hle) (htopEq.mono hle)
+  have hgoEqCert := VEnv.NatDivGoEquationTranslation.of_checked
+    (hgoL.mono hle) (hgoR.mono hle) (hgoEq.mono hle)
+  have hgoTyCert := VEnv.NatDivGoTypeTranslation.of_translation
+    (hgoTyS.mono hle)
+  have hgo := VEnv.natDivGo_semantics hwf hbleR hsubR hctors
+    hbleC' hsubC' (selector.mono hle) hgoEqCert hgoTyCert
+    (hgoHas.mono hle)
+  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
+    (hctors.natZeroS (Us := []) (Δ := [])).2.weak0 hwf
+  have hsucc (Γ) : env''.HasType 0 Γ .natSucc
+      (.forallE .nat .nat) :=
+    (hctors.natSuccS (Us := []) (Δ := [])).2.weak0 hwf
+  have href := VEnv.ReflectsNatNatNat.of_divCore_equations
+    hwf hzero hsucc hf hcf htop hgo
+  exact c.hasPrimitives.addNatDivDef hadd href
 
 end Lean4Lean.Environment

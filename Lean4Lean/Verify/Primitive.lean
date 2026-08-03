@@ -6300,7 +6300,8 @@ theorem checkPrimitiveDef.natDiv.WF {c : VContext} {s : VState}
     M.WF c s (checkPrimitiveDef v) fun b _ => b →
       v.levelParams = [] ∧
       c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
-      Rcond ∧ c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR' := by
+      Rcond ∧ c.HasType go' goTy' ∧
+      c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR' := by
   simp only [checkPrimitiveDef, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
@@ -6319,7 +6320,7 @@ theorem checkPrimitiveDef.natDiv.WF {c : VContext} {s : VState}
           checkTypeIsDefEqGuard.bind_WF hle hleUnique hleTy
             (fun {_} {_} => .throw) fun _ _ =>
           checkTypeIsDefEqGuard.bind_WF hgo hgoUnique hgoTy
-            (fun {_} {_} => .throw) fun _ _ =>
+            (fun {_} {_} => .throw) fun _ hgoHas =>
           checkTypeDiscard.bind_WF htopR.fvarsIn fun _ =>
           isDefEqGuard.bind_WF htopL htopR (fun {_} {_} => .throw)
             fun _ htopEq =>
@@ -6328,7 +6329,7 @@ theorem checkPrimitiveDef.natDiv.WF {c : VContext} {s : VState}
               by_cases hb : b = true
               · rw [if_pos hb]
                 exact .pure fun _ =>
-                  ⟨hlparams, htyEq, hcond, htopEq, hgoEq hb⟩
+                  ⟨hlparams, htyEq, hcond, hgoHas, htopEq, hgoEq hb⟩
               · rw [if_neg hb]
                 exact .throw
       · exact .throw
