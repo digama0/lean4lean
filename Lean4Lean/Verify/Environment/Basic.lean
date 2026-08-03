@@ -223,6 +223,4 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩
-  | induct h1 h2 _ ih =>
-    have ⟨_, H⟩ := ih
-    exact ⟨_, H.decl <| .induct h1 h2.to_addInduct⟩
+  | induct _ h _ _ => exact nomatch h
