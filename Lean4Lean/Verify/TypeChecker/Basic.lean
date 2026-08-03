@@ -836,7 +836,8 @@ theorem MLCtx.PartialForall.full : MLCtx.PartialForall c n (c.fvarRevList n hn) 
   | zero => exact .nil
   | succ n ih => match c with | .vlam .. | .vlet .. => constructor; apply ih
 
-theorem MLCtx.PartialForall.sublist (H : MLCtx.PartialForall c n l e) : l <+ c.vlctx.fvars := by
+theorem MLCtx.PartialForall.sublist (H : MLCtx.PartialForall c n l e) :
+    List.Sublist l c.vlctx.fvars := by
   induction H with
   | nil => simp
   | vlam _ ih | vlet _ ih => simp [ih]
@@ -858,7 +859,10 @@ theorem MLCtx.WF.mkForall_partial {c : MLCtx} (wf : c.WF env Us) (n hn)
       · refine LocalContext.mkBindingList1_congr ?_
         rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
         simp [LocalDecl.fvarId]; rintro ⟨⟩
-        have := (List.cons_sublist_cons.2 hp.sublist).nodup wf.fvars_nodup; simp_all
+        have hnd := wf.fvars_nodup
+        simp only [MLCtx.vlctx, VLCtx.fvars_cons_some] at hnd
+        exact (List.pairwise_cons.mp hnd).1 _
+          (List.Sublist.mem h hp.sublist) rfl
       · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
     | skip h1 h2 h3 hp ih =>
       subst h2; simp [h3]
