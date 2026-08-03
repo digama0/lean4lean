@@ -9,12 +9,15 @@ open TypeChecker Kernel Environment
 
 open private Lean.Kernel.Environment.add from Lean.Environment
 
-def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := false) : M Unit := do
-  checkName env v.name allowPrimitive
+def checkConstantValBody (env : Environment) (v : ConstantVal) : M Unit := do
   checkDuplicatedUnivParams v.levelParams
   checkNoMVarNoFVar env v.name v.type
   let sort ← checkType v.type
   _ ← ensureSort sort v.type
+
+def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := false) : M Unit := do
+  checkName env v.name allowPrimitive
+  checkConstantValBody env v
 
 def addAxiom (env : Environment) (v : AxiomVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
@@ -42,10 +45,15 @@ def addDefinition (env : Environment) (v : DefinitionVal)
   else
     if check then
       M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
-        checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
+        -- Establish the header and body typing facts before checking primitive
+        -- equations.  The verification of `checkPrimitiveDef` needs these facts
+        -- to justify its calls to `isDefEq`; the reserved-name check can safely
+        -- wait until the primitive result is available.
+        checkConstantValBody env v.toConstantVal
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env (.defnDecl v) valType
+        checkName env v.name (← checkPrimitiveDef v)
     return env.add (.defnInfo v)
 
 def addTheorem (env : Environment) (v : TheoremVal) (check := true) (fuel : FuelConfig := {}) :

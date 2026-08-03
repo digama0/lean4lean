@@ -48,7 +48,7 @@ theorem reduceBinNatOpG.WF {guard} [DecidableRel guard] {c : VContext}
   have ⟨_, d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1
   simp [c3] at d2; simp [← d2] at h3; simp [h3] at h2; subst h2
   refine ⟨_, (TrExprS.natLit c.hasPrimitives hn _).1, ?_⟩
-  have := heval ⟨_, h1⟩ v1 v2 |>.instL (U' := c.lparams.length) (ls := []) nofun
+  have := (heval ⟨_, h1⟩).2 v1 v2 |>.instL (U' := c.lparams.length) (ls := []) nofun
   simp [VExpr.instL] at this
   refine this.weak0 c.Ewf (Γ := c.vlctx.toCtx) |>.symm.trans c.Ewf c.Δwf ?_
   have a3 := a3.of_r c.Ewf c.Δwf ha2
@@ -75,7 +75,7 @@ theorem reduceBinNatPred.WF {c : VContext}
   have ⟨_, c3⟩ := c.safePrimitives c1 hprim
   have ⟨_, d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1
   simp [c3] at d2; simp [← d2] at h3; simp [h3] at h2; subst h2
-  have := heval ⟨_, h1⟩ v1 v2 |>.instL (U' := c.lparams.length) (ls := []) nofun
+  have := (heval ⟨_, h1⟩).2 v1 v2 |>.instL (U' := c.lparams.length) (ls := []) nofun
   simp [VExpr.instL] at this
   refine ⟨_, (TrExprS.boolLit c.hasPrimitives ?_ _).1, ?_⟩
   · let ⟨_, H⟩ := this

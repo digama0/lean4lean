@@ -35,6 +35,13 @@ namespace TypeChecker
 
 abbrev M := ReaderT Context <| StateT State <| Except Exception
 
+/-- Run a type-checker computation transactionally, retaining its result or
+error but discarding any cache and fresh-name state it produced. -/
+def M.sandbox (x : M α) : M α := fun c s =>
+  match x c s with
+  | .ok (a, _) => .ok (a, s)
+  | .error e => .error e
+
 def M.run (env : Environment) (safety : DefinitionSafety := .safe)
     (lctx : LocalContext := {}) (lparams : List Name := []) (fuel : FuelConfig := {})
     (x : M α) : Except Exception α :=

@@ -304,6 +304,16 @@ theorem M.WF.mono {c : VContext} {s : VState} {x : M α} {Q R}
 
 theorem M.WF.throw {c : VContext} {s : VState} {Q} : (throw e : M α).WF c s Q := nofun
 
+/-- A sandboxed computation cannot invalidate verifier state: on success its
+raw type-checker state is exactly the input state, regardless of what happened
+inside the sandbox. -/
+theorem M.WF.sandbox {c : VContext} {s : VState} {x : M α} :
+    (M.sandbox x).WF c s fun _ s' => s' = s := by
+  intro wf a st h
+  simp only [M.sandbox] at h
+  split at h <;> cases h
+  exact ⟨s, rfl, .rfl, wf, rfl⟩
+
 theorem M.WF.le {c : VContext} {s : VState} {Q R} {x : M α}
     (h1 : x.WF c s Q) (H : ∀ a s', s ≤ s' → Q a s' → R a s') :
     x.WF c s R := fun wf _ _ e =>
@@ -457,6 +467,54 @@ protected theorem RecM.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
       trctx, inferTypeI_wf := hic wf.inferTypeI_wf, inferTypeC_wf := hic wf.inferTypeC_wf
       whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf, unfold_wf := wf.unfold_wf }
   let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h1 _ mwf this a s' e
+  refine have le' := le.trans hs2; ⟨s', hs1, le', ?_, hs4⟩
+  have hic {ic} (H : InferCache.WF (c.withMLC m') s' ic) :
+      InferCache.WF (c.withMLC m) s' ic := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
+  have hwc {wc} (H : WHNFCache.WF (c.withMLC m') s' wc) :
+      WHNFCache.WF (c.withMLC m) s' wc := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
+  let ⟨_, _, a1, a2, a3⟩ := wf'.ectx
+  exact {
+    ngen_wf := (by simpa [VContext.withMLC] using wf'.ngen_wf :).2
+    ectx := ⟨_, _, a1, .comp (.skip_fvar _ _ .refl) a2, a3⟩
+    trctx := wf.trctx
+    inferTypeI_wf := hic wf'.inferTypeI_wf, inferTypeC_wf := hic wf'.inferTypeC_wf
+    whnfCore_wf := hwc wf'.whnfCore_wf, whnf_wf := hwc wf'.whnf_wf, unfold_wf := wf'.unfold_wf
+  }
+
+protected theorem M.WF.withLocalDecl {c : VContext} {m} [cwf : c.MLCWF m]
+    {s : VState} {f : Expr → M α} {Q name ty ty' bi}
+    (hty : (c.withMLC m).TrExprS ty ty')
+    (hty' : (c.withMLC m).IsType ty')
+    (hs : s₀ ≤ s)
+    (H : ∀ id cwf' s', s₀ ≤ s' → ¬s.ngen.Reserves id →
+      WF (c.withMLC (.vlam id name ty ty' bi m) (wf := cwf')) s' (f (.fvar id)) Q) :
+    (withLocalDecl name bi ty f).WF (c.withMLC m) s Q := by
+  intro wf a s' e
+  let id := s.ngen.curr
+  have h0 := s.ngen.next_reserves_self
+  have h1 := s.ngen.not_reserves_self
+  have le : s ≤ s.next := .next
+  have h1' := wf.find?_eq_none h1
+  let m' := m.vlam ⟨id⟩ name ty ty' bi
+  have cwf' : c.MLCWF m' := ⟨cwf.1, h1', hty, hty'⟩
+  have : VState.WF (c.withMLC m') s.next :=
+    have trctx := wf.trctx.mkLocalDecl h1' hty hty'
+    have hic {ic} (H : InferCache.WF (c.withMLC m) s ic) : InferCache.WF (c.withMLC m') s.next ic :=
+      fun _ _ h => ((H h).fresh c.Ewf.ordered trctx.wf).mono le
+    have hwc {wc} (H : WHNFCache.WF (c.withMLC m) s wc) : WHNFCache.WF (c.withMLC m') s.next wc :=
+      fun _ _ h => ((H h).fresh c.Ewf trctx.wf).mono le
+    { ngen_wf := by
+        simp [m', VContext.withMLC]; exact ⟨h0, fun _ h => le.reservesV (wf.ngen_wf _ h)⟩
+      ectx := by
+        let ⟨_, _, a1, a2, a3, a4⟩ := wf.ectx
+        refine
+          have b1 := ⟨a1, ?_, hty'.weak' c.Ewf.ordered a2.toCtx⟩
+          ⟨_, _, b1, a2.cons_fvar _ _ hty.fvarsList, a3.weak' c.Ewf (.skip_fvar _ _ .refl) b1,
+            fun _ h => by obtain _ | ⟨_, h⟩ := h <;> [exact h0; exact (a4 _ h).mono le]⟩
+        rintro _ _ ⟨⟩; exact ⟨mt (a4 _) h1, hty.fvarsList.trans a2.fvars_sublist.subset⟩
+      trctx, inferTypeI_wf := hic wf.inferTypeI_wf, inferTypeC_wf := hic wf.inferTypeC_wf
+      whnfCore_wf := hwc wf.whnfCore_wf, whnf_wf := hwc wf.whnf_wf, unfold_wf := wf.unfold_wf }
+  let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h1 this a s' e
   refine have le' := le.trans hs2; ⟨s', hs1, le', ?_, hs4⟩
   have hic {ic} (H : InferCache.WF (c.withMLC m') s' ic) :
       InferCache.WF (c.withMLC m) s' ic := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
