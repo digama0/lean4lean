@@ -5534,6 +5534,11 @@ theorem Condition.check.reflectNatNat_ite.WF {c : VContext} {s : VState}
         (mkApp2 cond.prop (.bvar 1) (.bvar 0))
         (mkApp2 asBool (.bvar 1) (.bvar 0))
         (mkApp2 proof (.bvar 1) (.bvar 0))) e')
+    (hdecide : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| mkApp5 q(@_root_.ite.{1}) q(Bool)
+        (mkApp2 cond.prop (.bvar 1) (.bvar 0))
+        (mkApp2 cond.dec (.bvar 1) (.bvar 0)) q(true) q(false)) decide')
+    (hdecideTy : c.TrExprS q(Nat → Nat → Bool) decideTy')
     (hasBool : c.TrExprS asBool asBool')
     (hasBoolTy : c.TrExprS q(Nat → Nat → Bool) asBoolTy')
     (hproof : c.TrExprS proof proof')
@@ -5546,6 +5551,7 @@ theorem Condition.check.reflectNatNat_ite.WF {c : VContext} {s : VState}
   refine hreflect fun _ => ?_
   refine hcheckITE fun _ hite => ?_
   refine checkTypeDiscard.bind_WF he.fvarsIn fun _ => ?_
+  refine inferTypeIsDefEqGuard.bind_WF hdecide hdecideTy hfail fun _ _ => ?_
   refine inferTypeIsDefEqGuard.bind_WF hasBool hasBoolTy hfail fun _ _ => ?_
   refine inferTypeIsPropGuard.bind_WF hproof hfail fun _ _ => ?_
   exact (isDefEqGuard.WF he hdec hfail).mono fun _ _ _ heq => ⟨hite, heq⟩
@@ -5568,6 +5574,11 @@ theorem Condition.check.reflectNatNat_dite.WF {c : VContext} {s : VState}
         (mkApp2 cond.prop (.bvar 1) (.bvar 0))
         (mkApp2 asBool (.bvar 1) (.bvar 0))
         (mkApp2 proof (.bvar 1) (.bvar 0))) e')
+    (hdecide : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| mkApp5 q(@_root_.ite.{1}) q(Bool)
+        (mkApp2 cond.prop (.bvar 1) (.bvar 0))
+        (mkApp2 cond.dec (.bvar 1) (.bvar 0)) q(true) q(false)) decide')
+    (hdecideTy : c.TrExprS q(Nat → Nat → Bool) decideTy')
     (hasBool : c.TrExprS asBool asBool')
     (hasBoolTy : c.TrExprS q(Nat → Nat → Bool) asBoolTy')
     (hproof : c.TrExprS proof proof')
@@ -5580,6 +5591,7 @@ theorem Condition.check.reflectNatNat_dite.WF {c : VContext} {s : VState}
   refine hreflect fun _ => ?_
   refine hcheckDITE fun _ hdite => ?_
   refine checkTypeDiscard.bind_WF he.fvarsIn fun _ => ?_
+  refine inferTypeIsDefEqGuard.bind_WF hdecide hdecideTy hfail fun _ _ => ?_
   refine inferTypeIsDefEqGuard.bind_WF hasBool hasBoolTy hfail fun _ _ => ?_
   refine inferTypeIsPropGuard.bind_WF hproof hfail fun _ _ => ?_
   exact (isDefEqGuard.WF he hdec hfail).mono fun _ _ _ heq => ⟨hdite, heq⟩
@@ -5605,6 +5617,11 @@ theorem Condition.check.reflectNatNat_ite_dite.WF {c : VContext} {s : VState}
         (mkApp2 cond.prop (.bvar 1) (.bvar 0))
         (mkApp2 asBool (.bvar 1) (.bvar 0))
         (mkApp2 proof (.bvar 1) (.bvar 0))) e')
+    (hdecide : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| mkApp5 q(@_root_.ite.{1}) q(Bool)
+        (mkApp2 cond.prop (.bvar 1) (.bvar 0))
+        (mkApp2 cond.dec (.bvar 1) (.bvar 0)) q(true) q(false)) decide')
+    (hdecideTy : c.TrExprS q(Nat → Nat → Bool) decideTy')
     (hasBool : c.TrExprS asBool asBool')
     (hasBoolTy : c.TrExprS q(Nat → Nat → Bool) asBoolTy')
     (hproof : c.TrExprS proof proof')
@@ -5618,6 +5635,7 @@ theorem Condition.check.reflectNatNat_ite_dite.WF {c : VContext} {s : VState}
   refine hcheckITE fun _ hite => ?_
   refine hcheckDITE fun _ hdite => ?_
   refine checkTypeDiscard.bind_WF he.fvarsIn fun _ => ?_
+  refine inferTypeIsDefEqGuard.bind_WF hdecide hdecideTy hfail fun _ _ => ?_
   refine inferTypeIsDefEqGuard.bind_WF hasBool hasBoolTy hfail fun _ _ => ?_
   refine inferTypeIsPropGuard.bind_WF hproof hfail fun _ _ => ?_
   exact (isDefEqGuard.WF he hdec hfail).mono fun _ _ _ heq => ⟨hite, hdite, heq⟩

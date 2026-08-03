@@ -999,6 +999,8 @@ theorem Condition.natEq.check.WF
           q(fun n m {q : Prop} (H : _ → _ → q) =>
             H (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m))
           (.bvar 1) (.bvar 0))) e')
+    (hdecide : c.TrExprS Condition.natEqDecideFn decide')
+    (hdecideTy : c.TrExprS q(Nat → Nat → Bool) decideTy')
     (hasBool : c.TrExprS q(Nat.beq) asBool')
     (hasBoolTy : c.TrExprS q(Nat → Nat → Bool) asBoolTy')
     (hproof : c.TrExprS
@@ -1012,6 +1014,7 @@ theorem Condition.natEq.check.WF
           c.HasType rtype' rtypeCanon' ∧
           c.HasType ite' iteTy' ∧
           c.HasType prop' propTy' ∧
+          c.HasType decide' decideTy' ∧
           c.HasType asBool' asBoolTy' ∧
           (∃ proofTy', c.HasType proof' proofTy' ∧
             c.HasType proofTy' (.sort .zero)) ∧
@@ -1034,6 +1037,9 @@ theorem Condition.natEq.check.WF
     Reflection.defn₂.check fail
     Reflection.defn₂.checkITE fail
     let _ ← TypeChecker.checkType _
+    unless ← TypeChecker.isDefEq
+        (← TypeChecker.inferType Condition.natEqDecideFn)
+        q(Nat → Nat → Bool) do fail
     unless ← TypeChecker.isDefEq (← TypeChecker.inferType q(Nat.beq))
         q(Nat → Nat → Bool) do fail
     unless ← TypeChecker.isProp (← TypeChecker.inferType
@@ -1047,6 +1053,8 @@ theorem Condition.natEq.check.WF
     hfalseL hfalseR (fun _ => hfail)).bind fun _ _ _ hiteCert => ?_
   refine checkTypeDiscard.bind_WF he.fvarsIn fun _ => ?_
   refine inferTypeIsDefEqGuard.bind_WF
+    hdecide hdecideTy hfail fun _ hdecideHas => ?_
+  refine inferTypeIsDefEqGuard.bind_WF
     hasBool hasBoolTy hfail fun _ hasBoolHas => ?_
   refine inferTypeIsPropGuard.bind_WF
     hproof hfail fun _ hproofHas => ?_
@@ -1059,7 +1067,7 @@ theorem Condition.natEq.check.WF
     hrtypeUnique hiteUnique htrueL0 htrueR0 htrueEq0
     hfalseL0 hfalseR0 hfalseEq0
   exact ⟨hselectorCert, hrtypeHas, hiteCert.1, hpropHas,
-    hasBoolHas, hproofHas, heq⟩
+    hdecideHas, hasBoolHas, hproofHas, heq⟩
 
 /-- Instantiate the translated closed equality-decision function at two
 concrete numerals while retaining a translation of its source body. -/

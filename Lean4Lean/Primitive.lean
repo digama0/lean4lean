@@ -148,6 +148,11 @@ def Condition.check (cond : Condition) (fail : ∀ {α}, M α)
     let e := .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3 reflect.toDec
       (mkApp2 cond.prop x y) (mkApp2 asBool x y) (mkApp2 proof x y)
     _ ← checkType e
+    let decideFn := .lam0 q(Nat) <| .lam0 q(Nat) <|
+      mkApp5 q(@_root_.ite.{1}) q(Bool)
+        (mkApp2 cond.prop (.bvar 1) (.bvar 0))
+        (mkApp2 cond.dec (.bvar 1) (.bvar 0)) q(true) q(false)
+    unless ← isDefEq (← inferType decideFn) q(Nat → Nat → Bool) do fail
     unless ← isDefEq (← inferType asBool) q(Nat → Nat → Bool) do fail
     unless ← isProp (← inferType proof) do fail
     unless ← isDefEq e cond.dec do fail
