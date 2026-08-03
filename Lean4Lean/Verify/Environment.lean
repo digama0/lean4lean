@@ -112,6 +112,147 @@ def MutualHeaderRel (safety : DefinitionSafety) (env : Environment)
   TrExprS venv v.levelParams [] v.type v'.type ∧
   v'.toVConstant.WF venv
 
+theorem MutualHeaderRel.toFinal (H : MutualHeaderRel safety env venv v₀ v v') :
+    TrConstVal safety venv (.defnInfo v) v'.toVConstVal := by
+  rcases H with ⟨hs, _, _, _, hn, hu, ht, _⟩
+  exact ⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hs]
+    exact DefinitionSafety.le_rfl,
+    by
+      dsimp [ConstantInfo.levelParams, ConstantInfo.toConstantVal]
+      exact hu.symm,
+    ht⟩, hn.symm⟩
+
+theorem MutualHeaderRel.toOpaque (H : MutualHeaderRel safety env venv v₀ v v') :
+    TrConstVal safety venv (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal := by
+  rcases H with ⟨hs, _, _, _, hn, hu, ht, _⟩
+  refine ⟨⟨?_, ?_, ht⟩, hn.symm⟩
+  · subst safety
+    cases h : v.safety with
+    | «unsafe» => simp [ConstantInfo.safety, ConstantInfo.isUnsafe,
+        ConstantInfo.isPartial, mutualOpaqueHeader, h]
+    | safe => simp [ConstantInfo.safety, ConstantInfo.isUnsafe,
+        ConstantInfo.isPartial, mutualOpaqueHeader, h]
+    | «partial» =>
+      simpa [ConstantInfo.safety, ConstantInfo.isUnsafe,
+        ConstantInfo.isPartial, mutualOpaqueHeader, h] using
+        (DefinitionSafety.le_safe (a := .partial))
+  · exact hu.symm
+
+theorem List.Forall₂.mutualHeader_names_nodup
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs')
+    (hnodup : (vs.map (fun v => v.name)).Nodup) :
+    (vs'.map (fun v => v.name)).Nodup := by
+  have heq : vs.map (fun v => v.name) = vs'.map (fun v => v.name) := by
+    induction H with
+    | nil => rfl
+    | @cons a b xs ys h hrel ih =>
+      simp only [List.map_cons]
+      have htail : (xs.map (fun v => v.name)).Nodup := by
+        exact (List.nodup_cons.mp (show
+          (a.name :: xs.map (fun v => v.name)).Nodup by simpa using hnodup)).2
+      rw [← h.2.2.2.2.1, ih htail]
+  rw [← heq]
+  exact hnodup
+
+theorem List.Forall₂.mutualHeader_toFinal
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs') :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety venv (.defnInfo v) v'.toVConstVal) vs vs' := by
+  induction H with
+  | nil => exact .nil
+  | cons h _ ih => exact .cons h.toFinal ih
+
+theorem List.Forall₂.mutualHeader_toOpaque
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs') :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety venv (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs' := by
+  induction H with
+  | nil => exact .nil
+  | cons h _ ih => exact .cons h.toOpaque ih
+
+theorem List.Forall₂.mutualHeader_fresh
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs') :
+    ∀ v ∈ vs, env.find? v.name = none := by
+  induction H with
+  | nil => simp
+  | cons h _ ih =>
+    intro v hv
+    simp only [List.mem_cons] at hv
+    rcases hv with rfl | hv
+    · exact h.2.2.1
+    · exact ih v hv
+
+theorem List.Forall₂.mutualHeader_notPrimitive
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs') :
+    ∀ v ∈ vs, ¬Lean.Kernel.Environment.primitives.contains v.name := by
+  induction H with
+  | nil => simp
+  | cons h _ ih =>
+    intro v hv
+    simp only [List.mem_cons] at hv
+    rcases hv with rfl | hv
+    · exact h.2.2.2.1
+    · exact ih v hv
+
+theorem List.Forall₂.mutualHeader_target_notPrimitive
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs') :
+    ∀ v' ∈ vs', ¬Lean.Kernel.Environment.primitives.contains v'.name := by
+  induction H with
+  | nil => simp
+  | cons h _ ih =>
+    intro v' hv
+    simp only [List.mem_cons] at hv
+    rcases hv with rfl | hv
+    · simpa [h.2.2.2.2.1] using h.2.2.2.1
+    · exact ih v' hv
+
+theorem List.Forall₂.mutualHeader_types
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs') :
+    ∀ v' ∈ vs', v'.toVConstant.WF venv := by
+  induction H with
+  | nil => simp
+  | cons h _ ih =>
+    intro v' hv
+    simp only [List.mem_cons] at hv
+    rcases hv with rfl | hv
+    · exact h.2.2.2.2.2.2.2
+    · exact ih v' hv
+
+theorem List.Forall₂.mutualHeader_target_fresh
+    (H : List.Forall₂ (MutualHeaderRel safety env venv v₀) vs vs')
+    (htr : TrEnv safety env venv) :
+    ∀ v' ∈ vs', venv.constants v'.name = none := by
+  induction H with
+  | nil => simp
+  | cons h _ ih =>
+    intro v' hv
+    simp only [List.mem_cons] at hv
+    rcases hv with rfl | hv
+    · cases hc : venv.constants v'.name with
+      | none => rfl
+      | some ci =>
+        have hs := (htr.find?_iff (name := v'.name)).2 ⟨ci, hc⟩
+        obtain ⟨ci', hfind, _⟩ := hs
+        rw [h.2.2.2.2.1, h.2.2.1] at hfind
+        contradiction
+    · exact ih v' hv
+
+theorem mutualNamesUnique_nodup (h : mutualNamesUnique vs = true) :
+    (vs.map (fun v => v.name)).Nodup := by
+  induction vs with
+  | nil => exact .nil
+  | cons v vs ih =>
+    simp only [mutualNamesUnique, Bool.and_eq_true, Bool.not_eq_true'] at h
+    apply List.nodup_cons.mpr
+    refine ⟨?_, ih h.2⟩
+    intro hmem
+    obtain ⟨w, hw, heq⟩ := List.mem_map.mp hmem
+    have : vs.any (fun w => w.name == v.name) = true :=
+      List.any_eq_true.mpr ⟨w, hw, by simpa [heq]⟩
+    rw [h.1] at this
+    contradiction
+
 theorem checkMutualHeaders.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v₀ : DefinitionVal) (vs : List DefinitionVal)
@@ -160,6 +301,210 @@ theorem checkMutualHeaders.WF
         exact ⟨hsafety'.trans hsafety₀, hlevels', hfresh, hn, rfl, rfl,
           htype', hvWF⟩
 
+theorem TypeChecker.M.WF.runContext
+    {c : TypeChecker.VContext} {x : TypeChecker.M α} {Q : α → Prop}
+    {env : Environment} {safety : DefinitionSafety} {lctx : LocalContext}
+    {lparams : List Name} {fuel : FuelConfig}
+    (hc : c.toContext = { env, safety, lctx, lparams, fuel })
+    (hstate : TypeChecker.VState.WF c {})
+    (H : x.WF c {} fun a _ => Q a) :
+    (TypeChecker.M.run env safety lctx lparams fuel x).WF Q := by
+  unfold TypeChecker.M.WF at H
+  rw [hc] at H
+  intro a eq
+  simp [TypeChecker.M.run, Functor.map, Except.map] at eq
+  split at eq <;> cases eq
+  rename_i eq
+  let ⟨_, _, _, _, hpost⟩ := H hstate _ _ eq
+  exact hpost
+
+theorem checkBodyCore.WF' (c : TypeChecker.VContext)
+    (decl : Declaration) (name : Name) (type value : Expr) (type' : VExpr)
+    (hdeclType : c.TrExprS type type')
+    (hclosed : value.hasMVar = false ∧ value.hasFVar = false)
+    (state : TypeChecker.VState := {}) :
+    ((do
+      let valueType ← TypeChecker.checkType value
+      if !(← TypeChecker.isDefEq valueType type) then
+        throw <| Exception.declTypeMismatch c.env decl valueType) :
+      TypeChecker.M Unit).WF c state fun _ _ =>
+        ∃ value', c.TrExprS value value' ∧ c.HasType value' type' := by
+  have hfvars : value.FVarsIn (· ∈ c.vlctx.fvars) := by
+    apply fvarsIn_iff.mpr
+    refine ⟨?_, fvarsIn_iff_hasMVar.mpr hclosed.1⟩
+    intro fv hfv
+    have hempty : value.fvarsList = [] := fvarsList_eq_nil.2 hclosed.2
+    simp [hempty] at hfv
+  refine (TypeChecker.checkType.WF hfvars).bind
+    fun _ _ _ ⟨value', valueType', _, hvalue, hvalueType, hhasType⟩ => ?_
+  refine (TypeChecker.isDefEq.WF hvalueType hdeclType).bind
+    fun equal _ _ hequal => ?_
+  split
+  · exact .throw
+  · refine .pure ⟨value', hvalue, ?_⟩
+    have heq : equal = true := by cases equal <;> simp_all
+    exact hhasType.defeqU_r c.Ewf c.Δwf (hequal heq)
+
+def MutualBodyRel (safety : DefinitionSafety) (env : Environment)
+    (base headers : VEnv) (v₀ v : DefinitionVal) (v' : VDefVal) : Prop :=
+  ∃ header,
+    MutualHeaderRel safety env base v₀ v header ∧
+    v'.toVConstVal = header.toVConstVal ∧
+    TrExprS headers v.levelParams [] v.value v'.value ∧
+    v'.WF headers
+
+def MutualHeaderSame (header v' : VDefVal) : Prop :=
+  v'.name = header.name ∧ v'.toVConstant = header.toVConstant
+
+theorem checkMutualBodies.WF
+    (c : TypeChecker.VContext)
+    (all : List DefinitionVal) (v₀ : DefinitionVal)
+    (base : VEnv) (hbase : base ≤ c.venv)
+    (hcparams : c.lparams = v₀.levelParams)
+    (hcctx : c.vlctx = [])
+    (H : List.Forall₂ (MutualHeaderRel c.safety c.env base v₀) vs headers')
+    (state : TypeChecker.VState := {}) :
+    (checkMutualBodies c.env all vs).WF c state fun _ _ =>
+      ∃ vs', List.Forall₂
+          (MutualBodyRel c.safety c.env base c.venv v₀) vs vs' ∧
+        List.Forall₂ MutualHeaderSame headers' vs' := by
+  induction H generalizing state with
+  | nil => exact .pure ⟨[], .nil, .nil⟩
+  | @cons v header vs headers hhead htail ih =>
+    unfold checkMutualBodies checkMutualBody
+    simpa only [bind_assoc] using
+      ((TypeChecker.M.WF.liftExcept checkNoMVarNoFVar.WF).bind
+        fun _ state' _ hclosed => by
+          have htype : c.TrExprS v.type header.type := by
+            have := hhead.2.2.2.2.2.2.1.mono hbase
+            change TrExprS c.venv c.lparams c.vlctx v.type header.type
+            rw [hcparams, hcctx]
+            simpa [hhead.2.1] using this
+          simpa only [pure_bind, bind_assoc] using
+            ((checkBodyCore.WF' c (.mutualDefnDecl all) v.name
+              v.type v.value header.type htype hclosed state').bind
+                fun _ state'' _ hbody => by
+                  obtain ⟨value', hvalue, hvalueWF⟩ := hbody
+                  let v' : VDefVal := { header with value := value' }
+                  have hvalue' : TrExprS c.venv v.levelParams [] v.value v'.value := by
+                    change TrExprS c.venv c.lparams c.vlctx v.value v'.value at hvalue
+                    rw [hcparams, hcctx] at hvalue
+                    simpa [v', hhead.2.1] using hvalue
+                  have hvWF : v'.WF c.venv := by
+                    change c.venv.HasType c.lparams.length c.vlctx.toCtx value' header.type at hvalueWF
+                    rw [hcparams, hcctx] at hvalueWF
+                    unfold VDefVal.WF
+                    simpa [v', hhead.2.1, hhead.2.2.2.2.2.1] using hvalueWF
+                  refine (ih (state := state'')).mono
+                    (R := fun _ _ => ∃ finals,
+                      List.Forall₂
+                        (MutualBodyRel c.safety c.env base c.venv v₀)
+                          (v :: vs) finals ∧
+                      List.Forall₂ MutualHeaderSame (header :: headers) finals) ?_
+                  rintro _ _ _ ⟨vs', hvs', hsame⟩
+                  refine ⟨v' :: vs', .cons ?_ hvs', .cons ⟨rfl, rfl⟩ hsame⟩
+                  exact ⟨header, hhead, rfl, hvalue', hvWF⟩))
+
+theorem List.Forall₂.mutualBody_toFinal
+    (H : List.Forall₂
+      (MutualBodyRel safety env base headers v₀) vs vs') :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety base (.defnInfo v) v'.toVConstVal) vs vs' := by
+  induction H with
+  | nil => exact .nil
+  | cons h _ ih =>
+    obtain ⟨header, hheader, hsame, _, _⟩ := h
+    exact .cons (hsame ▸ hheader.toFinal) ih
+
+theorem List.Forall₂.mutualBody_bodies
+    (H : List.Forall₂
+      (MutualBodyRel safety env base headers v₀) vs vs') :
+    List.Forall₂ (fun v v' =>
+      TrExprS headers v.levelParams [] v.value v'.value) vs vs' := by
+  induction H with
+  | nil => exact .nil
+  | cons h _ ih =>
+    obtain ⟨_, _, _, hbody, _⟩ := h
+    exact .cons hbody ih
+
+theorem List.Forall₂.mutualBody_wfs
+    (H : List.Forall₂
+      (MutualBodyRel safety env base headers v₀) vs vs') :
+    ∀ v' ∈ vs', v'.WF headers := by
+  induction H with
+  | nil => simp
+  | cons h _ ih =>
+    obtain ⟨_, _, _, _, hwf⟩ := h
+    intro v' hv
+    simp only [List.mem_cons] at hv
+    rcases hv with rfl | hv
+    · exact hwf
+    · exact ih v' hv
+
+theorem List.Forall₂.mutualBody_types
+    (H : List.Forall₂
+      (MutualBodyRel safety env base headers v₀) vs vs') :
+    ∀ v' ∈ vs', v'.toVConstant.WF base := by
+  induction H with
+  | nil => simp
+  | cons h _ ih =>
+    obtain ⟨header, hheader, hsame, _, _⟩ := h
+    intro v' hv
+    simp only [List.mem_cons] at hv
+    rcases hv with rfl | hv
+    · rw [hsame]
+      exact hheader.2.2.2.2.2.2.2
+    · exact ih v' hv
+
+theorem List.Forall₂.trConst_names_eq
+    {info : DefinitionVal → ConstantInfo}
+    {vs : List DefinitionVal} {vs' : List VDefVal}
+    (H : List.Forall₂ (fun v v' =>
+      TrConstVal safety env (info v) v'.toVConstVal) vs vs')
+    (hname : ∀ v, (info v).name = v.name) :
+    vs.map (fun v => v.name) = vs'.map (fun v => v.name) := by
+  induction H with
+  | nil => rfl
+  | cons h _ ih =>
+    simp only [List.map_cons]
+    rw [← h.2, hname, ih]
+
+theorem List.Forall₂.trConst_mono
+    {info : DefinitionVal → ConstantInfo}
+    {vs : List DefinitionVal} {vs' : List VDefVal}
+    {base env : VEnv}
+    (H : List.Forall₂ (fun v v' =>
+      TrConstVal safety base (info v) v'.toVConstVal) vs vs')
+    (hs : safety' ≤ safety) (hle : base ≤ env) :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety' env (info v) v'.toVConstVal) vs vs' := by
+  induction H with
+  | nil => exact .nil
+  | cons h _ ih => exact .cons ⟨h.1.sf_mono hs |>.mono hle, h.2⟩ ih
+
+theorem List.Forall₂.trConst_target_fresh
+    {info : DefinitionVal → ConstantInfo}
+    {vs : List DefinitionVal} {vs' : List VDefVal}
+    {base : VEnv} {env : Environment}
+    (H : List.Forall₂ (fun v v' =>
+      TrConstVal safety base (info v) v'.toVConstVal) vs vs')
+    (hname : ∀ v, (info v).name = v.name)
+    (htr : TrEnv safety env base)
+    (hfresh : ∀ v ∈ vs, env.find? v.name = none) :
+    ∀ v' : VDefVal, v' ∈ vs' → base.constants v'.name = none := by
+  intro w hw
+  have hnames := Lean4Lean.List.Forall₂.trConst_names_eq H hname
+  have hwname : w.name ∈ vs'.map (fun v => v.name) := List.mem_map.mpr ⟨w, hw, rfl⟩
+  rw [← hnames] at hwname
+  obtain ⟨v, hv, hn⟩ := List.mem_map.mp hwname
+  cases hc : base.constants w.name with
+  | none => rfl
+  | some ci =>
+    have hs := (htr.find?_iff (name := w.name)).2 ⟨ci, hc⟩
+    obtain ⟨ci', hfind, _⟩ := hs
+    rw [← hn, hfresh v hv] at hfind
+    contradiction
+
 theorem checkBodyCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (decl : Declaration) (name : Name) (levelParams : List Name)
     (type value : Expr) (type' : VExpr)
@@ -173,25 +518,9 @@ theorem checkBodyCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       TypeChecker.M Unit).WF
       (.mk' wf safety levelParams) state fun _ _ =>
         ∃ value', TrExprS (ves.venv safety) levelParams [] value value' ∧
-          (ves.venv safety).HasType levelParams.length [] value' type' := by
-  have hfvars : value.FVarsIn
-      (· ∈ (TypeChecker.VContext.mk' wf safety levelParams).vlctx.fvars) := by
-    apply fvarsIn_iff.mpr
-    refine ⟨?_, fvarsIn_iff_hasMVar.mpr hclosed.1⟩
-    intro fv hfv
-    have hempty : value.fvarsList = [] := fvarsList_eq_nil.2 hclosed.2
-    simp [hempty] at hfv
-  refine (TypeChecker.checkType.WF hfvars).bind
-    fun _ _ _ ⟨value', valueType', _, hvalue, hvalueType, hhasType⟩ => ?_
-  refine (TypeChecker.isDefEq.WF hvalueType hdeclType).bind
-    fun equal _ _ hequal => ?_
-  split
-  · exact .throw
-  · rename_i hnot
-    refine .pure ⟨value', hvalue, ?_⟩
-    have heq : equal = true := by cases equal <;> simp_all
-    exact hhasType.defeqU_r (wf.tr (safety := safety)).wf trivial
-      (hequal heq)
+          (ves.venv safety).HasType levelParams.length [] value' type' :=
+  checkBodyCore.WF' (.mk' wf safety levelParams) decl name type value type'
+    hdeclType hclosed state
 
 theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (decl : Declaration) (name : Name) (levelParams : List Name)
@@ -1228,6 +1557,93 @@ theorem VEnv.addConst_mono {env₁ env₂ env₁' env₂' : VEnv}
     rw [hdef₂]
     exact hle.defeqs hdf
 
+theorem VEnv.addMutualHeaders_spec
+    {env : VEnv} {vs : List VDefVal}
+    (hfresh : ∀ v ∈ vs, env.constants v.name = none)
+    (hnodup : (vs.map (fun v => v.name)).Nodup) :
+    ∃ headers,
+      env.addMutualHeaders vs = some headers ∧
+      env ≤ headers ∧
+      ∀ v ∈ vs, headers.constants v.name = some v.toVConstant := by
+  induction vs generalizing env with
+  | nil =>
+    exact ⟨env, rfl, VEnv.LE.rfl, by simp⟩
+  | cons v vs ih =>
+    have hnone := hfresh v (by simp)
+    obtain ⟨next, hhead⟩ : ∃ next, env.addConst v.name v.toVConstant = some next := by
+      unfold VEnv.addConst
+      rw [hnone]
+      exact ⟨_, rfl⟩
+    have hnodupPair := List.nodup_cons.mp (show
+      (v.name :: vs.map (fun v => v.name)).Nodup by simpa using hnodup)
+    have hfresh' : ∀ w ∈ vs, next.constants w.name = none := by
+      intro w hw
+      rw [VEnv.addConst_constants_of_ne hhead]
+      · exact hfresh w (by simp [hw])
+      · intro heq
+        exact hnodupPair.1 (heq ▸ List.mem_map.mpr ⟨w, hw, rfl⟩)
+    obtain ⟨headers, htail, hle, hcontains⟩ := ih hfresh' hnodupPair.2
+    refine ⟨headers, ?_, (VEnv.addConst_le hhead).trans hle, ?_⟩
+    · simp [VEnv.addMutualHeaders, hhead, htail]
+    · intro w hw
+      simp only [List.mem_cons] at hw
+      rcases hw with rfl | hw
+      · exact hle.constants (VEnv.addConst_self hhead)
+      · exact hcontains w hw
+
+theorem VEnv.addMutualHeaders_congr
+    {env : VEnv} {vs₁ vs₂ : List VDefVal}
+    (H : List.Forall₂ MutualHeaderSame vs₁ vs₂) :
+    env.addMutualHeaders vs₁ = env.addMutualHeaders vs₂ := by
+  induction H generalizing env with
+  | nil => rfl
+  | cons h _ ih =>
+    simp only [VEnv.addMutualHeaders]
+    rw [h.1, h.2]
+    cases hhead : env.addConst _ _ <;> simp [hhead, ih]
+
+theorem VEnv.HasPrimitives.addMutualHeaders
+    {env headers : VEnv} {vs : List VDefVal}
+    (H : env.HasPrimitives)
+    (hn : ∀ v ∈ vs, ¬Lean.Kernel.Environment.primitives.contains v.name)
+    (hadd : env.addMutualHeaders vs = some headers) :
+    headers.HasPrimitives := by
+  induction vs generalizing env headers with
+  | nil =>
+    simp [VEnv.addMutualHeaders] at hadd
+    subst headers
+    exact H
+  | cons v vs ih =>
+    cases hhead : env.addConst v.name v.toVConstant with
+    | none => simp [VEnv.addMutualHeaders, hhead] at hadd
+    | some next =>
+      simp [VEnv.addMutualHeaders, hhead] at hadd
+      exact ih (H.addConst_of_not_primitive hhead (hn v (by simp)))
+        (fun w hw => hn w (by simp [hw])) hadd
+
+theorem VEnv.addMutualHeaders_mono
+    {env₁ env₂ headers₁ headers₂ : VEnv} {vs : List VDefVal}
+    (hle : env₁ ≤ env₂)
+    (hadd₁ : env₁.addMutualHeaders vs = some headers₁)
+    (hadd₂ : env₂.addMutualHeaders vs = some headers₂) :
+    headers₁ ≤ headers₂ := by
+  induction vs generalizing env₁ env₂ headers₁ headers₂ with
+  | nil =>
+    simp [VEnv.addMutualHeaders] at hadd₁ hadd₂
+    subst headers₁
+    subst headers₂
+    exact hle
+  | cons v vs ih =>
+    cases hhead₁ : env₁.addConst v.name v.toVConstant with
+    | none => simp [VEnv.addMutualHeaders, hhead₁] at hadd₁
+    | some next₁ =>
+      cases hhead₂ : env₂.addConst v.name v.toVConstant with
+      | none => simp [VEnv.addMutualHeaders, hhead₂] at hadd₂
+      | some next₂ =>
+        simp [VEnv.addMutualHeaders, hhead₁] at hadd₁
+        simp [VEnv.addMutualHeaders, hhead₂] at hadd₂
+        exact ih (VEnv.addConst_mono hle hhead₁ hhead₂) hadd₁ hadd₂
+
 theorem VEnv.addDefEq_mono {env₁ env₂ : VEnv} (hle : env₁ ≤ env₂) :
     env₁.addDefEq df ≤ env₂.addDefEq df := by
   constructor
@@ -1236,6 +1652,26 @@ theorem VEnv.addDefEq_mono {env₁ env₂ : VEnv} (hle : env₁ ≤ env₂) :
     change df' = df ∨ env₁.defeqs df' at hdf'
     change df' = df ∨ env₂.defeqs df'
     exact hdf'.imp id hle.defeqs
+
+theorem VEnv.addMutualDefEqs_mono {env₁ env₂ : VEnv} {vs : List VDefVal}
+    (hle : env₁ ≤ env₂) :
+    env₁.addMutualDefEqs vs ≤ env₂.addMutualDefEqs vs := by
+  induction vs generalizing env₁ env₂ with
+  | nil => exact hle
+  | cons v vs ih => exact ih (VEnv.addDefEq_mono hle)
+
+theorem VEnv.addMutualDefEqs_le {env : VEnv} {vs : List VDefVal} :
+    env ≤ env.addMutualDefEqs vs := by
+  induction vs generalizing env with
+  | nil => exact VEnv.LE.rfl
+  | cons v vs ih => exact VEnv.addDefEq_le.trans ih
+
+theorem VEnv.HasPrimitives.addMutualDefEqs
+    {env : VEnv} {vs : List VDefVal} (H : env.HasPrimitives) :
+    (env.addMutualDefEqs vs).HasPrimitives := by
+  induction vs generalizing env with
+  | nil => exact H
+  | cons v vs ih => exact ih H.addDefEq
 
 theorem TrEnv.block
     (htr : TrEnv safety env venv)
@@ -1246,6 +1682,40 @@ theorem TrEnv.block
   exact .block (by
     rw [← htr.map_wf.find?'_eq_find?]
     exact hfresh) hsafety htr
+
+theorem TrEnv.blockMutualFinal
+    (htr : TrEnv safety env venv)
+    (hfresh : ∀ v ∈ vs, env.find? v.name = none)
+    (hnodup : (vs.map (fun v => v.name)).Nodup)
+    (hsafety : ∀ v ∈ vs, ¬safety ≤ v.safety) :
+    TrEnv safety (addMutualFinalEnv env vs) venv := by
+  induction vs generalizing env with
+  | nil => simpa [addMutualFinalEnv] using htr
+  | cons v vs ih =>
+    have hheadFresh := hfresh v (by simp)
+    have hheadNone : env.constants.find? v.name = none := by
+      rw [← htr.map_wf.find?'_eq_find?]
+      exact hheadFresh
+    have hnodupPair := List.nodup_cons.mp (show
+      (v.name :: vs.map (fun v => v.name)).Nodup by simpa using hnodup)
+    have hmap' := htr.map_wf.insert v.name (.defnInfo v) hheadNone
+    have hfresh' : ∀ w ∈ vs,
+        (env.add (.defnInfo v)).find? w.name = none := by
+      intro w hw
+      change (env.constants.insert v.name (.defnInfo v)).find?' w.name = none
+      rw [hmap'.find?'_eq_find?, htr.map_wf.find?_insert]
+      split
+      · rename_i heq
+        have hmem : w.name ∈ vs.map (fun x => x.name) :=
+          List.mem_map.mpr ⟨w, hw, rfl⟩
+        exact (hnodupPair.1 ((LawfulBEq.eq_of_beq heq).symm ▸ hmem)).elim
+      · rw [← htr.map_wf.find?'_eq_find?]
+        exact hfresh w (by simp [hw])
+    have hnext := TrEnv.block (ci := .defnInfo v) htr hheadFresh
+      (by rw [ConstantInfo.defnInfo_safety]; exact hsafety v (by simp))
+    simpa [addMutualFinalEnv] using
+      ih hnext hfresh' hnodupPair.2
+        (fun w hw => hsafety w (by simp [hw]))
 
 theorem TrEnv.addAxiom
     (htr : TrEnv safety env venv)
@@ -1416,6 +1886,90 @@ theorem Environment.safePrimitives_add_of_not_primitive
     change env.constants.find?' n = some ci'
     rw [hmap.find?'_eq_find?]
     exact hfind
+
+theorem Environment.safePrimitives_addMutualCheckEnv
+    (hmap : env.constants.WF)
+    (hfresh : ∀ v ∈ vs, env.find? v.name = none)
+    (hnodup : (vs.map (fun v => v.name)).Nodup)
+    (hn : ∀ v ∈ vs, ¬Lean.Kernel.Environment.primitives.contains v.name)
+    (hold : env.find? n = some ci →
+      Lean.Kernel.Environment.primitives.contains n →
+      ci.safety = .safe ∧ ci.levelParams = []) :
+    (addMutualCheckEnv env vs).find? n = some ci →
+      Lean.Kernel.Environment.primitives.contains n →
+      ci.safety = .safe ∧ ci.levelParams = [] := by
+  induction vs generalizing env with
+  | nil => simpa [addMutualCheckEnv] using hold
+  | cons v vs ih =>
+    have hheadFresh := hfresh v (by simp)
+    have hheadNone : env.constants.find? v.name = none := by
+      rw [← hmap.find?'_eq_find?]
+      exact hheadFresh
+    let header : ConstantInfo := .opaqueInfo (mutualHeader v)
+    have hmap' : (env.add header).constants.WF := by
+      change (env.constants.insert v.name header).WF
+      exact hmap.insert v.name header hheadNone
+    have hnodupPair := List.nodup_cons.mp (show
+      (v.name :: vs.map (fun v => v.name)).Nodup by simpa using hnodup)
+    have hfresh' : ∀ w ∈ vs, (env.add header).find? w.name = none := by
+      intro w hw
+      change (env.constants.insert v.name header).find?' w.name = none
+      rw [(hmap.insert v.name header hheadNone).find?'_eq_find?, hmap.find?_insert]
+      split
+      · rename_i heq
+        have hmem : w.name ∈ vs.map (fun x => x.name) :=
+          List.mem_map.mpr ⟨w, hw, rfl⟩
+        exact (hnodupPair.1 ((LawfulBEq.eq_of_beq heq).symm ▸ hmem)).elim
+      · rw [← hmap.find?'_eq_find?]
+        exact hfresh w (by simp [hw])
+    have hold' := Environment.safePrimitives_add_of_not_primitive
+      (env := env) (ci := header) hmap hheadFresh hold
+      (hn v (by simp))
+    simpa [addMutualCheckEnv, header] using
+      ih hmap' hfresh' hnodupPair.2
+        (fun w hw => hn w (by simp [hw])) hold'
+
+theorem Environment.safePrimitives_addMutualFinalEnv
+    (hmap : env.constants.WF)
+    (hfresh : ∀ v ∈ vs, env.find? v.name = none)
+    (hnodup : (vs.map (fun v => v.name)).Nodup)
+    (hn : ∀ v ∈ vs, ¬Lean.Kernel.Environment.primitives.contains v.name)
+    (hold : env.find? n = some ci →
+      Lean.Kernel.Environment.primitives.contains n →
+      ci.safety = .safe ∧ ci.levelParams = []) :
+    (addMutualFinalEnv env vs).find? n = some ci →
+      Lean.Kernel.Environment.primitives.contains n →
+      ci.safety = .safe ∧ ci.levelParams = [] := by
+  induction vs generalizing env with
+  | nil => simpa [addMutualFinalEnv] using hold
+  | cons v vs ih =>
+    have hheadFresh := hfresh v (by simp)
+    have hheadNone : env.constants.find? v.name = none := by
+      rw [← hmap.find?'_eq_find?]
+      exact hheadFresh
+    let header : ConstantInfo := .defnInfo v
+    have hmap' : (env.add header).constants.WF := by
+      change (env.constants.insert v.name header).WF
+      exact hmap.insert v.name header hheadNone
+    have hnodupPair := List.nodup_cons.mp (show
+      (v.name :: vs.map (fun v => v.name)).Nodup by simpa using hnodup)
+    have hfresh' : ∀ w ∈ vs, (env.add header).find? w.name = none := by
+      intro w hw
+      change (env.constants.insert v.name header).find?' w.name = none
+      rw [(hmap.insert v.name header hheadNone).find?'_eq_find?, hmap.find?_insert]
+      split
+      · rename_i heq
+        have hmem : w.name ∈ vs.map (fun x => x.name) :=
+          List.mem_map.mpr ⟨w, hw, rfl⟩
+        exact (hnodupPair.1 ((LawfulBEq.eq_of_beq heq).symm ▸ hmem)).elim
+      · rw [← hmap.find?'_eq_find?]
+        exact hfresh w (by simp [hw])
+    have hold' := Environment.safePrimitives_add_of_not_primitive
+      (env := env) (ci := header) hmap hheadFresh hold
+      (hn v (by simp))
+    simpa [addMutualFinalEnv, header] using
+      ih hmap' hfresh' hnodupPair.2
+        (fun w hw => hn w (by simp [hw])) hold'
 
 theorem Environment.safePrimitives_add_of_safe_primitive
     {env : Environment} {ci ci' : ConstantInfo} {n : Name}

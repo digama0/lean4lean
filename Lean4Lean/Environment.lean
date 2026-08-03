@@ -123,14 +123,18 @@ def checkMutualHeaders (env : Environment) (v₀ : DefinitionVal)
     checkConstantVal env v.toConstantVal
     checkMutualHeaders env v₀ vs
 
+def checkMutualBody (checkEnv : Environment) (all : List DefinitionVal)
+    (v : DefinitionVal) : M Unit := do
+  checkNoMVarNoFVar checkEnv v.name v.value
+  let valType ← TypeChecker.checkType v.value
+  if !(← isDefEq valType v.type) then
+    throw <| .declTypeMismatch checkEnv (.mutualDefnDecl all) valType
+
 def checkMutualBodies (checkEnv : Environment) (all : List DefinitionVal) :
     List DefinitionVal → M Unit
   | [] => pure ()
   | v :: vs => do
-    checkNoMVarNoFVar checkEnv v.name v.value
-    let valType ← TypeChecker.checkType v.value
-    if !(← isDefEq valType v.type) then
-      throw <| .declTypeMismatch checkEnv (.mutualDefnDecl all) valType
+    checkMutualBody checkEnv all v
     checkMutualBodies checkEnv all vs
 
 def addMutual (env : Environment) (vs : List DefinitionVal)
