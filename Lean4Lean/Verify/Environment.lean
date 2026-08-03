@@ -1,4 +1,5 @@
 import Lean4Lean.Verify.ModDivReflect
+import Lean4Lean.Verify.BitwiseReflect
 import Lean4Lean.Environment
 
 namespace Lean4Lean
@@ -317,6 +318,44 @@ theorem checkSafeNatGcdDefinition.WF
       NameSet.contains, NameSet.ofList])
   have hevidence := hcheck hallow
   have hlevels : v.levelParams = [] := hevidence.choose_spec.1
+  refine ⟨v', ?_, hvalueT, hcheckedName.1, hlevels, hevidence⟩
+  exact ⟨⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hsafety]
+    exact DefinitionSafety.le_rfl,
+    huvars, htype⟩, hvname⟩, hvalue⟩
+
+theorem checkSafeNatBitwiseDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.bitwise)
+    (hsafety : v.safety = .safe) :
+    ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+        ∃ v' : VDefVal,
+          TrDefVal .safe (ves.venv .safe) (.defnInfo v) v' ∧
+          v'.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
+          v.levelParams = [] ∧
+          Environment.NatBitwisePrimitiveEvidence
+            (.mk' wf .safe v.levelParams) v v'.type := by
+  refine (checkDefinitionBody.WF wf v).bind fun _ state' _ hbody => ?_
+  obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
+  refine (Environment.checkPrimitiveDef.natBitwise.WF_typed
+    (c := .mk' wf .safe v.levelParams) (s := state')
+    (ty' := v'.type) hname rfl rfl htype).bind
+      fun allow _ _ hcheck => ?_
+  refine (TypeChecker.M.WF.liftExcept
+    (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+    fun _ _ _ hcheckedName => ?_
+  have hallow : allow = true := hcheckedName.2 (by
+    rw [hname]
+    simp [Lean.Kernel.Environment.primitives,
+      NameSet.contains, NameSet.ofList])
+  have hevidence := hcheck hallow
+  have hlevels : v.levelParams = [] := by
+    rcases hevidence with ⟨_, _, _, hlevels, _⟩
+    exact hlevels
   refine ⟨v', ?_, hvalueT, hcheckedName.1, hlevels, hevidence⟩
   exact ⟨⟨⟨by
     rw [ConstantInfo.defnInfo_safety, hsafety]
@@ -1422,6 +1461,49 @@ theorem addDefinition.WF_safe_natGcd
       let ⟨ci, hci⟩ := hbeq; ⟨ci, hmono.constants hci⟩,
       let ⟨ci, hci⟩ := hmod; ⟨ci, hmono.constants hci⟩,
       hty.mono hmono, hvalid.mono hmono rfl rfl, hshape⟩
+  exact hevidence'.conservesHasPrimitives rfl rfl
+    (htr.2.mono hmono) hname' huvars hadd' hwf'
+
+theorem addDefinition.WF_safe_natBitwise
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.bitwise)
+    (hsafety : v.safety = .safe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  refine (checkSafeNatBitwiseDefinition.WF wf v hname hsafety).run wf |>.map
+    fun _ h => ?_
+  obtain ⟨v', htr, hvWF, hfresh, hlevels, hevidence⟩ := h
+  apply wf.addSafePrimitiveDefinition hsafety hlevels hfresh htr hvWF
+  intro safety out hadd hwf'
+  have hmono : ves.venv .safe ≤ ves.venv safety :=
+    wf.mono DefinitionSafety.le_safe
+  have hname' : v'.name = ``Nat.bitwise := htr.1.2.symm.trans hname
+  have huvars : v.levelParams.length = v'.uvars := htr.1.1.2.1
+  have hadd' : (ves.venv safety).addConst ``Nat.bitwise v'.toVConstant =
+      some out := by simpa [hname] using hadd
+  have hevidence' : Environment.NatBitwisePrimitiveEvidence
+      (.mk' wf safety v.levelParams) v v'.type := by
+    rcases hevidence with
+      ⟨cert, ite, decide, hparams, hbool, hnat, hbeq,
+        haddC, hmodC, hdivC, hty, hcert,
+        hiteS, hite, hdecideS, hdecide⟩
+    exact ⟨cert, ite, decide, hparams,
+      let ⟨ci, hci⟩ := hbool; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := hnat; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := hbeq; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := haddC; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := hmodC; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := hdivC; ⟨ci, hmono.constants hci⟩,
+      hty.mono hmono,
+      hcert.mono hmono rfl rfl,
+      hiteS.mono hmono,
+      ⟨hite.1.mono hmono,
+        fun b x y => (hite.2 b x y).mono hmono⟩,
+      hdecideS.mono hmono,
+      hdecide.mono hmono⟩
   exact hevidence'.conservesHasPrimitives rfl rfl
     (htr.2.mono hmono) hname' huvars hadd' hwf'
 

@@ -182,6 +182,21 @@ def Condition.natLEDecideFn : Expr :=
     (mkApp2 Condition.natLE.prop (.bvar 1) (.bvar 0))
     (mkApp2 Condition.natLE.dec (.bvar 1) (.bvar 0)) q(true) q(false)
 
+def Condition.natEqReflectProof : Expr :=
+  q(fun n m {q : Prop} (H : _ → _ → q) =>
+    H (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m))
+
+def Condition.natEqReflectedFn : Expr :=
+  .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3 Reflection.defn₂.toDec
+    (mkApp2 Condition.natEq.prop (.bvar 1) (.bvar 0))
+    (mkApp2 q(Nat.beq) (.bvar 1) (.bvar 0))
+    (mkApp2 Condition.natEqReflectProof (.bvar 1) (.bvar 0))
+
+def Condition.natEqDecideFn : Expr :=
+  .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp5 q(@_root_.ite.{1}) q(Bool)
+    (mkApp2 Condition.natEq.prop (.bvar 1) (.bvar 0))
+    (mkApp2 Condition.natEq.dec (.bvar 1) (.bvar 0)) q(true) q(false)
+
 /-- Expressions whose translations are retained by the verified Nat-≤
 primitive-condition checker.  The ordinary condition checker validates their
 types or equations; this explicit pass makes that evidence available to the
@@ -233,6 +248,38 @@ def Condition.natLEEvidenceExpressions : List Expr :=
     Condition.natLEReflectedFn, Condition.natLEDecideFn,
     q(Nat → Nat → Bool), q(Nat.ble), Condition.natLEReflectProof]
 
+def Condition.natEqEvidenceExpressions : List Expr :=
+  let r := Reflection.defn₂
+  let iteTy := .arrow q(Prop) <| .arrow q(Bool) <|
+    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0))
+      q(∀ α : Type, α → α → α)
+  let trueL := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      mkApp3 r.ite (.bvar 1) q(true) (.bvar 0)
+  let trueR := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 1
+  let falseL := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      mkApp3 r.ite (.bvar 1) q(false) (.bvar 0)
+  let falseR := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0
+  [Condition.natEq.dec, Condition.natEq.prop, q(Nat → Nat → Prop),
+    r.type, q(Prop → Bool → Prop), r.ite, iteTy,
+    trueL, trueR, falseL, falseR,
+    Condition.natEqReflectedFn, Condition.natEqDecideFn,
+    q(Nat → Nat → Bool), q(Nat.beq), Condition.natEqReflectProof]
+
+def Condition.boolEvidenceExpressions : List Expr :=
+  let ite := Condition.bool.boolNatITE
+  [Condition.bool.dec, Condition.bool.prop, q(Bool → Prop),
+    ite, q(Bool → Nat → Nat → Nat),
+    mkApp ite q(true),
+    .lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 1,
+    mkApp ite q(false),
+    .lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 0]
+
 def checkExprTypes : List Expr → M Unit
   | [] => pure ()
   | e :: es => do
@@ -243,6 +290,16 @@ def Condition.natLE.checkForPrimitive
     (fail : ∀ {α}, M α) : M Unit := do
   checkExprTypes Condition.natLEEvidenceExpressions
   Condition.natLE.check fail (ite := true) (dite := true)
+
+def Condition.natEq.checkForPrimitive
+    (fail : ∀ {α}, M α) : M Unit := do
+  checkExprTypes Condition.natEqEvidenceExpressions
+  Condition.natEq.check fail (ite := true)
+
+def Condition.bool.checkForPrimitive
+    (fail : ∀ {α}, M α) : M Unit := do
+  checkExprTypes Condition.boolEvidenceExpressions
+  Condition.bool.check fail (ite := true)
 
 protected def Condition.ite (cond : Condition) (α : Expr) (args : Array Expr) (t e : Expr) : Expr :=
   mkApp5 q(@ite.{1}) α (mkAppN cond.prop args) (mkAppN cond.dec args) t e
@@ -1108,6 +1165,20 @@ def natModTopEquation (modFn : Expr) : Expr × Expr :=
         (succ (.bvar 2))) sx
   (lhs, rhs)
 
+/-- Dynamic expressions whose translations are needed to interpret a checked
+`Nat.bitwise` fixpoint certificate. -/
+def natBitwiseEvidenceExpressions (bitwise equation : Expr) : List Expr :=
+  let body := natBitwiseEquation bitwise
+  [equation, body,
+    (natBitwiseZeroEquation body).1,
+    (natBitwiseZeroEquation body).2,
+    (natBitwiseZeroRightEquation body).1,
+    (natBitwiseZeroRightEquation body).2,
+    (natBitwiseSuccEquation body bitwise).1,
+    (natBitwiseSuccEquation body bitwise).2,
+    (natBitwiseZeroEquation bitwise).1,
+    (natBitwiseZeroEquation bitwise).2]
+
 def natModGoEquation : Expr × Expr :=
   let succ := mkApp q(Nat.succ)
   let sub := mkApp2 q(Nat.sub)
@@ -1398,20 +1469,26 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← defeq1 (ble (succ x) zero) fal do fail
     unless ← defeq2 (ble (succ y) (succ x)) (ble y x) do fail
   | ``Nat.bitwise =>
-    unless env.contains ``Nat && env.contains ``Bool && v.levelParams.isEmpty do fail
+    unless env.contains ``Nat && env.contains ``Bool &&
+        env.contains ``Nat.beq && env.contains ``Nat.add &&
+        env.contains ``Nat.mod && env.contains ``Nat.div &&
+        v.levelParams.isEmpty do fail
     -- bitwise : Nat → Nat → Nat
     unless ← isDefEq v.type q((Bool → Bool → Bool) → Nat → Nat → Nat) do fail
+    let some bitwise' := natWellFoundedEquation v.value
+      q(type_of% Nat.bitwise.eq_def) | fail
+    unless !bitwise'.hasFVar && !bitwise'.hasMVar do fail
+    unless (natBitwiseEvidenceExpressions v.value bitwise').all
+        (fun e => !e.hasFVar && !e.hasMVar) do fail
+    checkExprTypes (natBitwiseEvidenceExpressions v.value bitwise')
     let bitwiseCore ← unfoldNatWellFoundedBoolNat2Cert v.value
       q(type_of% Nat.bitwise.eq_def) fail
     _ ← checkNatBitwiseFixCertificate bitwiseCore v.value fail
-    let some bitwise' := natWellFoundedEquation v.value
-      q(type_of% Nat.bitwise.eq_def) | fail
-    unless ← isDefEq (← checkType bitwise')
+    unless ← isDefEq (← inferType bitwise')
       q((Bool → Bool → Bool) → Nat → Nat → Nat) do fail
-    let c := Condition.natEq; c.check fail (ite := true)
-    let bc := Condition.bool; bc.check fail (ite := true)
+    Condition.natEq.checkForPrimitive fail
+    Condition.bool.checkForPrimitive fail
     let e := natBitwiseEquation v.value
-    _ ← checkType e
     unless ← isDefEq bitwise' e do fail
     let (z₁, z₂) := natBitwiseZeroEquation e
     unless ← isDefEq z₁ z₂ do fail

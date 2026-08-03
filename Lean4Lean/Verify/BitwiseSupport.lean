@@ -3,12 +3,6 @@ import Lean4Lean.Verify.Primitive
 namespace Lean4Lean.Environment
 open Lean VEnv
 
-/-- The closed binary function whose applications are the Boolean decisions
-used by the certified `Nat.bitwise` successor equation. -/
-def Condition.natEqDecideFn : Expr :=
-  .lam0 q(Nat) <| .lam0 q(Nat) <|
-    Condition.natEq.decide #[.bvar 1, .bvar 0]
-
 /-- Semantic interface exported by the checked `Condition.natEq`
 implementation.  Keeping the function expression explicit lets certificate
 translations be related to calls occurring below unrelated local binders. -/

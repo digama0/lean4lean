@@ -1,5 +1,6 @@
 import Lean4Lean.Verify.BitwiseTop
 import Lean4Lean.Verify.BitwiseSucc
+import Lean4Lean.Verify.BitwiseCondition
 
 namespace Lean4Lean.Environment
 open Lean VEnv
@@ -212,50 +213,31 @@ theorem NatBitwiseFixCertificate.NormalizedValid.conservesHasPrimitives
 
 /-- Turn the semantic postcondition of the `Nat.bitwise` primitive checker
 into conservation of `HasPrimitives` for the translated definition. -/
-theorem checkPrimitiveDef.natBitwise.WF.conservesHasPrimitives
-    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+theorem NatBitwisePrimitiveEvidence.conservesHasPrimitives
+    {c : TypeChecker.VContext}
     {src : DefinitionVal} {v : VDefVal} {env' : VEnv}
-    {ite decide : VExpr} {P : Prop}
-    {R : NatBitwiseFixCertificate → Prop}
     (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
-    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
-    (hbeqC : c.venv.contains ``Nat.beq)
-    (haddC : c.venv.contains ``Nat.add)
-    (hmodC : c.venv.contains ``Nat.mod)
-    (hdivC : c.venv.contains ``Nat.div)
-    (hadd : c.venv.ReflectsNatNatNat ``Nat.add Nat.add)
-    (hmod : c.venv.ReflectsNatNatNat ``Nat.mod Nat.mod)
-    (hdiv : c.venv.ReflectsNatNatNat ``Nat.div Nat.div)
     (hbitwise : c.TrExprS src.value v.value)
-    (hiteS : c.TrExprS Condition.bool.boolNatITE ite)
-    (hdecideS : c.TrExprS Condition.natEqDecideFn decide)
     (hname : v.name = ``Nat.bitwise)
     (huvars : src.levelParams.length = v.uvars)
     (haddConst : c.venv.addConst ``Nat.bitwise v.toVConstant = some env')
     (hwf : (env'.addDefEq v.toDefEq).WF)
-    (hcheck : TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
-      src.levelParams = [] ∧
-      c.IsDefEqU v.type
-        (.forallE (.forallE .bool <| .forallE .bool .bool) <|
-          .forallE .nat <| .forallE .nat .nat) ∧
-      ∃ cert : NatBitwiseFixCertificate,
-        cert.NormalizedValid c src.value ∧
-        (P ∧ VEnv.ReflectsNatEqDecide c.venv decide) ∧
-        c.venv.ReflectsBoolNatITE ite ∧ R cert) :
-    TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
-      (env'.addDefEq v.toDefEq).HasPrimitives := by
-  refine hcheck.mono fun _ _ _ h b => ?_
-  rcases h b with ⟨hsrcParams, hty, cert, hcert, hnatCert,
-    hboolCert, _⟩
+    (hevidence : NatBitwisePrimitiveEvidence c src v.type) :
+    (env'.addDefEq v.toDefEq).HasPrimitives := by
+  rcases hevidence with
+    ⟨cert, ite, decide, hsrcParams, hbool, hnat, hbeqC,
+      haddC, hmodC, hdivC, hty, hcert,
+      hiteS, hboolCert, hdecideS, hnatCert⟩
   have hclparams : c.lparams = [] := hcparams.trans hsrcParams
   have hvuvars : v.uvars = 0 := by
     rw [← huvars, hsrcParams]
     rfl
   change TrExprS c.venv c.lparams c.vlctx _ _ at hbitwise hiteS hdecideS
-  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty
-  rw [hclparams, hvlctx] at hbitwise hiteS hdecideS hty
+  rw [hclparams, hvlctx] at hbitwise hiteS hdecideS
+  rw [hclparams] at hty
   exact hcert.conservesHasPrimitives hclparams hvlctx hbool hnat hbeqC
-    haddC hmodC hdivC hadd hmod hdiv hbitwise hiteS hboolCert
-    hdecideS hnatCert.2 hname haddConst hwf hvuvars hty
+    haddC hmodC hdivC c.hasPrimitives.natAdd c.hasPrimitives.natMod
+    c.hasPrimitives.natDiv hbitwise hiteS hboolCert
+    hdecideS hnatCert hname haddConst hwf hvuvars hty
 
 end Lean4Lean.Environment

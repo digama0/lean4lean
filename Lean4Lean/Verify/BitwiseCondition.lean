@@ -3,16 +3,6 @@ import Lean4Lean.Verify.BitwiseSupport
 namespace Lean4Lean.Environment
 open Lean VEnv
 
-def Condition.natEqReflectProof : Expr :=
-  q(fun n m {q : Prop} (H : _ → _ → q) =>
-    H (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m))
-
-def Condition.natEqReflectedFn : Expr :=
-  .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3 Reflection.defn₂.toDec
-    (mkApp2 Condition.natEq.prop (.bvar 1) (.bvar 0))
-    (mkApp2 q(Nat.beq) (.bvar 1) (.bvar 0))
-    (mkApp2 Condition.natEqReflectProof (.bvar 1) (.bvar 0))
-
 /-- Replace the decision argument of a fully applied target `ite`, retaining
 the surrounding type and branch applications. -/
 theorem VEnv.replaceITECondition
@@ -2228,5 +2218,216 @@ theorem Condition.natEq.check.WF.semantic
     hfail).mono ?_
   rintro _ _ _ ⟨hcert, hrtypeT, _, _, hdecideT, _, _, heq⟩
   exact ⟨hcert, hrtypeT, hdecideT, heq⟩
+
+/-- Evidence-retaining wrapper for the Nat-equality selector used by the
+`Nat.bitwise` primitive checker. -/
+theorem Condition.natEq.checkForPrimitive.WF.semantic
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {fail : ∀ {α}, TypeChecker.M α}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    (hbeqC : c.venv.contains ``Nat.beq)
+    (hfail : ∀ {α} {s'}, TypeChecker.M.WF c s'
+      (fail : TypeChecker.M α) fun _ _ => False) :
+    TypeChecker.M.WF c s (Condition.natEq.checkForPrimitive fail)
+      fun _ _ => ∃ decide,
+        c.TrExprS Condition.natEqDecideFn decide ∧
+        VEnv.ReflectionITECertificate c.venv ∧
+        VEnv.ReflectsNatEqDecide c.venv decide := by
+  unfold Condition.natEq.checkForPrimitive
+  have hevidence : ∀ e ∈ Condition.natEqEvidenceExpressions,
+      e.FVarsIn (· ∈ c.vlctx.fvars) := by
+    intro e he
+    have hclosed : ∀ e ∈ Condition.natEqEvidenceExpressions,
+        e.hasFVar = false ∧ e.hasMVar = false := by
+      simp [Condition.natEqEvidenceExpressions, Condition.natEq,
+        Condition.natEqReflectProof, Condition.natEqReflectedFn,
+        Condition.natEqDecideFn, Reflection.defn₂, Reflection.ite]
+      native_decide
+    exact Expr.closed_fvarsIn (hclosed e he).1 (hclosed e he).2
+  refine (checkTypeList.WF (es := Condition.natEqEvidenceExpressions)
+    hevidence).bind fun _ s' _ htypes => ?_
+  let r := Reflection.defn₂
+  let iteTy : Expr := .arrow q(Prop) <| .arrow q(Bool) <|
+    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0))
+      q(∀ α : Type, α → α → α)
+  let trueL : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      mkApp3 r.ite (.bvar 1) q(true) (.bvar 0)
+  let trueR : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 1
+  let falseL : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      mkApp3 r.ite (.bvar 1) q(false) (.bvar 0)
+  let falseR : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0
+  have mem (e) (h : e ∈ Condition.natEqEvidenceExpressions) := htypes e h
+  obtain ⟨dec', _, hdec, _⟩ := mem Condition.natEq.dec
+    (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨prop', _, hprop, _⟩ := mem Condition.natEq.prop
+    (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨propTy', _, hpropTy, _⟩ := mem q(Nat → Nat → Prop)
+    (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨rtype', _, hrtype, _⟩ := mem r.type
+    (by simp [Condition.natEqEvidenceExpressions, r])
+  obtain ⟨_, _, hrtypeCanon, _⟩ := mem q(Prop → Bool → Prop)
+    (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨ite', _, hite, _⟩ := mem r.ite
+    (by simp [Condition.natEqEvidenceExpressions, r])
+  obtain ⟨iteTy', _, hiteTy, _⟩ := mem iteTy
+    (by simp [Condition.natEqEvidenceExpressions, iteTy, r])
+  obtain ⟨trueL', _, htrueL, _⟩ := mem trueL
+    (by simp [Condition.natEqEvidenceExpressions, trueL, r])
+  obtain ⟨trueR', _, htrueR, _⟩ := mem trueR
+    (by simp [Condition.natEqEvidenceExpressions, trueR, r])
+  obtain ⟨falseL', _, hfalseL, _⟩ := mem falseL
+    (by simp [Condition.natEqEvidenceExpressions, falseL, r])
+  obtain ⟨falseR', _, hfalseR, _⟩ := mem falseR
+    (by simp [Condition.natEqEvidenceExpressions, falseR, r])
+  obtain ⟨reflectFn', _, hreflect, _⟩ :=
+    mem Condition.natEqReflectedFn
+      (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨decide', _, hdecide, _⟩ := mem Condition.natEqDecideFn
+    (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨_, _, hdecideTy, _⟩ := mem q(Nat → Nat → Bool)
+    (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨beq', _, hbeq, _⟩ := mem q(Nat.beq)
+    (by simp [Condition.natEqEvidenceExpressions])
+  obtain ⟨proof', _, hproof, _⟩ := mem Condition.natEqReflectProof
+    (by simp [Condition.natEqEvidenceExpressions])
+  have hrtypeUnique : TrExprS.IsUnique Reflection.defn₂.type := by
+    simp [TrExprS.IsUnique, Reflection.defn₂, Expr.lam0, Expr.arrow,
+      mkApp5, mkApp4, mkApp3, mkApp2, mkApp]
+  have hiteUnique : TrExprS.IsUnique Reflection.defn₂.ite := by
+    simp [TrExprS.IsUnique, Reflection.defn₂, Reflection.ite,
+      Expr.lam0, Expr.arrow, mkApp5, mkApp4, mkApp3, mkApp2, mkApp]
+  have hrtypeCanon' : c.TrExprS q(Prop → Bool → Prop)
+      (.forallE (.sort .zero) <| .forallE .bool (.sort .zero)) := by
+    change TrExprS c.venv c.lparams c.vlctx _ _
+    rw [hvlctx]
+    exact TrExprS.propBoolPropType_of_contains
+      c.hasPrimitives hbool c.lparams []
+  cases hrtypeCanon.unique (by simp [TrExprS.IsUnique]) hrtypeCanon'
+  have hdecideTy' : c.TrExprS q(Nat → Nat → Bool)
+      (.forallE .nat <| .forallE .nat .bool) := by
+    change TrExprS c.venv c.lparams c.vlctx _ _
+    rw [hvlctx]
+    exact TrExprS.natBinaryBoolType_of_contains
+      c.hasPrimitives hnat hbool c.lparams []
+  cases hdecideTy.unique (by simp [TrExprS.IsUnique]) hdecideTy'
+  have hraw := Condition.natEq.check.WF.semantic
+    (s := s') (fail := fail) hlparams hvlctx hbool hnat hbeqC
+    hdec hprop hpropTy hrtype hrtypeUnique hrtypeCanon
+    hite hiteUnique hiteTy htrueL htrueR hfalseL hfalseR
+    hreflect hdecide hdecideTy hbeq hdecideTy hproof hfail
+  exact hraw.mono fun _ _ _ h => ⟨decide', hdecide, h.1, h.2⟩
+
+/-- Evidence-retaining wrapper for the Boolean Nat selector used by the
+`Nat.bitwise` primitive checker. -/
+theorem Condition.bool.checkForPrimitive.WF.semantic
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {fail : ∀ {α}, TypeChecker.M α}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    (hfail : ∀ {α} {s'}, TypeChecker.M.WF c s'
+      (fail : TypeChecker.M α) fun _ _ => False) :
+    TypeChecker.M.WF c s (Condition.bool.checkForPrimitive fail)
+      fun _ _ => ∃ ite,
+        c.TrExprS Condition.bool.boolNatITE ite ∧
+        c.venv.ReflectsBoolNatITE ite := by
+  unfold Condition.bool.checkForPrimitive
+  have hevidence : ∀ e ∈ Condition.boolEvidenceExpressions,
+      e.FVarsIn (· ∈ c.vlctx.fvars) := by
+    intro e he
+    have hclosed : ∀ e ∈ Condition.boolEvidenceExpressions,
+        e.hasFVar = false ∧ e.hasMVar = false := by
+      simp [Condition.boolEvidenceExpressions, Condition.bool,
+        Condition.boolNatITE]
+      native_decide
+    exact Expr.closed_fvarsIn (hclosed e he).1 (hclosed e he).2
+  refine (checkTypeList.WF (es := Condition.boolEvidenceExpressions)
+    hevidence).bind fun _ s' _ htypes => ?_
+  let ite := Condition.bool.boolNatITE
+  let tr : Expr := .lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 1
+  let fr : Expr := .lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 0
+  have mem (e) (h : e ∈ Condition.boolEvidenceExpressions) := htypes e h
+  obtain ⟨dec', _, hdec, _⟩ := mem Condition.bool.dec
+    (by simp [Condition.boolEvidenceExpressions])
+  obtain ⟨prop', _, hprop, _⟩ := mem Condition.bool.prop
+    (by simp [Condition.boolEvidenceExpressions])
+  obtain ⟨propTy', _, hpropTy, _⟩ := mem q(Bool → Prop)
+    (by simp [Condition.boolEvidenceExpressions])
+  obtain ⟨ite', _, hite, _⟩ := mem ite
+    (by simp [Condition.boolEvidenceExpressions, ite])
+  obtain ⟨_, _, hiteTy, _⟩ := mem q(Bool → Nat → Nat → Nat)
+    (by simp [Condition.boolEvidenceExpressions])
+  obtain ⟨tl', _, htl, _⟩ := mem (mkApp ite q(true))
+    (by simp [Condition.boolEvidenceExpressions, ite])
+  obtain ⟨tr', _, htr, _⟩ := mem tr
+    (by simp [Condition.boolEvidenceExpressions, tr])
+  obtain ⟨fl', _, hfl, _⟩ := mem (mkApp ite q(false))
+    (by simp [Condition.boolEvidenceExpressions, ite])
+  obtain ⟨fr', _, hfr, _⟩ := mem fr
+    (by simp [Condition.boolEvidenceExpressions, fr])
+  have hiteUnique : TrExprS.IsUnique Condition.bool.boolNatITE := by
+    simp [TrExprS.IsUnique, Condition.bool, Condition.boolNatITE,
+      Expr.lam0, mkApp3, mkApp2, mkApp]
+  have hiteTy' : c.TrExprS q(Bool → Nat → Nat → Nat)
+      (.forallE .bool <| .forallE .nat <| .forallE .nat .nat) := by
+    change TrExprS c.venv c.lparams c.vlctx _ _
+    rw [hvlctx]
+    exact TrExprS.boolNatBinaryType_of_contains
+      c.hasPrimitives hbool hnat c.lparams []
+  cases hiteTy.unique (by simp [TrExprS.IsUnique]) hiteTy'
+  have hraw := Condition.bool.check.WF.semantic
+    (s := s') (fail := fail) hlparams hvlctx hbool hnat
+    hdec hprop hpropTy hite hiteUnique hiteTy
+    htl htr hfl hfr hfail
+  exact hraw.mono fun _ _ _ h => ⟨ite', hite, h⟩
+
+abbrev NatBitwisePrimitiveEvidence
+    (c : TypeChecker.VContext) (src : DefinitionVal) (ty' : VExpr) : Prop :=
+  ∃ cert : NatBitwiseFixCertificate, ∃ ite decide,
+    src.levelParams = [] ∧
+    c.venv.contains ``Bool ∧ c.venv.contains ``Nat ∧
+    c.venv.contains ``Nat.beq ∧ c.venv.contains ``Nat.add ∧
+    c.venv.contains ``Nat.mod ∧ c.venv.contains ``Nat.div ∧
+    c.venv.IsDefEqU c.lparams.length [] ty'
+      (.forallE (.forallE .bool <| .forallE .bool .bool) <|
+        .forallE .nat <| .forallE .nat .nat) ∧
+    cert.NormalizedValid c src.value ∧
+    c.TrExprS Condition.bool.boolNatITE ite ∧
+    c.venv.ReflectsBoolNatITE ite ∧
+    c.TrExprS Condition.natEqDecideFn decide ∧
+    VEnv.ReflectsNatEqDecide c.venv decide
+
+theorem checkPrimitiveDef.natBitwise.WF_typed
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {src : DefinitionVal} {ty' : VExpr}
+    (hname : src.name = ``Nat.bitwise)
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS src.type ty') :
+    TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      NatBitwisePrimitiveEvidence c src ty' := by
+  have hcore := checkPrimitiveDef.natBitwise.WF_typedCore
+    (c := c) (s := s) (v := src) (ty' := ty')
+    hname hcparams hvlctx hty
+    (fun hl hb hn heq hfail =>
+      Condition.natEq.checkForPrimitive.WF.semantic
+        hl hvlctx hb hn heq hfail)
+    (fun hl hb hn hfail =>
+      Condition.bool.checkForPrimitive.WF.semantic
+        hl hvlctx hb hn hfail)
+  refine hcore.mono fun _ _ _ h b => ?_
+  rcases h b with
+    ⟨cert, hlevels, hbool, hnat, hbeq, hadd, hmod, hdiv,
+      htyEq, hcert, hnatEvidence, hboolEvidence⟩
+  rcases hnatEvidence with ⟨decide, hdecideS, _, hdecide⟩
+  rcases hboolEvidence with ⟨ite, hiteS, hite⟩
+  exact ⟨cert, ite, decide, hlevels, hbool, hnat, hbeq,
+    hadd, hmod, hdiv, htyEq, hcert, hiteS, hite,
+    hdecideS, hdecide⟩
 
 end Lean4Lean.Environment

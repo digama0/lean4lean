@@ -3339,7 +3339,7 @@ theorem TrExprS.natType_of_contains
   exact ⟨.const hci rfl rfl,
     ⟨.succ .zero, .const hci nofun rfl⟩⟩
 
-private theorem TrExprS.boolType_of_contains
+theorem TrExprS.boolType_of_contains
     {env : VEnv} (hprim : env.HasPrimitives)
     (hbool : env.contains ``Bool) (Us : List Name) (Δ : VLCtx) :
     TrExprS env Us Δ q(Bool) .bool ∧
@@ -3370,7 +3370,7 @@ theorem TrExprS.natBinaryType_of_contains
     exact ⟨_, .forallE hA hB⟩
   exact .forallE hnat0.2 hinnerT hnat0.1 hinnerS
 
-private theorem TrExprS.boolBinaryType_of_contains
+theorem TrExprS.boolBinaryType_of_contains
     {env : VEnv} (h : env.HasPrimitives) (hbool : env.contains ``Bool)
     (Us : List Name) (Δ : VLCtx) :
     TrExprS env Us Δ q(Bool → Bool → Bool)
@@ -3389,6 +3389,154 @@ private theorem TrExprS.boolBinaryType_of_contains
     obtain ⟨w, hB⟩ := hbool2.2
     exact ⟨_, .forallE hA hB⟩
   exact .forallE hbool0.2 hinnerT hbool0.1 hinnerS
+
+theorem VEnv.boolBinaryType_isType_of_contains
+    {env : VEnv} (h : env.HasPrimitives) (hbool : env.contains ``Bool)
+    (Us : List Name) (Δ : VLCtx) :
+    env.IsType Us.length Δ.toCtx
+      (.forallE .bool <| .forallE .bool .bool) := by
+  let Δ1 : VLCtx := (none, .vlam .bool) :: Δ
+  let Δ2 : VLCtx := (none, .vlam .bool) :: Δ1
+  have hbool0 := TrExprS.boolType_of_contains h hbool Us Δ
+  have hbool1 := TrExprS.boolType_of_contains h hbool Us Δ1
+  have hbool2 := TrExprS.boolType_of_contains h hbool Us Δ2
+  have hinnerT : env.IsType Us.length Δ1.toCtx
+      (.forallE .bool .bool) := by
+    obtain ⟨u, hA⟩ := hbool1.2
+    obtain ⟨w, hB⟩ := hbool2.2
+    exact ⟨_, .forallEDF hA hB⟩
+  obtain ⟨u, hA⟩ := hbool0.2
+  obtain ⟨w, hB⟩ := hinnerT
+  exact ⟨_, .forallEDF hA hB⟩
+
+theorem TrExprS.natBinaryBoolType_of_contains
+    {env : VEnv} (h : env.HasPrimitives)
+    (hnat : env.contains ``Nat) (hbool : env.contains ``Bool)
+    (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(Nat → Nat → Bool)
+      (.forallE .nat <| .forallE .nat .bool) := by
+  let Δ1 : VLCtx := (none, .vlam .nat) :: Δ
+  let Δ2 : VLCtx := (none, .vlam .nat) :: Δ1
+  have hnat0 := TrExprS.natType_of_contains h hnat Us Δ
+  have hnat1 := TrExprS.natType_of_contains h hnat Us Δ1
+  have hnat2 := TrExprS.natType_of_contains h hnat Us Δ2
+  have hbool2 := TrExprS.boolType_of_contains h hbool Us Δ2
+  have hinnerS : TrExprS env Us Δ1 q(Nat → Bool)
+      (.forallE .nat .bool) :=
+    .forallE hnat1.2 hbool2.2 hnat1.1 hbool2.1
+  have hinnerT : env.IsType Us.length Δ1.toCtx
+      (.forallE .nat .bool) := by
+    obtain ⟨u, hA⟩ := hnat1.2
+    obtain ⟨w, hB⟩ := hbool2.2
+    exact ⟨_, .forallEDF hA hB⟩
+  exact .forallE hnat0.2 hinnerT hnat0.1 hinnerS
+
+theorem TrExprS.boolNatBinaryType_of_contains
+    {env : VEnv} (h : env.HasPrimitives)
+    (hbool : env.contains ``Bool) (hnat : env.contains ``Nat)
+    (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(Bool → Nat → Nat → Nat)
+      (.forallE .bool <| .forallE .nat <| .forallE .nat .nat) := by
+  let Δ1 : VLCtx := (none, .vlam .bool) :: Δ
+  let Δ2 : VLCtx := (none, .vlam .nat) :: Δ1
+  let Δ3 : VLCtx := (none, .vlam .nat) :: Δ2
+  have hbool0 := TrExprS.boolType_of_contains h hbool Us Δ
+  have hnat1 := TrExprS.natType_of_contains h hnat Us Δ1
+  have hnat2 := TrExprS.natType_of_contains h hnat Us Δ2
+  have hnat3 := TrExprS.natType_of_contains h hnat Us Δ3
+  have htailS : TrExprS env Us Δ2 q(Nat → Nat)
+      (.forallE .nat .nat) :=
+    .forallE hnat2.2 hnat3.2 hnat2.1 hnat3.1
+  have htailT : env.IsType Us.length Δ2.toCtx
+      (.forallE .nat .nat) := by
+    obtain ⟨u, hA⟩ := hnat2.2
+    obtain ⟨w, hB⟩ := hnat3.2
+    exact ⟨_, .forallEDF hA hB⟩
+  have hinnerS : TrExprS env Us Δ1 q(Nat → Nat → Nat)
+      (.forallE .nat <| .forallE .nat .nat) :=
+    .forallE hnat1.2 htailT hnat1.1 htailS
+  have hinnerT : env.IsType Us.length Δ1.toCtx
+      (.forallE .nat <| .forallE .nat .nat) := by
+    obtain ⟨u, hA⟩ := hnat1.2
+    obtain ⟨w, hB⟩ := htailT
+    exact ⟨_, .forallEDF hA hB⟩
+  exact .forallE hbool0.2 hinnerT hbool0.1 hinnerS
+
+theorem TrExprS.propBoolPropType_of_contains
+    {env : VEnv} (h : env.HasPrimitives)
+    (hbool : env.contains ``Bool) (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(Prop → Bool → Prop)
+      (.forallE (.sort .zero) <| .forallE .bool (.sort .zero)) := by
+  let Δ1 : VLCtx := (none, .vlam (.sort .zero)) :: Δ
+  let Δ2 : VLCtx := (none, .vlam .bool) :: Δ1
+  have hprop0 : TrExprS env Us Δ q(Prop) (.sort .zero) := .sort rfl
+  have hprop1 : TrExprS env Us Δ1 q(Prop) (.sort .zero) := .sort rfl
+  have hprop2 : TrExprS env Us Δ2 q(Prop) (.sort .zero) := .sort rfl
+  have hpropTy0 : env.IsType Us.length Δ.toCtx (.sort .zero) :=
+    ⟨.succ .zero, .sortDF trivial trivial rfl⟩
+  have hpropTy2 : env.IsType Us.length Δ2.toCtx (.sort .zero) :=
+    ⟨.succ .zero, .sortDF trivial trivial rfl⟩
+  have hbool1 := TrExprS.boolType_of_contains h hbool Us Δ1
+  have hinnerS : TrExprS env Us Δ1 q(Bool → Prop)
+      (.forallE .bool (.sort .zero)) :=
+    .forallE hbool1.2 hpropTy2 hbool1.1 hprop2
+  have hinnerT : env.IsType Us.length Δ1.toCtx
+      (.forallE .bool (.sort .zero)) := by
+    obtain ⟨u, hA⟩ := hbool1.2
+    obtain ⟨w, hB⟩ := hpropTy2
+    exact ⟨_, .forallEDF hA hB⟩
+  exact .forallE hpropTy0 hinnerT hprop0 hinnerS
+
+theorem TrExprS.bitwiseType_of_contains
+    {env : VEnv} (h : env.HasPrimitives)
+    (hbool : env.contains ``Bool) (hnat : env.contains ``Nat)
+    (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q((Bool → Bool → Bool) → Nat → Nat → Nat)
+      (.forallE (.forallE .bool <| .forallE .bool .bool) <|
+        .forallE .nat <| .forallE .nat .nat) := by
+  let fTy : VExpr := .forallE .bool <| .forallE .bool .bool
+  let Δf : VLCtx := (none, .vlam fTy) :: Δ
+  let Δb1 : VLCtx := (none, .vlam .bool) :: Δ
+  let Δb2 : VLCtx := (none, .vlam .bool) :: Δb1
+  have hbool0 := TrExprS.boolType_of_contains h hbool Us Δ
+  have hbool1 := TrExprS.boolType_of_contains h hbool Us Δb1
+  have hbool2 := TrExprS.boolType_of_contains h hbool Us Δb2
+  have hfunTailS : TrExprS env Us Δb1 q(Bool → Bool)
+      (.forallE .bool .bool) :=
+    .forallE hbool1.2 hbool2.2 hbool1.1 hbool2.1
+  have hfunTailT : env.IsType Us.length Δb1.toCtx
+      (.forallE .bool .bool) := by
+    obtain ⟨u, hA⟩ := hbool1.2
+    obtain ⟨w, hB⟩ := hbool2.2
+    exact ⟨_, .forallEDF hA hB⟩
+  have hfunS : TrExprS env Us Δ q(Bool → Bool → Bool) fTy :=
+    .forallE hbool0.2 hfunTailT hbool0.1 hfunTailS
+  have hfunT : env.IsType Us.length Δ.toCtx fTy := by
+    obtain ⟨u, hA⟩ := hbool0.2
+    obtain ⟨w, hB⟩ := hfunTailT
+    exact ⟨_, .forallEDF hA hB⟩
+  have hnat1 := TrExprS.natType_of_contains h hnat Us Δf
+  let Δn1 : VLCtx := (none, .vlam .nat) :: Δf
+  let Δn2 : VLCtx := (none, .vlam .nat) :: Δn1
+  have hnat2 := TrExprS.natType_of_contains h hnat Us Δn1
+  have hnat3 := TrExprS.natType_of_contains h hnat Us Δn2
+  have hnatTailS : TrExprS env Us Δn1 q(Nat → Nat)
+      (.forallE .nat .nat) :=
+    .forallE hnat2.2 hnat3.2 hnat2.1 hnat3.1
+  have hnatTailT : env.IsType Us.length Δn1.toCtx
+      (.forallE .nat .nat) := by
+    obtain ⟨u, hA⟩ := hnat2.2
+    obtain ⟨w, hB⟩ := hnat3.2
+    exact ⟨_, .forallEDF hA hB⟩
+  have hnatS : TrExprS env Us Δf q(Nat → Nat → Nat)
+      (.forallE .nat <| .forallE .nat .nat) :=
+    .forallE hnat1.2 hnatTailT hnat1.1 hnatTailS
+  have hnatT : env.IsType Us.length Δf.toCtx
+      (.forallE .nat <| .forallE .nat .nat) := by
+    obtain ⟨u, hA⟩ := hnat1.2
+    obtain ⟨w, hB⟩ := hnatTailT
+    exact ⟨_, .forallEDF hA hB⟩
+  exact .forallE hfunT hnatT hfunS hnatS
 
 private theorem TrExprS.boolFalse
     {env : VEnv} (hprim : env.HasPrimitives)
@@ -10251,108 +10399,213 @@ theorem checkPrimitiveDef.natBLE.WF {c : VContext} {s : VState}
       · exact .throw
   · exact .throw
 
-set_option maxHeartbeats 800000 in
-theorem checkPrimitiveDef.natBitwise.WF {c : VContext} {s : VState}
-    (hname : v.name = ``Nat.bitwise)
-    (hcparams : c.lparams = v.levelParams)
-    (hty : c.TrExprS v.type ty')
-    (hcanon : c.TrExprS q((Bool → Bool → Bool) → Nat → Nat → Nat)
+abbrev NatBitwisePrimitiveCoreEvidence
+    (c : VContext) (src : DefinitionVal) (ty' : VExpr)
+    (Rnat Rbool : Prop) : Prop :=
+  ∃ cert : NatBitwiseFixCertificate,
+    src.levelParams = [] ∧
+    c.venv.contains ``Bool ∧ c.venv.contains ``Nat ∧
+    c.venv.contains ``Nat.beq ∧ c.venv.contains ``Nat.add ∧
+    c.venv.contains ``Nat.mod ∧ c.venv.contains ``Nat.div ∧
+    c.venv.IsDefEqU c.lparams.length [] ty'
       (.forallE (.forallE .bool <| .forallE .bool .bool) <|
-        .forallE .nat <| .forallE .nat .nat))
-    (hfun : c.TrExprS q(Bool → Bool → Bool)
-      (.forallE .bool <| .forallE .bool .bool))
-    (hfunTy : c.IsType (.forallE .bool <| .forallE .bool .bool))
-    (hnat : c.TrExprS q(Nat) .nat) (hnatTy : c.IsType .nat)
-    (heq : natWellFoundedEquation v.value q(type_of% Nat.bitwise.eq_def) =
-      some equation)
-    (hequation : c.TrExprS equation equation')
-    (hequnique : TrExprS.IsUnique equation)
-    (hbody : c.TrExprS (natBitwiseEquation v.value) body')
-    (hz₁ : c.TrExprS (natBitwiseZeroEquation (natBitwiseEquation v.value)).1 z₁)
-    (hz₂ : c.TrExprS (natBitwiseZeroEquation (natBitwiseEquation v.value)).2 z₂)
-    (hzr₁ : c.TrExprS
-      (natBitwiseZeroRightEquation (natBitwiseEquation v.value)).1 zr₁)
-    (hzr₂ : c.TrExprS
-      (natBitwiseZeroRightEquation (natBitwiseEquation v.value)).2 zr₂)
-    (hs₁ : c.TrExprS
-      (natBitwiseSuccEquation (natBitwiseEquation v.value) v.value).1 s₁)
-    (hs₂ : c.TrExprS
-      (natBitwiseSuccEquation (natBitwiseEquation v.value) v.value).2 s₂)
-    (hvz₁ : c.TrExprS (natBitwiseZeroEquation v.value).1 vz₁)
-    (hvz₂ : c.TrExprS (natBitwiseZeroEquation v.value).2 vz₂)
+        .forallE .nat <| .forallE .nat .nat) ∧
+    cert.NormalizedValid c src.value ∧ Rnat ∧ Rbool
+
+set_option maxHeartbeats 800000 in
+theorem checkPrimitiveDef.natBitwise.WF_typedCore
+    {c : VContext} {s : VState}
+    (hname : v.name = ``Nat.bitwise)
+    (hcparams : c.lparams = v.levelParams) (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS v.type ty')
     (hnatCheck : ∀ {fail : ∀ {α}, M α} {s'},
       c.lparams = [] →
+      c.venv.contains ``Bool → c.venv.contains ``Nat →
+      c.venv.contains ``Nat.beq →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
-      M.WF c s' (Condition.natEq.check fail (ite := true)) fun _ _ => Rnat)
+      M.WF c s' (Condition.natEq.checkForPrimitive fail)
+        fun _ _ => Rnat)
     (hboolCheck : ∀ {fail : ∀ {α}, M α} {s'},
       c.lparams = [] →
+      c.venv.contains ``Bool → c.venv.contains ``Nat →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
-      M.WF c s' (Condition.bool.check fail (ite := true)) fun _ _ => Rbool) :
+      M.WF c s' (Condition.bool.checkForPrimitive fail)
+        fun _ _ => Rbool) :
     M.WF c s (checkPrimitiveDef v) fun b _ => b →
-      v.levelParams = [] ∧
-      c.IsDefEqU ty'
-        (.forallE (.forallE .bool <| .forallE .bool .bool) <|
-          .forallE .nat <| .forallE .nat .nat) ∧
-      ∃ cert : NatBitwiseFixCertificate,
-        cert.NormalizedValid c v.value ∧ Rnat ∧ Rbool ∧
-        c.IsDefEqU equation' body' ∧
-        c.IsDefEqU z₁ z₂ ∧ c.IsDefEqU zr₁ zr₂ ∧ c.IsDefEqU s₁ s₂ ∧
-        c.IsDefEqU vz₁ vz₂ := by
+      NatBitwisePrimitiveCoreEvidence c v ty' Rnat Rbool := by
   simp only [checkPrimitiveDef, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  by_cases hdeps :
-      (c.env.contains ``Nat && c.env.contains ``Bool && v.levelParams.isEmpty) = true
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Bool &&
+      c.env.contains ``Nat.beq && c.env.contains ``Nat.add &&
+      c.env.contains ``Nat.mod && c.env.contains ``Nat.div &&
+      v.levelParams.isEmpty) = true
   · rw [if_pos hdeps]
-    have hlparams : v.levelParams = [] := by
-      simp at hdeps
-      simpa using hdeps.2
-    have hclparams : c.lparams = [] := hcparams.trans hlparams
+    simp only [Bool.and_eq_true] at hdeps
+    rcases hdeps with
+      ⟨⟨⟨⟨⟨⟨hnatSrc, hboolSrc⟩, hbeqSrc⟩, haddSrc⟩,
+        hmodSrc⟩, hdivSrc⟩, hempty⟩
+    have hlevels : v.levelParams = [] := by simpa using hempty
+    have hclparams : c.lparams = [] := hcparams.trans hlevels
+    have contains (n : Name) (hsrc : c.env.contains n = true)
+        (hprim : Lean.Kernel.Environment.primitives.contains n) :
+        c.venv.contains n :=
+      Environment.VContext.contains_safe_primitive c hsrc hprim
+    have hnatC := contains ``Nat hnatSrc (by
+      simp [Lean.Kernel.Environment.primitives,
+        NameSet.contains, NameSet.ofList])
+    have hboolC := contains ``Bool hboolSrc (by
+      simp [Lean.Kernel.Environment.primitives,
+        NameSet.contains, NameSet.ofList])
+    have hbeqC := contains ``Nat.beq hbeqSrc (by
+      simp [Lean.Kernel.Environment.primitives,
+        NameSet.contains, NameSet.ofList])
+    have haddC := contains ``Nat.add haddSrc (by
+      simp [Lean.Kernel.Environment.primitives,
+        NameSet.contains, NameSet.ofList])
+    have hmodC := contains ``Nat.mod hmodSrc (by
+      simp [Lean.Kernel.Environment.primitives,
+        NameSet.contains, NameSet.ofList])
+    have hdivC := contains ``Nat.div hdivSrc (by
+      simp [Lean.Kernel.Environment.primitives,
+        NameSet.contains, NameSet.ofList])
+    have hcanon : c.TrExprS
+        q((Bool → Bool → Bool) → Nat → Nat → Nat)
+        (.forallE (.forallE .bool <| .forallE .bool .bool) <|
+          .forallE .nat <| .forallE .nat .nat) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact TrExprS.bitwiseType_of_contains c.hasPrimitives
+        hboolC hnatC c.lparams []
+    have hfun0 := TrExprS.boolBinaryType_of_contains
+      c.hasPrimitives hboolC c.lparams []
+    have hfun : c.TrExprS q(Bool → Bool → Bool)
+        (.forallE .bool <| .forallE .bool .bool) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact hfun0
+    have hfunTy : c.IsType (.forallE .bool <| .forallE .bool .bool) := by
+      change c.venv.IsType c.lparams.length c.vlctx.toCtx _
+      rw [hvlctx]
+      exact VEnv.boolBinaryType_isType_of_contains
+        c.hasPrimitives hboolC c.lparams []
+    have hnat0 := TrExprS.natType_of_contains
+      c.hasPrimitives hnatC c.lparams []
+    have hnat : c.TrExprS q(Nat) .nat := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact hnat0.1
+    have hnatTy : c.IsType .nat := by
+      change c.venv.IsType c.lparams.length c.vlctx.toCtx _
+      rw [hvlctx]
+      exact hnat0.2
     simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
-        have htyEq := htyEq hb
-        exact (unfoldNatWellFoundedBoolNat2Cert.WF
-          hfun hfunTy hnat hnatTy heq).bind fun core _ _ _ => by
-          simp only [heq]
-          exact (checkNatBitwiseFixCertificate.WF (bitwise := v.value)).bind
-              fun cert _ _ hcert =>
-            (checkType.WF hequation.fvarsIn).bind fun _ _ _ h => by
-            let ⟨_, _, _, hequation', hequationTy, hequationHas⟩ := h
-            cases hequation'.unique hequnique hequation
-            exact (isDefEq.WF hequationTy hcanon).bind fun b _ _ hequationTyEq => by
-              split
-              · have hequationTyEq := hequationTyEq (by assumption)
-                exact (hnatCheck hclparams (fun {_} {_} => .throw)).bind
-                  fun _ _ _ hnatCert =>
-                  (hboolCheck hclparams (fun {_} {_} => .throw)).bind
-                    fun _ _ _ hboolCert =>
-                    (checkType.WF hbody.fvarsIn).bind fun _ _ _ _ =>
-                    (isDefEq.WF hequation hbody).bind fun b _ _ hbodyEq => by
-                      split
-                      · have hbodyEq := hbodyEq (by assumption)
-                        exact (isDefEq.WF hz₁ hz₂).bind fun b _ _ hzEq => by
-                          split
-                          · have hzEq := hzEq (by assumption)
-                            exact (isDefEq.WF hzr₁ hzr₂).bind fun b _ _ hzrEq => by
-                              split
-                              · have hzrEq := hzrEq (by assumption)
-                                exact (isDefEq.WF hs₁ hs₂).bind fun b _ _ hsEq => by
-                                  split
-                                  · have hsEq := hsEq (by assumption)
-                                    exact (checkNatBitwiseZero.WF hvz₁ hvz₂
-                                      (fun {_} {_} => .throw)).bind fun _ _ _ hvzEq =>
-                                      .pure fun _ =>
-                                        ⟨hlparams, htyEq, cert,
-                                          hcert.1.normalize hcert.2,
-                                          hnatCert, hboolCert,
-                                          hbodyEq, hzEq, hzrEq, hsEq, hvzEq⟩
-                                  · exact .throw
-                              · exact .throw
-                          · exact .throw
-                      · exact .throw
-              · exact .throw
+        have htyEq0 := htyEq hb
+        change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at htyEq0
+        rw [hvlctx] at htyEq0
+        cases heq : natWellFoundedEquation v.value
+            q(type_of% Nat.bitwise.eq_def) with
+        | none =>
+          simp only
+          exact .throw
+        | some equation =>
+          simp only
+          by_cases heqClosed :
+              (!equation.hasFVar && !equation.hasMVar) = true
+          · rw [if_pos heqClosed]
+            let es := natBitwiseEvidenceExpressions v.value equation
+            by_cases hall : es.all
+                (fun e => !e.hasFVar && !e.hasMVar) = true
+            · rw [if_pos hall]
+              have hes : ∀ e ∈ es,
+                  e.FVarsIn (· ∈ c.vlctx.fvars) := by
+                intro e he
+                have hh := List.all_eq_true.mp hall e he
+                have hh' : e.hasFVar = false ∧
+                    e.hasMVar = false := by simpa using hh
+                exact Expr.closed_fvarsIn hh'.1 hh'.2
+              refine (checkTypeList.WF hes).bind fun _ _ _ htypes => ?_
+              have mem (e) (h : e ∈ es) := htypes e h
+              obtain ⟨equation', _, hequation, _⟩ := mem equation
+                (by simp [es, natBitwiseEvidenceExpressions])
+              let body := natBitwiseEquation v.value
+              obtain ⟨body', _, hbody, _⟩ := mem body
+                (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨z₁, _, hz₁, _⟩ := mem (natBitwiseZeroEquation body).1
+                (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨z₂, _, hz₂, _⟩ := mem (natBitwiseZeroEquation body).2
+                (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨zr₁, _, hzr₁, _⟩ :=
+                mem (natBitwiseZeroRightEquation body).1
+                  (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨zr₂, _, hzr₂, _⟩ :=
+                mem (natBitwiseZeroRightEquation body).2
+                  (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨s₁, _, hs₁, _⟩ :=
+                mem (natBitwiseSuccEquation body v.value).1
+                  (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨s₂, _, hs₂, _⟩ :=
+                mem (natBitwiseSuccEquation body v.value).2
+                  (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨vz₁, _, hvz₁, _⟩ :=
+                mem (natBitwiseZeroEquation v.value).1
+                  (by simp [es, natBitwiseEvidenceExpressions, body])
+              obtain ⟨vz₂, _, hvz₂, _⟩ :=
+                mem (natBitwiseZeroEquation v.value).2
+                  (by simp [es, natBitwiseEvidenceExpressions, body])
+              exact (unfoldNatWellFoundedBoolNat2Cert.WF
+                hfun hfunTy hnat hnatTy heq).bind fun _ _ _ _ =>
+                (checkNatBitwiseFixCertificate.WF
+                  (bitwise := v.value)).bind fun cert _ _ hcert => by
+                exact (inferType.WF hequation).bind fun _ _ _ hinfer => by
+                  rcases hinfer with ⟨equationTy, _, _, hequationTy, _⟩
+                  exact (isDefEq.WF hequationTy hcanon).bind
+                    fun q _ _ hequationTyEq => by
+                    by_cases hq : q = true
+                    · rw [if_pos hq]
+                      exact (hnatCheck hclparams hboolC hnatC hbeqC
+                        (fun {_} {_} => .throw)).bind
+                        fun _ _ _ hnatCert =>
+                        (hboolCheck hclparams hboolC hnatC
+                          (fun {_} {_} => .throw)).bind
+                          fun _ _ _ hboolCert =>
+                          (isDefEq.WF hequation hbody).bind
+                            fun q _ _ hbodyEq => by
+                            by_cases hbodyQ : q = true
+                            · rw [if_pos hbodyQ]
+                              exact (isDefEq.WF hz₁ hz₂).bind
+                                fun q _ _ hzEq => by
+                                by_cases hzQ : q = true
+                                · rw [if_pos hzQ]
+                                  exact (isDefEq.WF hzr₁ hzr₂).bind
+                                    fun q _ _ hzrEq => by
+                                    by_cases hzrQ : q = true
+                                    · rw [if_pos hzrQ]
+                                      exact (isDefEq.WF hs₁ hs₂).bind
+                                        fun q _ _ hsEq => by
+                                        by_cases hsQ : q = true
+                                        · rw [if_pos hsQ]
+                                          exact (checkNatBitwiseZero.WF
+                                            hvz₁ hvz₂
+                                            (fun {_} {_} => .throw)).bind
+                                            fun _ _ _ _ => .pure fun _ =>
+                                            ⟨cert, hlevels, hboolC, hnatC,
+                                              hbeqC, haddC, hmodC, hdivC,
+                                              htyEq0,
+                                              hcert.1.normalize hcert.2,
+                                              hnatCert, hboolCert⟩
+                                        · rw [if_neg hsQ]; exact .throw
+                                    · rw [if_neg hzrQ]; exact .throw
+                                · rw [if_neg hzQ]; exact .throw
+                            · rw [if_neg hbodyQ]; exact .throw
+                    · rw [if_neg hq]; exact .throw
+            · rw [if_neg hall]
+              exact .throw
+          · rw [if_neg heqClosed]
+            exact .throw
       · rw [if_neg hb]
         exact .throw
   · rw [if_neg hdeps]
