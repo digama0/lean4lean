@@ -782,6 +782,40 @@ private theorem reflectionNatDITE_false_rhs_shape
                                                 rcases hHS with ⟨rfl, rfl⟩
                                                 exact ⟨_, _, rfl, hrtypeS, hofFalseS⟩
 
+/-- Canonical target operations and checker evidence exported by a successful
+`Condition.natLE` check. -/
+structure VEnv.NatLESelectorCertificate (env : VEnv) where
+  rtype : VExpr
+  rite : VExpr
+  rdite : VExpr
+  ofTrue : VExpr
+  ofFalse : VExpr
+  rtypeS : TrExprS env [] [] Reflection.defn₁.type rtype
+  riteS : TrExprS env [] [] Reflection.defn₁.ite rite
+  rditeS : TrExprS env [] [] Reflection.defn₁.natDITE rdite
+  ofTrueS : TrExprS env [] [] Reflection.defn₁.ofTrue ofTrue
+  ofFalseS : TrExprS env [] [] Reflection.defn₁.ofFalse ofFalse
+  rtypeUnique : TrExprS.IsUnique Reflection.defn₁.type
+  riteUnique : TrExprS.IsUnique Reflection.defn₁.ite
+  rditeUnique : TrExprS.IsUnique Reflection.defn₁.natDITE
+  ofTrueUnique : TrExprS.IsUnique Reflection.defn₁.ofTrue
+  ofFalseUnique : TrExprS.IsUnique Reflection.defn₁.ofFalse
+  riteHas : env.HasType 0 [] rite
+    (.forallE (.sort .zero) <|
+     .forallE .bool <|
+     .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+     .forallE (.sort (.succ .zero)) <|
+     .forallE (.bvar 0) <| .forallE (.bvar 1) (.bvar 2))
+  rditeHas : env.HasType 0 [] rdite
+    (.forallE (.sort .zero) <|
+     .forallE .bool <|
+     .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+     .forallE (.forallE (.bvar 2) .nat) <|
+     .forallE (.forallE
+       (.app (.const ``Not []) (.bvar 3)) .nat) .nat)
+  iteChecked : VEnv.ReflectionITECertificate env Reflection.defn₁
+  diteChecked : VEnv.ReflectionNatDITEChecked env Reflection.defn₁
+
 /-- Rewrite both equations retained by `Reflection.checkNatDITE` to chosen
 global translations of the four reflection operations. -/
 theorem VEnv.ReflectionNatDITEChecked.canonical
@@ -877,6 +911,79 @@ theorem VEnv.ReflectionNatDITEChecked.canonical
   subst falseDITE
   subst falseOfFalse
   exact ⟨htrueEq, hfalseEq⟩
+
+/-- Assemble the semantic selector certificate from the raw evidence retained
+by `Condition.natLE.check.WF`. -/
+def VEnv.NatLESelectorCertificate.of_checked
+    {env : VEnv} (wf : env.WF)
+    {rtype rite rdite ofTrue ofFalse iteTy diteTy : VExpr}
+    (hrtype : TrExprS env [] [] Reflection.defn₁.type rtype)
+    (hrite : TrExprS env [] [] Reflection.defn₁.ite rite)
+    (hrdite : TrExprS env [] [] Reflection.defn₁.natDITE rdite)
+    (hofTrue : TrExprS env [] [] Reflection.defn₁.ofTrue ofTrue)
+    (hofFalse : TrExprS env [] [] Reflection.defn₁.ofFalse ofFalse)
+    (hrtypeUnique : TrExprS.IsUnique Reflection.defn₁.type)
+    (hiteUnique : TrExprS.IsUnique Reflection.defn₁.ite)
+    (hditeUnique : TrExprS.IsUnique Reflection.defn₁.natDITE)
+    (hofTrueUnique : TrExprS.IsUnique Reflection.defn₁.ofTrue)
+    (hofFalseUnique : TrExprS.IsUnique Reflection.defn₁.ofFalse)
+    (hiteTy : TrExprS env [] []
+      (.arrow q(Prop) <| .arrow q(Bool) <|
+       .arrow (mkApp2 Reflection.defn₁.type (.bvar 1) (.bvar 0))
+         q(∀ α : Type, α → α → α)) iteTy)
+    (hditeTy : TrExprS env [] []
+      (.arrow q(Prop) <| .arrow q(Bool) <|
+       .arrow (mkApp2 Reflection.defn₁.type (.bvar 1) (.bvar 0)) <|
+       .arrow (.arrow (.bvar 2) q(Nat)) <|
+       .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) q(Nat)) diteTy)
+    (hiteHas : env.HasType 0 [] rite iteTy)
+    (hditeHas : env.HasType 0 [] rdite diteTy)
+    (hiteChecked : VEnv.ReflectionITEChecked env Reflection.defn₁)
+    (hditeChecked : VEnv.ReflectionNatDITEChecked env Reflection.defn₁) :
+    VEnv.NatLESelectorCertificate env := by
+  have hiteCert := hiteChecked.toCertificate
+    hrtypeUnique hiteUnique
+  exact {
+    rtype := rtype
+    rite := rite
+    rdite := rdite
+    ofTrue := ofTrue
+    ofFalse := ofFalse
+    rtypeS := hrtype
+    riteS := hrite
+    rditeS := hrdite
+    ofTrueS := hofTrue
+    ofFalseS := hofFalse
+    rtypeUnique := hrtypeUnique
+    riteUnique := hiteUnique
+    rditeUnique := hditeUnique
+    ofTrueUnique := hofTrueUnique
+    ofFalseUnique := hofFalseUnique
+    riteHas := VEnv.reflectionITE_hasType_canonical wf
+      hrtypeUnique hrtype hiteTy hiteHas
+    rditeHas := VEnv.reflectionNatDITE_hasType_canonical wf
+      hrtypeUnique hrtype hditeTy hditeHas
+    iteChecked := hiteCert
+    diteChecked := hditeChecked }
+
+private theorem TrExprS.target_closed
+    {env : VEnv} (wf : env.WF) {e : Expr} {eV : VExpr}
+    (h : TrExprS env [] [] e eV) : eV.ClosedN := by
+  obtain ⟨_, heWF⟩ := h.wf wf.ordered (Us := []) (Δ := []) trivial
+  exact (heWF.hasType.1.closedN' wf.ordered.closed trivial).1
+
+def VEnv.NatLESelectorCertificate.ite_equations
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) :=
+  cert.iteChecked.canonical wf cert.rtypeS cert.riteS
+
+def VEnv.NatLESelectorCertificate.dite_equations
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) :=
+  cert.diteChecked.canonical wf
+    cert.rtypeUnique cert.rditeUnique
+    cert.ofTrueUnique cert.ofFalseUnique
+    cert.rtypeS cert.rditeS cert.ofTrueS cert.ofFalseS
 
 /-- A translated concrete `Nat.ble` call computes to the Boolean selected by
 the primitive reflection invariant. -/
@@ -1583,5 +1690,89 @@ theorem VEnv.reflectionNatDITE_of_natBLE_false
   rw [hble] at hbleEq
   exact VEnv.reflectionNatDITE_false_of_condition wf
     hrtypeClosed hrditeClosed hofFalseClosed heq hrditeHas hcallT hbleEq
+
+theorem VEnv.NatLESelectorCertificate.selectDITETrue
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {p bleV H t e R : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b))) bleV)
+    (hble : Nat.ble a b = true)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e) R) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e)
+      (.app t proof) := by
+  have heqs := cert.dite_equations wf
+  exact VEnv.reflectionNatDITE_of_natBLE_true wf hprim hctors hbleC
+    (TrExprS.target_closed wf cert.rtypeS)
+    (TrExprS.target_closed wf cert.rditeS)
+    (TrExprS.target_closed wf cert.ofTrueS)
+    heqs.1 cert.rditeHas hbleS hble hcallT
+
+theorem VEnv.NatLESelectorCertificate.selectDITEFalse
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {p bleV H t e R : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b))) bleV)
+    (hble : Nat.ble a b = false)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e) R) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e)
+      (.app e proof) := by
+  have heqs := cert.dite_equations wf
+  exact VEnv.reflectionNatDITE_of_natBLE_false wf hprim hctors hbleC
+    (TrExprS.target_closed wf cert.rtypeS)
+    (TrExprS.target_closed wf cert.rditeS)
+    (TrExprS.target_closed wf cert.ofFalseS)
+    heqs.2 cert.rditeHas hbleS hble hcallT
+
+theorem VEnv.NatLESelectorCertificate.selectITETrue
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {p bleV H α t e R : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b))) bleV)
+    (hble : Nat.ble a b = true)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app (.app cert.rite p) bleV) H) α) t) e) R) :
+    env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app (.app cert.rite p) bleV) H) α) t) e) t := by
+  have hbleEq := Condition.natBLE_application_eval
+    wf hprim hctors hbleC hbleS
+  rw [hble] at hbleEq
+  exact VEnv.reflectionITE_true_of_condition wf
+    (TrExprS.target_closed wf cert.rtypeS)
+    (TrExprS.target_closed wf cert.riteS)
+    (cert.ite_equations wf).1 cert.riteHas hcallT hbleEq
+
+theorem VEnv.NatLESelectorCertificate.selectITEFalse
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {p bleV H α t e R : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b))) bleV)
+    (hble : Nat.ble a b = false)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app (.app cert.rite p) bleV) H) α) t) e) R) :
+    env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app (.app cert.rite p) bleV) H) α) t) e) e := by
+  have hbleEq := Condition.natBLE_application_eval
+    wf hprim hctors hbleC hbleS
+  rw [hble] at hbleEq
+  exact VEnv.reflectionITE_false_of_condition wf
+    (TrExprS.target_closed wf cert.rtypeS)
+    (TrExprS.target_closed wf cert.riteS)
+    (cert.ite_equations wf).2 cert.riteHas hcallT hbleEq
 
 end Lean4Lean.Environment
