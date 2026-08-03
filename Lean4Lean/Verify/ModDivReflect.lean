@@ -783,6 +783,25 @@ theorem VEnv.align_nat_proof_domain
   exact hproofCtx.instN wf.ordered
     (.zero : Ctx.InstN [] (.natLit y) yTyL 0 [yTyL] []) hyL
 
+theorem VEnv.align_natDivGo_first_proof
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {yTyL hyTyL yTy hyTy hy : VExpr}
+    (yTyLS : TrExprS env [] [] q(Nat) yTyL)
+    (hyTyLS : TrExprS env [] [(none, .vlam yTyL)]
+      (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTyL)
+    (yTyS : TrExprS env [] [] q(Nat) yTy)
+    (hyTyS : TrExprS env [] [(none, .vlam yTy)]
+      (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTy)
+    (y : Nat) (hhy : env.HasType 0 [] hy (hyTy.inst (.natLit y))) :
+    env.HasType 0 [] hy (hyTyL.inst (.natLit y)) := by
+  have hdomL := translated_nat_type_eq wf hctors (by trivial) yTyLS
+  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
+  have hyL := hyT.defeqU_r wf trivial hdomL.symm
+  have hproofEq := VEnv.align_nat_proof_domain wf hctors
+    yTyLS yTyS hyTyLS hyTyS y hyL
+  exact hhy.defeqU_r wf trivial hproofEq.symm
+
 /-- Instantiate definitionally equal target lambdas when both domains have
 already been normalized to `Nat`.  This is reused for the divisor, fuel, and
 dividend binders of `Nat.div.go`. -/
