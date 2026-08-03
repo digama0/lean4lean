@@ -98,6 +98,42 @@ def natDivTopThenInst (a b : Nat) : Expr :=
 def natDivTopElseInst (b : Nat) : Expr :=
   .lam0 (mkApp q(Not) (natDivTopPropInst b)) q(Nat.zero)
 
+def natDivGoProp (y x : Expr) : Expr :=
+  mkApp2 q(@LE.le Nat _) y x
+
+def natDivGoBle (y x : Expr) : Expr :=
+  mkApp2 q(Nat.ble) y x
+
+def natDivGoProof (y x : Expr) : Expr :=
+  match Condition.natLE.impl with
+  | .reflectNatNat _ _ proof => mkAppN proof #[y, x]
+  | .bool => q(False.elim)
+
+def natDivGoThenBody (y hy fuel x h : Expr) : Expr :=
+  let succ := mkApp q(Nat.succ)
+  let sub := mkApp2 q(Nat.sub)
+  let go := mkApp5 q(Nat.div.go)
+  succ (go (y.liftLooseBVars 0 1) (hy.liftLooseBVars 0 1)
+    (fuel.liftLooseBVars 0 1)
+    (sub (x.liftLooseBVars 0 1) (y.liftLooseBVars 0 1))
+    (mkApp6 q(@Nat.div_rec_fuel_lemma)
+      (x.liftLooseBVars 0 1) (y.liftLooseBVars 0 1)
+      (fuel.liftLooseBVars 0 1) (hy.liftLooseBVars 0 1)
+      (.bvar 0) (h.liftLooseBVars 0 1)))
+
+def natDivGoThen (y hy fuel x h : Expr) : Expr :=
+  .lam0 (natDivGoProp y x) (natDivGoThenBody y hy fuel x h)
+
+def natDivGoElse (y x : Expr) : Expr :=
+  .lam0 (mkApp q(Not) (natDivGoProp y x)) q(Nat.zero)
+
+theorem natDivGoRhsBody_eq_parts (y hy fuel x h : Expr) :
+    natDivGoRhsBody y hy fuel x h =
+      mkApp5 Reflection.defn₁.natDITE (natDivGoProp y x)
+        (natDivGoBle y x) (natDivGoProof y x)
+        (natDivGoThen y hy fuel x h) (natDivGoElse y x) := by
+  rfl
+
 /-- Instantiate the closed top-level division equation at two concrete
 naturals, retaining the translated reflected-selector RHS. -/
 theorem VEnv.instantiate_natDivTop_equation
@@ -1134,6 +1170,245 @@ theorem VEnv.natDivGoLhsBody_canonical
                 simp at hus
                 subst hus
                 rfl
+
+/-- Expose the reflected dependent selector retained in the translated
+recursive division RHS. -/
+theorem VEnv.natDivGoRhsBody_shape
+    {env : VEnv} {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
+    (hbodyS : TrExprS env []
+      [(none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy),
+        (none, .vlam yTy)]
+      (natDivGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+      bodyV) :
+    ∃ rditeV pV bleV HV tV eV,
+      bodyV = .app (.app (.app (.app (.app rditeV pV) bleV) HV) tV) eV ∧
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)] Reflection.defn₁.natDITE rditeV ∧
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)]
+        (natDivGoProp (.bvar 4) (.bvar 1)) pV ∧
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)]
+        (natDivGoBle (.bvar 4) (.bvar 1)) bleV ∧
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)]
+        (natDivGoProof (.bvar 4) (.bvar 1)) HV ∧
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)]
+        (natDivGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV ∧
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)]
+        (natDivGoElse (.bvar 4) (.bvar 1)) eV := by
+  rw [natDivGoRhsBody_eq_parts] at hbodyS
+  simp only [mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
+  cases hbodyS with
+  | app h₄T heT h₄ heS =>
+    rename_i A₄ B₄ eV
+    cases h₄ with
+    | app h₃T htT h₃ htS =>
+      rename_i A₃ B₃ tV
+      cases h₃ with
+      | app h₂T hHT h₂ hHS =>
+        rename_i A₂ B₂ HV
+        cases h₂ with
+        | app h₁T hbleT h₁ hbleS =>
+          rename_i A₁ B₁ bleV
+          cases h₁ with
+          | app hditeT hpT hditeS hpS =>
+            rename_i rditeV A₀ B₀ pV
+            exact ⟨rditeV, pV, bleV, HV, tV, eV, rfl,
+              hditeS, hpS, hbleS, hHS, htS, heS⟩
+
+/-- The Boolean condition inside the local recursive RHS is the canonical
+`Nat.ble` application to the retained `y` and `x` binders. -/
+theorem VEnv.natDivGoBle_canonical
+    {env : VEnv} {yTy hyTy fuelTy xTy hTy bleV : VExpr}
+    (hbleS : TrExprS env []
+      [(none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy),
+        (none, .vlam yTy)]
+      (natDivGoBle (.bvar 4) (.bvar 1)) bleV) :
+    bleV = .app (.app (.const ``Nat.ble []) (.bvar 4)) (.bvar 1) := by
+  let Δ : VLCtx :=
+    [(none, .vlam hTy), (none, .vlam xTy),
+      (none, .vlam fuelTy), (none, .vlam hyTy),
+      (none, .vlam yTy)]
+  change TrExprS env [] Δ _ bleV at hbleS
+  simp only [natDivGoBle, mkApp2, mkApp, mkAppB] at hbleS
+  cases hbleS with
+  | app hinnerT hxT hinner hxS =>
+    rename_i innerV A₁ B₁ xV
+    cases hinner with
+    | app hfnT hyT hfnS hyS =>
+      rename_i fnV A₀ B₀ yV
+      have hyEq : yV = .bvar 4 := translated_bvar_target_eq
+        (by simp [Δ, VLCtx.find?, VLCtx.next,
+          VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+          VExpr.liftN, VExpr.lift, liftVar]) hyS
+      have hxEq : xV = .bvar 1 := translated_bvar_target_eq
+        (by simp [Δ, VLCtx.find?, VLCtx.next,
+          VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+          VExpr.liftN, VExpr.lift, liftVar]) hxS
+      subst yV
+      subst xV
+      cases hfnS with
+      | const _ hus _ =>
+        simp at hus
+        subst hus
+        rfl
+
+def natDivGoTargetInst (e : VExpr) (y : Nat)
+    (hy : VExpr) (fuel x : Nat) (h : VExpr) : VExpr :=
+  (((((e.inst (.natLit y) 4).inst hy 3).inst
+    (.natLit fuel) 2).inst (.natLit x) 1).inst h)
+
+/-- Select the concrete branch of the retained recursive RHS after all five
+target binders have been semantically instantiated. -/
+theorem VEnv.select_natDivGo_rhs
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    (cert : VEnv.NatLESelectorCertificate env)
+    {yTy hyTy fuelTy xTy hTy bodyV hy hfuel : VExpr}
+    (hbodyS : TrExprS env []
+      [(none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy),
+        (none, .vlam yTy)]
+      (natDivGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+      bodyV)
+    (y fuel x : Nat)
+    (hhyT : env.HasType 0 [] hy A)
+    (hhfuelT : env.HasType 0 [] hfuel B)
+    (hrhsT : env.HasType 0 []
+      (natDivGoTargetInst bodyV y hy fuel x hfuel) .nat) :
+    ∃ tV eV,
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)]
+        (natDivGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV ∧
+      TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)]
+        (natDivGoElse (.bvar 4) (.bvar 1)) eV ∧
+      if y ≤ x then
+        ∃ proof, env.IsDefEqU 0 []
+          (natDivGoTargetInst bodyV y hy fuel x hfuel)
+          (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof)
+      else
+        ∃ proof, env.IsDefEqU 0 []
+          (natDivGoTargetInst bodyV y hy fuel x hfuel)
+          (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof) := by
+  obtain ⟨rditeV, pV, bleV, HV, tV, eV, rfl,
+    hrditeS, hpS, hbleS, hHS, htS, heS⟩ :=
+    VEnv.natDivGoRhsBody_shape hbodyS
+  let Δ : VLCtx :=
+    [(none, .vlam hTy), (none, .vlam xTy),
+      (none, .vlam fuelTy), (none, .vlam hyTy),
+      (none, .vlam yTy)]
+  have hΔLift : VLCtx.BVLift [] Δ 5 0 5 0 :=
+    .skip _ (.skip _ (.skip _ (.skip _ (.skip _ .refl))))
+  have hrditeSourceClosed :
+      Reflection.defn₁.natDITE.looseBVarRange' = 0 := by native_decide
+  have hrditeEq : rditeV = cert.rdite :=
+    TrExprS.unique_closed_weak wf cert.rditeUnique hrditeSourceClosed
+      cert.rditeS hrditeS hΔLift
+  subst rditeV
+  have hbleEq := VEnv.natDivGoBle_canonical hbleS
+  subst bleV
+  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
+  have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
+  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
+  have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
+  have hhyClosed := (hhyT.closedN' wf.ordered.closed trivial).1
+  have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
+  have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
+  have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
+  have hrditeClosed := translated_closed wf cert.rditeS
+  let pI := natDivGoTargetInst pV y hy fuel x hfuel
+  let HI := natDivGoTargetInst HV y hy fuel x hfuel
+  let tI := natDivGoTargetInst tV y hy fuel x hfuel
+  let eI := natDivGoTargetInst eV y hy fuel x hfuel
+  let bleI : VExpr :=
+    .app (.app (.const ``Nat.ble []) (.natLit y)) (.natLit x)
+  have hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app cert.rdite pI) bleI) HI) tI) eI)
+      .nat := by
+    simpa [pI, HI, tI, eI, bleI, natDivGoTargetInst, VExpr.inst,
+      VExpr.instVar, hyClosed.liftN_eq (Nat.zero_le _),
+      hyClosed.instN_eq (Nat.zero_le _),
+      hhyClosed.liftN_eq (Nat.zero_le _),
+      hhyClosed.instN_eq (Nat.zero_le _),
+      hfuelClosed.liftN_eq (Nat.zero_le _),
+      hfuelClosed.instN_eq (Nat.zero_le _),
+      hxClosed.liftN_eq (Nat.zero_le _),
+      hxClosed.instN_eq (Nat.zero_le _),
+      hhfuelClosed.instN_eq (Nat.zero_le _),
+      hrditeClosed.instN_eq (Nat.zero_le _)] using hrhsT
+  have ⟨hbleFnT, _⟩ := hprim.natBLE hbleC
+  obtain ⟨ci, hci, _, hlen⟩ := (hbleFnT 0 []).const_inv wf trivial
+  have hfnS : TrExprS env [] [] q(Nat.ble) (.const ``Nat.ble []) :=
+    .const hci rfl hlen
+  have hyS := (hctors.natLitS y (Us := []) (Δ := [])).1
+  have hxS := (hctors.natLitS x (Us := []) (Δ := [])).1
+  have hinnerS : TrExprS env [] []
+      (mkApp q(Nat.ble) (.lit (.natVal y)))
+      (.app (.const ``Nat.ble []) (.natLit y)) :=
+    .app (hbleFnT 0 []) hyT hfnS hyS
+  have hbleGlobalS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal y)) (.lit (.natVal x))) bleI := by
+    exact .app (.app (hbleFnT 0 []) hyT) hxT hinnerS hxS
+  refine ⟨tV, eV, htS, heS, ?_⟩
+  split
+  · rename_i hyx
+    have hble : Nat.ble y x = true := Nat.ble_eq_true_of_le hyx
+    obtain ⟨proof, hselect⟩ := cert.selectDITETrue wf hprim hctors hbleC
+      hbleGlobalS hble hcallT
+    exact ⟨proof, by
+      simpa [pI, HI, tI, eI, bleI, natDivGoTargetInst, VExpr.inst,
+        VExpr.instVar, hyClosed.liftN_eq (Nat.zero_le _),
+        hyClosed.instN_eq (Nat.zero_le _),
+        hhyClosed.liftN_eq (Nat.zero_le _),
+        hhyClosed.instN_eq (Nat.zero_le _),
+        hfuelClosed.liftN_eq (Nat.zero_le _),
+        hfuelClosed.instN_eq (Nat.zero_le _),
+        hxClosed.liftN_eq (Nat.zero_le _),
+        hxClosed.instN_eq (Nat.zero_le _),
+        hhfuelClosed.instN_eq (Nat.zero_le _),
+        hrditeClosed.instN_eq (Nat.zero_le _)] using hselect⟩
+  · rename_i hyx
+    have hble : Nat.ble y x = false := by
+      cases h : Nat.ble y x with
+      | false => rfl
+      | true => exact False.elim (hyx (Nat.ble_eq.mp h))
+    obtain ⟨proof, hselect⟩ := cert.selectDITEFalse wf hprim hctors hbleC
+      hbleGlobalS hble hcallT
+    exact ⟨proof, by
+      simpa [pI, HI, tI, eI, bleI, natDivGoTargetInst, VExpr.inst,
+        VExpr.instVar, hyClosed.liftN_eq (Nat.zero_le _),
+        hyClosed.instN_eq (Nat.zero_le _),
+        hhyClosed.liftN_eq (Nat.zero_le _),
+        hhyClosed.instN_eq (Nat.zero_le _),
+        hfuelClosed.liftN_eq (Nat.zero_le _),
+        hfuelClosed.instN_eq (Nat.zero_le _),
+        hxClosed.liftN_eq (Nat.zero_le _),
+        hxClosed.instN_eq (Nat.zero_le _),
+        hhfuelClosed.instN_eq (Nat.zero_le _),
+        hrditeClosed.instN_eq (Nat.zero_le _)] using hselect⟩
 
 /-- Transport the final fuel proof of a canonical closed `Nat.div.go` call
 to the corresponding final binder of the checked left equation. -/
