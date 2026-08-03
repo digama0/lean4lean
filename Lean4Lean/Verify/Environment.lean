@@ -555,6 +555,63 @@ theorem checkSafeNatBEqDefinition.WF
 
 
 
+theorem checkSafeNatBLEDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.ble)
+    (hsafety : v.safety = .safe) :
+    ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+        ∃ v' : VDefVal,
+          TrDefVal .safe (ves.venv .safe) (.defnInfo v) v' ∧
+          v'.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
+          v.levelParams = [] ∧
+          (ves.venv .safe).contains ``Nat ∧
+          (ves.venv .safe).contains ``Bool ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length [] v'.type
+            (.forallE .nat <| .forallE .nat .bool) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.app (.app v'.value .natZero) .natZero) .boolTrue ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .nat <| .app (.app v'.value .natZero)
+              (.app .natSucc (.bvar 0))) (.lam .nat .boolTrue) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .nat <| .app (.app v'.value (.app .natSucc (.bvar 0)))
+              .natZero) (.lam .nat .boolFalse) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .nat <| .lam .nat <|
+              .app (.app v'.value (.app .natSucc (.bvar 1)))
+                (.app .natSucc (.bvar 0)))
+            (.lam .nat <| .lam .nat <|
+              .app (.app v'.value (.bvar 1)) (.bvar 0)) := by
+  refine (checkDefinitionBody.WF wf v).bind fun _ state' _ hbody => ?_
+  obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
+  have hvalueT' := hvalueT
+  change (ves.venv .safe).HasType v'.uvars [] v'.value v'.type at hvalueT'
+  rw [← huvars] at hvalueT'
+  refine (Environment.checkPrimitiveDef.natBLE.WF_typed
+    (c := .mk' wf .safe v.levelParams) (s := state')
+    (ty' := v'.type) (value' := v'.value)
+    hname rfl htype hvalue hvalueT').bind fun allow state'' _ hcheck => ?_
+  refine (TypeChecker.M.WF.liftExcept
+    (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+    fun _ _ _ hcheckedName => ?_
+  have hallow : allow = true := hcheckedName.2 (by
+    rw [hname]
+    simp [Lean.Kernel.Environment.primitives,
+      NameSet.contains, NameSet.ofList])
+  obtain ⟨hlevels, hnat, hbool, hty, h00, h0s, hs0, hss⟩ := hcheck hallow
+  refine ⟨v', ?_, hvalueT, hcheckedName.1,
+    hlevels, hnat, hbool, hty, h00, h0s, hs0, hss⟩
+  exact ⟨⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hsafety]
+    exact DefinitionSafety.le_rfl,
+    huvars, htype⟩, hvname⟩, hvalue⟩
+
+
+
 theorem checkSafeNonprimitiveDefinition.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hsafety : v.safety = .safe)
@@ -1134,6 +1191,45 @@ theorem addDefinition.WF_safe_natBEq
   have hadd' : (ves.venv safety).addConst ``Nat.beq v'.toVConstant =
       some out := by simpa [hname] using hadd
   exact (wf.hasPrimitives (safety := safety)).addNatBEqDef
+    hnat' hbool' hname' hadd' hwf' huvars' hty' h00' h0s' hs0' hss'
+
+
+
+theorem addDefinition.WF_safe_natBLE
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.ble)
+    (hsafety : v.safety = .safe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  refine (checkSafeNatBLEDefinition.WF wf v hname hsafety).run wf |>.map
+    fun _ h => ?_
+  obtain ⟨v', htr, hvWF, hfresh, hlevels, hnat, hbool,
+    hty, h00, h0s, hs0, hss⟩ := h
+  apply wf.addSafePrimitiveDefinition hsafety hlevels hfresh htr hvWF
+  intro safety out hadd hwf'
+  have hmono : ves.venv .safe ≤ ves.venv safety :=
+    wf.mono DefinitionSafety.le_safe
+  have hnat' : (ves.venv safety).contains ``Nat := by
+    obtain ⟨ci, hci⟩ := hnat
+    exact ⟨ci, hmono.constants hci⟩
+  have hbool' : (ves.venv safety).contains ``Bool := by
+    obtain ⟨ci, hci⟩ := hbool
+    exact ⟨ci, hmono.constants hci⟩
+  have hname' : v'.name = ``Nat.ble := htr.1.2.symm.trans hname
+  have huvars : v.levelParams.length = v'.uvars := htr.1.1.2.1
+  have huvars' : v'.uvars = 0 := by simpa [hlevels] using huvars.symm
+  have hty' := hty.mono hmono
+  have h00' := h00.mono hmono
+  have h0s' := h0s.mono hmono
+  have hs0' := hs0.mono hmono
+  have hss' := hss.mono hmono
+  rw [hlevels] at hty' h00' h0s' hs0' hss'
+  have hadd' : (ves.venv safety).addConst ``Nat.ble v'.toVConstant =
+      some out := by simpa [hname] using hadd
+  exact (wf.hasPrimitives (safety := safety)).addNatBLEDef
     hnat' hbool' hname' hadd' hwf' huvars' hty' h00' h0s' hs0' hss'
 
 
