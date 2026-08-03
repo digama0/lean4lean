@@ -32,6 +32,30 @@ private theorem translated_lifted_natConstructor
     rw [hlift]
     simpa [Literal.toConstructor] using hnS
 
+private theorem translated_nat_type_eq
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {Δ : VLCtx} (hΔ : Δ.WF env 0) {natV : VExpr}
+    (hnatV : TrExprS env [] Δ q(Nat) natV) :
+    env.IsDefEqU 0 Δ.toCtx natV .nat := by
+  have hzT := (hctors.natZeroS (Us := []) (Δ := Δ)).2
+  obtain ⟨_, hnatType⟩ := hzT.isType wf hΔ.toCtx
+  obtain ⟨ci, hci, _, hlen⟩ := hnatType.const_inv wf hΔ.toCtx
+  have hnatS : TrExprS env [] Δ q(Nat) .nat :=
+    .const hci rfl (by simpa using hlen)
+  exact TrExprS.uniq (Us := []) wf (.refl wf hΔ) hnatV hnatS
+
+private theorem translated_bvar_target_eq
+    {env : VEnv} {Δ : VLCtx} {i : Nat} {e e₀ : VExpr}
+    (hcanon : ∃ A, Δ.find? (.inl i) = some (e₀, A))
+    (h : TrExprS env Us Δ (.bvar i) e) : e = e₀ := by
+  rcases hcanon with ⟨A₀, hcanon⟩
+  cases h with
+  | bvar hfind =>
+    rw [hcanon] at hfind
+    cases hfind
+    rfl
+
 /-- The exact source expression obtained by instantiating the two binders of the
 closed top-level division equation. -/
 def natDivTopRhsInst (a b : Nat) : Expr :=
@@ -630,5 +654,339 @@ theorem VEnv.NatDivGoEquationTranslation.of_checked
                         hyTyLType hhyTyLType hfuelTyLType hxTyLType hhTyLType
                         hyTyRType hhyTyRType hfuelTyRType hxTyRType hhTyRType
                         hbodyL hbodyR heq
+
+/-- The translated dependent function type of `Nat.div.go`. -/
+inductive VEnv.NatDivGoTypeTranslation (env : VEnv) (goTyV : VExpr) : Prop where
+  | intro
+      (yTy hyTy fuelTy xTy hTy resultTy : VExpr)
+      (yTyS : TrExprS env [] [] q(Nat) yTy)
+      (hyTyS : TrExprS env [] [(none, .vlam yTy)]
+        (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTy)
+      (fuelTyS : TrExprS env []
+        [(none, .vlam hyTy), (none, .vlam yTy)] q(Nat) fuelTy)
+      (xTyS : TrExprS env []
+        [(none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)] q(Nat) xTy)
+      (hTyS : TrExprS env []
+        [(none, .vlam xTy), (none, .vlam fuelTy),
+          (none, .vlam hyTy), (none, .vlam yTy)]
+        (mkApp2 q(@LE.le Nat _)
+          (mkApp q(Nat.succ) (.bvar 0)) (.bvar 1)) hTy)
+      (resultTyS : TrExprS env []
+        [(none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy),
+          (none, .vlam yTy)] q(Nat) resultTy)
+      (yTyType : env.IsType 0 [] yTy)
+      (hyTyType : env.IsType 0 [yTy] hyTy)
+      (fuelTyType : env.IsType 0 [hyTy, yTy] fuelTy)
+      (xTyType : env.IsType 0 [fuelTy, hyTy, yTy] xTy)
+      (hTyType : env.IsType 0 [xTy, fuelTy, hyTy, yTy] hTy)
+      (resultTyType : env.IsType 0 [hTy, xTy, fuelTy, hyTy, yTy] resultTy)
+      (shape : goTyV = (.forallE yTy <| .forallE hyTy <|
+        .forallE fuelTy <| .forallE xTy <| .forallE hTy resultTy)) :
+      VEnv.NatDivGoTypeTranslation env goTyV
+
+theorem VEnv.NatDivGoTypeTranslation.of_translation
+    {env : VEnv} {goTyV : VExpr}
+    (h : TrExprS env [] []
+      q(∀ y, Nat.succ Nat.zero ≤ y →
+        ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTyV) :
+    VEnv.NatDivGoTypeTranslation env goTyV := by
+  cases h with
+  | forallE hyTyType hrestType₁ hyTyS h₁ =>
+    cases h₁ with
+    | forallE hhyTyType hrestType₂ hhyTyS h₂ =>
+      cases h₂ with
+      | forallE hfuelTyType hrestType₃ hfuelTyS h₃ =>
+        cases h₃ with
+        | forallE hxTyType hrestType₄ hxTyS h₄ =>
+          cases h₄ with
+          | forallE hhTyType hresultTyType hhTyS hresultTyS =>
+            rename_i yTy hyTy fuelTy xTy hTy resultTy
+            exact .intro yTy hyTy fuelTy xTy hTy resultTy
+              hyTyS hhyTyS hfuelTyS hxTyS hhTyS hresultTyS
+              hyTyType hhyTyType hfuelTyType hxTyType hhTyType
+              hresultTyType rfl
+
+/-- Instantiate definitionally equal target lambdas when both domains have
+already been normalized to `Nat`.  This is reused for the divisor, fuel, and
+dividend binders of `Nat.div.go`. -/
+theorem VEnv.instantiate_nat_target_lam
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {domL domR bodyL bodyR : VExpr}
+    (hdomL : env.IsDefEqU 0 [] domL .nat)
+    (hdomR : env.IsDefEqU 0 [] domR .nat)
+    (heq : env.IsDefEqU 0 [] (.lam domL bodyL) (.lam domR bodyR))
+    (n : Nat) :
+    env.HasType 0 [] (.natLit n) domL ∧
+    env.HasType 0 [] (.natLit n) domR ∧
+    env.IsDefEqU 0 [] (bodyL.inst (.natLit n)) (bodyR.inst (.natLit n)) := by
+  have hnT := (hctors.natLitS n (Us := []) (Δ := [])).2
+  have hnL := hnT.defeqU_r wf trivial hdomL.symm
+  have hnR := hnT.defeqU_r wf trivial hdomR.symm
+  have heqU := heq
+  obtain ⟨_, heqD⟩ := heq
+  obtain ⟨⟨_, hdomLSort⟩, _, hbodyLT⟩ :=
+    heqD.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hbodyRT⟩ := heqD.hasType.2.lam_inv wf trivial
+  have hdomEq := hdomL.trans wf trivial hdomR.symm
+  have hinst := VEnv.IsDefEqU.lam_instU₂ wf trivial heqU
+    hdomLSort hbodyLT hbodyRT hdomEq hnL
+  exact ⟨hnL, hnR, hinst⟩
+
+/-- Target-only instantiation for a dependent proof binder.  No source
+expression for the proof is required. -/
+theorem VEnv.instantiate_proof_target_lam
+    {env : VEnv} (wf : env.WF)
+    {domL domR bodyL bodyR proof : VExpr}
+    (heq : env.IsDefEqU 0 [] (.lam domL bodyL) (.lam domR bodyR))
+    (hproofL : env.HasType 0 [] proof domL)
+    (hproofR : env.HasType 0 [] proof domR) :
+    env.IsDefEqU 0 [] (bodyL.inst proof) (bodyR.inst proof) := by
+  have heqU := heq
+  obtain ⟨_, heqD⟩ := heq
+  obtain ⟨⟨_, hdomLSort⟩, _, hbodyLT⟩ :=
+    heqD.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hbodyRT⟩ := heqD.hasType.2.lam_inv wf trivial
+  exact VEnv.IsDefEqU.lam_instU_hetero wf trivial heqU
+    hdomLSort hbodyLT hbodyRT hproofL hproofR
+
+/-- Infer the right-domain typing of a proof argument from a checked lambda
+equality, then instantiate both sides. -/
+theorem VEnv.instantiate_proof_target_lam_from_left
+    {env : VEnv} (wf : env.WF)
+    {domL domR bodyL bodyR proof : VExpr}
+    (heq : env.IsDefEqU 0 [] (.lam domL bodyL) (.lam domR bodyR))
+    (hproofL : env.HasType 0 [] proof domL) :
+    env.HasType 0 [] proof domR ∧
+    env.IsDefEqU 0 [] (bodyL.inst proof) (bodyR.inst proof) := by
+  have heqU := heq
+  obtain ⟨_, heqD⟩ := heq
+  obtain ⟨⟨_, hdomLSort⟩, _, hbodyLT⟩ :=
+    heqD.hasType.1.lam_inv wf trivial
+  obtain ⟨⟨_, hdomRSort⟩, _, hbodyRT⟩ :=
+    heqD.hasType.2.lam_inv wf trivial
+  have hleftCanonT := VEnv.HasType.lam hdomLSort hbodyLT
+  have happ := heqU.app_same wf trivial hleftCanonT hproofL
+  have happRightT :=
+    (happ.of_l wf trivial (VEnv.HasType.app hleftCanonT hproofL)).hasType.2
+  obtain ⟨_, _, hrightLamT, hproofRaw⟩ :=
+    happRightT.app_inv wf.ordered trivial
+  have hrightCanonT := VEnv.HasType.lam hdomRSort hbodyRT
+  have hrightTyEq := hrightLamT.uniqU wf trivial hrightCanonT
+  obtain ⟨_, hdomainEq⟩ := (hrightTyEq.forallE_inv wf trivial).1
+  have hproofR := hproofRaw.defeqU_r wf trivial hdomainEq.toU
+  exact ⟨hproofR,
+    VEnv.IsDefEqU.lam_instU_hetero wf trivial heqU
+      hdomLSort hbodyLT hbodyRT hproofL hproofR⟩
+
+theorem VEnv.IsDefEqU.inst_outer2
+    {env : VEnv} (wf : env.WF)
+    {A B a b e₁ e₂ : VExpr}
+    (ha : env.HasType 0 [] a A)
+    (hb : env.HasType 0 [] b (B.inst a))
+    (h : env.IsDefEqU 0 [B, A] e₁ e₂) :
+    env.IsDefEqU 0 [] ((e₁.inst a 1).inst b) ((e₂.inst a 1).inst b) := by
+  have h₁ := h.instN wf.ordered
+    (.succ (.zero : Ctx.InstN [] a A 0 [A] [])) ha
+  exact h₁.instN wf.ordered
+    (.zero : Ctx.InstN [] b (B.inst a) 0 [B.inst a] []) hb
+
+theorem VEnv.IsDefEqU.inst_outer3
+    {env : VEnv} (wf : env.WF)
+    {A B C a b c e₁ e₂ : VExpr}
+    (ha : env.HasType 0 [] a A)
+    (hb : env.HasType 0 [] b (B.inst a))
+    (hc : env.HasType 0 [] c ((C.inst a 1).inst b))
+    (h : env.IsDefEqU 0 [C, B, A] e₁ e₂) :
+    env.IsDefEqU 0 []
+      (((e₁.inst a 2).inst b 1).inst c)
+      (((e₂.inst a 2).inst b 1).inst c) := by
+  have h₁ := h.instN wf.ordered
+    (.succ (.succ (.zero : Ctx.InstN [] a A 0 [A] []))) ha
+  have h₂ := h₁.instN wf.ordered
+    (.succ (.zero : Ctx.InstN [] b (B.inst a) 0 [B.inst a] [])) hb
+  exact h₂.instN wf.ordered
+    (.zero : Ctx.InstN [] c ((C.inst a 1).inst b) 0
+      [((C.inst a 1).inst b)] []) hc
+
+theorem VEnv.IsDefEqU.inst_outer4
+    {env : VEnv} (wf : env.WF)
+    {A B C D a b c d e₁ e₂ : VExpr}
+    (ha : env.HasType 0 [] a A)
+    (hb : env.HasType 0 [] b (B.inst a))
+    (hc : env.HasType 0 [] c ((C.inst a 1).inst b))
+    (hd : env.HasType 0 [] d
+      (((D.inst a 2).inst b 1).inst c))
+    (h : env.IsDefEqU 0 [D, C, B, A] e₁ e₂) :
+    env.IsDefEqU 0 []
+      ((((e₁.inst a 3).inst b 2).inst c 1).inst d)
+      ((((e₂.inst a 3).inst b 2).inst c 1).inst d) := by
+  have h₁ := h.instN wf.ordered
+    (.succ (.succ (.succ (.zero : Ctx.InstN [] a A 0 [A] [])))) ha
+  have h₂ := h₁.instN wf.ordered
+    (.succ (.succ (.zero : Ctx.InstN [] b (B.inst a) 0
+      [B.inst a] []))) hb
+  have h₃ := h₂.instN wf.ordered
+    (.succ (.zero : Ctx.InstN [] c ((C.inst a 1).inst b) 0
+      [((C.inst a 1).inst b)] [])) hc
+  exact h₃.instN wf.ordered
+    (.zero : Ctx.InstN [] d (((D.inst a 2).inst b 1).inst c) 0
+      [(((D.inst a 2).inst b 1).inst c)] []) hd
+
+/-- Semantically instantiate all five binders of the retained recursive
+division equation.  The two proof arguments need only target-level typing. -/
+theorem VEnv.instantiate_natDivGo_target_binders
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {yTyL hyTyL fuelTyL xTyL hTyL bodyL : VExpr}
+    {yTyR hyTyR fuelTyR xTyR hTyR bodyR : VExpr}
+    (yTyLS : TrExprS env [] [] q(Nat) yTyL)
+    (fuelTyLS : TrExprS env []
+      [(none, .vlam hyTyL), (none, .vlam yTyL)] q(Nat) fuelTyL)
+    (xTyLS : TrExprS env []
+      [(none, .vlam fuelTyL), (none, .vlam hyTyL),
+        (none, .vlam yTyL)] q(Nat) xTyL)
+    (yTyRS : TrExprS env [] [] q(Nat) yTyR)
+    (fuelTyRS : TrExprS env []
+      [(none, .vlam hyTyR), (none, .vlam yTyR)] q(Nat) fuelTyR)
+    (xTyRS : TrExprS env []
+      [(none, .vlam fuelTyR), (none, .vlam hyTyR),
+        (none, .vlam yTyR)] q(Nat) xTyR)
+    (yTyLType : env.IsType 0 [] yTyL)
+    (hyTyLType : env.IsType 0 [yTyL] hyTyL)
+    (fuelTyLType : env.IsType 0 [hyTyL, yTyL] fuelTyL)
+    (xTyLType : env.IsType 0 [fuelTyL, hyTyL, yTyL] xTyL)
+    (yTyRType : env.IsType 0 [] yTyR)
+    (hyTyRType : env.IsType 0 [yTyR] hyTyR)
+    (fuelTyRType : env.IsType 0 [hyTyR, yTyR] fuelTyR)
+    (xTyRType : env.IsType 0 [fuelTyR, hyTyR, yTyR] xTyR)
+    (heq : env.IsDefEqU 0 []
+      (.lam yTyL <| .lam hyTyL <| .lam fuelTyL <| .lam xTyL <|
+        .lam hTyL bodyL)
+      (.lam yTyR <| .lam hyTyR <| .lam fuelTyR <| .lam xTyR <|
+        .lam hTyR bodyR))
+    (y fuel x : Nat) {hy hfuel : VExpr}
+    (hhyL : env.HasType 0 [] hy (hyTyL.inst (.natLit y)))
+    (hhfuelL : env.HasType 0 [] hfuel
+      ((((hTyL.inst (.natLit y) 3).inst hy 2).inst (.natLit fuel) 1).inst
+        (.natLit x))) :
+    env.IsDefEqU 0 []
+      (((((bodyL.inst (.natLit y) 4).inst hy 3).inst
+        (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
+      (((((bodyR.inst (.natLit y) 4).inst hy 3).inst
+        (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel) := by
+  have hyDomL := translated_nat_type_eq wf hctors (by trivial) yTyLS
+  have hyDomR := translated_nat_type_eq wf hctors (by trivial) yTyRS
+  obtain ⟨hyLT, hyRT, h₁⟩ := VEnv.instantiate_nat_target_lam
+    wf hctors hyDomL hyDomR heq y
+  simp only [VExpr.inst] at h₁
+  obtain ⟨hhyR, h₂⟩ :=
+    VEnv.instantiate_proof_target_lam_from_left wf h₁ hhyL
+  simp only [VExpr.inst] at h₂
+  have hΔL₂ : VLCtx.WF env 0
+      [(none, .vlam hyTyL), (none, .vlam yTyL)] :=
+    ⟨⟨trivial, nofun, yTyLType⟩, nofun, hyTyLType⟩
+  have hΔR₂ : VLCtx.WF env 0
+      [(none, .vlam hyTyR), (none, .vlam yTyR)] :=
+    ⟨⟨trivial, nofun, yTyRType⟩, nofun, hyTyRType⟩
+  have hfuelDomLCtx := translated_nat_type_eq wf hctors hΔL₂ fuelTyLS
+  have hfuelDomRCtx := translated_nat_type_eq wf hctors hΔR₂ fuelTyRS
+  have hfuelDomL := VEnv.IsDefEqU.inst_outer2 wf hyLT hhyL hfuelDomLCtx
+  have hfuelDomR := VEnv.IsDefEqU.inst_outer2 wf hyRT hhyR hfuelDomRCtx
+  obtain ⟨hfuelLT, hfuelRT, h₃⟩ := VEnv.instantiate_nat_target_lam
+    wf hctors hfuelDomL hfuelDomR h₂ fuel
+  simp only [VExpr.inst] at h₃
+  have hΔL₃ : VLCtx.WF env 0
+      [(none, .vlam fuelTyL), (none, .vlam hyTyL),
+        (none, .vlam yTyL)] :=
+    ⟨hΔL₂, nofun, fuelTyLType⟩
+  have hΔR₃ : VLCtx.WF env 0
+      [(none, .vlam fuelTyR), (none, .vlam hyTyR),
+        (none, .vlam yTyR)] :=
+    ⟨hΔR₂, nofun, fuelTyRType⟩
+  have hxDomLCtx := translated_nat_type_eq wf hctors hΔL₃ xTyLS
+  have hxDomRCtx := translated_nat_type_eq wf hctors hΔR₃ xTyRS
+  have hxDomL := VEnv.IsDefEqU.inst_outer3 wf hyLT hhyL hfuelLT hxDomLCtx
+  have hxDomR := VEnv.IsDefEqU.inst_outer3 wf hyRT hhyR hfuelRT hxDomRCtx
+  obtain ⟨hxLT, hxRT, h₄⟩ := VEnv.instantiate_nat_target_lam
+    wf hctors hxDomL hxDomR h₃ x
+  simp only [VExpr.inst] at h₄
+  obtain ⟨hhfuelR, h₅⟩ :=
+    VEnv.instantiate_proof_target_lam_from_left wf h₄ hhfuelL
+  simpa only [VExpr.inst] using h₅
+
+/-- The translated left recursive body is syntactically the expected local
+`Nat.div.go` call once unique constants and bound variables are normalized. -/
+theorem VEnv.natDivGoLhsBody_canonical
+    {env : VEnv} (hctors : VEnv.HasNatBoolConstructors env)
+    {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
+    (hbodyS : TrExprS env []
+      [(none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy),
+        (none, .vlam yTy)]
+      (natDivGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+      bodyV) :
+    bodyV = .app (.app (.app (.app (.app (.const ``Nat.div.go [])
+      (.bvar 4)) (.bvar 3)) (.app .natSucc (.bvar 2)))
+      (.bvar 1)) (.bvar 0) := by
+  let Δ : VLCtx :=
+    [(none, .vlam hTy), (none, .vlam xTy),
+      (none, .vlam fuelTy), (none, .vlam hyTy),
+      (none, .vlam yTy)]
+  change TrExprS env [] Δ _ bodyV at hbodyS
+  simp only [natDivGoLhsBody, mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
+  cases hbodyS with
+  | app h₄T hhT h₄ hhS =>
+    rename_i A₄ B₄ hhV
+    cases h₄ with
+    | app h₃T hxT h₃ hxS =>
+      rename_i A₃ B₃ hxV
+      cases h₃ with
+      | app h₂T hfuelT h₂ hfuelS =>
+        rename_i A₂ B₂ hfuelV
+        cases h₂ with
+        | app h₁T hhyT h₁ hhyS =>
+          rename_i A₁ B₁ hhyV
+          cases h₁ with
+          | app hgoT hyT hgoS hyS =>
+            rename_i goV A₀ B₀ hyV
+            cases hfuelS with
+            | app hsuccT hfuelArgT hsuccS hfuelArgS =>
+              rename_i succV AS BS fuelArgV
+              have hyEq : hyV = .bvar 4 := translated_bvar_target_eq
+                (by simp [Δ, VLCtx.find?, VLCtx.next,
+                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+                  VExpr.liftN, VExpr.lift, liftVar]) hyS
+              have hhyEq : hhyV = .bvar 3 := translated_bvar_target_eq
+                (by simp [Δ, VLCtx.find?, VLCtx.next,
+                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+                  VExpr.liftN, VExpr.lift, liftVar]) hhyS
+              have hfuelEq : fuelArgV = .bvar 2 := translated_bvar_target_eq
+                (by simp [Δ, VLCtx.find?, VLCtx.next,
+                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+                  VExpr.liftN, VExpr.lift, liftVar]) hfuelArgS
+              have hxEq : hxV = .bvar 1 := translated_bvar_target_eq
+                (by simp [Δ, VLCtx.find?, VLCtx.next,
+                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+                  VExpr.liftN, VExpr.lift, liftVar]) hxS
+              have hhEq : hhV = .bvar 0 := translated_bvar_target_eq
+                (by simp [Δ, VLCtx.find?, VLCtx.next,
+                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+                  VExpr.liftN, VExpr.lift, liftVar]) hhS
+              subst hyV
+              subst hhyV
+              subst fuelArgV
+              subst hxV
+              subst hhV
+              have hsuccCanon := (hctors.natSuccS (Us := [])
+                (Δ := Δ)).1
+              cases hsuccS.unique (by trivial) hsuccCanon
+              cases hgoS with
+              | const _ hus _ =>
+                simp at hus
+                subst hus
+                rfl
 
 end Lean4Lean.Environment
