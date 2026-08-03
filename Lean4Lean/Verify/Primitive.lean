@@ -3350,6 +3350,46 @@ private theorem TrExprS.boolType_of_contains
   exact ⟨.const hci rfl rfl,
     ⟨.succ .zero, .const hci nofun rfl⟩⟩
 
+private theorem TrExprS.natBinaryType_of_contains
+    {env : VEnv} (h : env.HasPrimitives) (hnat : env.contains ``Nat)
+    (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(Nat → Nat → Nat)
+      (.forallE .nat <| .forallE .nat .nat) := by
+  let Δ1 : VLCtx := (none, .vlam .nat) :: Δ
+  let Δ2 : VLCtx := (none, .vlam .nat) :: Δ1
+  have hnat0 := TrExprS.natType_of_contains h hnat Us Δ
+  have hnat1 := TrExprS.natType_of_contains h hnat Us Δ1
+  have hnat2 := TrExprS.natType_of_contains h hnat Us Δ2
+  have hinnerS : TrExprS env Us Δ1 q(Nat → Nat)
+      (.forallE .nat .nat) :=
+    .forallE hnat1.2 hnat2.2 hnat1.1 hnat2.1
+  have hinnerT : env.IsType Us.length Δ1.toCtx
+      (.forallE .nat .nat) := by
+    obtain ⟨u, hA⟩ := hnat1.2
+    obtain ⟨w, hB⟩ := hnat2.2
+    exact ⟨_, .forallE hA hB⟩
+  exact .forallE hnat0.2 hinnerT hnat0.1 hinnerS
+
+private theorem TrExprS.boolBinaryType_of_contains
+    {env : VEnv} (h : env.HasPrimitives) (hbool : env.contains ``Bool)
+    (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(Bool → Bool → Bool)
+      (.forallE .bool <| .forallE .bool .bool) := by
+  let Δ1 : VLCtx := (none, .vlam .bool) :: Δ
+  let Δ2 : VLCtx := (none, .vlam .bool) :: Δ1
+  have hbool0 := TrExprS.boolType_of_contains h hbool Us Δ
+  have hbool1 := TrExprS.boolType_of_contains h hbool Us Δ1
+  have hbool2 := TrExprS.boolType_of_contains h hbool Us Δ2
+  have hinnerS : TrExprS env Us Δ1 q(Bool → Bool)
+      (.forallE .bool .bool) :=
+    .forallE hbool1.2 hbool2.2 hbool1.1 hbool2.1
+  have hinnerT : env.IsType Us.length Δ1.toCtx
+      (.forallE .bool .bool) := by
+    obtain ⟨u, hA⟩ := hbool1.2
+    obtain ⟨w, hB⟩ := hbool2.2
+    exact ⟨_, .forallE hA hB⟩
+  exact .forallE hbool0.2 hinnerT hbool0.1 hinnerS
+
 private theorem TrExprS.boolFalse
     {env : VEnv} (hprim : env.HasPrimitives)
     (hbool : env.contains ``Bool) (Us : List Name) (Δ : VLCtx) :
@@ -3436,6 +3476,27 @@ private theorem VEnv.HasPrimitives.nat_bool_of_bitwise_contains
       (env.IsType 0) := ⟨trivial, ⟨_, hopType⟩⟩
   obtain ⟨_, hnat, _⟩ := hnatType.const_inv wf hctx
   exact ⟨⟨_, hnat⟩, ⟨_, hbool⟩⟩
+
+private theorem TrExprS.bitwise_op
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hbitwise : env.contains ``Nat.bitwise) (hΔ : Δ.WF env Us.length)
+    (hvalue : TrExprS env Us Δ
+      (.app (.const ``Nat.bitwise []) op) value') :
+    ∃ op', value' = .app (.const ``Nat.bitwise []) op' ∧
+      TrExprS env Us Δ op op' ∧
+      env.HasType Us.length Δ.toCtx op'
+        (.forallE .bool <| .forallE .bool .bool) := by
+  cases hvalue with
+  | app hfunT hopT hfunS hopS =>
+    cases hfunS with
+    | const hci hlevels hlen =>
+      simp at hlevels
+      subst hlevels
+      have hcanonT := (hprim.natBitwise hbitwise).1 Us.length Δ.toCtx
+      have hfunEq := hfunT.uniqU wf hΔ.toCtx hcanonT
+      obtain ⟨⟨_, hdomEq⟩, _⟩ := hfunEq.forallE_inv wf hΔ.toCtx
+      exact ⟨_, rfl, hopS,
+        hopT.defeqU_r wf hΔ.toCtx ⟨_, hdomEq⟩⟩
 
 theorem VContext.contains_safe_primitive
     (c : VContext) (hsrc : c.env.contains n)
@@ -9657,11 +9718,11 @@ theorem checkPrimitiveDef.natXor.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
+    rw [hvalue]
     simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
-        rw [hvalue]
         refine (inferType.WF hop).bind fun _ _ _ hOpTy => ?_
         let ⟨_, _, _, hOpTyTr, hOpHas⟩ := hOpTy
         refine (isDefEq.WF hOpTyTr hopCanon).bind fun b _ _ hOpEq => ?_
@@ -9680,6 +9741,94 @@ theorem checkPrimitiveDef.natXor.WF {c : VContext} {s : VState}
                         split
                         · exact .pure fun _ =>
                             ⟨hlparams, htyEq, hopTy, hffEq, htfEq, hftEq, httEq (by assumption)⟩
+                        · exact .throw
+                    · exact .throw
+                · exact .throw
+            · exact .throw
+        · exact .throw
+      · exact .throw
+  · exact .throw
+
+set_option maxHeartbeats 800000 in
+theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
+    (hname : v.name = ``Nat.xor)
+    (hshape : v.value = .app (.const ``Nat.bitwise []) op)
+    (hty : c.TrExprS v.type ty')
+    (hvalue : c.TrExprS v.value value') :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b →
+      v.levelParams = [] ∧
+      c.venv.contains ``Nat ∧ c.venv.contains ``Bool ∧
+      c.venv.contains ``Nat.bitwise ∧
+      c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
+      ∃ op', value' = .app (.const ``Nat.bitwise []) op' ∧
+        c.HasType op' (.forallE .bool <| .forallE .bool .bool) ∧
+        c.IsDefEqU (.app (.app op' .boolFalse) .boolFalse) .boolFalse ∧
+        c.IsDefEqU (.app (.app op' .boolTrue) .boolFalse) .boolTrue ∧
+        c.IsDefEqU (.app (.app op' .boolFalse) .boolTrue) .boolTrue ∧
+        c.IsDefEqU (.app (.app op' .boolTrue) .boolTrue) .boolFalse := by
+  simp only [checkPrimitiveDef, hname]
+  refine getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  split
+  · rename_i hdeps
+    have hdeps' : c.env.contains ``Nat.bitwise = true ∧
+        v.levelParams = [] := by simpa using hdeps
+    have hlevels := hdeps'.2
+    have hbitwise : c.venv.contains ``Nat.bitwise :=
+      Environment.VContext.contains_safe_primitive c hdeps'.1 (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    obtain ⟨hnat, hbool⟩ :=
+      Environment.VEnv.HasPrimitives.nat_bool_of_bitwise_contains
+        c.hasPrimitives c.Ewf hbitwise
+    have hcanon := TrExprS.natBinaryType_of_contains
+      c.hasPrimitives hnat c.lparams c.vlctx
+    have hopCanon := TrExprS.boolBinaryType_of_contains
+      c.hasPrimitives hbool c.lparams c.vlctx
+    have hvalue' := hvalue
+    rw [hshape] at hvalue'
+    obtain ⟨op', hvalueShape, hop, hopT⟩ :=
+      TrExprS.bitwise_op c.Ewf c.hasPrimitives hbitwise c.Δwf hvalue'
+    have hf := TrExprS.boolFalse c.hasPrimitives hbool c.lparams c.vlctx
+    have ht := TrExprS.boolTrue c.hasPrimitives hbool c.lparams c.vlctx
+    have hff₁ : c.TrExprS (mkApp2 op q(false) q(false))
+        (.app (.app op' .boolFalse) .boolFalse) :=
+      .app (.app hopT hf.2) hf.2 (.app hopT hf.2 hop hf.1) hf.1
+    have htf₁ : c.TrExprS (mkApp2 op q(true) q(false))
+        (.app (.app op' .boolTrue) .boolFalse) :=
+      .app (.app hopT ht.2) hf.2 (.app hopT ht.2 hop ht.1) hf.1
+    have hft₁ : c.TrExprS (mkApp2 op q(false) q(true))
+        (.app (.app op' .boolFalse) .boolTrue) :=
+      .app (.app hopT hf.2) ht.2 (.app hopT hf.2 hop hf.1) ht.1
+    have htt₁ : c.TrExprS (mkApp2 op q(true) q(true))
+        (.app (.app op' .boolTrue) .boolTrue) :=
+      .app (.app hopT ht.2) ht.2 (.app hopT ht.2 hop ht.1) ht.1
+    rw [hshape]
+    simp only [pure_bind]
+    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+      split
+      · have htyEq := htyEq (by assumption)
+        refine (inferType.WF hop).bind fun _ _ _ hOpTy => ?_
+        let ⟨_, _, _, hOpTyTr, hOpHas⟩ := hOpTy
+        refine (isDefEq.WF hOpTyTr hopCanon).bind fun b _ _ hOpEq => ?_
+        split
+        · have hopTy := hOpHas.defeqU_r c.Ewf c.Δwf
+            (hOpEq (by assumption))
+          exact (isDefEq.WF hff₁ hf.1).bind fun b _ _ hffEq => by
+            split
+            · have hffEq := hffEq (by assumption)
+              exact (isDefEq.WF htf₁ ht.1).bind fun b _ _ htfEq => by
+                split
+                · have htfEq := htfEq (by assumption)
+                  exact (isDefEq.WF hft₁ ht.1).bind fun b _ _ hftEq => by
+                    split
+                    · have hftEq := hftEq (by assumption)
+                      exact (isDefEq.WF htt₁ hf.1).bind fun b _ _ httEq => by
+                        split
+                        · exact .pure fun _ =>
+                            ⟨hlevels, hnat, hbool, hbitwise, htyEq,
+                              op', hvalueShape, hopTy, hffEq, htfEq,
+                              hftEq, httEq (by assumption)⟩
                         · exact .throw
                     · exact .throw
                 · exact .throw

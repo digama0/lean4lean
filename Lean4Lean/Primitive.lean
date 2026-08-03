@@ -1275,9 +1275,9 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← defeqBool1 (or tru x) tru do fail
   | ``Nat.xor =>
     unless env.contains ``Nat.bitwise && v.levelParams.isEmpty do fail
+    let .app (.const ``Nat.bitwise []) xor := v.value | fail
     -- xor : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    let .app (.const ``Nat.bitwise []) xor := v.value | fail
     unless ← isDefEq (← inferType xor) q(Bool → Bool → Bool) do fail
     let xor := mkApp2 xor
     unless ← isDefEq (xor fal fal) fal do fail
