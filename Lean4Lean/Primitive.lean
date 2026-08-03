@@ -1360,13 +1360,16 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
   | ``Nat.div =>
     checkNatDivPrimitive env v fail
   | ``Nat.gcd =>
-    unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
+    unless env.contains ``Nat.mod && env.contains ``Nat.beq &&
+        v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
+    let some gcd' := natWellFoundedEquation v.value
+      q(type_of% Nat.gcd.eq_def) | fail
+    unless !gcd'.hasFVar && !gcd'.hasMVar do fail
     let gcdCore ← unfoldNatWellFoundedNat2Cert v.value
       q(type_of% Nat.gcd.eq_def) fail
     _ ← checkNatGcdFixCertificate gcdCore v.value fail
-    let some gcd' := natWellFoundedEquation v.value q(type_of% Nat.gcd.eq_def) | fail
     unless ← isDefEq (← checkType gcd') q(Nat → Nat → Nat) do fail
     let gcd' := mkApp2 gcd'
     let gcd := mkApp2 v.value
