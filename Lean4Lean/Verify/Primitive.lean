@@ -3516,6 +3516,36 @@ def NatWellFoundedCoreResult.Valid (c : VContext)
         c.TrExprS r.specStepRhs rhs' ∧
         c.IsDefEqU lhs' rhs')
 
+theorem NatWellFoundedCoreResult.Valid.mono
+    {c c' : VContext} {r : NatWellFoundedCoreResult}
+    (hv : r.Valid c) (hle : c.venv ≤ c'.venv)
+    (hlparams : c'.lparams = c.lparams)
+    (hvlctx : c'.vlctx = c.vlctx) : r.Valid c' := by
+  have eqMono {lhs rhs : Expr}
+      (h : ∃ lhs' rhs', c.TrExprS lhs lhs' ∧ c.TrExprS rhs rhs' ∧
+        c.IsDefEqU lhs' rhs') :
+      ∃ lhs' rhs', c'.TrExprS lhs lhs' ∧ c'.TrExprS rhs rhs' ∧
+        c'.IsDefEqU lhs' rhs' := by
+    rcases h with ⟨lhs', rhs', hl, hr, heq⟩
+    refine ⟨lhs', rhs', ?_, ?_, ?_⟩
+    · change TrExprS c.venv c.lparams c.vlctx lhs lhs' at hl
+      change TrExprS c'.venv c'.lparams c'.vlctx lhs lhs'
+      rw [hlparams, hvlctx]
+      exact hl.mono hle
+    · change TrExprS c.venv c.lparams c.vlctx rhs rhs' at hr
+      change TrExprS c'.venv c'.lparams c'.vlctx rhs rhs'
+      rw [hlparams, hvlctx]
+      exact hr.mono hle
+    · change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx lhs' rhs' at heq
+      change c'.venv.IsDefEqU c'.lparams.length c'.vlctx.toCtx lhs' rhs'
+      rw [hlparams, hvlctx]
+      exact heq.mono hle
+  rcases hv with ⟨hshape, hcall, hentry, htop, heager, htrue,
+    hfalse, hstep, hspecStep⟩
+  exact ⟨hshape, eqMono hcall, eqMono hentry, eqMono htop,
+    eqMono heager, eqMono htrue, eqMono hfalse, eqMono hstep,
+    eqMono hspecStep⟩
+
 def NatWellFoundedCoreResult.AuxValid (c : VContext)
     (r : NatWellFoundedCoreResult) : Prop :=
     (∃ lhs' rhs', c.TrExprS r.expectedEagerLhs lhs' ∧
@@ -4943,6 +4973,37 @@ def NatBitwiseFixCertificate.NormalizedValid
     (∃ lhs' rhs', c.TrExprS r.expectedSuccLhs lhs' ∧
       c.TrExprS r.expectedSuccRhs rhs' ∧ c.IsDefEqU lhs' rhs') ∧
     ∃ goV A, c.TrExprS r.callFn goV ∧ c.HasType goV A
+
+theorem NatBitwiseFixCertificate.NormalizedValid.mono
+    {c c' : VContext} {r : NatBitwiseFixCertificate} {bitwise : Expr}
+    (hv : r.NormalizedValid c bitwise) (hle : c.venv ≤ c'.venv)
+    (hlparams : c'.lparams = c.lparams)
+    (hvlctx : c'.vlctx = c.vlctx) : r.NormalizedValid c' bitwise := by
+  have trMono {e : Expr} {e' : VExpr} (h : c.TrExprS e e') :
+      c'.TrExprS e e' := by
+    change TrExprS c.venv c.lparams c.vlctx e e' at h
+    change TrExprS c'.venv c'.lparams c'.vlctx e e'
+    rw [hlparams, hvlctx]
+    exact h.mono hle
+  have eqMono {lhs rhs : Expr}
+      (h : ∃ lhs' rhs', c.TrExprS lhs lhs' ∧ c.TrExprS rhs rhs' ∧
+        c.IsDefEqU lhs' rhs') :
+      ∃ lhs' rhs', c'.TrExprS lhs lhs' ∧ c'.TrExprS rhs rhs' ∧
+        c'.IsDefEqU lhs' rhs' := by
+    rcases h with ⟨lhs', rhs', hl, hr, heq⟩
+    refine ⟨lhs', rhs', trMono hl, trMono hr, ?_⟩
+    change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx lhs' rhs' at heq
+    change c'.venv.IsDefEqU c'.lparams.length c'.vlctx.toCtx lhs' rhs'
+    rw [hlparams, hvlctx]
+    exact heq.mono hle
+  rcases hv with ⟨hcore, htop, hzero, hzeroRight, hsucc,
+    goV, A, hgo, hgoT⟩
+  refine ⟨hcore.mono hle hlparams hvlctx, eqMono htop, eqMono hzero,
+    eqMono hzeroRight, eqMono hsucc, goV, A, trMono hgo, ?_⟩
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx goV A at hgoT
+  change c'.venv.HasType c'.lparams.length c'.vlctx.toCtx goV A
+  rw [hlparams, hvlctx]
+  exact hgoT.mono hle
 
 theorem NatBitwiseFixCertificate.Valid.normalize {c : VContext}
     {r : NatBitwiseFixCertificate} {bitwise : Expr} (hv : r.Valid c)
