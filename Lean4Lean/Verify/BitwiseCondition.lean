@@ -593,6 +593,125 @@ theorem VEnv.reflectionITE_false
     hbetaTypeApps.trans wf trivial <|
       hbetaTrueApp.trans wf trivial hbetaFalse
 
+/-- The checked true selector equation at an arbitrary target type. -/
+theorem VEnv.reflectionITE_true_select
+    {env : VEnv} (wf : env.WF) {rtypeL rtypeR rite p H α t e : VExpr}
+    (hrtypeLClosed : rtypeL.ClosedN) (hrtypeRClosed : rtypeR.ClosedN)
+    (hriteClosed : rite.ClosedN)
+    (heq : env.IsDefEqU 0 []
+      (.lam (.sort .zero) <|
+        .lam (.app (.app rtypeL (.bvar 0)) .boolTrue) <|
+          .app (.app (.app rite (.bvar 1)) .boolTrue) (.bvar 0))
+      (.lam (.sort .zero) <|
+        .lam (.app (.app rtypeR (.bvar 0)) .boolTrue) <|
+          .lam (.sort (.succ .zero)) <|
+            .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 1))
+    (hp : env.HasType 0 [] p (.sort .zero))
+    (hHL : env.HasType 0 [] H (.app (.app rtypeL p) .boolTrue))
+    (hHR : env.HasType 0 [] H (.app (.app rtypeR p) .boolTrue))
+    (hα : env.HasType 0 [] α (.sort (.succ .zero)))
+    (ht : env.HasType 0 [] t α) (he : env.HasType 0 [] e α) :
+    env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app (.app rite p) .boolTrue) H) α) t) e) t := by
+  have heq' := heq
+  obtain ⟨_, hd⟩ := heq'
+  obtain ⟨⟨_, hpropSort⟩, _, hleftBodyT⟩ :=
+    hd.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightBodyT⟩ := hd.hasType.2.lam_inv wf trivial
+  have h₁ := VEnv.IsDefEqU.lam_instU wf trivial heq hpropSort
+    hleftBodyT hrightBodyT hp
+  simp [VExpr.inst, hrtypeLClosed.instN_eq, hrtypeRClosed.instN_eq,
+    hriteClosed.instN_eq] at h₁
+  have h₁' := h₁
+  obtain ⟨_, hd₁⟩ := h₁'
+  obtain ⟨⟨_, hHSort⟩, _, hleftInnerT⟩ :=
+    hd₁.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightInnerT⟩ := hd₁.hasType.2.lam_inv wf trivial
+  have h₂ := VEnv.IsDefEqU.lam_instU_hetero wf trivial h₁ hHSort
+    hleftInnerT hrightInnerT hHL hHR
+  simp [VExpr.inst, VExpr.inst_lift, hriteClosed.instN_eq] at h₂
+  have hselect : env.IsDefEqU 0 []
+      (.app (.app (.app rite p) .boolTrue) H)
+      (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 1) := by
+    simpa [VExpr.boolTrue, VExpr.inst, VExpr.lift, VExpr.liftN, liftVar]
+      using h₂
+  have hselectorT : env.HasType 0 []
+      (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 1)
+      (.forallE (.sort (.succ .zero)) <|
+        .forallE (.bvar 0) <| .forallE (.bvar 1) <| .bvar 2) :=
+    .lam (.sort trivial) <| .lam (.bvar .zero) <|
+      .lam (.bvar (.succ .zero)) (.bvar (.succ .zero))
+  have hprefixT := (hselect.of_r wf trivial hselectorT).hasType.1
+  have h₃ := hselect.app_same wf trivial hprefixT hα
+  have hprefixαT := VEnv.HasType.app hprefixT hα
+  have hαClosed : α.ClosedN := (hα.closedN' wf.ordered.closed trivial).1
+  have hprefixαT' : env.HasType 0 []
+      (.app (.app (.app (.app rite p) .boolTrue) H) α)
+      (.forallE α <| .forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq] using hprefixαT
+  have h₄ := h₃.app_same wf trivial hprefixαT' ht
+  have hprefixαtT := VEnv.HasType.app hprefixαT' ht
+  have hprefixαtT' : env.HasType 0 []
+      (.app (.app (.app (.app (.app rite p) .boolTrue) H) α) t)
+      (.forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      hprefixαtT
+  have h₅ := h₄.app_same wf trivial hprefixαtT' he
+  obtain ⟨_, houterBodyT⟩ := (hselectorT.lam_inv wf trivial).2
+  have hbetaα : env.IsDefEqU 0 []
+      (.app (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 1) α)
+      (.lam α <| .lam α <| .bvar 1) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      (show env.IsDefEqU 0 [] _ _ from ⟨_, .beta houterBodyT hα⟩)
+  have hselectorαT :=
+    (hbetaα.of_l wf trivial (.app hselectorT hα)).hasType.2
+  have hselectorαT' : env.HasType 0 []
+      (.lam α <| .lam α <| .bvar 1)
+      (.forallE α <| .forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      hselectorαT
+  obtain ⟨_, htrueBodyT⟩ := (hselectorαT'.lam_inv wf trivial).2
+  have htClosed : t.ClosedN := (ht.closedN' wf.ordered.closed trivial).1
+  have hbetaT : env.IsDefEqU 0 []
+      (.app (.lam α <| .lam α <| .bvar 1) t) (.lam α t) :=
+    by
+      simpa [VExpr.inst, hαClosed.instN_eq, htClosed.lift_eq] using
+        (show env.IsDefEqU 0 [] _ _ from ⟨_, .beta htrueBodyT ht⟩)
+  have hselectorT' : env.HasType 0 [] (.lam α t) (.forallE α α) := by
+    have h := (hbetaT.of_l wf trivial (.app hselectorαT' ht)).hasType.2
+    simpa [VExpr.inst, hαClosed.instN_eq] using h
+  obtain ⟨_, hfalseBodyT⟩ := (hselectorT'.lam_inv wf trivial).2
+  have hbetaE : env.IsDefEqU 0 [] (.app (.lam α t) e) t :=
+    by
+      simpa [VExpr.inst, htClosed.instN_eq] using
+        (show env.IsDefEqU 0 [] _ _ from ⟨_, .beta hfalseBodyT he⟩)
+  have hselectorAppT : env.HasType 0 []
+      (.app (.lam α <| .lam α <| .bvar 1) t) (.forallE α α) := by
+    simpa [VExpr.inst, hαClosed.instN_eq] using
+      (VEnv.HasType.app hselectorαT' ht)
+  have hselectorOuterAppT : env.HasType 0 []
+      (.app (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 1) α)
+      (.forallE α <| .forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      (VEnv.HasType.app hselectorT hα)
+  have hselectorOuterTt : env.HasType 0 []
+      (.app (.app (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 1) α) t)
+      (.forallE α α) := by
+    simpa [VExpr.inst, hαClosed.instN_eq] using
+      (VEnv.HasType.app hselectorOuterAppT ht)
+  have hbetaαApps :=
+    (hbetaα.app_same wf trivial hselectorOuterAppT ht).app_same
+      wf trivial hselectorOuterTt he
+  exact h₅.trans wf trivial <|
+    hbetaαApps.trans wf trivial <|
+      (hbetaT.app_same wf trivial hselectorAppT he).trans
+        wf trivial hbetaE
+
 private theorem reflectionITE_true_translation_shape
     {env : VEnv} {r : Reflection} {l : VExpr}
     (h : TrExprS env [] []
@@ -813,9 +932,10 @@ private theorem reflectionITE_false_rhs_translation_shape
 `Reflection.checkITE`.  Independent translations of `Reflection.type` and
 `Reflection.ite` are kept explicit; later semantic use relates them through
 translation uniqueness. -/
-def VEnv.ReflectionITECertificate (env : VEnv) : Prop :=
-  TrExprS.IsUnique Reflection.defn₂.type ∧
-  TrExprS.IsUnique Reflection.defn₂.ite ∧
+def VEnv.ReflectionITECertificate (env : VEnv)
+    (r : Reflection := Reflection.defn₂) : Prop :=
+  TrExprS.IsUnique r.type ∧
+  TrExprS.IsUnique r.ite ∧
   ∃ trueRTypeL trueITE trueRTypeR,
     env.IsDefEqU 0 []
       (.lam (.sort .zero) <|
@@ -826,13 +946,13 @@ def VEnv.ReflectionITECertificate (env : VEnv) : Prop :=
           .lam (.sort (.succ .zero)) <|
             .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 1) ∧
     TrExprS env [] [(none, .vlam (.sort .zero))]
-      Reflection.defn₂.type trueRTypeL ∧
+      r.type trueRTypeL ∧
     TrExprS env []
       [(none, .vlam (.app (.app trueRTypeL (.bvar 0)) .boolTrue)),
         (none, .vlam (.sort .zero))]
-      Reflection.defn₂.ite trueITE ∧
+      r.ite trueITE ∧
     TrExprS env [] [(none, .vlam (.sort .zero))]
-      Reflection.defn₂.type trueRTypeR ∧
+      r.type trueRTypeR ∧
   ∃ falseRTypeL falseITE falseRTypeR,
     env.IsDefEqU 0 []
       (.lam (.sort .zero) <|
@@ -843,39 +963,39 @@ def VEnv.ReflectionITECertificate (env : VEnv) : Prop :=
           .lam (.sort (.succ .zero)) <|
             .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 0) ∧
     TrExprS env [] [(none, .vlam (.sort .zero))]
-      Reflection.defn₂.type falseRTypeL ∧
+      r.type falseRTypeL ∧
     TrExprS env []
       [(none, .vlam (.app (.app falseRTypeL (.bvar 0)) .boolFalse)),
         (none, .vlam (.sort .zero))]
-      Reflection.defn₂.ite falseITE ∧
+      r.ite falseITE ∧
     TrExprS env [] [(none, .vlam (.sort .zero))]
-      Reflection.defn₂.type falseRTypeR
+      r.type falseRTypeR
 
 /-- Normalize the source translations accompanying `Reflection.checkITE.WF`
 to the target lambda shapes consumed by the selector lemmas above. -/
 theorem VEnv.ReflectionITECertificate.of_checked
-    {env : VEnv} {tl tr fl fr : VExpr}
-    (hrtypeUnique : TrExprS.IsUnique Reflection.defn₂.type)
-    (hiteUnique : TrExprS.IsUnique Reflection.defn₂.ite)
+    {env : VEnv} {r : Reflection} {tl tr fl fr : VExpr}
+    (hrtypeUnique : TrExprS.IsUnique r.type)
+    (hiteUnique : TrExprS.IsUnique r.ite)
     (htl : TrExprS env [] []
       (.lam0 q(Prop) <| .lam0
-        (mkApp2 Reflection.defn₂.type (.bvar 0) q(true)) <|
-        mkApp3 Reflection.defn₂.ite (.bvar 1) q(true) (.bvar 0)) tl)
+        (mkApp2 r.type (.bvar 0) q(true)) <|
+        mkApp3 r.ite (.bvar 1) q(true) (.bvar 0)) tl)
     (htr : TrExprS env [] []
       (.lam0 q(Prop) <| .lam0
-        (mkApp2 Reflection.defn₂.type (.bvar 0) q(true)) <|
+        (mkApp2 r.type (.bvar 0) q(true)) <|
         .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 1) tr)
     (hteq : env.IsDefEqU 0 [] tl tr)
     (hfl : TrExprS env [] []
       (.lam0 q(Prop) <| .lam0
-        (mkApp2 Reflection.defn₂.type (.bvar 0) q(false)) <|
-        mkApp3 Reflection.defn₂.ite (.bvar 1) q(false) (.bvar 0)) fl)
+        (mkApp2 r.type (.bvar 0) q(false)) <|
+        mkApp3 r.ite (.bvar 1) q(false) (.bvar 0)) fl)
     (hfr : TrExprS env [] []
       (.lam0 q(Prop) <| .lam0
-        (mkApp2 Reflection.defn₂.type (.bvar 0) q(false)) <|
+        (mkApp2 r.type (.bvar 0) q(false)) <|
         .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0) fr)
     (hfeq : env.IsDefEqU 0 [] fl fr) :
-    Lean4Lean.Environment.VEnv.ReflectionITECertificate env := by
+    Lean4Lean.Environment.VEnv.ReflectionITECertificate env r := by
   obtain ⟨trueRTypeL, trueITE, rfl, htrueRTypeL, htrueITE⟩ :=
     reflectionITE_true_translation_shape htl
   obtain ⟨trueRTypeR, rfl, htrueRTypeR⟩ :=
@@ -895,10 +1015,10 @@ theorem VEnv.ReflectionITECertificate.of_checked
 facts and closed-source uniqueness justify the rewrite. -/
 theorem VEnv.ReflectionITECertificate.canonical
     {env : VEnv} (wf : env.WF)
-    (hcert : Lean4Lean.Environment.VEnv.ReflectionITECertificate env)
+    (hcert : Lean4Lean.Environment.VEnv.ReflectionITECertificate env r)
     {rtype rite : VExpr}
-    (hrtype : TrExprS env [] [] Reflection.defn₂.type rtype)
-    (hrite : TrExprS env [] [] Reflection.defn₂.ite rite) :
+    (hrtype : TrExprS env [] [] r.type rtype)
+    (hrite : TrExprS env [] [] r.ite rite) :
     env.IsDefEqU 0 []
       (.lam (.sort .zero) <|
         .lam (.app (.app rtype (.bvar 0)) .boolTrue) <|
@@ -920,11 +1040,12 @@ theorem VEnv.ReflectionITECertificate.canonical
       trueRTypeL, trueITE, trueRTypeR, htrueEq,
       htrueRTypeLS, htrueITES, htrueRTypeRS,
       falseRTypeL, falseITE, falseRTypeR, hfalseEq,
-      hfalseRTypeLS, hfalseITES, hfalseRTypeRS⟩
-  have hrtypeClosed : Reflection.defn₂.type.looseBVarRange' = 0 := by
-    native_decide
-  have hriteClosed : Reflection.defn₂.ite.looseBVarRange' = 0 := by
-    native_decide
+    hfalseRTypeLS, hfalseITES, hfalseRTypeRS⟩
+
+  have hrtypeClosed : r.type.looseBVarRange' = 0 := by
+    exact hrtype.closed.looseBVarRange_zero
+  have hriteClosed : r.ite.looseBVarRange' = 0 := by
+    exact hrite.closed.looseBVarRange_zero
   have htrueRTypeL : trueRTypeL = rtype :=
     TrExprS.unique_closed_weak wf hrtypeUnique hrtypeClosed hrtype
       htrueRTypeLS (.skip (.vlam (.sort .zero)) .refl)
@@ -954,6 +1075,16 @@ theorem VEnv.ReflectionITECertificate.canonical
   subst falseRTypeR
   subst falseITE
   exact ⟨htrueEq, hfalseEq⟩
+
+theorem VEnv.ReflectionITEChecked.toCertificate
+    {env : VEnv} {r : Reflection}
+    (h : Lean4Lean.Environment.VEnv.ReflectionITEChecked env r)
+    (hrtypeUnique : TrExprS.IsUnique r.type)
+    (hiteUnique : TrExprS.IsUnique r.ite) :
+    VEnv.ReflectionITECertificate env r := by
+  rcases h with ⟨tl, tr, fl, fr, htl, htr, hteq, hfl, hfr, hfeq⟩
+  exact VEnv.ReflectionITECertificate.of_checked hrtypeUnique hiteUnique
+    htl htr hteq hfl hfr hfeq
 
 /-- A successful check of the fixed natural-number equality condition exports
 both the normalized Boolean-selector equations and the checked equality
