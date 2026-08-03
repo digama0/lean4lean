@@ -225,4 +225,38 @@ theorem VEnv.select_natDivTop_rhs
                   heqs.2 cert.rditeHas hcallT hbool
               exact ⟨proof, hcallEq.trans wf trivial hselect⟩
 
+/-- Beta-reduce the false top-level division branch to zero. -/
+theorem VEnv.natDivTopElse_beta
+    {env : VEnv} (wf : env.WF) (b : Nat)
+    {eV proof R : VExpr}
+    (heS : TrExprS env [] [] (natDivTopElseInst b) eV)
+    (happT : env.HasType 0 [] (.app eV proof) R) :
+    env.IsDefEqU 0 [] (.app eV proof) .natZero := by
+  have heSLam := heS
+  simp only [natDivTopElseInst] at heSLam
+  have heSLam' : TrExprS env [] []
+      (.lam `_ (mkApp q(Not) (natDivTopPropInst b)) q(Nat.zero) .default)
+      eV := by
+    simpa only [Expr.lam0] using heSLam
+  cases heSLam' with
+  | lam hdomType hdomS hbodyS =>
+    rename_i tyV bodyV
+    have hlamS : TrExprS env [] []
+        (.lam `_ (mkApp q(Not) (natDivTopPropInst b)) q(Nat.zero) .default)
+        (.lam tyV bodyV) := .lam hdomType hdomS hbodyS
+    obtain ⟨bodyTy, hlamCanonT⟩ := TrExprS.closedLam_hasType wf hlamS
+    obtain ⟨_, _, hlamT, hproofT⟩ := happT.app_inv wf.ordered trivial
+    have hlamTyEq := hlamT.uniqU wf trivial hlamCanonT
+    obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
+    have hproofT' := hproofT.defeqU_r wf trivial hdomEq.toU
+    obtain ⟨_, hbodyWF⟩ := hbodyS.wf wf.ordered
+      (Us := []) (Δ := [(none, .vlam _)])
+      ⟨trivial, nofun, hdomType⟩
+    cases hbodyS with
+    | const hzero hus hlen =>
+      simp at hus
+      subst hus
+      exact ⟨_, by simpa [VExpr.inst] using
+        (VEnv.IsDefEq.beta hbodyWF.hasType.1 hproofT')⟩
+
 end Lean4Lean.Environment
