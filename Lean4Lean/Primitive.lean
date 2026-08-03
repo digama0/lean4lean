@@ -175,6 +175,28 @@ protected def Condition.dite (cond : Condition) (args: Array Expr) (t e : Expr) 
     (.lam0 (mkAppN cond.prop args) t)
     (.lam0 (mkApp q(Not) (mkAppN cond.prop args)) e)
 
+/-- Use the selector whose equations were checked by `Condition.check`.
+For reflected Nat conditions this avoids throwing away the Boolean reflection
+witness and reconstructing the same selector through a raw `ite`. -/
+protected def Condition.reflectedITE (cond : Condition) (α : Expr)
+    (args : Array Expr) (t e : Expr) : Expr :=
+  match cond.impl with
+  | .reflectNatNat asBool reflect proof =>
+    mkApp6 reflect.ite (mkAppN cond.prop args) (mkAppN asBool args)
+      (mkAppN proof args) α t e
+  | .bool => cond.ite α args t e
+
+/-- Dependent counterpart of `Condition.reflectedITE`. -/
+protected def Condition.reflectedDITE (cond : Condition) (args : Array Expr)
+    (t e : Expr) : Expr :=
+  match cond.impl with
+  | .reflectNatNat asBool reflect proof =>
+    mkApp5 reflect.natDITE (mkAppN cond.prop args) (mkAppN asBool args)
+      (mkAppN proof args)
+      (.lam0 (mkAppN cond.prop args) t)
+      (.lam0 (mkApp q(Not) (mkAppN cond.prop args)) e)
+  | .bool => cond.dite args t e
+
 protected def Condition.decide (cond : Condition) (args : Array Expr) : Expr :=
   cond.ite q(Bool) args q(true) q(false)
 
@@ -1064,14 +1086,14 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     withLocalDecl `x .default q(Nat) fun x => do
     withLocalDecl `y .default q(Nat) fun y => do
     let sx := succ x
-    let e := c.ite q(Nat) #[y, sx] (c.dite #[one, y]
+    let e := c.reflectedITE q(Nat) #[y, sx] (c.reflectedDITE #[one, y]
       (go y (.bvar 0) (succ sx) sx (mkApp q(Nat.lt_succ_self) sx)) sx) sx
     _ ← checkType e
     unless ← isDefEq (mod sx y) e do fail
     withLocalDecl `hy .default (le one y) fun hy => do
     withLocalDecl `fuel .default q(Nat) fun fuel => do
     withLocalDecl `h .default (le (succ x) (succ fuel)) fun h => do
-    let e := c.dite #[y, x] (go y hy fuel (sub x y)
+    let e := c.reflectedDITE #[y, x] (go y hy fuel (sub x y)
       (mkApp6 q(@Nat.div_rec_fuel_lemma) x y fuel hy (.bvar 0) h)) x
     _ ← checkType e
     unless ← isDefEq (go y hy (succ fuel) x h) e do fail
@@ -1088,13 +1110,14 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     let go := mkApp5 q(Nat.div.go)
     withLocalDecl `x .default q(Nat) fun x => do
     withLocalDecl `y .default q(Nat) fun y => do
-    let e := c.dite #[one, y] (go y (.bvar 0) (succ x) x (mkApp q(Nat.lt_succ_self) x)) zero
+    let e := c.reflectedDITE #[one, y]
+      (go y (.bvar 0) (succ x) x (mkApp q(Nat.lt_succ_self) x)) zero
     _ ← checkType e
     unless ← isDefEq (div x y) e do fail
     withLocalDecl `hy .default (le one y) fun hy => do
     withLocalDecl `fuel .default q(Nat) fun fuel => do
     withLocalDecl `h .default (le (succ x) (succ fuel)) fun h => do
-    let e := c.dite #[y, x] (succ (go y hy fuel (sub x y)
+    let e := c.reflectedDITE #[y, x] (succ (go y hy fuel (sub x y)
       (mkApp6 q(@Nat.div_rec_fuel_lemma) x y fuel hy (.bvar 0) h))) zero
     _ ← checkType e
     unless ← isDefEq (go y hy (succ fuel) x h) e do fail
