@@ -66,6 +66,7 @@ def addOpaque (env : Environment) (v : OpaqueVal) (check := true) (fuel : FuelCo
   if check then
     M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
       checkConstantVal env v.toConstantVal
+      checkNoMVarNoFVar env v.name v.value
       let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.opaqueDecl v) valType

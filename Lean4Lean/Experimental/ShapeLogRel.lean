@@ -1,5 +1,14 @@
 import Lean4Lean.Experimental.SExpr
 
+/-
+`Shape.plift` and friends below are written in `Option`-monad `do`/`return` notation, and
+the proofs about them `simp` through the exact term that notation elaborates to.
+leanprover/lean4#13305 made the new `do` elaborator the default in v4.32.0, which reshapes
+those terms. Pin the legacy elaborator here until the proofs are migrated
+(digama0/lean4lean#31).
+-/
+set_option backward.do.legacy true
+
 namespace Lean4Lean
 open Lean4Lean
 
