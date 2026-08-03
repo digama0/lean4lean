@@ -29,6 +29,12 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
     VDecl.WF env (.opaque ci) env'
+  | mutual :
+    (∀ ci ∈ cis, ci.toVConstant.WF env) →
+    env.addMutualHeaders cis = some headers →
+    (∀ ci ∈ cis, headers.constants ci.name = some ci.toVConstant) →
+    (∀ ci ∈ cis, ci.WF headers) →
+    VDecl.WF env (.mutual cis) (headers.addMutualDefEqs cis)
   | example :
     ci.WF env →
     VDecl.WF env (.example ci) env

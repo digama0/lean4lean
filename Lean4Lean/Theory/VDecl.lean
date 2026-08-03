@@ -11,6 +11,15 @@ structure VDefVal extends VConstVal where
 def VDefVal.toDefEq (v : VDefVal) : VDefEq :=
   ⟨v.uvars, .const v.name (VLevel.params v.uvars), v.value, v.type⟩
 
+def VEnv.addMutualHeaders : VEnv → List VDefVal → Option VEnv
+  | env, [] => some env
+  | env, v :: vs => do
+    let env ← env.addConst v.name v.toVConstant
+    env.addMutualHeaders vs
+
+def VEnv.addMutualDefEqs (env : VEnv) (vs : List VDefVal) : VEnv :=
+  vs.foldl (fun env v => env.addDefEq v.toDefEq) env
+
 structure VInductiveType extends VConstVal where
   ctors : List VConstVal
 
@@ -26,6 +35,7 @@ inductive VDecl where
   | axiom (_ : VConstVal)
   | def (_ : VDefVal)
   | opaque (_ : VDefVal)
+  | mutual (_ : List VDefVal)
   | example (_ : VDefVal)
   | quot
   | induct (_ : VInductDecl)
