@@ -6784,6 +6784,39 @@ theorem checkPrimitiveDef.natXor.WF {c : VContext} {s : VState}
       · exact .throw
   · exact .throw
 
+theorem checkPrimitiveDef.natXor.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv} {op : VExpr}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hnat : c.venv.contains ``Nat)
+    (hbitwiseC : c.venv.contains ``Nat.bitwise)
+    (hname : v.name = ``Nat.xor)
+    (hvalue : v.value = .app (.const ``Nat.bitwise []) op)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.xor v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      c.HasType op (.forallE .bool <| .forallE .bool .bool) ∧
+      c.IsDefEqU (.app (.app op .boolFalse) .boolFalse) .boolFalse ∧
+      c.IsDefEqU (.app (.app op .boolTrue) .boolFalse) .boolTrue ∧
+      c.IsDefEqU (.app (.app op .boolFalse) .boolTrue) .boolTrue ∧
+      c.IsDefEqU (.app (.app op .boolTrue) .boolTrue) .boolFalse) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, hopTy, hff, htf, hft, htt⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty hff htf hft htt
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hopTy
+  rw [hclparams, hvlctx] at hty hopTy hff htf hft htt
+  exact c.hasPrimitives.addNatXorDef hnat hbitwiseC hname hadd hwf
+    hvuvars hty hvalue hopTy hff htf hft htt
+
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natLand.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.land)
@@ -6836,6 +6869,41 @@ theorem checkPrimitiveDef.natLand.WF {c : VContext} {s : VState}
       · exact .throw
   · exact .throw
 
+theorem checkPrimitiveDef.natLand.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv} {op : VExpr}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hnat : c.venv.contains ``Nat) (hbool : c.venv.contains ``Bool)
+    (hbitwiseC : c.venv.contains ``Nat.bitwise)
+    (hname : v.name = ``Nat.land)
+    (hvalue : v.value = .app (.const ``Nat.bitwise []) op)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.land v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      c.HasType op (.forallE .bool <| .forallE .bool .bool) ∧
+      c.IsDefEqU
+        (.lam .bool <| .app (.app op .boolFalse) (.bvar 0))
+        (.lam .bool .boolFalse) ∧
+      c.IsDefEqU
+        (.lam .bool <| .app (.app op .boolTrue) (.bvar 0))
+        (.lam .bool <| .bvar 0)) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, hopTy, hf, ht⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty hf ht
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hopTy
+  rw [hclparams, hvlctx] at hty hopTy hf ht
+  exact c.hasPrimitives.addNatLandDef c.Ewf hnat hbool hbitwiseC
+    hname hadd hwf hvuvars hty hvalue hopTy hf ht
+
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natLor.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.lor)
@@ -6887,6 +6955,41 @@ theorem checkPrimitiveDef.natLor.WF {c : VContext} {s : VState}
         · exact .throw
       · exact .throw
   · exact .throw
+
+theorem checkPrimitiveDef.natLor.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv} {op : VExpr}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hnat : c.venv.contains ``Nat) (hbool : c.venv.contains ``Bool)
+    (hbitwiseC : c.venv.contains ``Nat.bitwise)
+    (hname : v.name = ``Nat.lor)
+    (hvalue : v.value = .app (.const ``Nat.bitwise []) op)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.lor v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      c.HasType op (.forallE .bool <| .forallE .bool .bool) ∧
+      c.IsDefEqU
+        (.lam .bool <| .app (.app op .boolFalse) (.bvar 0))
+        (.lam .bool <| .bvar 0) ∧
+      c.IsDefEqU
+        (.lam .bool <| .app (.app op .boolTrue) (.bvar 0))
+        (.lam .bool .boolTrue)) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, hopTy, hf, ht⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty hf ht
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hopTy
+  rw [hclparams, hvlctx] at hty hopTy hf ht
+  exact c.hasPrimitives.addNatLorDef c.Ewf hnat hbool hbitwiseC
+    hname hadd hwf hvuvars hty hvalue hopTy hf ht
 
 end Environment
 
