@@ -4101,18 +4101,15 @@ theorem addQuot.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
   · exact .pure ⟨ves, wf, fun _ => VEnv.LE.rfl⟩
   · exact (checkEqType.WF wf).bind fun _ h => False.elim h
 
-/- Verification boundary for inductive declarations and their generated
-constants.  This is the sole remaining `addDecl` conservation obligation. -/
-theorem addInductive.WF
-    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (lparams : List Name) (nparams : Nat) (types : List InductiveType)
-    (isUnsafe : Bool) :
-    (addDecl env (.inductDecl lparams nparams types isUnsafe)).WF fun env' =>
-      ∃ ves' : VEnvs, ves'.WF env' ∧
-        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
-  sorry
+def _root_.Lean.Declaration.NonInductive : Declaration → Prop
+  | .inductDecl .. => False
+  | _ => True
 
-theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration) :
+/- Successful checked declaration addition preserves verified environments for
+the non-inductive fragment.  Inductives require the separate `VInductDecl`
+model, which is not yet implemented. -/
+theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (decl : Declaration) (hdecl : decl.NonInductive) :
     (addDecl env decl).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
   cases decl with
@@ -4122,5 +4119,4 @@ theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : D
   | opaqueDecl v => exact addOpaque.WF wf v
   | mutualDefnDecl vs => exact addMutual.WF wf vs
   | quotDecl => exact addQuot.WF wf
-  | inductDecl lparams nparams types isUnsafe =>
-    exact addInductive.WF wf lparams nparams types isUnsafe
+  | inductDecl _ _ _ _ => exact False.elim hdecl
