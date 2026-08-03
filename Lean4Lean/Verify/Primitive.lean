@@ -6826,6 +6826,7 @@ theorem checkPrimitiveDef.stringOfList.WF {c : VContext} {s : VState}
     (hcons : c.TrExprS q(List.cons (α := Char)) .listCharCons)
     (hconsTy : c.TrExprS q(Char → List Char → List Char)
       (.forallE .char <| .forallE .listChar .listChar))
+    (hstring : c.TrExprS q(String) .string)
     (hcanon : c.TrExprS q(List Char → String) (.forallE .listChar .string)) :
     M.WF c s (checkPrimitiveDef v) fun b _ => b →
       v.levelParams = [] ∧
@@ -6851,11 +6852,12 @@ theorem checkPrimitiveDef.stringOfList.WF {c : VContext} {s : VState}
           exact (checkTypeIsDefEq.WF hcons (by trivial) hconsTy).bind fun b _ _ hb => by
             split
             · have hconsTy' := hb (by assumption)
-              exact (isDefEq.WF hty hcanon).bind fun b _ _ hb => by
-                split
-                · exact .pure fun _ =>
-                    ⟨hlparams, hb (by assumption), hnilTy, hconsTy'⟩
-                · exact .throw
+              exact (ensureType.WF hstring).bind fun _ _ _ _ =>
+                (isDefEq.WF hty hcanon).bind fun b _ _ hb => by
+                  split
+                  · exact .pure fun _ =>
+                      ⟨hlparams, hb (by assumption), hnilTy, hconsTy'⟩
+                  · exact .throw
             · exact .throw
         · exact .throw
   · exact .throw

@@ -1317,6 +1317,8 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← isDefEq (← checkType q(List.nil (α := Char))) q(List Char) do fail
     -- @List.cons.{0} Char : Char → List Char → List Char
     unless ← isDefEq (← checkType q(List.cons (α := Char))) q(Char → List Char → List Char) do fail
+    -- String : Type (also exposes its translation to the verifier)
+    _ ← ensureType q(String)
     -- String.ofList : List Char → String
     unless ← isDefEq v.type q(List Char → String) do fail
   | _ => return false
