@@ -9,6 +9,29 @@ private theorem translated_closed
   obtain ⟨_, heWF⟩ := h.wf wf.ordered (Us := []) (Δ := []) trivial
   exact (heWF.hasType.1.closedN' wf.ordered.closed trivial).1
 
+private theorem natLitToConstructor_closed (n : Nat) :
+    (Expr.natLitToConstructor n).looseBVarRange' = 0 := by
+  cases n <;> simp [Expr.natLitToConstructor, Expr.natZero, Expr.natSucc,
+    Expr.looseBVarRange']
+
+private theorem translated_lifted_natConstructor
+    {env : VEnv} (hctors : VEnv.HasNatBoolConstructors env)
+    (n : Nat) (Δ : VLCtx) :
+    TrExprS env [] Δ
+      ((Expr.natLitToConstructor n).liftLooseBVars 0 1) (.natLit n) := by
+  have hnLit := hctors.natLitS n (Us := []) (Δ := Δ)
+  cases hnLit.1 with
+  | lit _ hnS =>
+    have hlift : (Expr.natLitToConstructor n).liftLooseBVars 0 1 =
+        Expr.natLitToConstructor n := by
+      rw [Expr.liftLooseBVars_eq]
+      exact Expr.liftLooseBVars_eq_self (e := Expr.natLitToConstructor n)
+        (s := 0) (d := 1) (by
+        rw [natLitToConstructor_closed]
+        omega)
+    rw [hlift]
+    simpa [Literal.toConstructor] using hnS
+
 /-- The exact source expression obtained by instantiating the two binders of the
 closed top-level division equation. -/
 def natDivTopRhsInst (a b : Nat) : Expr :=
@@ -237,8 +260,10 @@ theorem VEnv.natDivTopThen_beta
     (happT : env.HasType 0 [] (.app tV proof) R) :
     ∃ propV bodyV,
       tV = .lam propV bodyV ∧
+      env.IsType 0 [] propV ∧
       TrExprS env [] [(none, .vlam propV)]
         (natDivTopThenBodyInst a b) bodyV ∧
+      env.HasType 0 [] proof propV ∧
       env.IsDefEqU 0 [] (.app tV proof) (bodyV.inst proof) := by
   have htSLam : TrExprS env [] []
       (.lam `_ (natDivTopPropInst b) (natDivTopThenBodyInst a b) .default)
@@ -258,8 +283,164 @@ theorem VEnv.natDivTopThen_beta
     obtain ⟨_, hbodyWF⟩ := hbodyS.wf wf.ordered
       (Us := []) (Δ := [(none, .vlam propV)])
       ⟨trivial, nofun, hdomType⟩
-    exact ⟨propV, bodyV, rfl, hbodyS,
+    exact ⟨propV, bodyV, rfl, hdomType, hbodyS, hproofT',
       ⟨_, VEnv.IsDefEq.beta hbodyWF.hasType.1 hproofT'⟩⟩
+
+/-- Decompose the retained true-branch body into the six translations that
+form its `Nat.div.go` call. -/
+theorem VEnv.natDivTopThenBody_shape
+    {env : VEnv} {propV bodyV : VExpr} (a b : Nat)
+    (hbodyS : TrExprS env [] [(none, .vlam propV)]
+      (natDivTopThenBodyInst a b) bodyV) :
+    ∃ goV yV hyV fuelV xV hfuelV,
+      bodyV = .app (.app (.app (.app (.app goV yV) hyV) fuelV) xV) hfuelV ∧
+      TrExprS env [] [(none, .vlam propV)] q(Nat.div.go) goV ∧
+      TrExprS env [] [(none, .vlam propV)]
+        ((Expr.natLitToConstructor b).liftLooseBVars 0 1) yV ∧
+      TrExprS env [] [(none, .vlam propV)] (.bvar 0) hyV ∧
+      TrExprS env [] [(none, .vlam propV)]
+        (mkApp q(Nat.succ)
+          ((Expr.natLitToConstructor a).liftLooseBVars 0 1)) fuelV ∧
+      TrExprS env [] [(none, .vlam propV)]
+        ((Expr.natLitToConstructor a).liftLooseBVars 0 1) xV ∧
+      TrExprS env [] [(none, .vlam propV)]
+        (mkApp q(Nat.lt_succ_self)
+          ((Expr.natLitToConstructor a).liftLooseBVars 0 1)) hfuelV := by
+  simp only [natDivTopThenBodyInst, mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
+  cases hbodyS with
+  | app h₄T hfuelT h₄ hfuelS =>
+    rename_i A₄ B₄ hfuelV
+    cases h₄ with
+    | app h₃T hxT h₃ hxS =>
+      rename_i A₃ B₃ xV
+      cases h₃ with
+      | app h₂T hfuelArgT h₂ hfuelArgS =>
+        rename_i A₂ B₂ fuelV
+        cases h₂ with
+        | app h₁T hhyT h₁ hhyS =>
+          rename_i A₁ B₁ hyV
+          cases h₁ with
+          | app hgoT hyT hgoS hyS =>
+            rename_i goV A₀ B₀ yV
+            exact ⟨goV, yV, hyV, fuelV, xV, hfuelV, rfl,
+              hgoS, hyS, hhyS, hfuelArgS, hxS, hfuelS⟩
+
+/-- Normalize the non-proof components of a retained true-branch body. -/
+theorem VEnv.natDivTopThenBody_components
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {propV bodyV : VExpr} (hpropType : env.IsType 0 [] propV)
+    (a b : Nat)
+    (hbodyS : TrExprS env [] [(none, .vlam propV)]
+      (natDivTopThenBodyInst a b) bodyV) :
+    ∃ yV fuelV xV hfuelV,
+      bodyV = .app (.app (.app (.app (.app (.const ``Nat.div.go []) yV)
+        (.bvar 0)) fuelV) xV) hfuelV ∧
+      env.IsDefEqU 0 [propV] yV (.natLit b) ∧
+      env.IsDefEqU 0 [propV] fuelV (.natLit (a + 1)) ∧
+      env.IsDefEqU 0 [propV] xV (.natLit a) := by
+  obtain ⟨goV, yV, hyV, fuelV, xV, hfuelV, rfl,
+    hgoS, hyS, hhyS, hfuelS, hxS, hlastS⟩ :=
+    VEnv.natDivTopThenBody_shape a b hbodyS
+  have hgoV : goV = .const ``Nat.div.go [] := by
+    cases hgoS with
+    | const _ hus _ =>
+      simp at hus
+      subst hus
+      rfl
+  subst goV
+  have hhyV : hyV = .bvar 0 := by
+    cases hhyS with
+    | bvar hfind =>
+      simp [VLCtx.find?, VLCtx.next] at hfind
+      rcases hfind with ⟨rfl, rfl⟩
+      rfl
+  subst hyV
+  have hctx : VLCtx.IsDefEq env 0
+      [(none, .vlam propV)] [(none, .vlam propV)] :=
+    .refl wf ⟨trivial, nofun, hpropType⟩
+  have hyCanon := translated_lifted_natConstructor hctors b
+    [(none, .vlam propV)]
+  have hxCanon := translated_lifted_natConstructor hctors a
+    [(none, .vlam propV)]
+  have hsucc := hctors.natSuccS
+    (Us := []) (Δ := [(none, .vlam propV)])
+  have haT := (hctors.natLitS a
+    (Us := []) (Δ := [(none, .vlam propV)])).2
+  have hfuelCanon : TrExprS env [] [(none, .vlam propV)]
+      (mkApp q(Nat.succ)
+        ((Expr.natLitToConstructor a).liftLooseBVars 0 1))
+      (.natLit (a + 1)) := by
+    simpa [VExpr.natLit, Nat.add_comm] using
+      (TrExprS.app hsucc.2 haT hsucc.1 hxCanon)
+  exact ⟨yV, fuelV, xV, hfuelV, rfl,
+    TrExprS.uniq (Us := []) wf hctx hyS hyCanon,
+    TrExprS.uniq (Us := []) wf hctx hfuelS hfuelCanon,
+    TrExprS.uniq (Us := []) wf hctx hxS hxCanon⟩
+
+/-- Instantiate the normalized true-branch body, retaining its translated
+fuel proof as the second proof argument of `VExpr.natDivGo`. -/
+theorem VEnv.natDivTopThenBody_inst
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {propV bodyV proof : VExpr}
+    (hpropType : env.IsType 0 [] propV)
+    (hproofT : env.HasType 0 [] proof propV)
+    (a b : Nat)
+    (hbodyS : TrExprS env [] [(none, .vlam propV)]
+      (natDivTopThenBodyInst a b) bodyV) :
+    ∃ hfuel, env.IsDefEqU 0 [] (bodyV.inst proof)
+      (.natDivGo b (a + 1) a proof hfuel) := by
+  obtain ⟨yV, fuelV, xV, hfuelV, hbody,
+    hyEq, hfuelEq, hxEq⟩ :=
+    VEnv.natDivTopThenBody_components wf hctors hpropType a b hbodyS
+  subst bodyV
+  obtain ⟨_, hbodyWF⟩ := hbodyS.wf wf.ordered
+    (Us := []) (Δ := [(none, .vlam propV)])
+    ⟨trivial, nofun, hpropType⟩
+  have hΓ : OnCtx [propV] (env.IsType 0) := ⟨trivial, hpropType⟩
+  obtain ⟨_, _, h₄T, hlastT⟩ := hbodyWF.hasType.1.app_inv wf.ordered hΓ
+  obtain ⟨_, _, h₃T, hxT⟩ := h₄T.app_inv wf.ordered hΓ
+  obtain ⟨_, _, h₂T, hfuelT⟩ := h₃T.app_inv wf.ordered hΓ
+  obtain ⟨_, _, h₁T, hhyT⟩ := h₂T.app_inv wf.ordered hΓ
+  obtain ⟨_, _, hgoT, hyT⟩ := h₁T.app_inv wf.ordered hΓ
+  have h₁Eq := hyEq.app_arg wf hΓ hgoT hyT
+  have h₂Eq := h₁Eq.app_same wf hΓ h₁T hhyT
+  have h₂CanonT := (h₂Eq.of_l wf hΓ h₂T).hasType.2
+  have h₃ArgEq := hfuelEq.app_arg wf hΓ h₂CanonT hfuelT
+  have h₃Same := h₂Eq.app_same wf hΓ h₂T hfuelT
+  have h₃Eq := h₃Same.trans wf hΓ h₃ArgEq
+  have h₃CanonT := (h₃Eq.of_l wf hΓ h₃T).hasType.2
+  have h₄ArgEq := hxEq.app_arg wf hΓ h₃CanonT hxT
+  have h₄Same := h₃Eq.app_same wf hΓ h₃T hxT
+  have h₄Eq := h₄Same.trans wf hΓ h₄ArgEq
+  have hbodyEq := h₄Eq.app_same wf hΓ h₄T hlastT
+  have hrightT := (hbodyEq.of_l wf hΓ hbodyWF.hasType.1).hasType.2
+  obtain ⟨u, hpropSort⟩ := hpropType
+  have hlamEq : env.IsDefEqU 0 []
+      (.lam propV
+        (.app (.app (.app (.app (.app (.const ``Nat.div.go []) yV)
+          (.bvar 0)) fuelV) xV) hfuelV))
+      (.lam propV
+        (.app (.app (.app (.app (.app (.const ``Nat.div.go []) (.natLit b))
+          (.bvar 0)) (.natLit (a + 1))) (.natLit a)) hfuelV)) := by
+    obtain ⟨T, hbodyEq⟩ := hbodyEq
+    exact ⟨.forallE propV T, .lamDF hpropSort hbodyEq⟩
+  have hinst := VEnv.IsDefEqU.lam_instU wf trivial hlamEq hpropSort
+    hbodyWF.hasType.1 hrightT hproofT
+  have hbClosed : (VExpr.natLit b).ClosedN :=
+    ((hctors.natLitS b (Us := []) (Δ := [])).2.closedN'
+      wf.ordered.closed trivial).1
+  have haClosed : (VExpr.natLit a).ClosedN :=
+    ((hctors.natLitS a (Us := []) (Δ := [])).2.closedN'
+      wf.ordered.closed trivial).1
+  have hfuelClosed : (VExpr.natLit (a + 1)).ClosedN :=
+    ((hctors.natLitS (a + 1) (Us := []) (Δ := [])).2.closedN'
+      wf.ordered.closed trivial).1
+  exact ⟨hfuelV.inst proof, by
+    simpa [VExpr.natDivGo, VExpr.inst, VExpr.instVar,
+      hbClosed.instN_eq, haClosed.instN_eq, hfuelClosed.instN_eq]
+      using hinst⟩
 
 /-- Beta-reduce the false top-level division branch to zero. -/
 theorem VEnv.natDivTopElse_beta
@@ -294,5 +475,57 @@ theorem VEnv.natDivTopElse_beta
       subst hus
       exact ⟨_, by simpa [VExpr.inst] using
         (VEnv.IsDefEq.beta hbodyWF.hasType.1 hproofT')⟩
+
+/-- The checked closed top-level division equation has exactly the semantic
+shape required by `ReflectsNatNatNat.of_divCore_equations`. -/
+theorem VEnv.natDivTop_semantics
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    (cert : VEnv.NatLESelectorCertificate env)
+    {divFn : Expr} {divV topL topR : VExpr}
+    (hdivFn : TrExprS env [] [] divFn divV)
+    (hdivFnClosed : divFn.looseBVarRange' = 0)
+    (hdivT : env.HasType 0 [] divV
+      (.forallE .nat <| .forallE .nat .nat))
+    (hl : TrExprS env [] [] (natDivTopEquation divFn).1 topL)
+    (hr : TrExprS env [] [] (natDivTopEquation divFn).2 topR)
+    (heq : env.IsDefEqU 0 [] topL topR) :
+    ∀ a b,
+      if 0 < b then
+        ∃ hy hfuel, env.IsDefEqU 0 []
+          (.app (.app divV (.natLit a)) (.natLit b))
+          (.natDivGo b (a + 1) a hy hfuel)
+      else
+        env.IsDefEqU 0 []
+          (.app (.app divV (.natLit a)) (.natLit b)) .natZero := by
+  intro a b
+  obtain ⟨rhs, hrhs, htop⟩ := VEnv.instantiate_natDivTop_equation
+    wf hctors hdivFn hdivFnClosed hl hr heq a b
+  obtain ⟨pV, bleV, HV, tV, eV, hpS, hbleS, hHS, htS, heS, hselect⟩ :=
+    VEnv.select_natDivTop_rhs wf hprim hctors hbleC cert a b hrhs
+  have haT := (hctors.natLitS a (Us := []) (Δ := [])).2
+  have hbT := (hctors.natLitS b (Us := []) (Δ := [])).2
+  have hcallT : env.HasType 0 []
+      (.app (.app divV (.natLit a)) (.natLit b)) .nat :=
+    .app (.app hdivT haT) hbT
+  have hrhsT := (htop.of_l wf trivial hcallT).hasType.2
+  split
+  · rename_i hb
+    rw [if_pos hb] at hselect
+    obtain ⟨proof, hselect⟩ := hselect
+    have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
+    obtain ⟨propV, bodyV, rfl, hpropType, hbodyS, hproofT, hbeta⟩ :=
+      VEnv.natDivTopThen_beta wf a b htS hbranchT
+    obtain ⟨hfuel, hbody⟩ := VEnv.natDivTopThenBody_inst
+      wf hctors hpropType hproofT a b hbodyS
+    exact ⟨proof, hfuel, htop.trans wf trivial hselect |>.trans wf trivial hbeta
+      |>.trans wf trivial hbody⟩
+  · rename_i hb
+    rw [if_neg hb] at hselect
+    obtain ⟨proof, hselect⟩ := hselect
+    have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
+    have hzero := VEnv.natDivTopElse_beta wf b heS hbranchT
+    exact htop.trans wf trivial hselect |>.trans wf trivial hzero
 
 end Lean4Lean.Environment
