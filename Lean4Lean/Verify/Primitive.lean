@@ -5718,14 +5718,15 @@ theorem Reflection.checkITE.WF.checked {c : VContext} {s : VState}
         .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0) falseR')
     (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
     M.WF c s (r.checkITE fail) fun _ _ =>
-      VEnv.ReflectionITEChecked c.venv r := by
+      c.HasType ite' iteTy' ∧ VEnv.ReflectionITEChecked c.venv r := by
   refine (Reflection.checkITE.WF hite hite_unique hiteTy htrueL htrueR
     hfalseL hfalseR (fun _ => hfail)).mono fun _ _ _ h => ?_
-  rcases h with ⟨_, hteq, hfeq⟩
+  rcases h with ⟨hiteHas, hteq, hfeq⟩
   change TrExprS c.venv c.lparams c.vlctx _ _ at htrueL htrueR hfalseL hfalseR
   change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hteq hfeq
   rw [hlparams, hvlctx] at htrueL htrueR hfalseL hfalseR hteq hfeq
-  exact ⟨_, _, _, _, htrueL, htrueR, hteq, hfalseL, hfalseR, hfeq⟩
+  exact ⟨hiteHas, _, _, _, _, htrueL, htrueR, hteq,
+    hfalseL, hfalseR, hfeq⟩
 
 theorem Reflection.checkNatDITE.WF {c : VContext} {s : VState}
     {r : Reflection} {fail : ∀ {α}, M α}
@@ -5770,15 +5771,18 @@ theorem Reflection.checkNatDITE.WF {c : VContext} {s : VState}
        mkApp (.bvar 1) (mkApp2 r.ofFalse (.bvar 3) (.bvar 0))) falseR')
     (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
     M.WF c s (r.checkNatDITE fail) fun _ _ =>
+      c.HasType dite' diteTy' ∧
+      c.HasType ofTrue' ofTrueTy' ∧
+      c.HasType ofFalse' ofFalseTy' ∧
       c.IsDefEqU trueL' trueR' ∧ c.IsDefEqU falseL' falseR' := by
   simp only [Reflection.checkNatDITE, pure_bind]
   refine checkTypeIsDefEqGuard.bind_WF hnot hnot_unique hnotTy hfail fun _ _ => ?_
-  refine checkTypeIsDefEqGuard.bind_WF hdite hdite_unique hditeTy hfail fun _ _ => ?_
-  refine checkTypeIsDefEqGuard.bind_WF hofTrue hofTrue_unique hofTrueTy hfail fun _ _ => ?_
-  refine checkTypeIsDefEqGuard.bind_WF hofFalse hofFalse_unique hofFalseTy hfail fun _ _ => ?_
+  refine checkTypeIsDefEqGuard.bind_WF hdite hdite_unique hditeTy hfail fun _ hditeHas => ?_
+  refine checkTypeIsDefEqGuard.bind_WF hofTrue hofTrue_unique hofTrueTy hfail fun _ hofTrueHas => ?_
+  refine checkTypeIsDefEqGuard.bind_WF hofFalse hofFalse_unique hofFalseTy hfail fun _ hofFalseHas => ?_
   refine isDefEqGuard.bind_WF htrueL htrueR hfail fun _ htrueEq => ?_
   exact (isDefEqGuard.WF hfalseL hfalseR hfail).mono fun _ _ _ hfalseEq =>
-    ⟨htrueEq, hfalseEq⟩
+    ⟨hditeHas, hofTrueHas, hofFalseHas, htrueEq, hfalseEq⟩
 
 /-- The two dependent-selector equations retained from
 `Reflection.checkNatDITE`. -/
@@ -5862,15 +5866,19 @@ theorem Reflection.checkNatDITE.WF.checked {c : VContext} {s : VState}
        mkApp (.bvar 1) (mkApp2 r.ofFalse (.bvar 3) (.bvar 0))) falseR')
     (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
     M.WF c s (r.checkNatDITE fail) fun _ _ =>
+      c.HasType dite' diteTy' ∧
+      c.HasType ofTrue' ofTrueTy' ∧
+      c.HasType ofFalse' ofFalseTy' ∧
       VEnv.ReflectionNatDITEChecked c.venv r := by
   refine (Reflection.checkNatDITE.WF hnot hnot_unique hnotTy hdite hdite_unique
     hditeTy hofTrue hofTrue_unique hofTrueTy hofFalse hofFalse_unique hofFalseTy
     htrueL htrueR hfalseL hfalseR hfail).mono fun _ _ _ h => ?_
-  rcases h with ⟨hteq, hfeq⟩
+  rcases h with ⟨hditeHas, hofTrueHas, hofFalseHas, hteq, hfeq⟩
   change TrExprS c.venv c.lparams c.vlctx _ _ at htrueL htrueR hfalseL hfalseR
   change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hteq hfeq
   rw [hlparams, hvlctx] at htrueL htrueR hfalseL hfalseR hteq hfeq
-  exact ⟨_, _, _, _, htrueL, htrueR, hteq, hfalseL, hfalseR, hfeq⟩
+  exact ⟨hditeHas, hofTrueHas, hofFalseHas,
+    _, _, _, _, htrueL, htrueR, hteq, hfalseL, hfalseR, hfeq⟩
 
 theorem Reflection.checkNatDITE.bind_WF {c : VContext} {s : VState}
     {r : Reflection} {fail : ∀ {α}, M α} {next : M β} {Q}
@@ -5920,7 +5928,8 @@ theorem Reflection.checkNatDITE.bind_WF {c : VContext} {s : VState}
     M.WF c s (do _ ← r.checkNatDITE fail; next) Q := by
   exact (Reflection.checkNatDITE.WF hnot hnot_unique hnotTy hdite hdite_unique
     hditeTy hofTrue hofTrue_unique hofTrueTy hofFalse hofFalse_unique hofFalseTy
-    htrueL htrueR hfalseL hfalseR hfail).bind fun _ s' _ h => hnext s' h
+    htrueL htrueR hfalseL hfalseR hfail).bind fun _ s' _ h =>
+      hnext s' ⟨h.2.2.2.1, h.2.2.2.2⟩
 
 theorem Condition.check.reflectNatNat_ite.WF {c : VContext} {s : VState}
     {cond : Condition} {asBool : Expr} {reflect : Reflection} {proof : Expr}
@@ -6151,8 +6160,12 @@ theorem Condition.natLE.check.WF
     (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
     M.WF c s (Condition.natLE.check fail (ite := true) (dite := true))
       fun _ _ =>
-        VEnv.ReflectionITEChecked c.venv Reflection.defn₁ ∧
-        VEnv.ReflectionNatDITEChecked c.venv Reflection.defn₁ ∧
+        (c.HasType ite' iteTy' ∧
+          VEnv.ReflectionITEChecked c.venv Reflection.defn₁) ∧
+        (c.HasType dite' diteTy' ∧
+          c.HasType ofTrue' ofTrueTy' ∧
+          c.HasType ofFalse' ofFalseTy' ∧
+          VEnv.ReflectionNatDITEChecked c.venv Reflection.defn₁) ∧
         c.IsDefEqU reflectFn' dec' := by
   apply Condition.check.reflectNatNat_ite_dite.WF (cond := Condition.natLE)
     (asBool := q(Nat.ble)) (reflect := Reflection.defn₁)
