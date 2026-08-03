@@ -1410,6 +1410,89 @@ theorem VEnv.select_natDivGo_rhs
         hhfuelClosed.instN_eq (Nat.zero_le _),
         hrditeClosed.instN_eq (Nat.zero_le _)] using hselect⟩
 
+theorem VEnv.natDivGoElse_canonical
+    {env : VEnv} {yTy hyTy fuelTy xTy hTy eV : VExpr}
+    (heS : TrExprS env []
+      [(none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy),
+        (none, .vlam yTy)]
+      (natDivGoElse (.bvar 4) (.bvar 1)) eV) :
+    ∃ propV, eV = .lam propV .natZero := by
+  simp only [natDivGoElse, Expr.lam0] at heS
+  cases heS with
+  | lam hpropType hpS hbodyS =>
+    rename_i propV bodyV
+    cases hbodyS with
+    | const _ hus _ =>
+      simp at hus
+      subst hus
+      exact ⟨propV, rfl⟩
+
+/-- The selected false recursive branch beta-reduces to zero after the five
+outer equation binders have been instantiated. -/
+theorem VEnv.natDivGoElse_beta
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {yTy hyTy fuelTy xTy hTy eV hy hfuel proof R A B : VExpr}
+    (heS : TrExprS env []
+      [(none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy),
+        (none, .vlam yTy)]
+      (natDivGoElse (.bvar 4) (.bvar 1)) eV)
+    (y fuel x : Nat)
+    (hhyT : env.HasType 0 [] hy A)
+    (hhfuelT : env.HasType 0 [] hfuel B)
+    (happT : env.HasType 0 []
+      (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof) R) :
+    env.IsDefEqU 0 []
+      (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof) .natZero := by
+  obtain ⟨propV, rfl⟩ := VEnv.natDivGoElse_canonical heS
+  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
+  have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
+  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
+  have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
+  have hhyClosed := (hhyT.closedN' wf.ordered.closed trivial).1
+  have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
+  have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
+  have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
+  have hzeroT := (hctors.natZeroS (Us := []) (Δ := [])).2
+  have hzeroClosed := (hzeroT.closedN' wf.ordered.closed trivial).1
+  have happT' := happT
+  simp [natDivGoTargetInst, VExpr.inst, VExpr.instVar,
+    hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
+    hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
+    hfuelClosed.liftN_eq (Nat.zero_le _),
+    hfuelClosed.instN_eq (Nat.zero_le _),
+    hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
+    hhfuelClosed.instN_eq (Nat.zero_le _),
+    hzeroClosed.instN_eq (Nat.zero_le _)] at happT'
+  obtain ⟨_, _, hlamT, hproofT⟩ := happT'.app_inv wf.ordered trivial
+  obtain ⟨hpropType, hbodyWF⟩ := hlamT.lam_inv wf trivial
+  obtain ⟨u, hpropT⟩ := hpropType
+  obtain ⟨bodyTy, hbodyT⟩ := hbodyWF
+  have hlamCanonT : env.HasType 0 []
+      (.lam
+        (((((propV.inst (.natLit y) 4).inst hy 3).inst
+          (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
+        .natZero)
+      (.forallE
+        (((((propV.inst (.natLit y) 4).inst hy 3).inst
+          (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
+        bodyTy) := .lam hpropT hbodyT
+  have hlamTyEq := hlamT.uniqU wf trivial hlamCanonT
+  obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
+  have hproofT' := hproofT.defeqU_r wf trivial hdomEq.toU
+  exact ⟨_, by
+    simpa [natDivGoTargetInst, VExpr.inst, VExpr.instVar,
+      hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
+      hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
+      hfuelClosed.liftN_eq (Nat.zero_le _),
+      hfuelClosed.instN_eq (Nat.zero_le _),
+      hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
+      hhfuelClosed.instN_eq (Nat.zero_le _),
+      hzeroClosed.instN_eq (Nat.zero_le _)] using
+        (VEnv.IsDefEq.beta hbodyT hproofT')⟩
+
 /-- Transport the final fuel proof of a canonical closed `Nat.div.go` call
 to the corresponding final binder of the checked left equation. -/
 theorem VEnv.align_natDivGo_final_proof
