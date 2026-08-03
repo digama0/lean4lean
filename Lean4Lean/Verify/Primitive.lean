@@ -6912,6 +6912,142 @@ theorem checkPrimitiveDef.natPred.WF {c : VContext} {s : VState}
       · exact .throw
   · exact .throw
 
+/-- Staged verification for `Nat.pred`, using the checked body type to build
+the equation translations required by the primitive checker. -/
+theorem checkPrimitiveDef.natPred.WF_typed {c : VContext} {s : VState}
+    (hname : v.name = ``Nat.pred)
+    (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS v.type ty')
+    (hvalue : c.TrExprS v.value value')
+    (hvalueT : c.HasType value' ty') :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b →
+      v.levelParams = [] ∧
+      c.venv.contains ``Nat ∧
+      c.venv.IsDefEqU c.lparams.length [] ty' (.forallE .nat .nat) ∧
+      c.venv.IsDefEqU c.lparams.length []
+        (.app value' .natZero) .natZero ∧
+      c.venv.IsDefEqU c.lparams.length []
+        (.lam .nat <| .app value' (.app .natSucc (.bvar 0)))
+        (.lam .nat <| .bvar 0) := by
+  simp only [checkPrimitiveDef, hname]
+  refine getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  split
+  · rename_i hdeps
+    have hdeps' : c.env.contains ``Nat = true ∧
+        v.levelParams.isEmpty = true := by simpa using hdeps
+    have hlevels : v.levelParams = [] := by simpa using hdeps'.2
+    have hnat : c.venv.contains ``Nat :=
+      Environment.VContext.contains_safe_primitive c hdeps'.1 (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    have hvalue0 := hvalue
+    change TrExprS c.venv c.lparams c.vlctx v.value value' at hvalue0
+    rw [hvlctx] at hvalue0
+    have hvalueT0 := hvalueT
+    change c.venv.HasType c.lparams.length c.vlctx.toCtx value' ty' at hvalueT0
+    rw [hvlctx] at hvalueT0
+    let Δ1 : VLCtx := [(none, .vlam .nat)]
+    have hnat0 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams []
+    have hnat1 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams Δ1
+    have hcanon0 : TrExprS c.venv c.lparams [] q(Nat → Nat)
+        (.forallE .nat .nat) :=
+      .forallE hnat0.2 hnat1.2 hnat0.1 hnat1.1
+    have hcanon : c.TrExprS q(Nat → Nat) (.forallE .nat .nat) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact hcanon0
+    simp only [pure_bind]
+    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+      by_cases hb : b = true
+      · rw [if_pos hb]
+        have htyEq0 := htyEq hb
+        change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx ty'
+          (.forallE .nat .nat) at htyEq0
+        rw [hvlctx] at htyEq0
+        have hvalueCanonT : c.venv.HasType c.lparams.length [] value'
+            (.forallE .nat .nat) :=
+          hvalueT0.defeqU_r c.Ewf trivial htyEq0
+        have hzS := TrExprS.natZero c.hasPrimitives hnat
+          (Us := c.lparams) (Δ := [])
+        have hsS := TrExprS.natSucc c.hasPrimitives hnat
+          (Us := c.lparams) (Δ := Δ1)
+        have hz₁0 : TrExprS c.venv c.lparams []
+            (mkApp v.value q(Nat.zero)) (.app value' .natZero) :=
+          .app hvalueCanonT hzS.2 hvalue0 hzS.1
+        have hz₁ : c.TrExprS (mkApp v.value q(Nat.zero))
+            (.app value' .natZero) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]
+          exact hz₁0
+        have hz₂ : c.TrExprS q(Nat.zero) .natZero := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]
+          exact hzS.1
+        have hv1 : TrExprS c.venv c.lparams Δ1 v.value value' :=
+          TrExprS.closed_weak c.Ewf hvalue0 (.skip (.vlam .nat) .refl)
+        have hv1T := hvalueCanonT.weak0 c.Ewf (Γ := [.nat])
+        have hx1S : TrExprS c.venv c.lparams Δ1 (.bvar 0) (.bvar 0) :=
+          .bvar (A := .nat) (by simp [Δ1, VLCtx.find?, VLCtx.next,
+            VLocalDecl.value, VLocalDecl.type,
+            VExpr.liftN, VExpr.lift, VExpr.nat])
+        have hx1T : c.venv.HasType c.lparams.length [.nat]
+            (.bvar 0) .nat := by
+          simpa [VExpr.lift] using
+            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
+              (A := .nat) (i := 0) Lookup.zero)
+        have hsxS : TrExprS c.venv c.lparams Δ1
+            (mkApp q(Nat.succ) (.bvar 0))
+            (.app .natSucc (.bvar 0)) :=
+          .app hsS.2 hx1T hsS.1 hx1S
+        have hsxT : c.venv.HasType c.lparams.length [.nat]
+            (.app .natSucc (.bvar 0)) .nat := .app hsS.2 hx1T
+        have hsBodyS : TrExprS c.venv c.lparams Δ1
+            (mkApp v.value (mkApp q(Nat.succ) (.bvar 0)))
+            (.app value' (.app .natSucc (.bvar 0))) :=
+          .app hv1T hsxT hv1 hsxS
+        have hs₁0 : TrExprS c.venv c.lparams []
+            (.lam0 q(Nat) <| mkApp v.value
+              (mkApp q(Nat.succ) (.bvar 0)))
+            (.lam .nat <| .app value' (.app .natSucc (.bvar 0))) :=
+          .lam hnat0.2 hnat0.1 hsBodyS
+        have hs₁ : c.TrExprS
+            (.lam0 q(Nat) <| mkApp v.value
+              (mkApp q(Nat.succ) (.bvar 0)))
+            (.lam .nat <| .app value' (.app .natSucc (.bvar 0))) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]
+          exact hs₁0
+        have hs₂0 : TrExprS c.venv c.lparams []
+            (.lam0 q(Nat) <| .bvar 0) (.lam .nat <| .bvar 0) :=
+          .lam hnat0.2 hnat0.1 hx1S
+        have hs₂ : c.TrExprS (.lam0 q(Nat) <| .bvar 0)
+            (.lam .nat <| .bvar 0) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]
+          exact hs₂0
+        exact (isDefEq.WF hz₁ hz₂).bind fun z _ _ hzEq => by
+          by_cases hzb : z = true
+          · rw [if_pos hzb]
+            have hzEq0 := hzEq hzb
+            change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hzEq0
+            rw [hvlctx] at hzEq0
+            exact (isDefEq.WF hs₁ hs₂).bind fun q _ _ hsEq => by
+              by_cases hsb : q = true
+              · rw [if_pos hsb]
+                have hsEq0 := hsEq hsb
+                change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hsEq0
+                rw [hvlctx] at hsEq0
+                exact .pure fun _ =>
+                  ⟨hlevels, hnat, htyEq0, hzEq0, hsEq0⟩
+              · rw [if_neg hsb]
+                exact .throw
+          · rw [if_neg hzb]
+            exact .throw
+      · rw [if_neg hb]
+        exact .throw
+  · exact .throw
+
 theorem checkPrimitiveDef.natPred.WF.conservesHasPrimitives
     {c : VContext} {s : VState} {src : DefinitionVal}
     {v : VDefVal} {env' : VEnv}
