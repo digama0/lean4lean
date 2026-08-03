@@ -103,6 +103,42 @@ private theorem ConstMap.find?_addMutualDefinitions
       · exact .inr ⟨v, v', by simp, by simp, hR, hn, hci.symm⟩
     · exact .inr ⟨w, w', by simp [hw], by simp [hw'], hRw, hn, hci⟩
 
+private theorem ConstMap.find?_addMutualOpaqueHeaders
+    {C : ConstMap} {vs : List DefinitionVal} {name : Name} {ci : ConstantInfo}
+    (hC : C.WF) (hfresh : ConstMap.MutualFresh C vs)
+    (h : (ConstMap.addMutualOpaqueHeaders C vs).find? name = some ci) :
+    C.find? name = some ci ∨
+      ∃ v, v ∈ vs ∧ v.name = name ∧ ci = .opaqueInfo (mutualOpaqueHeader v) := by
+  induction vs generalizing C with
+  | nil =>
+    left
+    simpa [ConstMap.addMutualOpaqueHeaders] using h
+  | cons v vs ih =>
+    rcases hfresh with ⟨hfresh, hnodup⟩
+    have hnone := hfresh v (by simp)
+    have hnodupPair := List.nodup_cons.mp (show
+      (v.name :: vs.map (fun v => v.name)).Nodup by simpa using hnodup)
+    have hC' := hC.insert v.name (.opaqueInfo (mutualOpaqueHeader v)) hnone
+    have hfresh' : ConstMap.MutualFresh
+        (C.insert v.name (.opaqueInfo (mutualOpaqueHeader v))) vs := by
+      refine ⟨?_, hnodupPair.2⟩
+      intro w hw
+      rw [hC.find?_insert]
+      split
+      · rename_i heq
+        have hmem : w.name ∈ vs.map (fun x => x.name) :=
+          List.mem_map.mpr ⟨w, hw, rfl⟩
+        exact (hnodupPair.1 ((LawfulBEq.eq_of_beq heq).symm ▸ hmem)).elim
+      · exact hfresh w (by simp [hw])
+    have h' : (ConstMap.addMutualOpaqueHeaders
+        (C.insert v.name (.opaqueInfo (mutualOpaqueHeader v))) vs).find? name = some ci := by
+      simpa [ConstMap.addMutualOpaqueHeaders] using h
+    rcases ih hC' hfresh' h' with hold | ⟨w, hw, hn, hci⟩
+    · rcases ConstMap.find?_insert_cases hC hold with hold | ⟨hn, hci⟩
+      · exact .inl hold
+      · exact .inr ⟨v, by simp, hn, hci.symm⟩
+    · exact .inr ⟨w, by simp [hw], hn, hci⟩
+
 theorem TrConstant.sf_mono (hsf : safety ≤ safety')
     (H : TrConstant safety' env ci ci') : TrConstant safety env ci ci' :=
   ⟨safety.le_trans hsf H.1, H.2⟩
@@ -181,6 +217,49 @@ private theorem Aligned.addMutualHeaders
       simpa [ConstMap.addMutualDefinitions] using
         ih H' hfresh' (hbase.trans (VEnv.addConst_le hhead)) hadd
 
+private theorem Aligned.addMutualOpaqueHeaders
+    (H : Aligned safety C env)
+    (hrel : List.Forall₂ (fun v v' =>
+      TrConstVal safety base (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs')
+    (hfresh : ConstMap.MutualFresh C vs)
+    (hbase : base ≤ env)
+    (hadd : env.addMutualHeaders vs' = some headers) :
+    Aligned safety (ConstMap.addMutualOpaqueHeaders C vs) headers := by
+  induction hrel generalizing C env headers with
+  | nil =>
+    simp [VEnv.addMutualHeaders] at hadd
+    cases hadd
+    simpa [ConstMap.addMutualOpaqueHeaders] using H
+  | @cons v v' vs vs' htr hrel ih =>
+    rcases hfresh with ⟨hfresh, hnodup⟩
+    have hnone := hfresh v (by simp)
+    have hnodupPair := List.nodup_cons.mp (show
+      (v.name :: vs.map (fun v => v.name)).Nodup by simpa using hnodup)
+    cases hhead : env.addConst v'.name v'.toVConstant with
+    | none => simp [VEnv.addMutualHeaders, hhead] at hadd
+    | some env' =>
+      simp [VEnv.addMutualHeaders, hhead] at hadd
+      have hname : v.name = v'.name := by simpa using htr.2
+      have hhead' : env.addConst v.name v'.toVConstant = some env' := by
+        rw [hname]
+        exact hhead
+      have H' : Aligned safety
+          (C.insert v.name (.opaqueInfo (mutualOpaqueHeader v))) env' :=
+        H.const hnone (htr.1.mono hbase) hhead' rfl
+      have hfresh' : ConstMap.MutualFresh
+          (C.insert v.name (.opaqueInfo (mutualOpaqueHeader v))) vs := by
+        refine ⟨?_, hnodupPair.2⟩
+        intro w hw
+        rw [H.map_wf.find?_insert]
+        split
+        · rename_i heq
+          have hmem : w.name ∈ vs.map (fun x => x.name) :=
+            List.mem_map.mpr ⟨w, hw, rfl⟩
+          exact (hnodupPair.1 ((LawfulBEq.eq_of_beq heq).symm ▸ hmem)).elim
+        · exact hfresh w (by simp [hw])
+      simpa [ConstMap.addMutualOpaqueHeaders] using
+        ih H' hfresh' (hbase.trans (VEnv.addConst_le hhead)) hadd
+
 private theorem Aligned.addMutualDefEqs
     (H : Aligned safety C env) :
     Aligned safety C (env.addMutualDefEqs vs) := by
@@ -227,6 +306,8 @@ theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := b
   | «opaque» h1 h2 _ h _ ih => exact ih.const h2 h1.1.1 h rfl
   | «mutual» hrel hfresh _ hadd _ _ _ _ ih =>
     exact (ih.addMutualHeaders hrel hfresh VEnv.LE.rfl hadd).addMutualDefEqs
+  | mutualCheck hrel hfresh _ hadd _ ih =>
+    exact ih.addMutualOpaqueHeaders hrel hfresh VEnv.LE.rfl hadd
   | defn h1 h2 _ h _ ih => exact (ih.const h2 h1.1.1 h rfl).defeq
   | «theorem» h1 h2 _ h _ ih => exact (ih.const h2 h1.1.1 h rfl).defeq
   | unsafeDefn h1 h2 _ h _ _ _ ih => exact (ih.const h2 h1.1 h rfl).defeq
@@ -357,6 +438,12 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
       let ⟨⟨_, blevels, _⟩, bname⟩ := htr
       refine ⟨_, hbody.mono VEnv.addMutualDefEqs_le,
         blevels.symm ▸ bname.symm ▸ ⟨_, hdefeq.symm⟩⟩
+  | mutualCheck _ hfresh _ hadd H ih =>
+    obtain hold | ⟨v, _, _, hci⟩ :=
+      ConstMap.find?_addMutualOpaqueHeaders H.map_wf hfresh h
+    · exact (ih hold).mono (VEnv.addMutualHeaders_le hadd)
+    · subst ci
+      contradiction
   | quot _ h1 H ih =>
     suffices ∀ {n k ci' P}, (∀ C env, Aligned safety C env → P C env → C.find? name = some ci) →
         ∀ C env, Aligned safety C env → AddQuot1 n k ci' P C env → C.find? name = some ci by

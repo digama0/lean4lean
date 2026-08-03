@@ -83,6 +83,15 @@ nonrec theorem AddInduct.to_addInduct
 def ConstMap.addMutualDefinitions (C : ConstMap) (vs : List DefinitionVal) : ConstMap :=
   vs.foldl (fun C v => C.insert v.name (.defnInfo v)) C
 
+def mutualOpaqueHeader (v : DefinitionVal) : OpaqueVal := {
+  v.toConstantVal with
+  value := v.value
+  isUnsafe := v.safety == .unsafe
+  all := v.all }
+
+def ConstMap.addMutualOpaqueHeaders (C : ConstMap) (vs : List DefinitionVal) : ConstMap :=
+  vs.foldl (fun C v => C.insert v.name (.opaqueInfo (mutualOpaqueHeader v))) C
+
 def ConstMap.MutualFresh (C : ConstMap) (vs : List DefinitionVal) : Prop :=
   (∀ v ∈ vs, C.find? v.name = none) ∧ (vs.map (fun v => v.name)).Nodup
 
@@ -138,6 +147,14 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     (∀ v' ∈ vs', v'.WF headers) →
     TrEnv' C Q env →
     TrEnv' (ConstMap.addMutualDefinitions C vs) Q (headers.addMutualDefEqs vs')
+  | mutualCheck :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety env (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs' →
+    ConstMap.MutualFresh C vs →
+    (∀ v' ∈ vs', v'.toVConstant.WF env) →
+    env.addMutualHeaders vs' = some headers →
+    TrEnv' C Q env →
+    TrEnv' (ConstMap.addMutualOpaqueHeaders C vs) Q headers
   | quot :
     env.QuotReady →
     AddQuot C C' env env' →
@@ -151,6 +168,27 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
 
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
   TrEnv' safety env.constants env.quotInit venv
+
+private theorem VEnv.WF.addMutualHeaders
+    {env headers : VEnv} {vs' : List VDefVal}
+    (H : env.WF)
+    (htypes : ∀ v' ∈ vs', v'.toVConstant.WF env)
+    (hadd : env.addMutualHeaders vs' = some headers) : headers.WF := by
+  obtain ⟨ds, H⟩ := H
+  induction vs' generalizing env headers ds with
+  | nil =>
+    simp [VEnv.addMutualHeaders] at hadd
+    subst headers
+    exact ⟨ds, H⟩
+  | cons v vs ih =>
+    cases hhead : env.addConst v.name v.toVConstant with
+    | none => simp [VEnv.addMutualHeaders, hhead] at hadd
+    | some next =>
+      simp [VEnv.addMutualHeaders, hhead] at hadd
+      apply ih (env := next) (ds := .axiom v.toVConstVal :: ds) ?_ hadd
+      · exact .decl (.axiom (htypes v (by simp)) hhead) H
+      · intro w hw
+        exact (htypes w (by simp [hw])).mono (VEnv.addConst_le hhead)
 
 theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   induction H with
@@ -180,6 +218,8 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   | «mutual» _ _ htypes hadd hcontains _ hbodies _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .mutual htypes hadd hcontains hbodies⟩
+  | mutualCheck _ _ htypes hadd _ ih =>
+    exact ih.addMutualHeaders htypes hadd
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩

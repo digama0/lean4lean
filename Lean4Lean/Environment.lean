@@ -109,6 +109,30 @@ def mutualNamesUnique : List DefinitionVal → Bool
   | [] => true
   | v :: vs => !vs.any (fun w => w.name == v.name) && mutualNamesUnique vs
 
+def checkMutualHeaders (env : Environment) (v₀ : DefinitionVal)
+    (vs : List DefinitionVal) : M Unit :=
+  match vs with
+  | [] => pure ()
+  | v :: vs => do
+    if v.safety != v₀.safety then
+      throw <| .other
+        "invalid mutual definition, declarations must have the same safety annotation"
+    if v.levelParams != v₀.levelParams then
+      throw <| .other
+        "invalid mutual definition, declarations must have the same universe parameters"
+    checkConstantVal env v.toConstantVal
+    checkMutualHeaders env v₀ vs
+
+def checkMutualBodies (checkEnv : Environment) (all : List DefinitionVal) :
+    List DefinitionVal → M Unit
+  | [] => pure ()
+  | v :: vs => do
+    checkNoMVarNoFVar checkEnv v.name v.value
+    let valType ← TypeChecker.checkType v.value
+    if !(← isDefEq valType v.type) then
+      throw <| .declTypeMismatch checkEnv (.mutualDefnDecl all) valType
+    checkMutualBodies checkEnv all vs
+
 def addMutual (env : Environment) (vs : List DefinitionVal)
     (check := true) (fuel : FuelConfig := {}) : Except Exception Environment := do
   let v₀ :: _ := vs | throw <| .other "invalid empty mutual definition"
@@ -117,24 +141,17 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
   unless mutualNamesUnique vs do
     throw <| .other "invalid mutual definition, duplicate declaration name"
   if check then
-    M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
-      for v in vs do
-        if v.safety != v₀.safety then
-          throw <| .other
-            "invalid mutual definition, declarations must have the same safety annotation"
-        checkConstantVal env v.toConstantVal
+    M.run env (safety := v₀.safety) (lctx := {})
+      (lparams := v₀.levelParams) (fuel := fuel) <|
+        checkMutualHeaders env v₀ vs
   -- Make every member available while checking bodies, but keep all unchecked
   -- values opaque.  Partial headers are safe only in this transient checking
   -- environment; the final environment retains their original safety.
   let checkEnv := addMutualCheckEnv env vs
   if check then
     M.run checkEnv (safety := v₀.safety) (lctx := {})
-        (lparams := v₀.levelParams) (fuel := fuel) do
-      for v in vs do
-        checkNoMVarNoFVar checkEnv v.name v.value
-        let valType ← TypeChecker.checkType v.value
-        if !(← isDefEq valType v.type) then
-          throw <| .declTypeMismatch checkEnv (.mutualDefnDecl vs) valType
+        (lparams := v₀.levelParams) (fuel := fuel) <|
+      checkMutualBodies checkEnv vs vs
   return addMutualFinalEnv env vs
 
 /-- Type check given declaration and add it to the environment -/
