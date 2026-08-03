@@ -6014,6 +6014,40 @@ theorem checkPrimitiveDef.natSub.WF {c : VContext} {s : VState}
       · exact .throw
   · exact .throw
 
+theorem checkPrimitiveDef.natSub.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hpredC : c.venv.contains ``Nat.pred)
+    (hname : v.name = ``Nat.sub)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.sub v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      c.IsDefEqU
+        (.lam .nat <| .app (.app v.value (.bvar 0)) .natZero)
+        (.lam .nat <| .bvar 0) ∧
+      c.IsDefEqU
+        (.lam .nat <| .lam .nat <|
+          .app (.app v.value (.bvar 1)) (.app .natSucc (.bvar 0)))
+        (.lam .nat <| .lam .nat <|
+          .app (.const ``Nat.pred [])
+            (.app (.app v.value (.bvar 1)) (.bvar 0)))) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, hz, hs⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty hz hs
+  rw [hclparams, hvlctx] at hty hz hs
+  exact c.hasPrimitives.addNatSubDef c.Ewf hpredC hname hadd hwf
+    hvuvars hty hz hs
+
 theorem checkPrimitiveDef.natMul.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.mul) (hty : c.TrExprS v.type ty')
     (hcanon : c.TrExprS q(Nat → Nat → Nat)
@@ -6054,6 +6088,40 @@ theorem checkPrimitiveDef.natMul.WF {c : VContext} {s : VState}
       · exact .throw
   · exact .throw
 
+theorem checkPrimitiveDef.natMul.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (haddC : c.venv.contains ``Nat.add)
+    (hname : v.name = ``Nat.mul)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.mul v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      c.IsDefEqU
+        (.lam .nat <| .app (.app v.value (.bvar 0)) .natZero)
+        (.lam .nat .natZero) ∧
+      c.IsDefEqU
+        (.lam .nat <| .lam .nat <|
+          .app (.app v.value (.bvar 1)) (.app .natSucc (.bvar 0)))
+        (.lam .nat <| .lam .nat <|
+          .app (.app (.const ``Nat.add [])
+            (.app (.app v.value (.bvar 1)) (.bvar 0))) (.bvar 1))) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, hz, hs⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty hz hs
+  rw [hclparams, hvlctx] at hty hz hs
+  exact c.hasPrimitives.addNatMulDef c.Ewf haddC hname hadd hwf
+    hvuvars hty hz hs
+
 theorem checkPrimitiveDef.natPow.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.pow) (hty : c.TrExprS v.type ty')
     (hcanon : c.TrExprS q(Nat → Nat → Nat)
@@ -6093,6 +6161,40 @@ theorem checkPrimitiveDef.natPow.WF {c : VContext} {s : VState}
           · exact .throw
       · exact .throw
   · exact .throw
+
+theorem checkPrimitiveDef.natPow.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hmulC : c.venv.contains ``Nat.mul)
+    (hname : v.name = ``Nat.pow)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.pow v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      c.IsDefEqU
+        (.lam .nat <| .app (.app v.value (.bvar 0)) .natZero)
+        (.lam .nat <| .app .natSucc .natZero) ∧
+      c.IsDefEqU
+        (.lam .nat <| .lam .nat <|
+          .app (.app v.value (.bvar 1)) (.app .natSucc (.bvar 0)))
+        (.lam .nat <| .lam .nat <|
+          .app (.app (.const ``Nat.mul [])
+            (.app (.app v.value (.bvar 1)) (.bvar 0))) (.bvar 1))) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, hz, hs⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty hz hs
+  rw [hclparams, hvlctx] at hty hz hs
+  exact c.hasPrimitives.addNatPowDef c.Ewf hmulC hname hadd hwf
+    hvuvars hty hz hs
 
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natGcd.WF {c : VContext} {s : VState}
