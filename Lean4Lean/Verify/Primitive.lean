@@ -3156,115 +3156,134 @@ theorem VEnv.HasPrimitives.addNatLorDef {env env' : VEnv} {v : VDefVal}
 
 theorem VEnv.HasPrimitives.addCharOfNat {env env' : VEnv}
     (h : env.HasPrimitives)
-    (hadd : env.addConst ``Char.ofNat ci = some env') (hwf : env'.WF)
+    (hadd : env.addConst ``Char.ofNat ci = some env')
+    (hwf : (env'.addDefEq df).WF)
     (hu : ci.uvars = 0)
     (hty : env.IsDefEqU 0 [] ci.type (.forallE .nat .char)) :
-    env'.HasPrimitives := by
+    (env'.addDefEq df).HasPrimitives := by
+  let env'' := env'.addDefEq df
+  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
   have same (p : Name) (hne : ``Char.ofNat ≠ p) :=
     VEnv.addConst_constants_of_ne hadd hne
+  have same' (p : Name) (hne : ``Char.ofNat ≠ p) :
+      env''.constants p = env.constants p := by
+    simpa [env'', VEnv.addDefEq] using same p hne
   have oldContains {p : Name} (hne : ``Char.ofNat ≠ p)
-      (H : env'.contains p) : env.contains p := by
+      (H : env''.contains p) : env.contains p := by
     let ⟨pci, hpci⟩ := H
-    exact ⟨pci, by rwa [same p hne] at hpci⟩
-  have newContains {p : Name} (H : env.contains p) : env'.contains p :=
-    let ⟨_, hpci⟩ := H; ⟨_, (VEnv.addConst_le hadd).constants hpci⟩
+    exact ⟨pci, by rwa [same' p hne] at hpci⟩
+  have newContains {p : Name} (H : env.contains p) : env''.contains p :=
+    let ⟨_, hpci⟩ := H; ⟨_, le.constants hpci⟩
+  have hself : env''.constants ``Char.ofNat = some ci := by
+    change env'.constants ``Char.ofNat = some ci
+    exact VEnv.addConst_self hadd
   refine {
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
       ⟨newContains hfalse, newContains htrue⟩
-    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
-    boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
-    boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
+    boolType := fun H => h.boolType (by rwa [same' ``Bool (by decide)] at H)
+    boolFalse := fun H => h.boolFalse (by rwa [same' ``Bool.false (by decide)] at H)
+    boolTrue := fun H => h.boolTrue (by rwa [same' ``Bool.true (by decide)] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
       ⟨newContains hzero, newContains hsucc⟩
-    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
-    natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
-    natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
-    natPred := h.natPred.addConst hadd (by decide)
-    natAdd := h.natAdd.addConst hadd (by decide)
-    natSub := h.natSub.addConst hadd (by decide)
-    natMul := h.natMul.addConst hadd (by decide)
-    natPow := h.natPow.addConst hadd (by decide)
-    natGcd := h.natGcd.addConst hadd (by decide)
-    natMod := h.natMod.addConst hadd (by decide)
-    natDiv := h.natDiv.addConst hadd (by decide)
-    natBEq := h.natBEq.addConst hadd (by decide)
-    natBLE := h.natBLE.addConst hadd (by decide)
-    natBitwise := h.natBitwise.addConst hadd (by decide)
-    natLAnd := h.natLAnd.addConst hadd (by decide)
-    natLOr := h.natLOr.addConst hadd (by decide)
-    natXor := h.natXor.addConst hadd (by decide)
-    natShiftLeft := h.natShiftLeft.addConst hadd (by decide)
-    natShiftRight := h.natShiftRight.addConst hadd (by decide)
+    natType := fun H => h.natType (by rwa [same' ``Nat (by decide)] at H)
+    natZero := fun H => h.natZero (by rwa [same' ``Nat.zero (by decide)] at H)
+    natSucc := fun H => h.natSucc (by rwa [same' ``Nat.succ (by decide)] at H)
+    natPred := (h.natPred.addConst hadd (by decide)).addDefEq
+    natAdd := (h.natAdd.addConst hadd (by decide)).addDefEq
+    natSub := (h.natSub.addConst hadd (by decide)).addDefEq
+    natMul := (h.natMul.addConst hadd (by decide)).addDefEq
+    natPow := (h.natPow.addConst hadd (by decide)).addDefEq
+    natGcd := (h.natGcd.addConst hadd (by decide)).addDefEq
+    natMod := (h.natMod.addConst hadd (by decide)).addDefEq
+    natDiv := (h.natDiv.addConst hadd (by decide)).addDefEq
+    natBEq := (h.natBEq.addConst hadd (by decide)).addDefEq
+    natBLE := (h.natBLE.addConst hadd (by decide)).addDefEq
+    natBitwise := (h.natBitwise.addConst hadd (by decide)).addDefEq
+    natLAnd := (h.natLAnd.addConst hadd (by decide)).addDefEq
+    natLOr := (h.natLOr.addConst hadd (by decide)).addDefEq
+    natXor := (h.natXor.addConst hadd (by decide)).addDefEq
+    natShiftLeft := (h.natShiftLeft.addConst hadd (by decide)).addDefEq
+    natShiftRight := (h.natShiftRight.addConst hadd (by decide)).addDefEq
     charOfNat := fun H => by
+      change env'.constants ``Char.ofNat = _ at H
       rw [VEnv.addConst_self hadd] at H
       cases H
-      exact ⟨hu, VEnv.HasType.const_of_type_defeq hwf (VEnv.addConst_self hadd) hu
-        (hty.mono (VEnv.addConst_le hadd))⟩
+      exact ⟨hu, VEnv.HasType.const_of_type_defeq hwf hself hu
+        (hty.mono le)⟩
     stringOfList := fun H =>
       let ⟨hu, hty, hnil, hcons⟩ := h.stringOfList
-        (by rwa [same ``String.ofList (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono (VEnv.addConst_le hadd),
-        hnil.mono (VEnv.addConst_le hadd), hcons.mono (VEnv.addConst_le hadd)⟩ }
+        (by rwa [same' ``String.ofList (by decide)] at H)
+      ⟨hu, fun U Γ => (hty U Γ).mono le,
+        hnil.mono le, hcons.mono le⟩ }
 
 theorem VEnv.HasPrimitives.addStringOfList {env env' : VEnv}
     (h : env.HasPrimitives)
-    (hadd : env.addConst ``String.ofList ci = some env') (hwf : env'.WF)
+    (hadd : env.addConst ``String.ofList ci = some env')
+    (hwf : (env'.addDefEq df).WF)
     (hu : ci.uvars = 0)
     (hty : env.IsDefEqU 0 [] ci.type (.forallE .listChar .string))
     (hnil : env.HasType 0 [] .listCharNil .listChar)
     (hcons : env.HasType 0 [] .listCharCons
       (.forallE .char <| .forallE .listChar .listChar)) :
-    env'.HasPrimitives := by
+    (env'.addDefEq df).HasPrimitives := by
+  let env'' := env'.addDefEq df
+  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
   have same (p : Name) (hne : ``String.ofList ≠ p) :=
     VEnv.addConst_constants_of_ne hadd hne
+  have same' (p : Name) (hne : ``String.ofList ≠ p) :
+      env''.constants p = env.constants p := by
+    simpa [env'', VEnv.addDefEq] using same p hne
   have oldContains {p : Name} (hne : ``String.ofList ≠ p)
-      (H : env'.contains p) : env.contains p := by
+      (H : env''.contains p) : env.contains p := by
     let ⟨pci, hpci⟩ := H
-    exact ⟨pci, by rwa [same p hne] at hpci⟩
-  have newContains {p : Name} (H : env.contains p) : env'.contains p :=
-    let ⟨_, hpci⟩ := H; ⟨_, (VEnv.addConst_le hadd).constants hpci⟩
+    exact ⟨pci, by rwa [same' p hne] at hpci⟩
+  have newContains {p : Name} (H : env.contains p) : env''.contains p :=
+    let ⟨_, hpci⟩ := H; ⟨_, le.constants hpci⟩
+  have hself : env''.constants ``String.ofList = some ci := by
+    change env'.constants ``String.ofList = some ci
+    exact VEnv.addConst_self hadd
   refine {
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
       ⟨newContains hfalse, newContains htrue⟩
-    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
-    boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
-    boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
+    boolType := fun H => h.boolType (by rwa [same' ``Bool (by decide)] at H)
+    boolFalse := fun H => h.boolFalse (by rwa [same' ``Bool.false (by decide)] at H)
+    boolTrue := fun H => h.boolTrue (by rwa [same' ``Bool.true (by decide)] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
       ⟨newContains hzero, newContains hsucc⟩
-    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
-    natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
-    natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
-    natPred := h.natPred.addConst hadd (by decide)
-    natAdd := h.natAdd.addConst hadd (by decide)
-    natSub := h.natSub.addConst hadd (by decide)
-    natMul := h.natMul.addConst hadd (by decide)
-    natPow := h.natPow.addConst hadd (by decide)
-    natGcd := h.natGcd.addConst hadd (by decide)
-    natMod := h.natMod.addConst hadd (by decide)
-    natDiv := h.natDiv.addConst hadd (by decide)
-    natBEq := h.natBEq.addConst hadd (by decide)
-    natBLE := h.natBLE.addConst hadd (by decide)
-    natBitwise := h.natBitwise.addConst hadd (by decide)
-    natLAnd := h.natLAnd.addConst hadd (by decide)
-    natLOr := h.natLOr.addConst hadd (by decide)
-    natXor := h.natXor.addConst hadd (by decide)
-    natShiftLeft := h.natShiftLeft.addConst hadd (by decide)
-    natShiftRight := h.natShiftRight.addConst hadd (by decide)
+    natType := fun H => h.natType (by rwa [same' ``Nat (by decide)] at H)
+    natZero := fun H => h.natZero (by rwa [same' ``Nat.zero (by decide)] at H)
+    natSucc := fun H => h.natSucc (by rwa [same' ``Nat.succ (by decide)] at H)
+    natPred := (h.natPred.addConst hadd (by decide)).addDefEq
+    natAdd := (h.natAdd.addConst hadd (by decide)).addDefEq
+    natSub := (h.natSub.addConst hadd (by decide)).addDefEq
+    natMul := (h.natMul.addConst hadd (by decide)).addDefEq
+    natPow := (h.natPow.addConst hadd (by decide)).addDefEq
+    natGcd := (h.natGcd.addConst hadd (by decide)).addDefEq
+    natMod := (h.natMod.addConst hadd (by decide)).addDefEq
+    natDiv := (h.natDiv.addConst hadd (by decide)).addDefEq
+    natBEq := (h.natBEq.addConst hadd (by decide)).addDefEq
+    natBLE := (h.natBLE.addConst hadd (by decide)).addDefEq
+    natBitwise := (h.natBitwise.addConst hadd (by decide)).addDefEq
+    natLAnd := (h.natLAnd.addConst hadd (by decide)).addDefEq
+    natLOr := (h.natLOr.addConst hadd (by decide)).addDefEq
+    natXor := (h.natXor.addConst hadd (by decide)).addDefEq
+    natShiftLeft := (h.natShiftLeft.addConst hadd (by decide)).addDefEq
+    natShiftRight := (h.natShiftRight.addConst hadd (by decide)).addDefEq
     charOfNat := fun H =>
       let ⟨hu, hty⟩ := h.charOfNat
-        (by rwa [same ``Char.ofNat (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono (VEnv.addConst_le hadd)⟩
+        (by rwa [same' ``Char.ofNat (by decide)] at H)
+      ⟨hu, fun U Γ => (hty U Γ).mono le⟩
     stringOfList := fun H => by
+      change env'.constants ``String.ofList = _ at H
       rw [VEnv.addConst_self hadd] at H
       cases H
       exact ⟨hu,
-        VEnv.HasType.const_of_type_defeq hwf (VEnv.addConst_self hadd) hu
-          (hty.mono (VEnv.addConst_le hadd)),
-        hnil.mono (VEnv.addConst_le hadd), hcons.mono (VEnv.addConst_le hadd)⟩ }
+        VEnv.HasType.const_of_type_defeq hwf hself hu (hty.mono le),
+        hnil.mono le, hcons.mono le⟩ }
 
 namespace Environment
 
@@ -6065,6 +6084,54 @@ theorem checkPrimitiveDef.natAdd.WF {c : VContext} {s : VState}
           · exact .throw
       · exact .throw
   · exact .throw
+
+theorem checkPrimitiveDef.charOfNat.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Char.ofNat v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat .char)) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty
+  rw [hclparams, hvlctx] at hty
+  exact c.hasPrimitives.addCharOfNat hadd hwf hvuvars hty
+
+theorem checkPrimitiveDef.stringOfList.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``String.ofList v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .listChar .string) ∧
+      c.HasType .listCharNil .listChar ∧
+      c.HasType .listCharCons
+        (.forallE .char <| .forallE .listChar .listChar)) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, hnil, hcons⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hnil hcons
+  rw [hclparams, hvlctx] at hty hnil hcons
+  exact c.hasPrimitives.addStringOfList hadd hwf hvuvars hty hnil hcons
 
 theorem checkPrimitiveDef.natAdd.WF.conservesHasPrimitives
     {c : VContext} {s : VState} {src : DefinitionVal}
