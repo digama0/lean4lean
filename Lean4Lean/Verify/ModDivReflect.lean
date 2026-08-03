@@ -39,12 +39,14 @@ def natDivTopProofInst (b : Nat) : Expr :=
     mkAppN proof #[q(Nat.succ Nat.zero), .natLitToConstructor b]
   | .bool => q(False.elim)
 
-def natDivTopThenInst (a b : Nat) : Expr :=
+def natDivTopThenBodyInst (a b : Nat) : Expr :=
   let x := (Expr.natLitToConstructor a).liftLooseBVars 0 1
   let y := (Expr.natLitToConstructor b).liftLooseBVars 0 1
-  .lam0 (natDivTopPropInst b) <|
-    mkApp5 q(Nat.div.go) y (.bvar 0) (mkApp q(Nat.succ) x) x
-      (mkApp q(Nat.lt_succ_self) x)
+  mkApp5 q(Nat.div.go) y (.bvar 0) (mkApp q(Nat.succ) x) x
+    (mkApp q(Nat.lt_succ_self) x)
+
+def natDivTopThenInst (a b : Nat) : Expr :=
+  .lam0 (natDivTopPropInst b) (natDivTopThenBodyInst a b)
 
 def natDivTopElseInst (b : Nat) : Expr :=
   .lam0 (mkApp q(Not) (natDivTopPropInst b)) q(Nat.zero)
@@ -175,8 +177,9 @@ theorem VEnv.select_natDivTop_rhs
               simpa [natDivTopProofInst, Condition.natLE, Lean.mkAppN] using hHS
             have htS' : TrExprS env [] [] (natDivTopThenInst a b) tV := by
               simpa only [natDivTopThenInst,
-                natDivTopPropInst, Expr.lam0, Expr.liftLooseBVars_eq,
-                Lean.mkAppN, mkApp5, mkApp4, mkApp2, mkApp]
+                natDivTopThenBodyInst, natDivTopPropInst, Expr.lam0,
+                Expr.liftLooseBVars_eq, Lean.mkAppN, mkApp5, mkApp4,
+                mkApp2, mkApp, mkAppB]
                 using htS
             have heS' : TrExprS env [] [] (natDivTopElseInst b) eV := by
               simpa [natDivTopElseInst, natDivTopPropInst,
@@ -224,6 +227,39 @@ theorem VEnv.select_natDivTop_rhs
                   (translated_closed wf cert.ofFalseS)
                   heqs.2 cert.rditeHas hcallT hbool
               exact ⟨proof, hcallEq.trans wf trivial hselect⟩
+
+/-- Expose and beta-reduce the selected true top-level division branch while
+retaining the translated `Nat.div.go` body. -/
+theorem VEnv.natDivTopThen_beta
+    {env : VEnv} (wf : env.WF) (a b : Nat)
+    {tV proof R : VExpr}
+    (htS : TrExprS env [] [] (natDivTopThenInst a b) tV)
+    (happT : env.HasType 0 [] (.app tV proof) R) :
+    ∃ propV bodyV,
+      tV = .lam propV bodyV ∧
+      TrExprS env [] [(none, .vlam propV)]
+        (natDivTopThenBodyInst a b) bodyV ∧
+      env.IsDefEqU 0 [] (.app tV proof) (bodyV.inst proof) := by
+  have htSLam : TrExprS env [] []
+      (.lam `_ (natDivTopPropInst b) (natDivTopThenBodyInst a b) .default)
+      tV := by
+    simpa only [natDivTopThenInst, Expr.lam0] using htS
+  cases htSLam with
+  | lam hdomType hdomS hbodyS =>
+    rename_i propV bodyV
+    have hlamS : TrExprS env [] []
+        (.lam `_ (natDivTopPropInst b) (natDivTopThenBodyInst a b) .default)
+        (.lam propV bodyV) := .lam hdomType hdomS hbodyS
+    obtain ⟨bodyTy, hlamCanonT⟩ := TrExprS.closedLam_hasType wf hlamS
+    obtain ⟨_, _, hlamT, hproofT⟩ := happT.app_inv wf.ordered trivial
+    have hlamTyEq := hlamT.uniqU wf trivial hlamCanonT
+    obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
+    have hproofT' := hproofT.defeqU_r wf trivial hdomEq.toU
+    obtain ⟨_, hbodyWF⟩ := hbodyS.wf wf.ordered
+      (Us := []) (Δ := [(none, .vlam propV)])
+      ⟨trivial, nofun, hdomType⟩
+    exact ⟨propV, bodyV, rfl, hbodyS,
+      ⟨_, VEnv.IsDefEq.beta hbodyWF.hasType.1 hproofT'⟩⟩
 
 /-- Beta-reduce the false top-level division branch to zero. -/
 theorem VEnv.natDivTopElse_beta
