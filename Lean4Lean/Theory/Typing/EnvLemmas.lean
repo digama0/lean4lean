@@ -19,6 +19,12 @@ theorem VEnv.WF.ordered : WF env → Ordered env
           rw [← (h1.levelWF ⟨⟩).2.2.instL_id]
           exact .const (addConst_self h2) VLevel.id_WF (by simp)
         · exact h1.mono (addConst_le h2)
+      | unsafeDef htype hadd hvalue =>
+        have hordered := Ordered.const ih htype hadd
+        refine .defeq hordered ⟨?_, hvalue⟩
+        simp [VDefVal.toDefEq]
+        rw [← (hvalue.levelWF ⟨⟩).2.2.instL_id]
+        exact .const (addConst_self hadd) VLevel.id_WF (by simp)
       | «opaque» h1 h2 => exact .const ih (h1.isType ih ⟨⟩) h2
       | «example» _ => exact ih
       | quot h1 h2 => exact addQuot_WF ih h1 h2

@@ -1118,6 +1118,23 @@ theorem TrEnv.addDefinition
     rw [← htr.map_wf.find?'_eq_find?]
     exact hfresh) hciWF hadd htr
 
+theorem TrEnv.addUnsafeDefinition
+    (htr : TrEnv .unsafe env venv)
+    (hheader : TrConstVal .unsafe venv (.defnInfo ci) ci'.toVConstVal)
+    (hfresh : env.find? ci.name = none)
+    (hheaderWF : ci'.toVConstant.WF venv)
+    (hadd : venv.addConst ci.name ci'.toVConstant = some venv')
+    (hvalue : TrExprS venv' ci.levelParams [] ci.value ci'.value)
+    (hvalueWF : ci'.WF venv') :
+    TrEnv .unsafe (env.add (.defnInfo ci))
+      (venv'.addDefEq ci'.toDefEq) := by
+  change TrEnv' .unsafe
+    (env.constants.insert ci.name (.defnInfo ci)) env.quotInit
+    (venv'.addDefEq ci'.toDefEq)
+  exact .unsafeDefn hheader (by
+    rw [← htr.map_wf.find?'_eq_find?]
+    exact hfresh) hheaderWF hadd hvalue hvalueWF htr
+
 theorem TrEnv.addOpaque
     (htr : TrEnv safety env venv)
     (hci : TrDefVal safety venv (.opaqueInfo ci) ci')

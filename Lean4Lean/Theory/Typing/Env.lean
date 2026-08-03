@@ -18,6 +18,13 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
     VDecl.WF env (.def ci) (env'.addDefEq ci.toDefEq)
+  /-- Unsafe definitions may be recursive: their header is checked before the
+  constant is added, and their body is checked in the extended environment. -/
+  | unsafeDef :
+    ci.toVConstant.WF env →
+    env.addConst ci.name ci.toVConstant = some env' →
+    ci.WF env' →
+    VDecl.WF env (.def ci) (env'.addDefEq ci.toDefEq)
   | opaque :
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →

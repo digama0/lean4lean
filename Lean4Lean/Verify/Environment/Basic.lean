@@ -95,6 +95,14 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
+  | unsafeDefn {ci' : VDefVal} :
+    TrConstVal safety env (.defnInfo ci) ci'.toVConstVal →
+    C.find? ci.name = none → ci'.toVConstant.WF env →
+    env.addConst ci.name ci'.toVConstant = some env' →
+    TrExprS env' ci.levelParams [] ci.value ci'.value →
+    ci'.WF env' →
+    TrEnv' C Q env →
+    TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
   | opaque {ci' : VDefVal} :
     TrDefVal safety env (.opaqueInfo ci) ci' →
     C.find? ci.name = none → ci'.WF env →
@@ -128,6 +136,10 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .def h2 (this ▸ h3)⟩
+  | unsafeDefn h1 _ h2 h3 _ h4 _ ih =>
+    have ⟨_, H⟩ := ih
+    have := h1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
+    exact ⟨_, H.decl <| .unsafeDef h2 (this ▸ h3) h4⟩
   | «opaque» h1 _ h2 h3 _ ih =>
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this

@@ -80,6 +80,7 @@ theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := b
   | «axiom» h1 h2 _ h _ ih => exact ih.const h2 h1 h rfl
   | «opaque» h1 h2 _ h _ ih => exact ih.const h2 h1.1.1 h rfl
   | defn h1 h2 _ h _ ih => exact (ih.const h2 h1.1.1 h rfl).defeq
+  | unsafeDefn h1 h2 _ h _ _ _ ih => exact (ih.const h2 h1.1 h rfl).defeq
   | quot _ h _ ih => exact ih.addQuot h
   | induct _ h _ ih => exact ih.addInduct h
 
@@ -171,6 +172,17 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
         (H.defn h2 h3 h4 h1).wf.ordered.defEqWF VEnv.addDefEq_self
       let ⟨⟨⟨b1, b2, b3⟩, b4⟩, b5⟩ := h2
       refine ⟨_, b5.mono le, b2.symm ▸ b4.symm ▸ ⟨_, this.symm⟩⟩
+  | unsafeDefn h2 h3 _ h1 hvalue _ H ih =>
+    have' le := (VEnv.addConst_le h1).trans VEnv.addDefEq_le
+    obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
+    · exact (ih h).mono le
+    · cases hv
+      have hdefeq := VEnv.IsDefEq.extra0 VEnv.addDefEq_self <|
+        (H.unsafeDefn h2 h3 (by assumption) h1 hvalue (by assumption)).wf.ordered.defEqWF
+          VEnv.addDefEq_self
+      let ⟨⟨_, blevels, _⟩, bname⟩ := h2
+      refine ⟨_, hvalue.mono VEnv.addDefEq_le,
+        blevels.symm ▸ bname.symm ▸ ⟨_, hdefeq.symm⟩⟩
   | quot _ h1 H ih =>
     suffices ∀ {n k ci' P}, (∀ C env, Aligned safety C env → P C env → C.find? name = some ci) →
         ∀ C env, Aligned safety C env → AddQuot1 n k ci' P C env → C.find? name = some ci by
