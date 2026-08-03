@@ -1007,6 +1007,58 @@ def VEnv.NatLESelectorCertificate.of_checked
     iteChecked := hiteCert
     diteChecked := hditeChecked }
 
+/-- Package the raw evidence produced by `Condition.natLE.check.WF` into the
+semantic selector certificate shared by the `Nat.mod` and `Nat.div`
+conservation proofs. -/
+theorem Condition.natLE.check.WF.selector
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {fail : ∀ {α}, TypeChecker.M α}
+    {rtype rite rdite ofTrue ofFalse iteTy diteTy reflectFn dec : VExpr}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hrtype : c.TrExprS Reflection.defn₁.type rtype)
+    (hrite : c.TrExprS Reflection.defn₁.ite rite)
+    (hrdite : c.TrExprS Reflection.defn₁.natDITE rdite)
+    (hofTrue : c.TrExprS Reflection.defn₁.ofTrue ofTrue)
+    (hofFalse : c.TrExprS Reflection.defn₁.ofFalse ofFalse)
+    (hrtypeUnique : TrExprS.IsUnique Reflection.defn₁.type)
+    (hiteUnique : TrExprS.IsUnique Reflection.defn₁.ite)
+    (hditeUnique : TrExprS.IsUnique Reflection.defn₁.natDITE)
+    (hofTrueUnique : TrExprS.IsUnique Reflection.defn₁.ofTrue)
+    (hofFalseUnique : TrExprS.IsUnique Reflection.defn₁.ofFalse)
+    (hiteTy : c.TrExprS
+      (.arrow q(Prop) <| .arrow q(Bool) <|
+       .arrow (mkApp2 Reflection.defn₁.type (.bvar 1) (.bvar 0))
+         q(∀ α : Type, α → α → α)) iteTy)
+    (hditeTy : c.TrExprS
+      (.arrow q(Prop) <| .arrow q(Bool) <|
+       .arrow (mkApp2 Reflection.defn₁.type (.bvar 1) (.bvar 0)) <|
+       .arrow (.arrow (.bvar 2) q(Nat)) <|
+       .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) q(Nat)) diteTy)
+    (hcheck : TypeChecker.M.WF c s
+      (Condition.natLE.check fail (ite := true) (dite := true)) fun _ _ =>
+        c.HasType rtype rtypeCanon ∧
+        (c.HasType rite iteTy ∧
+          VEnv.ReflectionITEChecked c.venv Reflection.defn₁) ∧
+        (c.HasType rdite diteTy ∧
+          c.HasType ofTrue ofTrueTy ∧
+          c.HasType ofFalse ofFalseTy ∧
+          VEnv.ReflectionNatDITEChecked c.venv Reflection.defn₁) ∧
+        c.IsDefEqU reflectFn dec) :
+    TypeChecker.M.WF c s
+      (Condition.natLE.check fail (ite := true) (dite := true)) fun _ _ =>
+        ∃ _selector : VEnv.NatLESelectorCertificate c.venv,
+          c.IsDefEqU reflectFn dec := by
+  refine hcheck.mono fun _ _ _
+    ⟨_, ⟨hiteHas, hiteChecked⟩,
+      ⟨hditeHas, hofTrueHas, hofFalseHas, hditeChecked⟩, heq⟩ => ?_
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hrtype hrite hrdite hofTrue hofFalse hiteTy hditeTy
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hiteHas hditeHas hofTrueHas hofFalseHas
+  rw [hlparams, hvlctx] at hrtype hrite hrdite hofTrue hofFalse hiteTy hditeTy hiteHas hditeHas hofTrueHas hofFalseHas
+  exact ⟨VEnv.NatLESelectorCertificate.of_checked c.Ewf
+    hrtype hrite hrdite hofTrue hofFalse
+    hrtypeUnique hiteUnique hditeUnique hofTrueUnique hofFalseUnique
+    hiteTy hditeTy hiteHas hditeHas hiteChecked hditeChecked, heq⟩
+
 private theorem TrExprS.target_closed
     {env : VEnv} (wf : env.WF) {e : Expr} {eV : VExpr}
     (h : TrExprS env [] [] e eV) : eV.ClosedN := by
