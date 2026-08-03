@@ -6818,11 +6818,247 @@ theorem checkPrimitiveDef.charOfNat.WF_typed {c : VContext} {s : VState}
     · exact .throw
   · exact .throw
 
+private theorem TrExprS.typeToType {env : VEnv} {Us : List Name} :
+    TrExprS env Us [] q(Type → Type)
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero))) := by
+  exact .forallE
+    ⟨_, .sort (by trivial)⟩ ⟨_, .sort (by trivial)⟩
+    (.sort rfl) (.sort rfl)
+
+private theorem TrExprS.forallClosed {env : VEnv} (wf : env.WF)
+    {Us : List Name}
+    (ha : TrExprS env Us [] a a') (haT : env.IsType Us.length [] a')
+    (hb : TrExprS env Us [] b b') (hbT : env.IsType Us.length [] b') :
+    TrExprS env Us [] (.forallE name a b bi) (.forallE a' b') := by
+  obtain ⟨u, hbHas⟩ := hbT
+  exact .forallE haT ⟨u, hbHas.weak0 wf⟩ ha
+    (TrExprS.closed_weak wf hb (.skip _ .refl))
+
+private theorem TrExprS.listNilType {env : VEnv} (wf : env.WF)
+    {Us : List Name}
+    (hlist : TrExprS env Us [] q(List.{0}) (.const ``List [.zero]))
+    (hlistT : env.HasType Us.length [] (.const ``List [.zero])
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero)))) :
+    TrExprS env Us [] q((α : Type) → List α)
+      (.forallE (.sort (.succ .zero))
+        (.app (.const ``List [.zero]) (.bvar 0))) := by
+  let Δ : VLCtx := [(none, .vlam (.sort (.succ .zero)))]
+  have hlist1 : TrExprS env Us Δ q(List.{0}) (.const ``List [.zero]) := by
+    cases hlist with | const h1 h2 h3 => exact .const h1 h2 h3
+  have hα : TrExprS env Us Δ (.bvar 0) (.bvar 0) :=
+    .bvar (A := .sort (.succ .zero)) rfl
+  have hαT : env.HasType Us.length [(.sort (.succ .zero))]
+      (.bvar 0) (.sort (.succ .zero)) := .bvar .zero
+  have hbodyT : env.HasType Us.length [(.sort (.succ .zero))]
+      (.app (.const ``List [.zero]) (.bvar 0)) (.sort (.succ .zero)) :=
+    (hlistT.weak0 wf).app hαT
+  apply TrExprS.forallE
+  · exact ⟨_, .sort (by trivial)⟩
+  · exact ⟨_, hbodyT⟩
+  · exact .sort rfl
+  · exact .app (hlistT.weak0 wf) hαT hlist1 hα
+
+private theorem TrExprS.listConsType {env : VEnv} (wf : env.WF)
+    {Us : List Name}
+    (hlist : TrExprS env Us [] q(List.{0}) (.const ``List [.zero]))
+    (hlistT : env.HasType Us.length [] (.const ``List [.zero])
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero)))) :
+    TrExprS env Us [] q((α : Type) → α → List α → List α)
+      (.forallE (.sort (.succ .zero)) <| .forallE (.bvar 0) <|
+        .forallE (.app (.const ``List [.zero]) (.bvar 1))
+          (.app (.const ``List [.zero]) (.bvar 2))) := by
+  let Δα : VLCtx := [(none, .vlam (.sort (.succ .zero)))]
+  let Δx : VLCtx := (none, .vlam (.bvar 0)) :: Δα
+  let Δxs : VLCtx :=
+    (none, .vlam (.app (.const ``List [.zero]) (.bvar 1))) :: Δx
+  have hlistAt : ∀ Δ, TrExprS env Us Δ q(List.{0})
+      (.const ``List [.zero]) := by
+    intro Δ
+    cases hlist with | const h1 h2 h3 => exact .const h1 h2 h3
+  have hlistα := hlistAt Δα
+  have hlistx := hlistAt Δx
+  have hlistxs := hlistAt Δxs
+  have hα0 : TrExprS env Us Δα (.bvar 0) (.bvar 0) :=
+    .bvar (A := .sort (.succ .zero)) rfl
+  have hα1 : TrExprS env Us Δx (.bvar 1) (.bvar 1) :=
+    .bvar (A := .sort (.succ .zero)) rfl
+  have hα2 : TrExprS env Us Δxs (.bvar 2) (.bvar 2) :=
+    .bvar (A := .sort (.succ .zero)) rfl
+  have hα0T : env.HasType Us.length [(.sort (.succ .zero))]
+      (.bvar 0) (.sort (.succ .zero)) := .bvar .zero
+  have hα1T : env.HasType Us.length
+      [(.bvar 0), (.sort (.succ .zero))]
+      (.bvar 1) (.sort (.succ .zero)) := .bvar (.succ .zero)
+  have hα2T : env.HasType Us.length
+      [(.app (.const ``List [.zero]) (.bvar 1)), (.bvar 0),
+        (.sort (.succ .zero))]
+      (.bvar 2) (.sort (.succ .zero)) := .bvar (.succ (.succ .zero))
+  have hlistTx : env.HasType Us.length
+      [(.bvar 0), (.sort (.succ .zero))] (.const ``List [.zero])
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero))) :=
+    hlistT.weak0 wf
+  have hlistTxs : env.HasType Us.length
+      [(.app (.const ``List [.zero]) (.bvar 1)), (.bvar 0),
+        (.sort (.succ .zero))] (.const ``List [.zero])
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero))) :=
+    hlistT.weak0 wf
+  have hlistα1T : env.HasType Us.length
+      [(.bvar 0), (.sort (.succ .zero))]
+      (.app (.const ``List [.zero]) (.bvar 1)) (.sort (.succ .zero)) :=
+    hlistTx.app hα1T
+  have hlistα2T : env.HasType Us.length
+      [(.app (.const ``List [.zero]) (.bvar 1)), (.bvar 0),
+        (.sort (.succ .zero))]
+      (.app (.const ``List [.zero]) (.bvar 2)) (.sort (.succ .zero)) :=
+    hlistTxs.app hα2T
+  have hlistα1 : TrExprS env Us Δx
+      (mkApp q(List.{0}) (.bvar 1))
+      (.app (.const ``List [.zero]) (.bvar 1)) :=
+    .app hlistTx hα1T hlistx hα1
+  have hlistα2 : TrExprS env Us Δxs
+      (mkApp q(List.{0}) (.bvar 2))
+      (.app (.const ``List [.zero]) (.bvar 2)) :=
+    .app hlistTxs hα2T hlistxs hα2
+  apply TrExprS.forallE
+  · exact ⟨_, .sort (by trivial)⟩
+  · exact ⟨_, hα0T.forallE (hlistα1T.forallE hlistα2T)⟩
+  · exact .sort rfl
+  · apply TrExprS.forallE
+    · exact ⟨_, hα0T⟩
+    · exact ⟨_, hlistα1T.forallE hlistα2T⟩
+    · exact hα0
+    · apply TrExprS.forallE
+      · exact ⟨_, hlistα1T⟩
+      · exact ⟨_, hlistα2T⟩
+      · exact hlistα1
+      · exact hlistα2
+
+theorem primitiveGuard.WF {c : VContext} {s : VState}
+    {fail : M Unit}
+    (hfail : ∀ {s'}, M.WF c s' fail fun _ _ => False) :
+    M.WF c s (primitiveGuard p fail) fun _ _ => p = true := by
+  cases hp : p with
+  | false =>
+    simp [primitiveGuard]
+    exact hfail
+  | true =>
+    simp [primitiveGuard]
+    exact .pure trivial
+
+theorem getRequiredConstant.WF {c : VContext} {s : VState}
+    {fail : M ConstantInfo}
+    (hfail : ∀ {s'}, M.WF c s' fail fun _ _ => False) :
+    M.WF c s (getRequiredConstant env name fail) fun ci _ =>
+      env.find? name = some ci := by
+  cases hfind : env.find? name with
+  | none =>
+    simp [getRequiredConstant, hfind]
+    exact hfail
+  | some ci =>
+    simp [getRequiredConstant, hfind]
+    exact .pure rfl
+
+theorem checkPrimitiveDef.stringOfList_eq
+    (hname : v.name = ``String.ofList) :
+    checkPrimitiveDef v = (do
+      let env ← getEnv
+      checkStringOfListPrimitive env v
+      pure true) := by
+  simp only [checkPrimitiveDef, hname]
+
+theorem checkStringOfListPrimitive.WF {c : VContext} {s : VState}
+    (hty : c.TrExprS v.type ty')
+    (hchar : c.TrExprS q(Char) .char)
+    (hType : c.TrExprS q(Type) (.sort (.succ .zero)))
+    (hlist : c.TrExprS q(List.{0}) (.const ``List [.zero]))
+    (hlistTy : c.TrExprS q(Type → Type)
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero))))
+    (hlistChar : c.TrExprS q(List Char) .listChar)
+    (hnilConst : c.TrExprS q(@List.nil.{0}) (.const ``List.nil [.zero]))
+    (hnilConstTy : c.TrExprS q((α : Type) → List α)
+      (.forallE (.sort (.succ .zero))
+        (.app (.const ``List [.zero]) (.bvar 0))))
+    (hnil : c.TrExprS q(List.nil (α := Char)) .listCharNil)
+    (hconsConst : c.TrExprS q(@List.cons.{0}) (.const ``List.cons [.zero]))
+    (hconsConstTy : c.TrExprS q((α : Type) → α → List α → List α)
+      (.forallE (.sort (.succ .zero)) <| .forallE (.bvar 0) <|
+        .forallE (.app (.const ``List [.zero]) (.bvar 1))
+          (.app (.const ``List [.zero]) (.bvar 2))))
+    (hcons : c.TrExprS q(List.cons (α := Char)) .listCharCons)
+    (hconsTy : c.TrExprS q(Char → List Char → List Char)
+      (.forallE .char <| .forallE .listChar .listChar))
+    (hstring : c.TrExprS q(String) .string)
+    (hcanon : c.TrExprS q(List Char → String) (.forallE .listChar .string)) :
+    M.WF c s (checkStringOfListPrimitive c.env v) fun _ _ =>
+      v.levelParams = [] ∧
+      c.IsDefEqU ty' (.forallE .listChar .string) ∧
+      c.HasType .listCharNil .listChar ∧
+      c.HasType .listCharCons
+        (.forallE .char <| .forallE .listChar .listChar) := by
+  unfold checkStringOfListPrimitive
+  dsimp only
+  simp only [pure_bind]
+  let hfail : ∀ {α} {s'}, M.WF c s'
+      ((throw <| .other s!"invalid form for primitive def {v.name}") : M α)
+      fun _ _ => False := fun {_} {_} => .throw
+  let hfailUnit : ∀ {s'}, M.WF c s'
+      ((throw <| .other s!"invalid form for primitive def {v.name}") : M Unit)
+      fun _ _ => False := fun {_} => .throw
+  let hfailConst : ∀ {s'}, M.WF c s'
+      ((throw <| .other s!"invalid form for primitive def {v.name}") : M ConstantInfo)
+      fun _ _ => False := fun {_} => .throw
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hparams => ?_
+  have hlparams : v.levelParams = [] := by simpa using hparams
+  refine (getRequiredConstant.WF hfailConst).bind fun charInfo _ _ hcharFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind fun listInfo _ _ hlistFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind fun nilInfo _ _ hnilFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind fun consInfo _ _ hconsFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind fun stringInfo _ _ hstringFind => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hcharLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hlistLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hnilLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hconsLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hstringLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hcharSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hlistSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hnilSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hconsSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hstringSafety => ?_
+  exact checkTypeIsDefEqGuard.bind_WF hchar (by trivial) hType hfail fun _ _ =>
+    checkTypeIsDefEqGuard.bind_WF hlist (by trivial) hlistTy hfail fun _ _ =>
+    checkTypeIsDefEqGuard.bind_WF hlistChar (by trivial) hType hfail
+      fun _ _ =>
+    checkTypeIsDefEqGuard.bind_WF hnilConst (by trivial)
+      hnilConstTy hfail fun _ _ =>
+    checkTypeIsDefEqGuard.bind_WF hnil (by trivial) hlistChar hfail
+      fun _ hnilTy =>
+    checkTypeIsDefEqGuard.bind_WF hconsConst (by trivial)
+      hconsConstTy hfail fun _ _ =>
+    checkTypeIsDefEqGuard.bind_WF hcons (by trivial) hconsTy hfail
+      fun _ hconsTy' =>
+    checkTypeIsDefEqGuard.bind_WF hstring (by trivial) hType hfail fun _ _ =>
+    isDefEqGuard.bind_WF hty hcanon hfail fun s' htyEq =>
+    M.WF.pure (c := c) (s := s') (a := ())
+      ⟨hlparams, htyEq, hnilTy, hconsTy'⟩
+
 theorem checkPrimitiveDef.stringOfList.WF {c : VContext} {s : VState}
     (hname : v.name = ``String.ofList) (hty : c.TrExprS v.type ty')
     (hchar : c.TrExprS q(Char) .char)
+    (hType : c.TrExprS q(Type) (.sort (.succ .zero)))
+    (hlist : c.TrExprS q(List.{0}) (.const ``List [.zero]))
+    (hlistTy : c.TrExprS q(Type → Type)
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero))))
     (hlistChar : c.TrExprS q(List Char) .listChar)
+    (hnilConst : c.TrExprS q(@List.nil.{0}) (.const ``List.nil [.zero]))
+    (hnilConstTy : c.TrExprS q((α : Type) → List α)
+      (.forallE (.sort (.succ .zero))
+        (.app (.const ``List [.zero]) (.bvar 0))))
     (hnil : c.TrExprS q(List.nil (α := Char)) .listCharNil)
+    (hconsConst : c.TrExprS q(@List.cons.{0}) (.const ``List.cons [.zero]))
+    (hconsConstTy : c.TrExprS q((α : Type) → α → List α → List α)
+      (.forallE (.sort (.succ .zero)) <| .forallE (.bvar 0) <|
+        .forallE (.app (.const ``List [.zero]) (.bvar 1))
+          (.app (.const ``List [.zero]) (.bvar 2))))
     (hcons : c.TrExprS q(List.cons (α := Char)) .listCharCons)
     (hconsTy : c.TrExprS q(Char → List Char → List Char)
       (.forallE .char <| .forallE .listChar .listChar))
@@ -6834,33 +7070,246 @@ theorem checkPrimitiveDef.stringOfList.WF {c : VContext} {s : VState}
       c.HasType .listCharNil .listChar ∧
       c.HasType .listCharCons
         (.forallE .char <| .forallE .listChar .listChar) := by
-  simp only [checkPrimitiveDef, hname]
+  rw [checkPrimitiveDef.stringOfList_eq hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  split
-  · rename_i hparams
-    have hlparams : v.levelParams = [] := by simpa using hparams
-    simp only [pure_bind]
-    exact (ensureType.WF hchar).bind fun _ _ _ _ =>
-      (ensureType.WF hlistChar).bind fun _ _ _ _ =>
-      by
-      rw [← bind_assoc]
-      exact (checkTypeIsDefEq.WF hnil (by trivial) hlistChar).bind fun b _ _ hb => by
-        split
-        · have hnilTy := hb (by assumption)
-          rw [← bind_assoc]
-          exact (checkTypeIsDefEq.WF hcons (by trivial) hconsTy).bind fun b _ _ hb => by
-            split
-            · have hconsTy' := hb (by assumption)
-              exact (ensureType.WF hstring).bind fun _ _ _ _ =>
-                (isDefEq.WF hty hcanon).bind fun b _ _ hb => by
-                  split
-                  · exact .pure fun _ =>
-                      ⟨hlparams, hb (by assumption), hnilTy, hconsTy'⟩
-                  · exact .throw
-            · exact .throw
-        · exact .throw
-  · exact .throw
+  exact (checkStringOfListPrimitive.WF hty hchar hType hlist hlistTy
+    hlistChar hnilConst hnilConstTy hnil hconsConst hconsConstTy hcons
+    hconsTy hstring hcanon).bind fun _ _ _ h =>
+      .pure fun _ => h
+
+theorem checkStringOfListPrimitive.WF_typed
+    {c : VContext} {s : VState}
+    (hsafety : v.safety = .safe)
+    (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS v.type ty') :
+    M.WF c s (checkStringOfListPrimitive c.env v) fun _ _ =>
+      v.levelParams = [] ∧
+      c.IsDefEqU ty' (.forallE .listChar .string) ∧
+      c.HasType .listCharNil .listChar ∧
+      c.HasType .listCharCons
+        (.forallE .char <| .forallE .listChar .listChar) := by
+  unfold checkStringOfListPrimitive
+  dsimp only
+  simp only [pure_bind]
+  let hfail : ∀ {α} {s'}, M.WF c s'
+      ((throw <| .other s!"invalid form for primitive def {v.name}") : M α)
+      fun _ _ => False := fun {_} {_} => .throw
+  let hfailUnit : ∀ {s'}, M.WF c s'
+      ((throw <| .other s!"invalid form for primitive def {v.name}") : M Unit)
+      fun _ _ => False := fun {_} => .throw
+  let hfailConst : ∀ {s'}, M.WF c s'
+      ((throw <| .other s!"invalid form for primitive def {v.name}") :
+        M ConstantInfo)
+      fun _ _ => False := fun {_} => .throw
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hparams => ?_
+  have hlparams : v.levelParams = [] := by simpa using hparams
+  refine (getRequiredConstant.WF hfailConst).bind
+    fun charInfo _ _ hcharFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind
+    fun listInfo _ _ hlistFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind
+    fun nilInfo _ _ hnilFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind
+    fun consInfo _ _ hconsFind => ?_
+  refine (getRequiredConstant.WF hfailConst).bind
+    fun stringInfo _ _ hstringFind => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hcharLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hlistLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hnilLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hconsLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hstringLevels => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hcharSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hlistSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hnilSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hconsSafety => ?_
+  refine (primitiveGuard.WF hfailUnit).bind fun _ _ _ hstringSafety => ?_
+  have hcharLevels' : charInfo.levelParams = [] := by
+    simpa using hcharLevels
+  have hstringLevels' : stringInfo.levelParams = [] := by
+    simpa using hstringLevels
+  have hcharSafety'' : charInfo.isUnsafe = false ∧
+      charInfo.isPartial = false := by
+    simpa [hsafety] using hcharSafety
+  have hlistSafety'' : listInfo.isUnsafe = false ∧
+      listInfo.isPartial = false := by
+    simpa [hsafety] using hlistSafety
+  have hnilSafety'' : nilInfo.isUnsafe = false ∧
+      nilInfo.isPartial = false := by
+    simpa [hsafety] using hnilSafety
+  have hconsSafety'' : consInfo.isUnsafe = false ∧
+      consInfo.isPartial = false := by
+    simpa [hsafety] using hconsSafety
+  have hstringSafety'' : stringInfo.isUnsafe = false ∧
+      stringInfo.isPartial = false := by
+    simpa [hsafety] using hstringSafety
+  have hcharSafety' : charInfo.safety = .safe := by
+    simp [ConstantInfo.safety, hcharSafety''.1, hcharSafety''.2]
+  have hlistSafety' : listInfo.safety = .safe := by
+    simp [ConstantInfo.safety, hlistSafety''.1, hlistSafety''.2]
+  have hnilSafety' : nilInfo.safety = .safe := by
+    simp [ConstantInfo.safety, hnilSafety''.1, hnilSafety''.2]
+  have hconsSafety' : consInfo.safety = .safe := by
+    simp [ConstantInfo.safety, hconsSafety''.1, hconsSafety''.2]
+  have hstringSafety' : stringInfo.safety = .safe := by
+    simp [ConstantInfo.safety, hstringSafety''.1, hstringSafety''.2]
+  have hchar : c.TrExprS q(Char) .char :=
+    VContext.trConst_of_find?_empty c hcharFind (by
+      rw [hcharSafety']
+      exact DefinitionSafety.le_safe) hcharLevels'
+  have hlist : c.TrExprS q(List.{0}) (.const ``List [.zero]) :=
+    VContext.trConst_of_find? c hlistFind (by
+      rw [hlistSafety']
+      exact DefinitionSafety.le_safe) (by
+        have h : listInfo.levelParams.length = 1 := by
+          simpa using hlistLevels
+        simpa using h.symm) (by
+        simp [VLevel.ofLevel])
+  have hnilConst : c.TrExprS q(@List.nil.{0})
+      (.const ``List.nil [.zero]) :=
+    VContext.trConst_of_find? c hnilFind (by
+      rw [hnilSafety']
+      exact DefinitionSafety.le_safe) (by
+        have h : nilInfo.levelParams.length = 1 := by
+          simpa using hnilLevels
+        simpa using h.symm) (by
+        simp [VLevel.ofLevel])
+  have hconsConst : c.TrExprS q(@List.cons.{0})
+      (.const ``List.cons [.zero]) :=
+    VContext.trConst_of_find? c hconsFind (by
+      rw [hconsSafety']
+      exact DefinitionSafety.le_safe) (by
+        have h : consInfo.levelParams.length = 1 := by
+          simpa using hconsLevels
+        simpa using h.symm) (by
+        simp [VLevel.ofLevel])
+  have hstring : c.TrExprS q(String) .string :=
+    VContext.trConst_of_find?_empty c hstringFind (by
+      rw [hstringSafety']
+      exact DefinitionSafety.le_safe) hstringLevels'
+  have hType : c.TrExprS q(Type) (.sort (.succ .zero)) := .sort rfl
+  have hlistTy : c.TrExprS q(Type → Type)
+      (.forallE (.sort (.succ .zero)) (.sort (.succ .zero))) := by
+    change TrExprS c.venv c.lparams c.vlctx _ _
+    rw [hvlctx]
+    exact TrExprS.typeToType
+  exact checkTypeIsDefEqGuard.bind_WF hchar (by trivial) hType hfail
+    fun _ hcharHas =>
+    checkTypeIsDefEqGuard.bind_WF hlist (by trivial) hlistTy hfail
+      fun _ hlistHas => by
+      have hchar0 : TrExprS c.venv c.lparams [] q(Char) .char := by
+        change TrExprS c.venv c.lparams c.vlctx _ _ at hchar
+        rwa [hvlctx] at hchar
+      have hlist0 : TrExprS c.venv c.lparams [] q(List.{0})
+          (.const ``List [.zero]) := by
+        change TrExprS c.venv c.lparams c.vlctx _ _ at hlist
+        rwa [hvlctx] at hlist
+      have hcharHas0 : c.venv.HasType c.lparams.length [] .char
+          (.sort (.succ .zero)) := by
+        change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hcharHas
+        simpa [hvlctx] using hcharHas
+      have hlistHas0 : c.venv.HasType c.lparams.length []
+          (.const ``List [.zero])
+          (.forallE (.sort (.succ .zero)) (.sort (.succ .zero))) := by
+        change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hlistHas
+        simpa [hvlctx] using hlistHas
+      have hlistChar : c.TrExprS q(List Char) .listChar :=
+        .app hlistHas hcharHas hlist hchar
+      exact checkTypeIsDefEqGuard.bind_WF hlistChar (by trivial) hType
+        hfail fun _ hlistCharHas => by
+        have hlistChar0 : TrExprS c.venv c.lparams []
+            q(List Char) .listChar := by
+          change TrExprS c.venv c.lparams c.vlctx _ _ at hlistChar
+          rwa [hvlctx] at hlistChar
+        have hlistCharHas0 : c.venv.HasType c.lparams.length []
+            .listChar (.sort (.succ .zero)) := by
+          change c.venv.HasType c.lparams.length c.vlctx.toCtx
+            .listChar (.sort (.succ .zero)) at hlistCharHas
+          simpa [hvlctx] using hlistCharHas
+        have hnilConstTy : c.TrExprS q((α : Type) → List α)
+            (.forallE (.sort (.succ .zero))
+              (.app (.const ``List [.zero]) (.bvar 0))) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]
+          exact TrExprS.listNilType c.Ewf hlist0 hlistHas0
+        exact checkTypeIsDefEqGuard.bind_WF hnilConst (by trivial)
+          hnilConstTy hfail fun _ hnilConstHas => by
+          have hnil : c.TrExprS q(List.nil (α := Char))
+              .listCharNil := .app hnilConstHas hcharHas hnilConst hchar
+          exact checkTypeIsDefEqGuard.bind_WF hnil (by trivial)
+            hlistChar hfail fun _ hnilTy => by
+            have hconsConstTy : c.TrExprS
+                q((α : Type) → α → List α → List α)
+                (.forallE (.sort (.succ .zero)) <| .forallE (.bvar 0) <|
+                  .forallE (.app (.const ``List [.zero]) (.bvar 1))
+                    (.app (.const ``List [.zero]) (.bvar 2))) := by
+              change TrExprS c.venv c.lparams c.vlctx _ _
+              rw [hvlctx]
+              exact TrExprS.listConsType c.Ewf hlist0 hlistHas0
+            exact checkTypeIsDefEqGuard.bind_WF hconsConst (by trivial)
+              hconsConstTy hfail fun _ hconsConstHas => by
+              have hcons : c.TrExprS q(List.cons (α := Char))
+                  .listCharCons :=
+                .app hconsConstHas hcharHas hconsConst hchar
+              have hcharType0 : c.venv.IsType c.lparams.length [] .char :=
+                ⟨_, hcharHas0⟩
+              have hlistCharType0 : c.venv.IsType c.lparams.length []
+                  .listChar := ⟨_, hlistCharHas0⟩
+              have hlistCharArrow0 : TrExprS c.venv c.lparams []
+                  q(List Char → List Char)
+                  (.forallE .listChar .listChar) :=
+                TrExprS.forallClosed c.Ewf hlistChar0 hlistCharType0
+                  hlistChar0 hlistCharType0
+              have hlistCharArrowType0 : c.venv.IsType
+                  c.lparams.length [] (.forallE .listChar .listChar) :=
+                ⟨_, hlistCharHas0.forallE (hlistCharHas0.weak0 c.Ewf)⟩
+              have hconsTy : c.TrExprS q(Char → List Char → List Char)
+                  (.forallE .char <| .forallE .listChar .listChar) := by
+                change TrExprS c.venv c.lparams c.vlctx _ _
+                rw [hvlctx]
+                exact TrExprS.forallClosed c.Ewf hchar0 hcharType0
+                  hlistCharArrow0 hlistCharArrowType0
+              exact checkTypeIsDefEqGuard.bind_WF hcons (by trivial)
+                hconsTy hfail fun _ hconsTy' =>
+                checkTypeIsDefEqGuard.bind_WF hstring (by trivial) hType
+                  hfail fun _ hstringHas => by
+                  have hstring0 : TrExprS c.venv c.lparams []
+                      q(String) .string := by
+                    change TrExprS c.venv c.lparams c.vlctx _ _ at hstring
+                    rwa [hvlctx] at hstring
+                  have hstringHas0 : c.venv.HasType c.lparams.length []
+                      .string (.sort (.succ .zero)) := by
+                    change c.venv.HasType c.lparams.length c.vlctx.toCtx
+                      _ _ at hstringHas
+                    simpa [hvlctx] using hstringHas
+                  have hcanon : c.TrExprS q(List Char → String)
+                      (.forallE .listChar .string) := by
+                    change TrExprS c.venv c.lparams c.vlctx _ _
+                    rw [hvlctx]
+                    exact TrExprS.forallClosed c.Ewf hlistChar0 hlistCharType0
+                      hstring0 ⟨_, hstringHas0⟩
+                  exact isDefEqGuard.bind_WF hty hcanon hfail
+                    fun s' htyEq =>
+                      M.WF.pure (c := c) (s := s') (a := ())
+                        ⟨hlparams, htyEq, hnilTy, hconsTy'⟩
+
+theorem checkPrimitiveDef.stringOfList.WF_typed
+    {c : VContext} {s : VState}
+    (hname : v.name = ``String.ofList)
+    (hsafety : v.safety = .safe)
+    (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS v.type ty') :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b →
+      v.levelParams = [] ∧
+      c.IsDefEqU ty' (.forallE .listChar .string) ∧
+      c.HasType .listCharNil .listChar ∧
+      c.HasType .listCharCons
+        (.forallE .char <| .forallE .listChar .listChar) := by
+  rw [checkPrimitiveDef.stringOfList_eq hname]
+  refine getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  exact (checkStringOfListPrimitive.WF_typed hsafety hvlctx hty).bind
+    fun _ _ _ h => .pure fun _ => h
 
 theorem checkPrimitiveDef.natAdd.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.add) (hty : c.TrExprS v.type ty')

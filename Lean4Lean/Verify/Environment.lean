@@ -801,6 +801,47 @@ theorem checkSafeCharOfNatDefinition.WF
     exact DefinitionSafety.le_rfl,
     huvars, htype⟩, hvname⟩, hvalue⟩
 
+theorem checkSafeStringOfListDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``String.ofList)
+    (hsafety : v.safety = .safe) :
+    ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+        ∃ v' : VDefVal,
+          TrDefVal .safe (ves.venv .safe) (.defnInfo v) v' ∧
+          v'.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
+          v.levelParams = [] ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length [] v'.type
+            (.forallE .listChar .string) ∧
+          (ves.venv .safe).HasType v.levelParams.length []
+            .listCharNil .listChar ∧
+          (ves.venv .safe).HasType v.levelParams.length []
+            .listCharCons
+              (.forallE .char <| .forallE .listChar .listChar) := by
+  refine (checkDefinitionBody.WF wf v).bind fun _ state' _ hbody => ?_
+  obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
+  refine (Environment.checkPrimitiveDef.stringOfList.WF_typed
+    (c := .mk' wf .safe v.levelParams) (s := state')
+    (ty' := v'.type) hname hsafety rfl htype).bind
+      fun allow state'' _ hcheck => ?_
+  refine (TypeChecker.M.WF.liftExcept
+    (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+    fun _ _ _ hcheckedName => ?_
+  have hallow : allow = true := hcheckedName.2 (by
+    rw [hname]
+    simp [Lean.Kernel.Environment.primitives,
+      NameSet.contains, NameSet.ofList])
+  obtain ⟨hlevels, hty, hnil, hcons⟩ := hcheck hallow
+  refine ⟨v', ?_, hvalueT, hcheckedName.1, hlevels,
+    hty, hnil, hcons⟩
+  exact ⟨⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hsafety]
+    exact DefinitionSafety.le_rfl,
+    huvars, htype⟩, hvname⟩, hvalue⟩
+
 
 
 theorem checkSafeNonprimitiveDefinition.WF
@@ -1447,6 +1488,34 @@ theorem addDefinition.WF_safe_charOfNat
       some out := by simpa [hname] using hadd
   exact (wf.hasPrimitives (safety := safety)).addCharOfNat
     hadd' hwf' huvars' hty'
+
+theorem addDefinition.WF_safe_stringOfList
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``String.ofList)
+    (hsafety : v.safety = .safe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  refine (checkSafeStringOfListDefinition.WF
+    wf v hname hsafety).run wf |>.map fun _ h => ?_
+  obtain ⟨v', htr, hvWF, hfresh, hlevels, hty, hnil, hcons⟩ := h
+  apply wf.addSafePrimitiveDefinition hsafety hlevels hfresh htr hvWF
+  intro safety out hadd hwf'
+  have hmono : ves.venv .safe ≤ ves.venv safety :=
+    wf.mono DefinitionSafety.le_safe
+  have huvars : v.levelParams.length = v'.uvars := htr.1.1.2.1
+  have huvars' : v'.uvars = 0 := by simpa [hlevels] using huvars.symm
+  have hty' := hty.mono hmono
+  have hnil' := hnil.mono hmono
+  have hcons' := hcons.mono hmono
+  rw [hlevels] at hty' hnil' hcons'
+  have hadd' : (ves.venv safety).addConst
+      ``String.ofList v'.toVConstant = some out := by
+    simpa [hname] using hadd
+  exact (wf.hasPrimitives (safety := safety)).addStringOfList
+    hadd' hwf' huvars' hty' hnil' hcons'
 
 theorem addDefinition.WF_safe_natLand_of_shape
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
