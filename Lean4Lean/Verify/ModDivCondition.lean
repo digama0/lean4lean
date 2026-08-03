@@ -552,6 +552,70 @@ theorem VEnv.replaceNatDITECondition
   have h₃ := h₂.app_same wf trivial hproofAppT hthenT
   exact h₃.app_same wf trivial hthenAppT helseT
 
+/-- Recover the exact type of a dependent proof argument from a certified
+lambda equation and a closed call using that proof, then instantiate the
+equation with the recovered argument. -/
+private theorem VEnv.instantiate_dependent_proof_lam
+    {env : VEnv} (wf : env.WF)
+    {proofTyL proofTyR bodyL bodyR prefixLocal prefixCall hpV
+      prefixArgTy prefixBodyTy hpTy hpBodyTy : VExpr}
+    (hprefixLocalT : env.HasType 0 [proofTyL] prefixLocal
+      (.forallE prefixArgTy prefixBodyTy))
+    (hproofVarT : env.HasType 0 [proofTyL] (.bvar 0) prefixArgTy)
+    (hprefixCallT : env.HasType 0 [] prefixCall
+      (.forallE hpTy hpBodyTy))
+    (hpT : env.HasType 0 [] hpV hpTy)
+    (hprefixEq : env.IsDefEqU 0 [proofTyL] prefixLocal prefixCall)
+    (hlamEq : env.IsDefEqU 0 []
+      (.lam proofTyL bodyL) (.lam proofTyR bodyR)) :
+    env.HasType 0 [] hpV proofTyR ∧
+      env.IsDefEqU 0 [] (bodyL.inst hpV) (bodyR.inst hpV) := by
+  have hlamEqU := hlamEq
+  obtain ⟨_, hlamEqD⟩ := hlamEq
+  obtain ⟨hproofTyLType, _, hbodyLEq⟩ :=
+    hlamEqD.hasType.1.lam_inv wf trivial
+  obtain ⟨hproofTyRType, _, hbodyREq⟩ :=
+    hlamEqD.hasType.2.lam_inv wf trivial
+  have hΓ : OnCtx [proofTyL] (env.IsType 0) :=
+    ⟨trivial, hproofTyLType⟩
+  obtain ⟨_, hproofTyLSort⟩ := hproofTyLType
+  have hproofTyLClosed :=
+    (hproofTyLSort.closedN' wf.ordered.closed trivial).1
+  have hproofVarCanon : env.HasType 0 [proofTyL] (.bvar 0) proofTyL := by
+    have hb : env.HasType 0 [proofTyL] (.bvar 0) proofTyL.lift :=
+      .bvar .zero
+    rw [hproofTyLClosed.lift_eq] at hb
+    exact hb
+  have hproofArgEq := hproofVarT.uniqU wf hΓ hproofVarCanon
+  have hprefixCallLocalT :=
+    (hprefixEq.of_l wf hΓ hprefixLocalT).hasType.2
+  have hprefixCallWeakT := hprefixCallT.weak0 (Γ := [proofTyL]) wf
+  have hforallEq := hprefixCallLocalT.uniqU wf hΓ hprefixCallWeakT
+  obtain ⟨_, hdomainEq⟩ := (hforallEq.forallE_inv wf hΓ).1
+  have hpProofTyEqCtx := hdomainEq.symm.toU.trans wf hΓ hproofArgEq
+  have hpTyClosed := (hpT.closedN' wf.ordered.closed trivial).2.2
+  have hpProofTyEq : env.IsDefEqU 0 [] hpTy proofTyL := by
+    apply (VEnv.IsDefEqU.weakN_iff wf hΓ
+      (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [proofTyL])).1
+    simpa [hpTyClosed.lift_eq, hproofTyLClosed.lift_eq] using
+      hpProofTyEqCtx
+  have hpTL := hpT.defeqU_r wf trivial hpProofTyEq
+  have hleftLamT := VEnv.HasType.lam hproofTyLSort hbodyLEq.hasType.1
+  have happ := hlamEqU.app_same wf trivial hleftLamT hpTL
+  have happRightT :=
+    (happ.of_l wf trivial (VEnv.HasType.app hleftLamT hpTL)).hasType.2
+  obtain ⟨_, _, hrightLamT, hpTR⟩ :=
+    happRightT.app_inv wf.ordered trivial
+  obtain ⟨_, hproofTyRSort⟩ := hproofTyRType
+  have hrightLamCanonT :=
+    VEnv.HasType.lam hproofTyRSort hbodyREq.hasType.1
+  have hrightForallEq := hrightLamT.uniqU wf trivial hrightLamCanonT
+  obtain ⟨_, hrightDomainEq⟩ :=
+    (hrightForallEq.forallE_inv wf trivial).1
+  have hpTR' := hpTR.defeqU_r wf trivial hrightDomainEq.toU
+  exact ⟨hpTR', VEnv.IsDefEqU.lam_instU_hetero wf trivial hlamEqU
+    hproofTyLSort hbodyLEq.hasType.1 hbodyREq.hasType.1 hpTL hpTR'⟩
+
 /-- A checked dependent true-selector equation specializes to its true
 branch, retaining the generated proof argument existentially. -/
 theorem VEnv.reflectionNatDITE_true_select
@@ -696,6 +760,193 @@ theorem VEnv.reflectionNatDITE_false_select
     htClosed.instN_eq, heClosed.lift_eq, heClosed.instN_eq] at h₄
   exact ⟨.app (.app ofFalse p) H, h₄⟩
 
+/-- The true selector equation itself recovers the exact dependent type of
+an already well-typed reflection witness; callers need not provide that
+transport separately. -/
+private theorem VEnv.reflectionNatDITE_true_select_from_call
+    {env : VEnv} (wf : env.WF)
+    {rtype rdite ofTrue p H t e R : VExpr}
+    (hrtypeClosed : rtype.ClosedN) (hrditeClosed : rdite.ClosedN)
+    (hofTrueClosed : ofTrue.ClosedN)
+    (heq : env.IsDefEqU 0 []
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolTrue) <|
+       .app (.app (.app (.app (.app rdite (.bvar 3)) .boolTrue)
+         (.bvar 0)) (.bvar 2)) (.bvar 1))
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolTrue) <|
+       .app (.bvar 2) (.app (.app ofTrue (.bvar 3)) (.bvar 0))))
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app rdite p) .boolTrue) H) t) e) R)
+    (hp : env.HasType 0 [] p (.sort .zero))
+    (ht : env.HasType 0 [] t (.forallE p .nat))
+    (he : env.HasType 0 [] e
+      (.forallE (.app (.const ``Not []) p) .nat)) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app rdite p) .boolTrue) H) t) e)
+      (.app t proof) := by
+  have hpClosed : p.ClosedN :=
+    (hp.closedN' wf.ordered.closed trivial).1
+  have htClosed : t.ClosedN :=
+    (ht.closedN' wf.ordered.closed trivial).1
+  have heClosed : e.ClosedN :=
+    (he.closedN' wf.ordered.closed trivial).1
+  have heq' := heq
+  obtain ⟨_, hd⟩ := heq'
+  obtain ⟨⟨_, hpropSort⟩, _, hleftBodyT⟩ :=
+    hd.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightBodyT⟩ := hd.hasType.2.lam_inv wf trivial
+  have h₁ := VEnv.IsDefEqU.lam_instU wf trivial heq hpropSort
+    hleftBodyT hrightBodyT hp
+  simp [VExpr.inst, hrtypeClosed.instN_eq,
+    hrditeClosed.instN_eq, hofTrueClosed.instN_eq, hpClosed.lift_eq] at h₁
+  have h₁' := h₁
+  obtain ⟨_, hd₁⟩ := h₁'
+  obtain ⟨⟨_, htSort⟩, _, hleftTBody⟩ :=
+    hd₁.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightTBody⟩ := hd₁.hasType.2.lam_inv wf trivial
+  have h₂ := VEnv.IsDefEqU.lam_instU wf trivial h₁ htSort
+    hleftTBody hrightTBody ht
+  simp [VExpr.inst, hrtypeClosed.instN_eq,
+    hrditeClosed.instN_eq, hofTrueClosed.instN_eq, hpClosed.instN_eq] at h₂
+  have h₂' := h₂
+  obtain ⟨_, hd₂⟩ := h₂'
+  obtain ⟨⟨_, heSort⟩, _, hleftEBody⟩ :=
+    hd₂.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightEBody⟩ := hd₂.hasType.2.lam_inv wf trivial
+  have h₃ := VEnv.IsDefEqU.lam_instU wf trivial h₂ heSort
+    hleftEBody hrightEBody he
+  simp [VExpr.inst, hrtypeClosed.instN_eq,
+    hrditeClosed.instN_eq, hofTrueClosed.instN_eq,
+    hpClosed.instN_eq] at h₃
+  have h₃' := h₃
+  obtain ⟨_, hd₃⟩ := h₃'
+  obtain ⟨hproofTyLType, _, hbodyLT⟩ :=
+    hd₃.hasType.1.lam_inv wf trivial
+  have hΓ : OnCtx [(.app (.app rtype p) .boolTrue)]
+      (env.IsType 0) := ⟨trivial, hproofTyLType⟩
+  obtain ⟨_, _, hprefixThenT, _⟩ :=
+    hbodyLT.hasType.1.app_inv wf.ordered hΓ
+  obtain ⟨_, _, hprefixProofT, _⟩ :=
+    hprefixThenT.app_inv wf.ordered hΓ
+  obtain ⟨prefixArgTy, prefixBodyTy, hprefixLocalT, hproofVarT⟩ :=
+    hprefixProofT.app_inv wf.ordered hΓ
+  obtain ⟨_, _, hcallThenT, _⟩ := hcallT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hcallProofT, _⟩ :=
+    hcallThenT.app_inv wf.ordered trivial
+  obtain ⟨hpTy, hpBodyTy, hprefixCallT, hpT⟩ :=
+    hcallProofT.app_inv wf.ordered trivial
+  have hprefixEq : env.IsDefEqU 0
+      [(.app (.app rtype p) .boolTrue)]
+      (.app (.app rdite p) .boolTrue)
+      (.app (.app rdite p) .boolTrue) :=
+    .refl ⟨_, hprefixLocalT⟩
+  obtain ⟨_, hinst⟩ := VEnv.instantiate_dependent_proof_lam wf
+    (prefixArgTy := prefixArgTy) (prefixBodyTy := prefixBodyTy)
+    (hpTy := hpTy) (hpBodyTy := hpBodyTy)
+    hprefixLocalT hproofVarT hprefixCallT hpT hprefixEq h₃
+  refine ⟨.app (.app ofTrue p) H, ?_⟩
+  simpa [VExpr.inst, VExpr.instVar, VExpr.lift, VExpr.liftN, liftVar,
+    hrditeClosed.instN_eq, hofTrueClosed.instN_eq,
+    hpClosed.instN_eq, htClosed.liftN_eq, htClosed.instN_eq,
+    heClosed.lift_eq, heClosed.instN_eq] using hinst
+
+/-- False counterpart of `reflectionNatDITE_true_select_from_call`. -/
+private theorem VEnv.reflectionNatDITE_false_select_from_call
+    {env : VEnv} (wf : env.WF)
+    {rtype rdite ofFalse p H t e R : VExpr}
+    (hrtypeClosed : rtype.ClosedN) (hrditeClosed : rdite.ClosedN)
+    (hofFalseClosed : ofFalse.ClosedN)
+    (heq : env.IsDefEqU 0 []
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolFalse) <|
+       .app (.app (.app (.app (.app rdite (.bvar 3)) .boolFalse)
+         (.bvar 0)) (.bvar 2)) (.bvar 1))
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolFalse) <|
+       .app (.bvar 1) (.app (.app ofFalse (.bvar 3)) (.bvar 0))))
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app rdite p) .boolFalse) H) t) e) R)
+    (hp : env.HasType 0 [] p (.sort .zero))
+    (ht : env.HasType 0 [] t (.forallE p .nat))
+    (he : env.HasType 0 [] e
+      (.forallE (.app (.const ``Not []) p) .nat)) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app rdite p) .boolFalse) H) t) e)
+      (.app e proof) := by
+  have hpClosed : p.ClosedN :=
+    (hp.closedN' wf.ordered.closed trivial).1
+  have htClosed : t.ClosedN :=
+    (ht.closedN' wf.ordered.closed trivial).1
+  have heClosed : e.ClosedN :=
+    (he.closedN' wf.ordered.closed trivial).1
+  have heq' := heq
+  obtain ⟨_, hd⟩ := heq'
+  obtain ⟨⟨_, hpropSort⟩, _, hleftBodyT⟩ :=
+    hd.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightBodyT⟩ := hd.hasType.2.lam_inv wf trivial
+  have h₁ := VEnv.IsDefEqU.lam_instU wf trivial heq hpropSort
+    hleftBodyT hrightBodyT hp
+  simp [VExpr.inst, hrtypeClosed.instN_eq,
+    hrditeClosed.instN_eq, hofFalseClosed.instN_eq, hpClosed.lift_eq] at h₁
+  have h₁' := h₁
+  obtain ⟨_, hd₁⟩ := h₁'
+  obtain ⟨⟨_, htSort⟩, _, hleftTBody⟩ :=
+    hd₁.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightTBody⟩ := hd₁.hasType.2.lam_inv wf trivial
+  have h₂ := VEnv.IsDefEqU.lam_instU wf trivial h₁ htSort
+    hleftTBody hrightTBody ht
+  simp [VExpr.inst, hrtypeClosed.instN_eq,
+    hrditeClosed.instN_eq, hofFalseClosed.instN_eq, hpClosed.instN_eq] at h₂
+  have h₂' := h₂
+  obtain ⟨_, hd₂⟩ := h₂'
+  obtain ⟨⟨_, heSort⟩, _, hleftEBody⟩ :=
+    hd₂.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightEBody⟩ := hd₂.hasType.2.lam_inv wf trivial
+  have h₃ := VEnv.IsDefEqU.lam_instU wf trivial h₂ heSort
+    hleftEBody hrightEBody he
+  simp [VExpr.inst, hrtypeClosed.instN_eq,
+    hrditeClosed.instN_eq, hofFalseClosed.instN_eq, hpClosed.instN_eq] at h₃
+  have h₃' := h₃
+  obtain ⟨_, hd₃⟩ := h₃'
+  obtain ⟨hproofTyLType, _, hbodyLT⟩ :=
+    hd₃.hasType.1.lam_inv wf trivial
+  have hΓ : OnCtx [(.app (.app rtype p) .boolFalse)]
+      (env.IsType 0) := ⟨trivial, hproofTyLType⟩
+  obtain ⟨_, _, hprefixThenT, _⟩ :=
+    hbodyLT.hasType.1.app_inv wf.ordered hΓ
+  obtain ⟨_, _, hprefixProofT, _⟩ :=
+    hprefixThenT.app_inv wf.ordered hΓ
+  obtain ⟨prefixArgTy, prefixBodyTy, hprefixLocalT, hproofVarT⟩ :=
+    hprefixProofT.app_inv wf.ordered hΓ
+  obtain ⟨_, _, hcallThenT, _⟩ := hcallT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hcallProofT, _⟩ :=
+    hcallThenT.app_inv wf.ordered trivial
+  obtain ⟨hpTy, hpBodyTy, hprefixCallT, hpT⟩ :=
+    hcallProofT.app_inv wf.ordered trivial
+  have hprefixEq : env.IsDefEqU 0
+      [(.app (.app rtype p) .boolFalse)]
+      (.app (.app rdite p) .boolFalse)
+      (.app (.app rdite p) .boolFalse) :=
+    .refl ⟨_, hprefixLocalT⟩
+  obtain ⟨_, hinst⟩ := VEnv.instantiate_dependent_proof_lam wf
+    (prefixArgTy := prefixArgTy) (prefixBodyTy := prefixBodyTy)
+    (hpTy := hpTy) (hpBodyTy := hpBodyTy)
+    hprefixLocalT hproofVarT hprefixCallT hpT hprefixEq h₃
+  refine ⟨.app (.app ofFalse p) H, ?_⟩
+  simpa [VExpr.inst, VExpr.instVar, VExpr.lift, VExpr.liftN, liftVar,
+    hrditeClosed.instN_eq, hofFalseClosed.instN_eq,
+    hpClosed.instN_eq, htClosed.liftN_eq, htClosed.instN_eq,
+    heClosed.lift_eq, heClosed.instN_eq] using hinst
+
 /-- Select the true branch after a reflected dependent selector's Boolean
 argument has been evaluated to `true`. -/
 theorem VEnv.reflectionNatDITE_true_of_condition
@@ -721,15 +972,15 @@ theorem VEnv.reflectionNatDITE_true_of_condition
     (hp : env.HasType 0 [] p (.sort .zero))
     (ht : env.HasType 0 [] t (.forallE p .nat))
     (he : env.HasType 0 [] e
-      (.forallE (.app (.const ``Not []) p) .nat))
-    (hH : env.HasType 0 [] H (.app (.app rtype p) .boolTrue)) :
+      (.forallE (.app (.const ``Not []) p) .nat)) :
     ∃ proof, env.IsDefEqU 0 []
       (.app (.app (.app (.app (.app rdite p) boolV) H) t) e)
       (.app t proof) := by
   have hreplace := VEnv.replaceNatDITECondition wf hcallT hbool
-  obtain ⟨proof, hselect⟩ := VEnv.reflectionNatDITE_true_select wf
-    hrtypeClosed hrtypeClosed hrditeClosed hofTrueClosed heq
-    hp ht he hH hH
+  have hcallTrueT := (hreplace.of_l wf trivial hcallT).hasType.2
+  obtain ⟨proof, hselect⟩ :=
+    VEnv.reflectionNatDITE_true_select_from_call wf
+      hrtypeClosed hrditeClosed hofTrueClosed heq hcallTrueT hp ht he
   exact ⟨proof, hreplace.trans wf trivial hselect⟩
 
 /-- False counterpart of `reflectionNatDITE_true_of_condition`. -/
@@ -756,15 +1007,15 @@ theorem VEnv.reflectionNatDITE_false_of_condition
     (hp : env.HasType 0 [] p (.sort .zero))
     (ht : env.HasType 0 [] t (.forallE p .nat))
     (he : env.HasType 0 [] e
-      (.forallE (.app (.const ``Not []) p) .nat))
-    (hH : env.HasType 0 [] H (.app (.app rtype p) .boolFalse)) :
+      (.forallE (.app (.const ``Not []) p) .nat)) :
     ∃ proof, env.IsDefEqU 0 []
       (.app (.app (.app (.app (.app rdite p) boolV) H) t) e)
       (.app e proof) := by
   have hreplace := VEnv.replaceNatDITECondition wf hcallT hbool
-  obtain ⟨proof, hselect⟩ := VEnv.reflectionNatDITE_false_select wf
-    hrtypeClosed hrtypeClosed hrditeClosed hofFalseClosed heq
-    hp ht he hH hH
+  have hcallFalseT := (hreplace.of_l wf trivial hcallT).hasType.2
+  obtain ⟨proof, hselect⟩ :=
+    VEnv.reflectionNatDITE_false_select_from_call wf
+      hrtypeClosed hrditeClosed hofFalseClosed heq hcallFalseT hp ht he
   exact ⟨proof, hreplace.trans wf trivial hselect⟩
 
 end Lean4Lean.Environment
