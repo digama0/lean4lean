@@ -1731,7 +1731,6 @@ theorem Condition.natEqDecideFn.reflects
     (hrite : TrExprS env [] [] Reflection.defn₂.ite rite)
     (hrtypeT : env.HasType 0 [] rtype
       (.forallE (.sort .zero) <| .forallE .bool (.sort .zero)))
-    (hboolT : env.HasType 0 [] .bool (.sort (.succ .zero)))
     (hdecide : TrExprS env [] [] Condition.natEqDecideFn decide)
     (hdecideT : env.HasType 0 [] decide
       (.forallE .nat <| .forallE .nat .bool))
@@ -1739,6 +1738,7 @@ theorem Condition.natEqDecideFn.reflects
     (hdecFn : TrExprS env [] [] Condition.natEq.dec decFn)
     (heq : env.IsDefEqU 0 [] reflectFn decFn) :
     Lean4Lean.Environment.VEnv.ReflectsNatEqDecide env decide := by
+  have hboolT := hprim.bool_hasType hctors.bool
   refine ⟨hdecideT, fun a b => ?_⟩
   obtain ⟨iteV, propV, reflectedV, hrootIteS, hpropS,
       hreflectedS, hreflectedCallS, hcallEq⟩ :=

@@ -174,9 +174,13 @@ def VEnv.ReflectsNatBitwise (env : VEnv) (fc : Name) :=
 
 structure VEnv.HasPrimitives (env : VEnv) : Prop where
   bool : env.contains ``Bool → env.contains ``Bool.false ∧ env.contains ``Bool.true
+  boolType : env.constants ``Bool = some ci →
+    ci = { uvars := 0, type := .sort (.succ .zero) }
   boolFalse : env.constants ``Bool.false = some ci → ci = { uvars := 0, type := .bool }
   boolTrue : env.constants ``Bool.true = some ci → ci = { uvars := 0, type := .bool }
   nat : env.contains ``Nat → env.contains ``Nat.zero ∧ env.contains ``Nat.succ
+  natType : env.constants ``Nat = some ci →
+    ci = { uvars := 0, type := .sort (.succ .zero) }
   natZero : env.constants ``Nat.zero = some ci → ci = { uvars := 0, type := .nat }
   natSucc : env.constants ``Nat.succ = some ci →
     ci = { uvars := 0, type := .forallE .nat .nat }

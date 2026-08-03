@@ -1870,9 +1870,11 @@ theorem VEnv.ReflectsNatNatNat.of_shiftRight_equations (henv : VEnv.WF env)
 theorem VEnv.HasPrimitives.addDefEq {env : VEnv} {df : VDefEq}
     (h : env.HasPrimitives) : (env.addDefEq df).HasPrimitives where
   bool := h.bool
+  boolType := h.boolType
   boolFalse := h.boolFalse
   boolTrue := h.boolTrue
   nat := h.nat
+  natType := h.natType
   natZero := h.natZero
   natSucc := h.natSucc
   natPred := h.natPred.addDefEq
@@ -1899,6 +1901,22 @@ theorem VEnv.HasPrimitives.addDefEq {env : VEnv} {df : VDefEq}
     ⟨hu, fun U Γ => (hty U Γ).mono VEnv.addDefEq_le,
       hnil.mono VEnv.addDefEq_le, hcons.mono VEnv.addDefEq_le⟩
 
+theorem VEnv.HasPrimitives.bool_hasType {env : VEnv}
+    (h : env.HasPrimitives) (hbool : env.contains ``Bool) :
+    env.HasType 0 [] .bool (.sort (.succ .zero)) := by
+  obtain ⟨ci, hci⟩ := hbool
+  have hshape := h.boolType hci
+  subst ci
+  exact .const hci nofun rfl
+
+theorem VEnv.HasPrimitives.nat_hasType {env : VEnv}
+    (h : env.HasPrimitives) (hnat : env.contains ``Nat) :
+    env.HasType 0 [] .nat (.sort (.succ .zero)) := by
+  obtain ⟨ci, hci⟩ := hnat
+  have hshape := h.natType hci
+  subst ci
+  exact .const hci nofun rfl
+
 theorem VEnv.HasPrimitives.empty : VEnv.empty.HasPrimitives := by
   constructor <;> simp [VEnv.contains, VEnv.empty,
     VEnv.ReflectsNatNat, VEnv.ReflectsNatNatNat, VEnv.ReflectsNatNatBool,
@@ -1922,11 +1940,17 @@ theorem VEnv.HasPrimitives.addConst_of_not_primitive {env env' : VEnv}
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by simp [Environment.primitives, NameSet.contains, NameSet.ofList]) H)
       ⟨newContains hfalse, newContains htrue⟩
+    boolType := fun H => h.boolType (by
+      rwa [same ``Bool (by simp [Environment.primitives,
+        NameSet.contains, NameSet.ofList])] at H)
     boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by simp [Environment.primitives, NameSet.contains, NameSet.ofList])] at H)
     boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by simp [Environment.primitives, NameSet.contains, NameSet.ofList])] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by simp [Environment.primitives, NameSet.contains, NameSet.ofList]) H)
       ⟨newContains hzero, newContains hsucc⟩
+    natType := fun H => h.natType (by
+      rwa [same ``Nat (by simp [Environment.primitives,
+        NameSet.contains, NameSet.ofList])] at H)
     natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by simp [Environment.primitives, NameSet.contains, NameSet.ofList])] at H)
     natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by simp [Environment.primitives, NameSet.contains, NameSet.ofList])] at H)
     natPred := h.natPred.addConst hadd (fresh _ (by simp [Environment.primitives, NameSet.contains, NameSet.ofList]))
@@ -1989,6 +2013,11 @@ theorem VEnv.HasPrimitives.addBoolInductive {env env₁ env₂ env₃ : VEnv}
     bool := fun _ =>
       ⟨⟨_, le₃.constants (VEnv.addConst_self hfalse)⟩,
         ⟨_, VEnv.addConst_self htrue⟩⟩
+    boolType := fun H => by
+      rw [VEnv.addConst_constants_of_ne htrue (by decide),
+        VEnv.addConst_constants_of_ne hfalse (by decide),
+        VEnv.addConst_self hbool] at H
+      exact Option.some.inj H.symm
     boolFalse := fun H => by
       rw [VEnv.addConst_constants_of_ne htrue (by decide),
         VEnv.addConst_self hfalse] at H
@@ -1999,6 +2028,8 @@ theorem VEnv.HasPrimitives.addBoolInductive {env env₁ env₂ env₃ : VEnv}
     nat := fun H =>
       let ⟨hz, hs⟩ := h.nat (oldContains (by decide) (by decide) (by decide) H)
       ⟨newContains hz, newContains hs⟩
+    natType := fun H => h.natType (by
+      rwa [same ``Nat (by decide) (by decide) (by decide)] at H)
     natZero := fun H => h.natZero (by
       rwa [same ``Nat.zero (by decide) (by decide) (by decide)] at H)
     natSucc := fun H => h.natSucc (by
@@ -2071,6 +2102,8 @@ theorem VEnv.HasPrimitives.addNatInductive {env env₁ env₂ env₃ : VEnv}
     bool := fun H =>
       let ⟨hf, ht⟩ := h.bool (oldContains (by decide) (by decide) (by decide) H)
       ⟨newContains hf, newContains ht⟩
+    boolType := fun H => h.boolType (by
+      rwa [same ``Bool (by decide) (by decide) (by decide)] at H)
     boolFalse := fun H => h.boolFalse (by
       rwa [same ``Bool.false (by decide) (by decide) (by decide)] at H)
     boolTrue := fun H => h.boolTrue (by
@@ -2078,6 +2111,11 @@ theorem VEnv.HasPrimitives.addNatInductive {env env₁ env₂ env₃ : VEnv}
     nat := fun _ =>
       ⟨⟨_, le₃.constants (VEnv.addConst_self hzero)⟩,
         ⟨_, VEnv.addConst_self hsucc⟩⟩
+    natType := fun H => by
+      rw [VEnv.addConst_constants_of_ne hsucc (by decide),
+        VEnv.addConst_constants_of_ne hzero (by decide),
+        VEnv.addConst_self hnat] at H
+      exact Option.some.inj H.symm
     natZero := fun H => by
       rw [VEnv.addConst_constants_of_ne hsucc (by decide),
         VEnv.addConst_self hzero] at H
@@ -2166,11 +2204,13 @@ theorem VEnv.HasPrimitives.addPrimitiveDefEq {env env' : VEnv}
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains hneBool H)
       ⟨newContains hfalse, newContains htrue⟩
+    boolType := fun H => h.boolType (by rwa [same ``Bool hneBool] at H)
     boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false hneFalse] at H)
     boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true hneTrue] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains hneNat H)
       ⟨newContains hzero, newContains hsucc⟩
+    natType := fun H => h.natType (by rwa [same ``Nat hneNat] at H)
     natZero := fun H => h.natZero (by rwa [same ``Nat.zero hneZero] at H)
     natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ hneSucc] at H)
     natPred := natPred
@@ -2218,11 +2258,13 @@ theorem VEnv.HasPrimitives.addNatPred {env env' : VEnv}
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
       ⟨newContains hfalse, newContains htrue⟩
+    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
     boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
     boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
       ⟨newContains hzero, newContains hsucc⟩
+    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
     natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
     natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
     natPred := href
@@ -2299,11 +2341,13 @@ theorem VEnv.HasPrimitives.addNatAdd {env env' : VEnv}
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
       ⟨newContains hfalse, newContains htrue⟩
+    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
     boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
     boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
       ⟨newContains hzero, newContains hsucc⟩
+    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
     natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
     natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
     natPred := h.natPred.addConst hadd (by decide) |>.addDefEq
@@ -2386,11 +2430,13 @@ theorem VEnv.HasPrimitives.addNatSub {env env' : VEnv}
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
       ⟨newContains hfalse, newContains htrue⟩
+    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
     boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
     boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
       ⟨newContains hzero, newContains hsucc⟩
+    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
     natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
     natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
     natPred := h.natPred.addConst hadd (by decide) |>.addDefEq
@@ -3110,11 +3156,13 @@ theorem VEnv.HasPrimitives.addCharOfNat {env env' : VEnv}
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
       ⟨newContains hfalse, newContains htrue⟩
+    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
     boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
     boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
       ⟨newContains hzero, newContains hsucc⟩
+    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
     natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
     natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
     natPred := h.natPred.addConst hadd (by decide)
@@ -3165,11 +3213,13 @@ theorem VEnv.HasPrimitives.addStringOfList {env env' : VEnv}
     bool := fun H =>
       let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
       ⟨newContains hfalse, newContains htrue⟩
+    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
     boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
     boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
     nat := fun H =>
       let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
       ⟨newContains hzero, newContains hsucc⟩
+    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
     natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
     natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
     natPred := h.natPred.addConst hadd (by decide)
