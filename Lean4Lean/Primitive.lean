@@ -1013,6 +1013,87 @@ def reduceNatWellFoundedLam2 (e : Expr) (fail : ∀ {α}, M α) : M Expr :=
   let lhs ← reduceNatWellFoundedLam2 lhs fail
   unless ← isDefEq lhs rhs do fail
 
+def natModTopEquation (modFn : Expr) : Expr × Expr :=
+  let succ := mkApp q(Nat.succ)
+  let mod := mkApp2 modFn
+  let go := mkApp5 q(Nat.modCore.go)
+  let c := Condition.natLE
+  let x := .bvar 1
+  let y := .bvar 0
+  let sx := succ x
+  let lhs := .lam0 q(Nat) <| .lam0 q(Nat) <| mod sx y
+  let rhs := .lam0 q(Nat) <| .lam0 q(Nat) <|
+    c.reflectedITE q(Nat) #[y, sx]
+      (c.reflectedDITE #[q(Nat.succ Nat.zero), y]
+        (go (.bvar 1) (.bvar 0) (succ (succ (.bvar 2)))
+          (succ (.bvar 2))
+          (mkApp q(Nat.lt_succ_self) (succ (.bvar 2))))
+        (succ (.bvar 2))) sx
+  (lhs, rhs)
+
+def natModGoEquation : Expr × Expr :=
+  let succ := mkApp q(Nat.succ)
+  let sub := mkApp2 q(Nat.sub)
+  let le := mkApp2 q(@LE.le Nat _)
+  let go := mkApp5 q(Nat.modCore.go)
+  let c := Condition.natLE
+  let y := .bvar 4
+  let hy := .bvar 3
+  let fuel := .bvar 2
+  let x := .bvar 1
+  let h := .bvar 0
+  let close body := .lam0 q(Nat) <|
+    .lam0 (le q(Nat.succ Nat.zero) (.bvar 0)) <|
+    .lam0 q(Nat) <| .lam0 q(Nat) <|
+    .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) body
+  let lhs := close <| go y hy (succ fuel) x h
+  let rhs := close <| c.reflectedDITE #[y, x]
+    (go (.bvar 5) (.bvar 4) (.bvar 3)
+      (sub (.bvar 2) (.bvar 5))
+      (mkApp6 q(@Nat.div_rec_fuel_lemma)
+        (.bvar 2) (.bvar 5) (.bvar 3) (.bvar 4)
+        (.bvar 0) (.bvar 1)))
+    (.bvar 2)
+  (lhs, rhs)
+
+def natDivTopEquation (divFn : Expr) : Expr × Expr :=
+  let succ := mkApp q(Nat.succ)
+  let div := mkApp2 divFn
+  let go := mkApp5 q(Nat.div.go)
+  let c := Condition.natLE
+  let x := .bvar 1
+  let y := .bvar 0
+  let lhs := .lam0 q(Nat) <| .lam0 q(Nat) <| div x y
+  let rhs := .lam0 q(Nat) <| .lam0 q(Nat) <|
+    c.reflectedDITE #[q(Nat.succ Nat.zero), y]
+      (go (.bvar 1) (.bvar 0) (succ (.bvar 2)) (.bvar 2)
+        (mkApp q(Nat.lt_succ_self) (.bvar 2))) q(Nat.zero)
+  (lhs, rhs)
+
+def natDivGoEquation : Expr × Expr :=
+  let succ := mkApp q(Nat.succ)
+  let sub := mkApp2 q(Nat.sub)
+  let le := mkApp2 q(@LE.le Nat _)
+  let go := mkApp5 q(Nat.div.go)
+  let c := Condition.natLE
+  let y := .bvar 4
+  let hy := .bvar 3
+  let fuel := .bvar 2
+  let x := .bvar 1
+  let h := .bvar 0
+  let close body := .lam0 q(Nat) <|
+    .lam0 (le q(Nat.succ Nat.zero) (.bvar 0)) <|
+    .lam0 q(Nat) <| .lam0 q(Nat) <|
+    .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) body
+  let lhs := close <| go y hy (succ fuel) x h
+  let rhs := close <| c.reflectedDITE #[y, x]
+    (succ (go (.bvar 5) (.bvar 4) (.bvar 3)
+      (sub (.bvar 2) (.bvar 5))
+      (mkApp6 q(@Nat.div_rec_fuel_lemma)
+        (.bvar 2) (.bvar 5) (.bvar 3) (.bvar 4)
+        (.bvar 0) (.bvar 1)))) q(Nat.zero)
+  (lhs, rhs)
+
 def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
   let tru := q(true)
@@ -1021,7 +1102,6 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
   let succ := mkApp q(Nat.succ)
   let pred := mkApp q(Nat.pred)
   let add := mkApp2 q(Nat.add)
-  let sub := mkApp2 q(Nat.sub)
   let mul := mkApp2 q(Nat.mul)
   let mod := mkApp2 q(Nat.mod)
   let div := mkApp2 q(Nat.div)
@@ -1078,89 +1158,29 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     let mod := mkApp2 v.value
     unless ← defeq1 (mod zero x) zero do fail
     unless ← isDefEq (← checkType q(@LE.le Nat _)) q(Nat → Nat → Prop) do fail
-    let le := mkApp2 q(@LE.le Nat _)
     unless ← isDefEq (← checkType q(Nat.modCore.go))
       q(∀ n, Nat.succ Nat.zero ≤ n → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
-    let go := mkApp5 q(Nat.modCore.go)
     let c := Condition.natLE; c.check fail (ite := true) (dite := true)
-    let x := .bvar 1
-    let y := .bvar 0
-    let sx := succ x
-    let topR := .lam0 q(Nat) <| .lam0 q(Nat) <|
-      c.reflectedITE q(Nat) #[y, sx]
-        (c.reflectedDITE #[one, y]
-          (go (.bvar 1) (.bvar 0) (succ (succ (.bvar 2)))
-            (succ (.bvar 2))
-            (mkApp q(Nat.lt_succ_self) (succ (.bvar 2))))
-          (succ (.bvar 2))) sx
+    let (topL, topR) := natModTopEquation v.value
     _ ← checkType topR
-    unless ← isDefEq
-      (.lam0 q(Nat) <| .lam0 q(Nat) <| mod sx y) topR do fail
-    let y := .bvar 4
-    let hy := .bvar 3
-    let fuel := .bvar 2
-    let x := .bvar 1
-    let h := .bvar 0
-    let goR := .lam0 q(Nat) <|
-      .lam0 (le one (.bvar 0)) <|
-      .lam0 q(Nat) <| .lam0 q(Nat) <|
-      .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
-      c.reflectedDITE #[y, x]
-        (go (.bvar 5) (.bvar 4) (.bvar 3)
-          (sub (.bvar 2) (.bvar 5))
-          (mkApp6 q(@Nat.div_rec_fuel_lemma)
-            (.bvar 2) (.bvar 5) (.bvar 3) (.bvar 4)
-            (.bvar 0) (.bvar 1)))
-        (.bvar 2)
+    unless ← isDefEq topL topR do fail
+    let (goL, goR) := natModGoEquation
     _ ← checkType goR
-    unless ← isDefEq
-      (.lam0 q(Nat) <|
-       .lam0 (le one (.bvar 0)) <|
-       .lam0 q(Nat) <| .lam0 q(Nat) <|
-       .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
-       go y hy (succ fuel) x h) goR do fail
+    unless ← isDefEq goL goR do fail
   | ``Nat.div =>
     unless env.contains ``Nat.sub && env.contains ``Bool && v.levelParams.isEmpty do fail
     -- div : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    let div := mkApp2 v.value
     let c := Condition.natLE; c.check fail (dite := true)
     unless ← isDefEq (← checkType q(@LE.le Nat _)) q(Nat → Nat → Prop) do fail
-    let le := mkApp2 q(@LE.le Nat _)
     unless ← isDefEq (← checkType q(Nat.div.go))
       q(∀ y, Nat.succ Nat.zero ≤ y → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
-    let go := mkApp5 q(Nat.div.go)
-    let x := .bvar 1
-    let y := .bvar 0
-    let topR := .lam0 q(Nat) <| .lam0 q(Nat) <|
-      c.reflectedDITE #[one, y]
-        (go (.bvar 1) (.bvar 0) (succ (.bvar 2)) (.bvar 2)
-          (mkApp q(Nat.lt_succ_self) (.bvar 2))) zero
+    let (topL, topR) := natDivTopEquation v.value
     _ ← checkType topR
-    unless ← isDefEq
-      (.lam0 q(Nat) <| .lam0 q(Nat) <| div x y) topR do fail
-    let y := .bvar 4
-    let hy := .bvar 3
-    let fuel := .bvar 2
-    let x := .bvar 1
-    let h := .bvar 0
-    let goR := .lam0 q(Nat) <|
-      .lam0 (le one (.bvar 0)) <|
-      .lam0 q(Nat) <| .lam0 q(Nat) <|
-      .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
-      c.reflectedDITE #[y, x]
-        (succ (go (.bvar 5) (.bvar 4) (.bvar 3)
-          (sub (.bvar 2) (.bvar 5))
-          (mkApp6 q(@Nat.div_rec_fuel_lemma)
-            (.bvar 2) (.bvar 5) (.bvar 3) (.bvar 4)
-            (.bvar 0) (.bvar 1)))) zero
+    unless ← isDefEq topL topR do fail
+    let (goL, goR) := natDivGoEquation
     _ ← checkType goR
-    unless ← isDefEq
-      (.lam0 q(Nat) <|
-       .lam0 (le one (.bvar 0)) <|
-       .lam0 q(Nat) <| .lam0 q(Nat) <|
-       .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) <|
-       go y hy (succ fuel) x h) goR do fail
+    unless ← isDefEq goL goR do fail
   | ``Nat.gcd =>
     unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
