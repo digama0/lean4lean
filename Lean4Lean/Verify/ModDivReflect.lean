@@ -754,6 +754,9 @@ theorem VEnv.NatDivGoTypeTranslation.call_proof_types
     (y fuel x : Nat) {hy hfuel : VExpr}
     (hcallT : env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat) :
     ∃ yTy hyTy fuelTy xTy hTy resultTy : VExpr,
+      TrExprS env [] [] q(Nat) yTy ∧
+      TrExprS env [] [(none, .vlam yTy)]
+        (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTy ∧
       env.HasType 0 [] hy (hyTy.inst (.natLit y)) ∧
       env.HasType 0 [] hfuel
         ((((hTy.inst (.natLit y) 3).inst hy 2).inst
@@ -789,6 +792,7 @@ theorem VEnv.NatDivGoTypeTranslation.call_proof_types
     obtain ⟨_, hhDomEq⟩ := (h₄TyEq.forallE_inv wf trivial).1
     have hhT := hhRaw.defeqU_r wf trivial hhDomEq.toU
     exact ⟨yTy, hyTy, fuelTy, xTy, hTy, resultTy,
+      yTyS, hyTyS,
       by simpa [VExpr.inst] using hhyT,
       by simpa [VExpr.inst] using hhT⟩
 
@@ -1831,5 +1835,96 @@ theorem VEnv.align_natDivGo_final_proof
       (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [hFinal])).1
     simpa [hFinalClosed.liftN_eq, hargClosed.liftN_eq] using hctxEq
   exact hhfuelRaw.defeqU_r wf trivial hFinalEq.symm
+
+/-- The checked recursive division equation has the exact operational shape
+required by `ReflectsNatNatNat.of_divCore_equations`. -/
+theorem VEnv.natDivGo_semantics
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    (hsubC : env.contains ``Nat.sub)
+    (selector : VEnv.NatLESelectorCertificate env)
+    (eqCert : VEnv.NatDivGoEquationTranslation env)
+    {goTyV : VExpr}
+    (typeCert : VEnv.NatDivGoTypeTranslation env goTyV)
+    (hgoT : env.HasType 0 [] (.const ``Nat.div.go []) goTyV)
+    (hgoCallT : ∀ y fuel x hy hfuel,
+      env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat) :
+    ∀ y fuel x hy hfuel,
+      if y ≤ x then
+        ∃ hy' hfuel', env.IsDefEqU 0 []
+          (.natDivGo y (fuel + 1) x hy hfuel)
+          (.app .natSucc (.natDivGo y fuel (x - y) hy' hfuel'))
+      else
+        env.IsDefEqU 0 []
+          (.natDivGo y (fuel + 1) x hy hfuel) .natZero := by
+  cases eqCert with
+  | intro yTyL hyTyL fuelTyL xTyL hTyL bodyL
+      yTyR hyTyR fuelTyR xTyR hTyR bodyR
+      yTyLS hyTyLS fuelTyLS xTyLS hTyLS
+      yTyRS hyTyRS fuelTyRS xTyRS hTyRS
+      yTyLType hyTyLType fuelTyLType xTyLType hTyLType
+      yTyRType hyTyRType fuelTyRType xTyRType hTyRType
+      leftS rightS heq =>
+    intro y fuel x hy hfuel
+    have hcallT := hgoCallT y (fuel + 1) x hy hfuel
+    obtain ⟨yTy, hyTy, fuelTy, xTy, hTy, resultTy,
+      yTyS, hyTyS, hhyCanon, hhfuelCanon⟩ :=
+      typeCert.call_proof_types wf hctors hgoT
+        y (fuel + 1) x hcallT
+    have hhyL := VEnv.align_natDivGo_first_proof wf hctors
+      yTyLS hyTyLS yTyS hyTyS y hhyCanon
+    have hhfuelL := VEnv.align_natDivGo_final_proof wf hctors
+      yTyLS fuelTyLS xTyLS yTyLType hyTyLType fuelTyLType
+      xTyLType hTyLType leftS y fuel x hhyL hcallT
+    have hinstEq := VEnv.instantiate_natDivGo_target_binders wf hctors
+      yTyLS fuelTyLS xTyLS yTyRS fuelTyRS xTyRS
+      yTyLType hyTyLType fuelTyLType xTyLType
+      yTyRType hyTyRType fuelTyRType xTyRType
+      heq y fuel x hhyL hhfuelL
+    have hleftShape := VEnv.natDivGoLhsBody_canonical hctors leftS
+    subst bodyL
+    have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
+    have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
+    have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
+    have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
+    have hhyClosed := (hhyL.closedN' wf.ordered.closed trivial).1
+    have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
+    have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
+    have hhfuelClosed := (hhfuelL.closedN' wf.ordered.closed trivial).1
+    have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
+    have hsuccClosed := (hsuccT.closedN' wf.ordered.closed trivial).1
+    have hEq : env.IsDefEqU 0 []
+        (.natDivGo y (fuel + 1) x hy hfuel)
+        (natDivGoTargetInst bodyR y hy fuel x hfuel) := by
+      simpa [natDivGoTargetInst, VExpr.natDivGo, VExpr.natLit,
+        VExpr.inst, VExpr.instVar, Nat.add_comm,
+        hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
+        hhyClosed.liftN_eq (Nat.zero_le _),
+        hhyClosed.instN_eq (Nat.zero_le _),
+        hfuelClosed.liftN_eq (Nat.zero_le _),
+        hfuelClosed.instN_eq (Nat.zero_le _),
+        hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
+        hhfuelClosed.instN_eq (Nat.zero_le _),
+        hsuccClosed.instN_eq (Nat.zero_le _)] using hinstEq
+    have hrhsT := (hEq.of_l wf trivial hcallT).hasType.2
+    obtain ⟨tV, eV, htS, heS, hselect⟩ :=
+      VEnv.select_natDivGo_rhs wf hprim hctors hbleC selector rightS
+        y fuel x hhyL hhfuelL hrhsT
+    split
+    · rename_i hyx
+      rw [if_pos hyx] at hselect
+      obtain ⟨proof, hselect⟩ := hselect
+      have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
+      obtain ⟨hfuel', hbranch⟩ := VEnv.natDivGoThen_beta
+        wf hprim hctors hsubC htS y fuel x hhyL hhfuelL hbranchT
+      exact ⟨hy, hfuel', hEq.trans wf trivial hselect |>.trans wf trivial hbranch⟩
+    · rename_i hyx
+      rw [if_neg hyx] at hselect
+      obtain ⟨proof, hselect⟩ := hselect
+      have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
+      have hbranch := VEnv.natDivGoElse_beta
+        wf hctors heS y fuel x hhyL hhfuelL hbranchT
+      exact hEq.trans wf trivial hselect |>.trans wf trivial hbranch
 
 end Lean4Lean.Environment
