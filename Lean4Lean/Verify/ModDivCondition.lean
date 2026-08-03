@@ -1059,6 +1059,131 @@ theorem Condition.natLE.check.WF.selector
     hrtypeUnique hiteUnique hditeUnique hofTrueUnique hofFalseUnique
     hiteTy hditeTy hiteHas hditeHas hiteChecked hditeChecked, heq⟩
 
+/-- The evidence-retaining source wrapper discovers every translation needed
+to turn a successful Nat-≤ condition check into a semantic selector. -/
+theorem Condition.natLE.checkForPrimitive.WF.selector
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {fail : ∀ {α}, TypeChecker.M α}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hfail : ∀ {α} {s'}, TypeChecker.M.WF c s'
+      (fail : TypeChecker.M α) fun _ _ => False) :
+    TypeChecker.M.WF c s (Condition.natLE.checkForPrimitive fail)
+      fun _ _ => ∃ _selector : VEnv.NatLESelectorCertificate c.venv, True := by
+  unfold Condition.natLE.checkForPrimitive
+  have hevidence : ∀ e ∈ Condition.natLEEvidenceExpressions,
+      e.FVarsIn (· ∈ c.vlctx.fvars) := by
+    intro e he
+    have hclosed : ∀ e ∈ Condition.natLEEvidenceExpressions,
+        e.hasFVar = false ∧ e.hasMVar = false := by
+      simp [Condition.natLEEvidenceExpressions, Condition.natLE,
+        Condition.natLEReflectProof, Condition.natLEReflectedFn,
+        Condition.natLEDecideFn, Reflection.defn₁, Reflection.ite,
+        Reflection.natDITE]
+      native_decide
+    exact Expr.closed_fvarsIn (hclosed e he).1 (hclosed e he).2
+  refine (checkTypeList.WF (es :=
+    Condition.natLEEvidenceExpressions) hevidence).bind
+      fun _ s' _ htypes => ?_
+  let r := Reflection.defn₁
+  let iteTy : Expr := .arrow q(Prop) <| .arrow q(Bool) <|
+    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0))
+      q(∀ α : Type, α → α → α)
+  let iteTrueL : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      mkApp3 r.ite (.bvar 1) q(true) (.bvar 0)
+  let iteTrueR : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 1
+  let iteFalseL : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      mkApp3 r.ite (.bvar 1) q(false) (.bvar 0)
+  let iteFalseR : Expr := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0
+  let diteTy : Expr := .arrow q(Prop) <| .arrow q(Bool) <|
+    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
+    .arrow (.arrow (.bvar 2) q(Nat)) <|
+    .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) q(Nat)
+  let ofTrueTy : Expr := .arrow q(Prop) <|
+    .arrow (mkApp2 r.type (.bvar 0) q(true)) (.bvar 1)
+  let ofFalseTy : Expr := .arrow q(Prop) <|
+    .arrow (mkApp2 r.type (.bvar 0) q(false)) (mkApp q(Not) (.bvar 1))
+  let close (truth : Expr) (body : Expr) : Expr :=
+    .lam0 q(Prop) <|
+    .lam0 (.arrow (.bvar 0) q(Nat)) <|
+    .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+    .lam0 (mkApp2 r.type (.bvar 2) truth) body
+  let diteTrueL : Expr := close q(true) <|
+    mkApp5 r.natDITE (.bvar 3) q(true) (.bvar 0) (.bvar 2) (.bvar 1)
+  let diteTrueR : Expr := close q(true) <|
+    mkApp (.bvar 2) (mkApp2 r.ofTrue (.bvar 3) (.bvar 0))
+  let diteFalseL : Expr := close q(false) <|
+    mkApp5 r.natDITE (.bvar 3) q(false) (.bvar 0) (.bvar 2) (.bvar 1)
+  let diteFalseR : Expr := close q(false) <|
+    mkApp (.bvar 1) (mkApp2 r.ofFalse (.bvar 3) (.bvar 0))
+  have mem (e) (h : e ∈ Condition.natLEEvidenceExpressions) := htypes e h
+  obtain ⟨dec', _, hdec, _⟩ := mem Condition.natLE.dec (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨prop', _, hprop, _⟩ := mem Condition.natLE.prop (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨propTy', _, hpropTy, _⟩ := mem q(Nat → Nat → Prop) (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨rtype', _, hrtype, _⟩ := mem r.type (by simp [Condition.natLEEvidenceExpressions, r])
+  obtain ⟨rtypeCanon', _, hrtypeCanon, _⟩ := mem q(Prop → Bool → Prop) (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨ite', _, hite, _⟩ := mem r.ite (by simp [Condition.natLEEvidenceExpressions, r])
+  obtain ⟨iteTy', _, hiteTy, _⟩ := mem iteTy (by simp [Condition.natLEEvidenceExpressions, iteTy, r])
+  obtain ⟨iteTrueL', _, hiteTrueL, _⟩ := mem iteTrueL (by simp [Condition.natLEEvidenceExpressions, iteTrueL, r])
+  obtain ⟨iteTrueR', _, hiteTrueR, _⟩ := mem iteTrueR (by simp [Condition.natLEEvidenceExpressions, iteTrueR, r])
+  obtain ⟨iteFalseL', _, hiteFalseL, _⟩ := mem iteFalseL (by simp [Condition.natLEEvidenceExpressions, iteFalseL, r])
+  obtain ⟨iteFalseR', _, hiteFalseR, _⟩ := mem iteFalseR (by simp [Condition.natLEEvidenceExpressions, iteFalseR, r])
+  obtain ⟨not', _, hnot, _⟩ := mem q(Not) (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨notTy', _, hnotTy, _⟩ := mem q(Prop → Prop) (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨dite', _, hdite, _⟩ := mem r.natDITE (by simp [Condition.natLEEvidenceExpressions, r])
+  obtain ⟨diteTy', _, hditeTy, _⟩ := mem diteTy (by simp [Condition.natLEEvidenceExpressions, diteTy, r])
+  obtain ⟨ofTrue', _, hofTrue, _⟩ := mem r.ofTrue (by simp [Condition.natLEEvidenceExpressions, r])
+  obtain ⟨ofTrueTy', _, hofTrueTy, _⟩ := mem ofTrueTy (by simp [Condition.natLEEvidenceExpressions, ofTrueTy, r])
+  obtain ⟨ofFalse', _, hofFalse, _⟩ := mem r.ofFalse (by simp [Condition.natLEEvidenceExpressions, r])
+  obtain ⟨ofFalseTy', _, hofFalseTy, _⟩ := mem ofFalseTy (by simp [Condition.natLEEvidenceExpressions, ofFalseTy, r])
+  obtain ⟨diteTrueL', _, hditeTrueL, _⟩ := mem diteTrueL (by simp [Condition.natLEEvidenceExpressions, diteTrueL, close, r])
+  obtain ⟨diteTrueR', _, hditeTrueR, _⟩ := mem diteTrueR (by simp [Condition.natLEEvidenceExpressions, diteTrueR, close, r])
+  obtain ⟨diteFalseL', _, hditeFalseL, _⟩ := mem diteFalseL (by simp [Condition.natLEEvidenceExpressions, diteFalseL, close, r])
+  obtain ⟨diteFalseR', _, hditeFalseR, _⟩ := mem diteFalseR (by simp [Condition.natLEEvidenceExpressions, diteFalseR, close, r])
+  obtain ⟨reflectFn', _, hreflect, _⟩ :=
+    mem Condition.natLEReflectedFn (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨decide', _, hdecide, _⟩ :=
+    mem Condition.natLEDecideFn (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨decideTy', _, hdecideTy, _⟩ :=
+    mem q(Nat → Nat → Bool) (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨asBool', _, hasBool, _⟩ := mem q(Nat.ble) (by simp [Condition.natLEEvidenceExpressions])
+  obtain ⟨proof', _, hproof, _⟩ :=
+    mem Condition.natLEReflectProof (by simp [Condition.natLEEvidenceExpressions])
+  have hrtypeUnique : TrExprS.IsUnique Reflection.defn₁.type := by
+    simp [TrExprS.IsUnique, Reflection.defn₁, Expr.lam0, Expr.arrow,
+      mkApp5, mkApp4, mkApp3, mkApp2, mkApp]
+  have hiteUnique : TrExprS.IsUnique Reflection.defn₁.ite := by
+    simp [TrExprS.IsUnique, Reflection.defn₁, Reflection.ite,
+      Expr.lam0, Expr.arrow, mkApp5, mkApp4, mkApp3, mkApp2, mkApp]
+  have hnotUnique : TrExprS.IsUnique q(Not) := by trivial
+  have hditeUnique : TrExprS.IsUnique Reflection.defn₁.natDITE := by
+    simp [TrExprS.IsUnique, Reflection.defn₁, Reflection.natDITE,
+      Expr.lam0, Expr.arrow, mkApp5, mkApp4, mkApp3, mkApp2, mkApp]
+  have hofTrueUnique : TrExprS.IsUnique Reflection.defn₁.ofTrue := by
+    simp [TrExprS.IsUnique, Reflection.defn₁, Expr.lam0, Expr.arrow,
+      mkApp5, mkApp4, mkApp3, mkApp2, mkApp]
+  have hofFalseUnique : TrExprS.IsUnique Reflection.defn₁.ofFalse := by
+    simp [TrExprS.IsUnique, Reflection.defn₁, Expr.lam0, Expr.arrow,
+      mkApp5, mkApp4, mkApp3, mkApp2, mkApp]
+  have hraw := Condition.natLE.check.WF (s := s') (fail := fail)
+    hlparams hvlctx
+    hdec hprop hpropTy hrtype hrtypeUnique hrtypeCanon
+    hite hiteUnique hiteTy hiteTrueL hiteTrueR hiteFalseL hiteFalseR
+    hnot hnotUnique hnotTy hdite hditeUnique hditeTy
+    hofTrue hofTrueUnique hofTrueTy hofFalse hofFalseUnique hofFalseTy
+    hditeTrueL hditeTrueR hditeFalseL hditeFalseR hreflect hdecide
+    hdecideTy hasBool hdecideTy hproof hfail
+  exact (Condition.natLE.check.WF.selector hlparams hvlctx
+    hrtype hite hdite hofTrue hofFalse
+    hrtypeUnique hiteUnique hditeUnique hofTrueUnique hofFalseUnique
+    hiteTy hditeTy hraw).mono
+      fun _ _ _ ⟨selector, _⟩ => ⟨selector, trivial⟩
+
 private theorem TrExprS.target_closed
     {env : VEnv} (wf : env.WF) {e : Expr} {eV : VExpr}
     (h : TrExprS env [] [] e eV) : eV.ClosedN := by

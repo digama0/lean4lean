@@ -3328,7 +3328,7 @@ private theorem TrExprS.closed_weak
   have hweak := hglobal.weakBV wf.ordered W
   rwa [hsourceLift, htargetLift] at hweak
 
-private theorem TrExprS.natType_of_contains
+theorem TrExprS.natType_of_contains
     {env : VEnv} (hprim : env.HasPrimitives)
     (hnat : env.contains ``Nat) (Us : List Name) (Δ : VLCtx) :
     TrExprS env Us Δ q(Nat) .nat ∧
@@ -3350,7 +3350,7 @@ private theorem TrExprS.boolType_of_contains
   exact ⟨.const hci rfl rfl,
     ⟨.succ .zero, .const hci nofun rfl⟩⟩
 
-private theorem TrExprS.natBinaryType_of_contains
+theorem TrExprS.natBinaryType_of_contains
     {env : VEnv} (h : env.HasPrimitives) (hnat : env.contains ``Nat)
     (Us : List Name) (Δ : VLCtx) :
     TrExprS env Us Δ q(Nat → Nat → Nat)
@@ -5885,6 +5885,34 @@ theorem checkTypeDiscard.capture.bind_WF {c : VContext} {s : VState}
   rcases h with ⟨e', A', _, he', _, hhas⟩
   exact hnext s' e' A' he' hhas
 
+theorem Expr.closed_fvarsIn {c : VContext} {e : Expr}
+    (hf : e.hasFVar = false) (hm : e.hasMVar = false) :
+    e.FVarsIn (· ∈ c.vlctx.fvars) := by
+  apply fvarsIn_iff.mpr
+  refine ⟨?_, fvarsIn_iff_hasMVar.mpr hm⟩
+  intro fv hfv
+  rw [fvarsList_eq_nil.mpr hf] at hfv
+  simp at hfv
+
+theorem checkTypeList.WF {c : VContext} {s : VState} {es : List Expr}
+    (hes : ∀ e ∈ es, e.FVarsIn (· ∈ c.vlctx.fvars)) :
+    M.WF c s (checkExprTypes es)
+      fun _ _ => ∀ e ∈ es, ∃ e' A', c.TrExprS e e' ∧ c.HasType e' A' := by
+  induction es generalizing s with
+  | nil =>
+    simp only [checkExprTypes]
+    exact .pure fun _ h => by simp at h
+  | cons e es ih =>
+    simp only [checkExprTypes]
+    refine (checkType.WF (hes e (by simp))).bind fun _ _ _ h => ?_
+    rcases h with ⟨e', A', _, he', _, hhas⟩
+    refine (ih (fun x hx => hes x (by simp [hx]))).mono fun _ _ _ htail => ?_
+    intro x hx
+    simp only [List.mem_cons] at hx
+    rcases hx with rfl | hx
+    · exact ⟨e', A', he', hhas⟩
+    · exact htail x hx
+
 theorem inferTypeIsPropGuard.bind_WF {c : VContext} {s : VState}
     {fail : ∀ {α}, M α} {next : M β} {Q : β → VState → Prop}
     (he : c.TrExprS e e')
@@ -6377,21 +6405,6 @@ theorem Condition.check.reflectNatNat_ite_dite.WF {c : VContext} {s : VState}
   exact (isDefEqGuard.WF he hdec hfail).mono fun _ _ _ heq =>
     ⟨hreflect, hite, hdite, heq⟩
 
-def Condition.natLEReflectProof : Expr :=
-  q(fun n m {q : Prop} (H : _ → _ → q) =>
-    H (@Nat.le_of_ble_eq_true n m) (@Nat.not_le_of_not_ble_eq_true n m))
-
-def Condition.natLEReflectedFn : Expr :=
-  .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3 Reflection.defn₁.toDec
-    (mkApp2 Condition.natLE.prop (.bvar 1) (.bvar 0))
-    (mkApp2 q(Nat.ble) (.bvar 1) (.bvar 0))
-    (mkApp2 Condition.natLEReflectProof (.bvar 1) (.bvar 0))
-
-def Condition.natLEDecideFn : Expr :=
-  .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp5 q(@_root_.ite.{1}) q(Bool)
-    (mkApp2 Condition.natLE.prop (.bvar 1) (.bvar 0))
-    (mkApp2 Condition.natLE.dec (.bvar 1) (.bvar 0)) q(true) q(false)
-
 /-- A successful `Nat ≤` condition check retains both selector interfaces
 needed by the `Nat.mod` checker and the dependent selector needed by
 `Nat.div`. -/
@@ -6541,7 +6554,7 @@ theorem checkNatModPrimitive.WF {c : VContext} {s : VState}
     (hgo : c.TrExprS q(Nat.modCore.go) go')
     (hgoUnique : TrExprS.IsUnique q(Nat.modCore.go))
     (hgoTy : c.TrExprS
-      q(∀ n, Nat.succ Nat.zero ≤ n →
+      q(∀ y, Nat.succ Nat.zero ≤ y →
         ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy')
     (htopL : c.TrExprS (natModTopEquation v.value).1 topL')
     (htopR : c.TrExprS (natModTopEquation v.value).2 topR')
@@ -6550,7 +6563,7 @@ theorem checkNatModPrimitive.WF {c : VContext} {s : VState}
     (hnatLECheck : ∀ {fail : ∀ {α}, M α} {s'},
       c.lparams = [] →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
-      M.WF c s' (Condition.natLE.check fail (ite := true) (dite := true))
+      M.WF c s' (Condition.natLE.checkForPrimitive fail)
         fun _ _ => Rcond) :
     M.WF c s
       (checkNatModPrimitive c.env v
@@ -6562,23 +6575,31 @@ theorem checkNatModPrimitive.WF {c : VContext} {s : VState}
       c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR' := by
   unfold checkNatModPrimitive
   dsimp only
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Nat.sub &&
+      c.env.contains ``Bool && c.env.contains ``Nat.ble &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
+    simp only [Bool.and_eq_true] at hdeps
+    rcases hdeps with ⟨⟨⟨⟨_hnat, _hsub⟩, _hbool⟩, _hble⟩, hempty⟩
     have hlparams : v.levelParams = [] := by
-      simp at hdeps
-      simpa using hdeps.2
+      simpa using hempty
     have hclparams : c.lparams = [] := hcparams.trans hlparams
     simp only [pure_bind]
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+    exact checkTypeDiscard.bind_WF hcanon.fvarsIn fun _ =>
+      (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
         have htyEq := htyEq hb
-        exact (isDefEq.WF hzL hzR).bind fun b _ _ hzEq => by
+        exact checkTypeDiscard.bind_WF hzL.fvarsIn fun _ =>
+          checkTypeDiscard.bind_WF hzR.fvarsIn fun _ =>
+          (isDefEq.WF hzL hzR).bind fun b _ _ hzEq => by
           by_cases hb : b = true
           · rw [if_pos hb]
             have hzEq := hzEq hb
+            refine checkTypeDiscard.bind_WF hleTy.fvarsIn fun _ => ?_
             refine checkTypeIsDefEqGuard.bind_WF hle hleUnique hleTy
               (fun {_} {_} => .throw) fun _ _ => ?_
+            refine checkTypeDiscard.bind_WF hgoTy.fvarsIn fun _ => ?_
             refine checkTypeIsDefEqGuard.bind_WF hgo hgoUnique hgoTy
               (fun {_} {_} => .throw) fun _ hgoHas => ?_
             exact (hnatLECheck hclparams (fun {_} {_} => .throw)).bind
@@ -6601,7 +6622,8 @@ theorem checkNatModPrimitive.WF {c : VContext} {s : VState}
             exact .throw
       · rw [if_neg hb]
         exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natMod.WF {c : VContext} {s : VState}
@@ -6619,7 +6641,7 @@ theorem checkPrimitiveDef.natMod.WF {c : VContext} {s : VState}
     (hgo : c.TrExprS q(Nat.modCore.go) go')
     (hgoUnique : TrExprS.IsUnique q(Nat.modCore.go))
     (hgoTy : c.TrExprS
-      q(∀ n, Nat.succ Nat.zero ≤ n →
+      q(∀ y, Nat.succ Nat.zero ≤ y →
         ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy')
     (htopL : c.TrExprS (natModTopEquation v.value).1 topL')
     (htopR : c.TrExprS (natModTopEquation v.value).2 topR')
@@ -6628,7 +6650,7 @@ theorem checkPrimitiveDef.natMod.WF {c : VContext} {s : VState}
     (hnatLECheck : ∀ {fail : ∀ {α}, M α} {s'},
       c.lparams = [] →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
-      M.WF c s' (Condition.natLE.check fail (ite := true) (dite := true))
+      M.WF c s' (Condition.natLE.checkForPrimitive fail)
         fun _ _ => Rcond) :
     M.WF c s (checkPrimitiveDef v) fun b _ => b →
       v.levelParams = [] ∧
@@ -6642,6 +6664,138 @@ theorem checkPrimitiveDef.natMod.WF {c : VContext} {s : VState}
   exact (checkNatModPrimitive.WF hcparams hty hcanon hzL hzR hle hleUnique
     hleTy hgo hgoUnique hgoTy htopL htopR hgoL hgoR hnatLECheck).bind
       fun _ _ _ h => .pure fun _ => h
+
+set_option maxHeartbeats 800000 in
+theorem checkNatModPrimitive.WF_typed {c : VContext} {s : VState}
+    (hcparams : c.lparams = v.levelParams)
+    (hty : c.TrExprS v.type ty')
+    (hvlctx : c.vlctx = [])
+    (hvalue : c.TrExprS v.value value')
+    (hnatLECheck : ∀ {fail : ∀ {α}, M α} {s'},
+      c.lparams = [] →
+      (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
+      M.WF c s' (Condition.natLE.checkForPrimitive fail)
+        fun _ _ => Rcond) :
+    M.WF c s
+      (checkNatModPrimitive c.env v
+        (throw <| .other s!"invalid form for primitive def {v.name}")) fun _ _ =>
+      ∃ zL zR go goTy topL topR goL goR,
+        c.TrExprS
+          (.lam0 q(Nat) <| mkApp2 v.value q(Nat.zero) (.bvar 0)) zL ∧
+        c.TrExprS (.lam0 q(Nat) q(Nat.zero)) zR ∧
+        c.TrExprS q(Nat.modCore.go) go ∧
+        c.TrExprS q(∀ y, Nat.succ Nat.zero ≤ y →
+          ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy ∧
+        c.TrExprS (natModTopEquation v.value).1 topL ∧
+        c.TrExprS (natModTopEquation v.value).2 topR ∧
+        c.TrExprS natModGoEquation.1 goL ∧
+        c.TrExprS natModGoEquation.2 goR ∧
+        v.levelParams = [] ∧
+        c.venv.contains ``Nat ∧ c.venv.contains ``Bool ∧
+        c.venv.contains ``Nat.ble ∧ c.venv.contains ``Nat.sub ∧
+        c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
+        c.IsDefEqU zL zR ∧ Rcond ∧ c.HasType go goTy ∧
+        c.IsDefEqU topL topR ∧ c.IsDefEqU goL goR := by
+  unfold checkNatModPrimitive
+  dsimp only
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Nat.sub &&
+      c.env.contains ``Bool && c.env.contains ``Nat.ble &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
+    simp only [Bool.and_eq_true] at hdeps
+    rcases hdeps with
+      ⟨⟨⟨⟨hnatSrc, hsubSrc⟩, hboolSrc⟩, hbleSrc⟩, hempty⟩
+    have hlparams : v.levelParams = [] := by
+      simpa using hempty
+    have hclparams : c.lparams = [] := hcparams.trans hlparams
+    have hnat : c.venv.contains ``Nat :=
+      Environment.VContext.contains_safe_primitive c hnatSrc (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    have hsub : c.venv.contains ``Nat.sub :=
+      Environment.VContext.contains_safe_primitive c hsubSrc (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    have hbool : c.venv.contains ``Bool :=
+      Environment.VContext.contains_safe_primitive c hboolSrc (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    have hble : c.venv.contains ``Nat.ble :=
+      Environment.VContext.contains_safe_primitive c hbleSrc (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    have hcanon : c.TrExprS q(Nat → Nat → Nat)
+        (.forallE .nat <| .forallE .nat .nat) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact TrExprS.natBinaryType_of_contains c.hasPrimitives hnat c.lparams []
+    simp only [pure_bind]
+    exact checkTypeDiscard.bind_WF hcanon.fvarsIn fun _ =>
+      (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+      by_cases hb : b = true
+      · rw [if_pos hb]
+        have htyEq := htyEq hb
+        have hzLF :
+            ((Expr.lam0 q(Nat) <|
+              mkApp2 v.value q(Nat.zero) (.bvar 0)) : Expr).FVarsIn
+              (· ∈ c.vlctx.fvars) := by
+          simpa [Expr.lam0, mkApp2, mkApp, FVarsIn] using hvalue.fvarsIn
+        refine checkTypeDiscard.capture.bind_WF hzLF fun _ zL _ hzL _ => ?_
+        refine checkTypeDiscard.capture.bind_WF
+          (Expr.closed_fvarsIn (by native_decide) (by native_decide))
+          fun _ zR _ hzR _ => ?_
+        exact (isDefEq.WF hzL hzR).bind fun b _ _ hzEq => by
+          by_cases hb : b = true
+          · rw [if_pos hb]
+            have hzEq := hzEq hb
+            refine checkTypeDiscard.capture.bind_WF
+              (Expr.closed_fvarsIn (by native_decide) (by native_decide))
+              fun _ _ _ hleTy _ => ?_
+            refine checkTypeIsDefEqGuard.fvarsIn.bind_WF
+              (Expr.closed_fvarsIn (by native_decide) (by native_decide))
+              hleTy (fun {_} {_} => .throw) fun _ _ _ _ => ?_
+            refine checkTypeDiscard.capture.bind_WF
+              (Expr.closed_fvarsIn (by native_decide) (by native_decide))
+              fun _ goTy _ hgoTy _ => ?_
+            refine checkTypeIsDefEqGuard.fvarsIn.bind_WF
+              (Expr.closed_fvarsIn (by native_decide) (by native_decide))
+              hgoTy (fun {_} {_} => .throw) fun _ go hgoS hgoHas => ?_
+            exact (hnatLECheck hclparams (fun {_} {_} => .throw)).bind
+              fun _ _ _ hcond =>
+              checkTypeDiscard.capture.bind_WF
+                (by simpa [natModTopEquation, Expr.lam0, mkAppB, mkApp2,
+                  mkApp, FVarsIn]
+                  using hvalue.fvarsIn)
+                fun _ topL _ htopL _ =>
+              checkTypeDiscard.capture.bind_WF
+                (Expr.closed_fvarsIn
+                  (by simp [natModTopEquation]; native_decide)
+                  (by simp [natModTopEquation]; native_decide))
+                fun _ topR _ htopR _ =>
+              isDefEqGuard.bind_WF htopL htopR (fun {_} {_} => .throw)
+                fun _ htopEq =>
+                checkTypeDiscard.capture.bind_WF
+                  (Expr.closed_fvarsIn (by native_decide) (by native_decide))
+                  fun _ goL _ hgoL _ =>
+                checkTypeDiscard.capture.bind_WF
+                  (Expr.closed_fvarsIn (by native_decide) (by native_decide))
+                  fun _ goR _ hgoR _ =>
+                (isDefEq.WF hgoL hgoR).bind fun b _ _ hgoEq => by
+                  by_cases hb : b = true
+                  · rw [if_pos hb]
+                    exact .pure ⟨zL, zR, go, goTy, topL, topR, goL, goR,
+                      hzL, hzR, hgoS, hgoTy, htopL, htopR, hgoL, hgoR,
+                      hlparams, hnat, hbool, hble, hsub,
+                      htyEq, hzEq, hcond, hgoHas, htopEq,
+                      hgoEq hb⟩
+                  · rw [if_neg hb]
+                    exact .throw
+          · rw [if_neg hb]
+            exact .throw
+      · rw [if_neg hb]
+        exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natDiv_eq (hname : v.name = ``Nat.div) :
@@ -6674,7 +6828,7 @@ theorem checkNatDivPrimitive.WF {c : VContext} {s : VState}
     (hnatLECheck : ∀ {fail : ∀ {α}, M α} {s'},
       c.lparams = [] →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
-      M.WF c s' (Condition.natLE.check fail (dite := true))
+      M.WF c s' (Condition.natLE.checkForPrimitive fail)
         fun _ _ => Rcond) :
     M.WF c s
       (checkNatDivPrimitive c.env v
@@ -6685,20 +6839,26 @@ theorem checkNatDivPrimitive.WF {c : VContext} {s : VState}
       c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR' := by
   unfold checkNatDivPrimitive
   dsimp only
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Nat.sub &&
+      c.env.contains ``Bool && c.env.contains ``Nat.ble &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
+    simp only [Bool.and_eq_true] at hdeps
+    rcases hdeps with ⟨⟨⟨⟨_hnat, _hsub⟩, _hbool⟩, _hble⟩, hempty⟩
     have hlparams : v.levelParams = [] := by
-      simp at hdeps
-      simpa using hdeps.2
+      simpa using hempty
     have hclparams : c.lparams = [] := hcparams.trans hlparams
     simp only [pure_bind]
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+    exact checkTypeDiscard.bind_WF hcanon.fvarsIn fun _ =>
+      (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
         exact (hnatLECheck hclparams (fun {_} {_} => .throw)).bind
           fun _ _ _ hcond =>
+          checkTypeDiscard.bind_WF hleTy.fvarsIn fun _ =>
           checkTypeIsDefEqGuard.bind_WF hle hleUnique hleTy
             (fun {_} {_} => .throw) fun _ _ =>
+          checkTypeDiscard.bind_WF hgoTy.fvarsIn fun _ =>
           checkTypeIsDefEqGuard.bind_WF hgo hgoUnique hgoTy
             (fun {_} {_} => .throw) fun _ hgoHas =>
           checkTypeDiscard.bind_WF htopL.fvarsIn fun _ =>
@@ -6715,7 +6875,8 @@ theorem checkNatDivPrimitive.WF {c : VContext} {s : VState}
               · rw [if_neg hb]
                 exact .throw
       · exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natDiv.WF {c : VContext} {s : VState}
@@ -6739,7 +6900,7 @@ theorem checkPrimitiveDef.natDiv.WF {c : VContext} {s : VState}
     (hnatLECheck : ∀ {fail : ∀ {α}, M α} {s'},
       c.lparams = [] →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
-      M.WF c s' (Condition.natLE.check fail (dite := true))
+      M.WF c s' (Condition.natLE.checkForPrimitive fail)
         fun _ _ => Rcond) :
     M.WF c s (checkPrimitiveDef v) fun b _ => b →
       v.levelParams = [] ∧

@@ -3757,42 +3757,87 @@ theorem VEnv.natModGo_semantics
 
 /-- Turn the semantic evidence retained by the `Nat.mod` primitive checker
 into conservation of the complete primitive-reflection invariant. -/
-theorem checkPrimitiveDef.natMod.WF.conservesHasPrimitives
+abbrev NatModPrimitiveEvidence
+    (c : TypeChecker.VContext) (src : DefinitionVal) (ty' : VExpr) : Prop :=
+  ∃ zeroL' zeroR' go' goTy' topL' topR' goL' goR',
+    c.TrExprS
+      (.lam0 q(Nat) <| mkApp2 src.value q(Nat.zero) (.bvar 0)) zeroL' ∧
+    c.TrExprS (.lam0 q(Nat) q(Nat.zero)) zeroR' ∧
+    c.TrExprS q(Nat.modCore.go) go' ∧
+    c.TrExprS q(∀ y, Nat.succ Nat.zero ≤ y →
+      ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy' ∧
+    c.TrExprS (natModTopEquation src.value).1 topL' ∧
+    c.TrExprS (natModTopEquation src.value).2 topR' ∧
+    c.TrExprS natModGoEquation.1 goL' ∧
+    c.TrExprS natModGoEquation.2 goR' ∧
+    src.levelParams = [] ∧
+    c.venv.contains ``Nat ∧ c.venv.contains ``Bool ∧
+    c.venv.contains ``Nat.ble ∧ c.venv.contains ``Nat.sub ∧
+    c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
+    c.IsDefEqU zeroL' zeroR' ∧
+    ∃ selector : VEnv.NatLESelectorCertificate c.venv,
+      c.HasType go' goTy' ∧
+      c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR'
+
+theorem checkPrimitiveDef.natMod.WF_typed
     {c : TypeChecker.VContext} {s : TypeChecker.VState}
-    {src : DefinitionVal} {v : VDefVal} {env' : VEnv}
-    {zeroL' zeroR' go' goTy' topL' topR' goL' goR' : VExpr}
+    {src : DefinitionVal} {ty' value' : VExpr}
+    (hname : src.name = ``Nat.mod)
     (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
-    (hnat : c.venv.contains ``Nat) (hbool : c.venv.contains ``Bool)
-    (hbleC : c.venv.contains ``Nat.ble)
-    (hsubC : c.venv.contains ``Nat.sub)
+    (hty : c.TrExprS src.type ty') (hvalue : c.TrExprS src.value value') :
+    TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      ∃ zeroL' zeroR' go' goTy' topL' topR' goL' goR',
+        c.TrExprS
+          (.lam0 q(Nat) <| mkApp2 src.value q(Nat.zero) (.bvar 0)) zeroL' ∧
+        c.TrExprS (.lam0 q(Nat) q(Nat.zero)) zeroR' ∧
+        c.TrExprS q(Nat.modCore.go) go' ∧
+        c.TrExprS q(∀ y, Nat.succ Nat.zero ≤ y →
+          ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy' ∧
+        c.TrExprS (natModTopEquation src.value).1 topL' ∧
+        c.TrExprS (natModTopEquation src.value).2 topR' ∧
+        c.TrExprS natModGoEquation.1 goL' ∧
+        c.TrExprS natModGoEquation.2 goR' ∧
+        src.levelParams = [] ∧
+        c.venv.contains ``Nat ∧ c.venv.contains ``Bool ∧
+        c.venv.contains ``Nat.ble ∧ c.venv.contains ``Nat.sub ∧
+        c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
+        c.IsDefEqU zeroL' zeroR' ∧
+        ∃ selector : VEnv.NatLESelectorCertificate c.venv,
+          c.HasType go' goTy' ∧
+          c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR' := by
+  rw [checkPrimitiveDef.natMod_eq hname]
+  refine TypeChecker.getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  exact (checkNatModPrimitive.WF_typed hcparams hty hvlctx hvalue
+    (fun hlparams hfail =>
+      Condition.natLE.checkForPrimitive.WF.selector
+        hlparams hvlctx hfail)).bind fun _ _ _ h => by
+      rcases h with ⟨zeroL', zeroR', go', goTy', topL', topR', goL', goR',
+        hzeroL, hzeroR, hgoS, hgoTyS, htopL, htopR, hgoL, hgoR,
+        hparams, hnat, hbool, hble, hsub, htyEq, hzeroEq,
+        ⟨selector, _⟩, hgoHas, htopEq, hgoEq⟩
+      exact .pure fun _ =>
+        ⟨zeroL', zeroR', go', goTy', topL', topR', goL', goR',
+          hzeroL, hzeroR, hgoS, hgoTyS, htopL, htopR, hgoL, hgoR,
+          hparams, hnat, hbool, hble, hsub, htyEq, hzeroEq,
+          selector, hgoHas, htopEq, hgoEq⟩
+
+theorem NatModPrimitiveEvidence.conservesHasPrimitives
+    {c : TypeChecker.VContext}
+    {src : DefinitionVal} {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
     (hmod : c.TrExprS src.value v.value)
-    (hzeroL : c.TrExprS
-      (.lam0 q(Nat) <| mkApp2 src.value q(Nat.zero) (.bvar 0)) zeroL')
-    (hzeroR : c.TrExprS (.lam0 q(Nat) q(Nat.zero)) zeroR')
-    (hgoS : c.TrExprS q(Nat.modCore.go) go')
-    (hgoTyS : c.TrExprS
-      q(∀ y, Nat.succ Nat.zero ≤ y →
-        ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy')
-    (htopL : c.TrExprS (natModTopEquation src.value).1 topL')
-    (htopR : c.TrExprS (natModTopEquation src.value).2 topR')
-    (hgoL : c.TrExprS natModGoEquation.1 goL')
-    (hgoR : c.TrExprS natModGoEquation.2 goR')
     (hname : v.name = ``Nat.mod)
     (huvars : src.levelParams.length = v.uvars)
     (hadd : c.venv.addConst ``Nat.mod v.toVConstant = some env')
     (hwf : (env'.addDefEq v.toDefEq).WF)
-    (hcheck : TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
-      src.levelParams = [] ∧
-      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
-      c.IsDefEqU zeroL' zeroR' ∧
-      ∃ selector : VEnv.NatLESelectorCertificate c.venv,
-        c.HasType go' goTy' ∧
-        c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR') :
-    TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
-      (env'.addDefEq v.toDefEq).HasPrimitives := by
-  refine hcheck.mono fun _ _ _ h b => ?_
-  rcases h b with
-    ⟨hsrcParams, hty, hzeroEq, selector, hgoHas, htopEq, hgoEq⟩
+    (hevidence : NatModPrimitiveEvidence c src v.type) :
+    (env'.addDefEq v.toDefEq).HasPrimitives := by
+  rcases hevidence with
+    ⟨zeroL', zeroR', go', goTy', topL', topR', goL', goR',
+      hzeroL, hzeroR, hgoS, hgoTyS, htopL, htopR, hgoL, hgoR,
+      hsrcParams, hnat, hbool, hbleC, hsubC, hty, hzeroEq,
+      selector, hgoHas, htopEq, hgoEq⟩
   have hclparams : c.lparams = [] := hcparams.trans hsrcParams
   have hvuvars : v.uvars = 0 := by
     rw [← huvars, hsrcParams]

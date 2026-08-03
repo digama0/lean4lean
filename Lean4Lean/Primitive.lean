@@ -167,6 +167,83 @@ def Condition.check (cond : Condition) (fail : ∀ {α}, M α)
         (.lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 0) do fail
     if dite then throw <| .other "unsupported"
 
+def Condition.natLEReflectProof : Expr :=
+  q(fun n m {q : Prop} (H : _ → _ → q) =>
+    H (@Nat.le_of_ble_eq_true n m) (@Nat.not_le_of_not_ble_eq_true n m))
+
+def Condition.natLEReflectedFn : Expr :=
+  .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3 Reflection.defn₁.toDec
+    (mkApp2 Condition.natLE.prop (.bvar 1) (.bvar 0))
+    (mkApp2 q(Nat.ble) (.bvar 1) (.bvar 0))
+    (mkApp2 Condition.natLEReflectProof (.bvar 1) (.bvar 0))
+
+def Condition.natLEDecideFn : Expr :=
+  .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp5 q(@_root_.ite.{1}) q(Bool)
+    (mkApp2 Condition.natLE.prop (.bvar 1) (.bvar 0))
+    (mkApp2 Condition.natLE.dec (.bvar 1) (.bvar 0)) q(true) q(false)
+
+/-- Expressions whose translations are retained by the verified Nat-≤
+primitive-condition checker.  The ordinary condition checker validates their
+types or equations; this explicit pass makes that evidence available to the
+conservation proof without hard-coding their target translations. -/
+def Condition.natLEEvidenceExpressions : List Expr :=
+  let r := Reflection.defn₁
+  let iteTy := .arrow q(Prop) <| .arrow q(Bool) <|
+    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0))
+      q(∀ α : Type, α → α → α)
+  let iteTrueL := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      mkApp3 r.ite (.bvar 1) q(true) (.bvar 0)
+  let iteTrueR := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(true)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 1
+  let iteFalseL := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      mkApp3 r.ite (.bvar 1) q(false) (.bvar 0)
+  let iteFalseR := .lam0 q(Prop) <|
+    .lam0 (mkApp2 r.type (.bvar 0) q(false)) <|
+      .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <| .bvar 0
+  let diteTy := .arrow q(Prop) <| .arrow q(Bool) <|
+    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
+    .arrow (.arrow (.bvar 2) q(Nat)) <|
+    .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) q(Nat)
+  let ofTrueTy := .arrow q(Prop) <|
+    .arrow (mkApp2 r.type (.bvar 0) q(true)) (.bvar 1)
+  let ofFalseTy := .arrow q(Prop) <|
+    .arrow (mkApp2 r.type (.bvar 0) q(false)) (mkApp q(Not) (.bvar 1))
+  let close (truth : Expr) (body : Expr) :=
+    .lam0 q(Prop) <|
+    .lam0 (.arrow (.bvar 0) q(Nat)) <|
+    .lam0 (.arrow (mkApp q(Not) (.bvar 1)) q(Nat)) <|
+    .lam0 (mkApp2 r.type (.bvar 2) truth) body
+  let diteTrueL := close q(true) <|
+    mkApp5 r.natDITE (.bvar 3) q(true) (.bvar 0) (.bvar 2) (.bvar 1)
+  let diteTrueR := close q(true) <|
+    mkApp (.bvar 2) (mkApp2 r.ofTrue (.bvar 3) (.bvar 0))
+  let diteFalseL := close q(false) <|
+    mkApp5 r.natDITE (.bvar 3) q(false) (.bvar 0) (.bvar 2) (.bvar 1)
+  let diteFalseR := close q(false) <|
+    mkApp (.bvar 1) (mkApp2 r.ofFalse (.bvar 3) (.bvar 0))
+  [Condition.natLE.dec, Condition.natLE.prop, q(Nat → Nat → Prop),
+    r.type, q(Prop → Bool → Prop), r.ite, iteTy,
+    iteTrueL, iteTrueR, iteFalseL, iteFalseR,
+    q(Not), q(Prop → Prop), r.natDITE, diteTy,
+    r.ofTrue, ofTrueTy, r.ofFalse, ofFalseTy,
+    diteTrueL, diteTrueR, diteFalseL, diteFalseR,
+    Condition.natLEReflectedFn, Condition.natLEDecideFn,
+    q(Nat → Nat → Bool), q(Nat.ble), Condition.natLEReflectProof]
+
+def checkExprTypes : List Expr → M Unit
+  | [] => pure ()
+  | e :: es => do
+    _ ← checkType e
+    checkExprTypes es
+
+def Condition.natLE.checkForPrimitive
+    (fail : ∀ {α}, M α) : M Unit := do
+  checkExprTypes Condition.natLEEvidenceExpressions
+  Condition.natLE.check fail (ite := true) (dite := true)
+
 protected def Condition.ite (cond : Condition) (α : Expr) (args : Array Expr) (t e : Expr) : Expr :=
   mkApp5 q(@ite.{1}) α (mkAppN cond.prop args) (mkAppN cond.dec args) t e
 
@@ -1167,21 +1244,27 @@ def checkStringOfListPrimitive (env : Environment) (v : DefinitionVal) : M Unit 
 
 def checkNatModPrimitive (env : Environment) (v : DefinitionVal)
     (fail : ∀ {α}, M α) : M Unit := do
-  unless env.contains ``Nat.sub && env.contains ``Bool &&
-      v.levelParams.isEmpty do fail
+  unless env.contains ``Nat && env.contains ``Nat.sub && env.contains ``Bool &&
+      env.contains ``Nat.ble && v.levelParams.isEmpty do fail
+  _ ← checkType q(Nat → Nat → Nat)
   unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
   let zero := q(Nat.zero)
   let x := .bvar 0
   let mod := mkApp2 v.value
-  unless ← isDefEq (.lam0 q(Nat) <| mod zero x)
-    (.lam0 q(Nat) zero) do fail
+  let zeroL := .lam0 q(Nat) <| mod zero x
+  let zeroR := .lam0 q(Nat) zero
+  _ ← checkType zeroL
+  _ ← checkType zeroR
+  unless ← isDefEq zeroL zeroR do fail
+  _ ← checkType q(Nat → Nat → Prop)
   unless ← isDefEq (← checkType q(@LE.le Nat _))
     q(Nat → Nat → Prop) do fail
+  _ ← checkType q(∀ y, Nat.succ Nat.zero ≤ y →
+    ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat)
   unless ← isDefEq (← checkType q(Nat.modCore.go))
-    q(∀ n, Nat.succ Nat.zero ≤ n →
+    q(∀ y, Nat.succ Nat.zero ≤ y →
       ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
-  let c := Condition.natLE
-  c.check fail (ite := true) (dite := true)
+  Condition.natLE.checkForPrimitive fail
   let (topL, topR) := natModTopEquation v.value
   _ ← checkType topL
   _ ← checkType topR
@@ -1193,13 +1276,16 @@ def checkNatModPrimitive (env : Environment) (v : DefinitionVal)
 
 def checkNatDivPrimitive (env : Environment) (v : DefinitionVal)
     (fail : ∀ {α}, M α) : M Unit := do
-  unless env.contains ``Nat.sub && env.contains ``Bool &&
-      v.levelParams.isEmpty do fail
+  unless env.contains ``Nat && env.contains ``Nat.sub && env.contains ``Bool &&
+      env.contains ``Nat.ble && v.levelParams.isEmpty do fail
+  _ ← checkType q(Nat → Nat → Nat)
   unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-  let c := Condition.natLE
-  c.check fail (dite := true)
+  Condition.natLE.checkForPrimitive fail
+  _ ← checkType q(Nat → Nat → Prop)
   unless ← isDefEq (← checkType q(@LE.le Nat _))
     q(Nat → Nat → Prop) do fail
+  _ ← checkType q(∀ y, Nat.succ Nat.zero ≤ y →
+    ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat)
   unless ← isDefEq (← checkType q(Nat.div.go))
     q(∀ y, Nat.succ Nat.zero ≤ y →
       ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
