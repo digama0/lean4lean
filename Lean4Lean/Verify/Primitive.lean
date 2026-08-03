@@ -6,13 +6,6 @@ namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel TypeChecker
 
-theorem VEnv.addConst_constants_of_ne {env env' : VEnv}
-    (h : env.addConst n ci = some env') (hne : n ≠ m) :
-    env'.constants m = env.constants m := by
-  unfold VEnv.addConst at h
-  split at h <;> cases h
-  simp [hne]
-
 theorem VEnv.ReflectsNatNatNat.addDefEq {env : VEnv} {df : VDefEq}
     (h : env.ReflectsNatNatNat fc f) :
     (env.addDefEq df).ReflectsNatNatNat fc f := by

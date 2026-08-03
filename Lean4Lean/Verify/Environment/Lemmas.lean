@@ -5,6 +5,13 @@ namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
 
+theorem VEnv.addConst_constants_of_ne {env env' : VEnv}
+    (h : env.addConst n ci = some env') (hne : n ≠ m) :
+    env'.constants m = env.constants m := by
+  unfold VEnv.addConst at h
+  split at h <;> cases h
+  simp [hne]
+
 theorem TrConstant.sf_mono (hsf : safety ≤ safety')
     (H : TrConstant safety' env ci ci') : TrConstant safety env ci ci' :=
   ⟨safety.le_trans hsf H.1, H.2⟩
