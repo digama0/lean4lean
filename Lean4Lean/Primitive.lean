@@ -1075,12 +1075,28 @@ def natDivTopEquation (divFn : Expr) : Expr × Expr :=
     natDivTopRhs x y
   (lhs, rhs)
 
-def natDivGoEquation : Expr × Expr :=
+def natDivGoLhsBody (y hy fuel x h : Expr) : Expr :=
+  let succ := mkApp q(Nat.succ)
+  let go := mkApp5 q(Nat.div.go)
+  go y hy (succ fuel) x h
+
+def natDivGoRhsBody (y hy fuel x h : Expr) : Expr :=
   let succ := mkApp q(Nat.succ)
   let sub := mkApp2 q(Nat.sub)
-  let le := mkApp2 q(@LE.le Nat _)
   let go := mkApp5 q(Nat.div.go)
   let c := Condition.natLE
+  c.reflectedDITE #[y, x]
+    (succ (go (y.liftLooseBVars 0 1) (hy.liftLooseBVars 0 1)
+      (fuel.liftLooseBVars 0 1)
+      (sub (x.liftLooseBVars 0 1) (y.liftLooseBVars 0 1))
+      (mkApp6 q(@Nat.div_rec_fuel_lemma)
+        (x.liftLooseBVars 0 1) (y.liftLooseBVars 0 1)
+        (fuel.liftLooseBVars 0 1) (hy.liftLooseBVars 0 1)
+        (.bvar 0) (h.liftLooseBVars 0 1)))) q(Nat.zero)
+
+def natDivGoEquation : Expr × Expr :=
+  let succ := mkApp q(Nat.succ)
+  let le := mkApp2 q(@LE.le Nat _)
   let y := .bvar 4
   let hy := .bvar 3
   let fuel := .bvar 2
@@ -1090,13 +1106,8 @@ def natDivGoEquation : Expr × Expr :=
     .lam0 (le q(Nat.succ Nat.zero) (.bvar 0)) <|
     .lam0 q(Nat) <| .lam0 q(Nat) <|
     .lam0 (le (succ (.bvar 0)) (succ (.bvar 1))) body
-  let lhs := close <| go y hy (succ fuel) x h
-  let rhs := close <| c.reflectedDITE #[y, x]
-    (succ (go (.bvar 5) (.bvar 4) (.bvar 3)
-      (sub (.bvar 2) (.bvar 5))
-      (mkApp6 q(@Nat.div_rec_fuel_lemma)
-        (.bvar 2) (.bvar 5) (.bvar 3) (.bvar 4)
-        (.bvar 0) (.bvar 1)))) q(Nat.zero)
+  let lhs := close <| natDivGoLhsBody y hy fuel x h
+  let rhs := close <| natDivGoRhsBody y hy fuel x h
   (lhs, rhs)
 
 def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
