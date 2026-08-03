@@ -497,6 +497,61 @@ theorem VEnv.ReflectionNatDITEChecked.canonical
   subst falseOfFalse
   exact ⟨htrueEq, hfalseEq⟩
 
+/-- A translated concrete `Nat.ble` call computes to the Boolean selected by
+the primitive reflection invariant. -/
+theorem Condition.natBLE_application_eval
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {bleV : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b))) bleV) :
+    env.IsDefEqU 0 [] bleV (.boolLit (Nat.ble a b)) := by
+  have ⟨haS, haT⟩ := hctors.natLitS a (Us := []) (Δ := [])
+  have ⟨hbS, hbT⟩ := hctors.natLitS b (Us := []) (Δ := [])
+  have ⟨hbleT, hbleEval⟩ := hprim.natBLE hbleC
+  obtain ⟨ci, hci, _, hlen⟩ := (hbleT 0 []).const_inv wf trivial
+  have hfnS : TrExprS env [] [] q(Nat.ble) (.const ``Nat.ble []) :=
+    .const hci rfl hlen
+  have hinnerS : TrExprS env [] []
+      (mkApp q(Nat.ble) (.lit (.natVal a)))
+      (.app (.const ``Nat.ble []) (.natLit a)) :=
+    .app (hbleT 0 []) haT hfnS haS
+  have hcanonS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b)))
+      (.app (.app (.const ``Nat.ble []) (.natLit a)) (.natLit b)) :=
+    .app (.app (hbleT 0 []) haT) hbT hinnerS hbS
+  have hlocalEq := TrExprS.uniq (Us := []) wf
+    (.refl wf (U := 0) (Δ := []) trivial) hbleS hcanonS
+  exact hlocalEq.trans wf trivial (hbleEval a b)
+
+/-- Replace the Boolean argument of a fully applied reflected dependent
+selector.  Typing of the proof and both branches is transported through the
+dependent function equality. -/
+theorem VEnv.replaceNatDITECondition
+    {env : VEnv} (wf : env.WF)
+    {diteV propV boolV boolV' proofV thenV elseV R : VExpr}
+    (houtT : env.HasType 0 []
+      (.app (.app (.app (.app (.app diteV propV) boolV) proofV)
+        thenV) elseV) R)
+    (hbool : env.IsDefEqU 0 [] boolV boolV') :
+    env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app diteV propV) boolV) proofV)
+        thenV) elseV)
+      (.app (.app (.app (.app (.app diteV propV) boolV') proofV)
+        thenV) elseV) := by
+  obtain ⟨_, _, hthenAppT, helseT⟩ := houtT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hproofAppT, hthenT⟩ :=
+    hthenAppT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hboolAppT, hproofT⟩ :=
+    hproofAppT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hpropAppT, hboolT⟩ :=
+    hboolAppT.app_inv wf.ordered trivial
+  have h₁ := hbool.app_arg wf trivial hpropAppT hboolT
+  have h₂ := h₁.app_same wf trivial hboolAppT hproofT
+  have h₃ := h₂.app_same wf trivial hproofAppT hthenT
+  exact h₃.app_same wf trivial hthenAppT helseT
+
 /-- A checked dependent true-selector equation specializes to its true
 branch, retaining the generated proof argument existentially. -/
 theorem VEnv.reflectionNatDITE_true_select
