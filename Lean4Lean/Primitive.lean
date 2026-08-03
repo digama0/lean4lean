@@ -1257,18 +1257,18 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     checkNatBitwiseZero v.value fail
   | ``Nat.land =>
     unless env.contains ``Nat.bitwise && v.levelParams.isEmpty do fail
+    let .app (.const ``Nat.bitwise []) and := v.value | fail
     -- land : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    let .app (.const ``Nat.bitwise []) and := v.value | fail
     unless ← isDefEq (← inferType and) q(Bool → Bool → Bool) do fail
     let and := mkApp2 and
     unless ← defeqBool1 (and fal x) fal do fail
     unless ← defeqBool1 (and tru x) x do fail
   | ``Nat.lor =>
     unless env.contains ``Nat.bitwise && v.levelParams.isEmpty do fail
+    let .app (.const ``Nat.bitwise []) or := v.value | fail
     -- lor : Nat → Nat → Nat
     unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    let .app (.const ``Nat.bitwise []) or := v.value | fail
     unless ← isDefEq (← inferType or) q(Bool → Bool → Bool) do fail
     let or := mkApp2 or
     unless ← defeqBool1 (or fal x) x do fail

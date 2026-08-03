@@ -3498,6 +3498,53 @@ private theorem TrExprS.bitwise_op
       exact ⟨_, rfl, hopS,
         hopT.defeqU_r wf hΔ.toCtx ⟨_, hdomEq⟩⟩
 
+private theorem TrExprS.boolLeftLamEvidence
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hbool : env.contains ``Bool) (hopS : TrExprS env Us [] op op')
+    (hopT : env.HasType Us.length [] op'
+      (.forallE .bool <| .forallE .bool .bool)) :
+    TrExprS env Us []
+        (.lam0 q(Bool) <| mkApp2 op q(false) (.bvar 0))
+        (.lam .bool <| .app (.app op' .boolFalse) (.bvar 0)) ∧
+      TrExprS env Us [] (.lam0 q(Bool) q(false))
+        (.lam .bool .boolFalse) ∧
+      TrExprS env Us []
+        (.lam0 q(Bool) <| mkApp2 op q(true) (.bvar 0))
+        (.lam .bool <| .app (.app op' .boolTrue) (.bvar 0)) ∧
+      TrExprS env Us [] (.lam0 q(Bool) <| .bvar 0)
+        (.lam .bool <| .bvar 0) ∧
+      TrExprS env Us [] (.lam0 q(Bool) q(true))
+        (.lam .bool .boolTrue) := by
+  let Δ : VLCtx := [(none, .vlam .bool)]
+  have hbool0 := TrExprS.boolType_of_contains hprim hbool Us []
+  have hbool1 := TrExprS.boolType_of_contains hprim hbool Us Δ
+  have hf := TrExprS.boolFalse hprim hbool Us Δ
+  have ht := TrExprS.boolTrue hprim hbool Us Δ
+  have hxS : TrExprS env Us Δ (.bvar 0) (.bvar 0) :=
+    .bvar (e := .bvar 0) (A := .bool) (by
+      simp [Δ, VLCtx.find?, VLCtx.next,
+        VLocalDecl.value, VLocalDecl.type, VExpr.lift, VExpr.liftN,
+        VExpr.bool])
+  have hxT : env.HasType Us.length [.bool] (.bvar 0) .bool :=
+    .bvar .zero
+  have hopS' : TrExprS env Us Δ op op' :=
+    TrExprS.closed_weak wf hopS (.skip (.vlam .bool) .refl)
+  have hopT' : env.HasType Us.length [.bool] op'
+      (.forallE .bool <| .forallE .bool .bool) := hopT.weak0 wf
+  have hfalseBody : TrExprS env Us Δ
+      (mkApp2 op q(false) (.bvar 0))
+      (.app (.app op' .boolFalse) (.bvar 0)) :=
+    .app (.app hopT' hf.2) hxT (.app hopT' hf.2 hopS' hf.1) hxS
+  have htrueBody : TrExprS env Us Δ
+      (mkApp2 op q(true) (.bvar 0))
+      (.app (.app op' .boolTrue) (.bvar 0)) :=
+    .app (.app hopT' ht.2) hxT (.app hopT' ht.2 hopS' ht.1) hxS
+  exact ⟨.lam hbool0.2 hbool0.1 hfalseBody,
+    .lam hbool0.2 hbool0.1 hf.1,
+    .lam hbool0.2 hbool0.1 htrueBody,
+    .lam hbool0.2 hbool0.1 hxS,
+    .lam hbool0.2 hbool0.1 ht.1⟩
+
 theorem VContext.contains_safe_primitive
     (c : VContext) (hsrc : c.env.contains n)
     (hprimitive : Lean.Kernel.Environment.primitives.contains n) :
@@ -9899,11 +9946,11 @@ theorem checkPrimitiveDef.natLand.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
+    rw [hvalue]
     simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
-        rw [hvalue]
         refine (inferType.WF hop).bind fun _ _ _ hOpTy => ?_
         let ⟨_, _, _, hOpTyTr, hOpHas⟩ := hOpTy
         refine (isDefEq.WF hOpTyTr hopCanon).bind fun b _ _ hOpEq => ?_
@@ -9916,6 +9963,104 @@ theorem checkPrimitiveDef.natLand.WF {c : VContext} {s : VState}
                 split
                 · exact .pure fun _ =>
                     ⟨hlparams, htyEq, hopTy, hfEq, htEq (by assumption)⟩
+                · exact .throw
+            · exact .throw
+        · exact .throw
+      · exact .throw
+  · exact .throw
+
+set_option maxHeartbeats 800000 in
+theorem checkPrimitiveDef.natLand.WF_typed {c : VContext} {s : VState}
+    (hname : v.name = ``Nat.land)
+    (hshape : v.value = .app (.const ``Nat.bitwise []) op)
+    (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS v.type ty')
+    (hvalue : c.TrExprS v.value value') :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b →
+      v.levelParams = [] ∧
+      c.venv.contains ``Nat ∧ c.venv.contains ``Bool ∧
+      c.venv.contains ``Nat.bitwise ∧
+      c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
+      ∃ op', value' = .app (.const ``Nat.bitwise []) op' ∧
+        c.HasType op' (.forallE .bool <| .forallE .bool .bool) ∧
+        c.IsDefEqU
+          (.lam .bool <| .app (.app op' .boolFalse) (.bvar 0))
+          (.lam .bool .boolFalse) ∧
+        c.IsDefEqU
+          (.lam .bool <| .app (.app op' .boolTrue) (.bvar 0))
+          (.lam .bool <| .bvar 0) := by
+  simp only [checkPrimitiveDef, hname]
+  refine getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  split
+  · rename_i hdeps
+    have hdeps' : c.env.contains ``Nat.bitwise = true ∧
+        v.levelParams = [] := by simpa using hdeps
+    have hlevels := hdeps'.2
+    have hbitwise : c.venv.contains ``Nat.bitwise :=
+      Environment.VContext.contains_safe_primitive c hdeps'.1 (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    obtain ⟨hnat, hbool⟩ :=
+      Environment.VEnv.HasPrimitives.nat_bool_of_bitwise_contains
+        c.hasPrimitives c.Ewf hbitwise
+    have hcanon := TrExprS.natBinaryType_of_contains
+      c.hasPrimitives hnat c.lparams c.vlctx
+    have hopCanon := TrExprS.boolBinaryType_of_contains
+      c.hasPrimitives hbool c.lparams c.vlctx
+    have hvalue' := hvalue
+    rw [hshape] at hvalue'
+    obtain ⟨op', hvalueShape, hopS, hopT⟩ :=
+      TrExprS.bitwise_op c.Ewf c.hasPrimitives hbitwise c.Δwf hvalue'
+    have hopS0 : TrExprS c.venv c.lparams [] op op' := by
+      rw [← hvlctx]
+      exact hopS
+    have hopT0 : c.venv.HasType c.lparams.length [] op'
+        (.forallE .bool <| .forallE .bool .bool) := by
+      simpa [hvlctx] using hopT
+    obtain ⟨hf₁, hf₂, ht₁, htId, _⟩ :=
+      TrExprS.boolLeftLamEvidence c.Ewf c.hasPrimitives hbool hopS0 hopT0
+    have hf₁' : c.TrExprS
+        (.lam0 q(Bool) <| mkApp2 op q(false) (.bvar 0))
+        (.lam .bool <| .app (.app op' .boolFalse) (.bvar 0)) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact hf₁
+    have hf₂' : c.TrExprS (.lam0 q(Bool) q(false))
+        (.lam .bool .boolFalse) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact hf₂
+    have ht₁' : c.TrExprS
+        (.lam0 q(Bool) <| mkApp2 op q(true) (.bvar 0))
+        (.lam .bool <| .app (.app op' .boolTrue) (.bvar 0)) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact ht₁
+    have htId' : c.TrExprS (.lam0 q(Bool) <| .bvar 0)
+        (.lam .bool <| .bvar 0) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact htId
+    rw [hshape]
+    simp only [pure_bind]
+    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+      split
+      · have htyEq := htyEq (by assumption)
+        refine (inferType.WF hopS).bind fun _ _ _ hOpTy => ?_
+        let ⟨_, _, _, hOpTyTr, hOpHas⟩ := hOpTy
+        refine (isDefEq.WF hOpTyTr hopCanon).bind fun b _ _ hOpEq => ?_
+        split
+        · have hopTy := hOpHas.defeqU_r c.Ewf c.Δwf
+            (hOpEq (by assumption))
+          exact (isDefEq.WF hf₁' hf₂').bind fun b _ _ hfEq => by
+            split
+            · have hfEq := hfEq (by assumption)
+              exact (isDefEq.WF ht₁' htId').bind fun b _ _ htEq => by
+                split
+                · exact .pure fun _ =>
+                    ⟨hlevels, hnat, hbool, hbitwise, htyEq,
+                      op', hvalueShape, hopTy, hfEq, htEq (by assumption)⟩
                 · exact .throw
             · exact .throw
         · exact .throw
@@ -9986,11 +10131,11 @@ theorem checkPrimitiveDef.natLor.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
+    rw [hvalue]
     simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
-        rw [hvalue]
         refine (inferType.WF hop).bind fun _ _ _ hOpTy => ?_
         let ⟨_, _, _, hOpTyTr, hOpHas⟩ := hOpTy
         refine (isDefEq.WF hOpTyTr hopCanon).bind fun b _ _ hOpEq => ?_
