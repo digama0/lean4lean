@@ -80,6 +80,12 @@ nonrec theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
   nomatch H
 
+def ConstMap.addMutualDefinitions (C : ConstMap) (vs : List DefinitionVal) : ConstMap :=
+  vs.foldl (fun C v => C.insert v.name (.defnInfo v)) C
+
+def ConstMap.MutualFresh (C : ConstMap) (vs : List DefinitionVal) : Prop :=
+  (∀ v ∈ vs, C.find? v.name = none) ∧ (vs.map (fun v => v.name)).Nodup
+
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | empty : TrEnv' {} false .empty
@@ -120,6 +126,18 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.opaqueInfo ci)) Q env'
+  | mutual :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety env (.defnInfo v) v'.toVConstVal) vs vs' →
+    ConstMap.MutualFresh C vs →
+    (∀ v' ∈ vs', v'.toVConstant.WF env) →
+    env.addMutualHeaders vs' = some headers →
+    (∀ v' ∈ vs', headers.constants v'.name = some v'.toVConstant) →
+    List.Forall₂ (fun v v' =>
+      TrExprS headers v.levelParams [] v.value v'.value) vs vs' →
+    (∀ v' ∈ vs', v'.WF headers) →
+    TrEnv' C Q env →
+    TrEnv' (ConstMap.addMutualDefinitions C vs) Q (headers.addMutualDefEqs vs')
   | quot :
     env.QuotReady →
     AddQuot C C' env env' →
@@ -159,6 +177,9 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .opaque h2 (this ▸ h3)⟩
+  | «mutual» _ _ htypes hadd hcontains _ hbodies _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.decl <| .mutual htypes hadd hcontains hbodies⟩
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩

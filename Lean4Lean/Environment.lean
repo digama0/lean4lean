@@ -93,11 +93,29 @@ def addOpaque (env : Environment) (v : OpaqueVal) (check := true) (fuel : FuelCo
         throw <| .declTypeMismatch env (.opaqueDecl v) valType
   return env.add (.opaqueInfo v)
 
+def mutualHeader (v : DefinitionVal) : OpaqueVal := {
+  v.toConstantVal with
+  value := v.value
+  isUnsafe := v.safety == .unsafe
+  all := v.all }
+
+def addMutualCheckEnv (env : Environment) (vs : List DefinitionVal) : Environment :=
+  vs.foldl (fun env v => env.add (.opaqueInfo (mutualHeader v))) env
+
+def addMutualFinalEnv (env : Environment) (vs : List DefinitionVal) : Environment :=
+  vs.foldl (fun env v => env.add (.defnInfo v)) env
+
+def mutualNamesUnique : List DefinitionVal → Bool
+  | [] => true
+  | v :: vs => !vs.any (fun w => w.name == v.name) && mutualNamesUnique vs
+
 def addMutual (env : Environment) (vs : List DefinitionVal)
     (check := true) (fuel : FuelConfig := {}) : Except Exception Environment := do
   let v₀ :: _ := vs | throw <| .other "invalid empty mutual definition"
   if let .safe := v₀.safety then
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
+  unless mutualNamesUnique vs do
+    throw <| .other "invalid mutual definition, duplicate declaration name"
   if check then
     M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
       for v in vs do
@@ -108,14 +126,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
   -- Make every member available while checking bodies, but keep all unchecked
   -- values opaque.  Partial headers are safe only in this transient checking
   -- environment; the final environment retains their original safety.
-  let mut checkEnv := env
-  for v in vs do
-    let header : OpaqueVal := {
-      v.toConstantVal with
-      value := v.value
-      isUnsafe := v.safety == .unsafe
-      all := v.all }
-    checkEnv := checkEnv.add (.opaqueInfo header)
+  let checkEnv := addMutualCheckEnv env vs
   if check then
     M.run checkEnv (safety := v₀.safety) (lctx := {})
         (lparams := v₀.levelParams) (fuel := fuel) do
@@ -124,10 +135,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch checkEnv (.mutualDefnDecl vs) valType
-  let mut finalEnv := env
-  for v in vs do
-    finalEnv := finalEnv.add (.defnInfo v)
-  return finalEnv
+  return addMutualFinalEnv env vs
 
 /-- Type check given declaration and add it to the environment -/
 def addDecl (env : Environment) (decl : Declaration) (check := true) (fuel : FuelConfig := {}) :
