@@ -11,6 +11,7 @@ theorem VEnv.WF.ordered : WF env → Ordered env
     | empty => exact .empty
     | decl h _ ih =>
       cases h with
+      | block => exact ih
       | «axiom» h1 h2 => exact .const ih h1 h2
       | @«def» env env' ci h1 h2 =>
         refine .defeq (.const ih (h1.isType ih ⟨⟩) h2) ⟨?_, ?_⟩

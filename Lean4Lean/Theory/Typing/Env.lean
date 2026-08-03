@@ -8,6 +8,8 @@ namespace Lean4Lean
 def VDefVal.WF (env : VEnv) (ci : VDefVal) : Prop := env.HasType ci.uvars [] ci.value ci.type
 
 inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
+  | block :
+    VDecl.WF env (.block n) env
   | axiom :
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →

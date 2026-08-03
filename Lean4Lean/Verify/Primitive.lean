@@ -3300,6 +3300,14 @@ theorem VEnv.HasPrimitives.addStringOfList {env env' : VEnv}
 
 namespace Environment
 
+theorem checkPrimitiveDef.WF_of_not_primitive {c : VContext} {s : VState}
+    (hn : ¬Lean.Kernel.Environment.primitives.contains v.name) :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b = false := by
+  simp [checkPrimitiveDef, Lean.Kernel.Environment.primitives,
+    NameSet.contains, NameSet.ofList] at hn ⊢
+  split <;> simp_all
+  exact getEnv.WF.bind fun _ _ _ _ => .pure rfl
+
 /-- The natural-number constructor fragment of `HasPrimitives`. -/
 structure VEnv.HasNatConstructors (env : VEnv) : Prop where
   nat : env.contains ``Nat

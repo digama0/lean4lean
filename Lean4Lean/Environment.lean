@@ -19,6 +19,13 @@ def checkConstantVal (env : Environment) (v : ConstantVal) (allowPrimitive := fa
   checkName env v.name allowPrimitive
   checkConstantValBody env v
 
+def checkDefinitionBody (env : Environment) (v : DefinitionVal) : M Unit := do
+  checkConstantValBody env v.toConstantVal
+  checkNoMVarNoFVar env v.name v.value
+  let valType ← TypeChecker.checkType v.value
+  if !(← isDefEq valType v.type) then
+    throw <| .declTypeMismatch env (.defnDecl v) valType
+
 def addAxiom (env : Environment) (v : AxiomVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
   if check then
@@ -49,11 +56,11 @@ def addDefinition (env : Environment) (v : DefinitionVal)
         -- equations.  The verification of `checkPrimitiveDef` needs these facts
         -- to justify its calls to `isDefEq`; the reserved-name check can safely
         -- wait until the primitive result is available.
-        checkConstantValBody env v.toConstantVal
-        let valType ← TypeChecker.checkType v.value
-        if !(← isDefEq valType v.type) then
-          throw <| .declTypeMismatch env (.defnDecl v) valType
-        checkName env v.name (← checkPrimitiveDef v)
+        checkDefinitionBody env v
+        let allowPrimitive ← checkPrimitiveDef v
+        if allowPrimitive && v.safety != .safe then
+          throw <| .other s!"primitive definition {v.name} must be safe"
+        checkName env v.name allowPrimitive
     return env.add (.defnInfo v)
 
 def addTheorem (env : Environment) (v : TheoremVal) (check := true) (fuel : FuelConfig := {}) :

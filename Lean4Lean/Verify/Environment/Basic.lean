@@ -78,6 +78,11 @@ nonrec theorem AddInduct.to_addInduct
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | empty : TrEnv' {} false .empty
+  | block :
+    C.find? ci.name = none →
+    ¬safety ≤ ci.safety →
+    TrEnv' C Q env →
+    TrEnv' (C.insert ci.name ci) Q env
   | axiom :
     TrConstant safety env (.axiomInfo ci) ci' →
     C.find? ci.name = none → ci'.WF env →
@@ -113,6 +118,9 @@ def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :
 theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   induction H with
   | empty => exact ⟨_, .empty⟩
+  | @block _ _ _ ci _ _ _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.decl (VDecl.WF.block (n := ci.name))⟩
   | «axiom» _ _ h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .axiom (ci := ⟨_, _⟩) h1 h2⟩

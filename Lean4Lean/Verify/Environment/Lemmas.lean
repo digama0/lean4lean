@@ -76,6 +76,7 @@ theorem Aligned.addInduct (H : AddInduct C₁ venv₁ decl C₂ venv₂) :
 theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := by
   induction H with
   | empty => exact .empty
+  | block h1 h2 _ ih => exact ih.ignoreConst h1 h2 rfl
   | «axiom» h1 h2 _ h _ ih => exact ih.const h2 h1 h rfl
   | «opaque» h1 h2 _ h _ ih => exact ih.const h2 h1.1.1 h rfl
   | defn h1 h2 _ h _ ih => exact (ih.const h2 h1.1.1 h rfl).defeq
@@ -153,6 +154,10 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
     rw [hC.find?_insert]; simp; split <;> simp +contextual [*]
   induction H with
   | empty => simp [SMap.find?] at h
+  | block h1 h2 H ih =>
+    obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
+    · exact ih h
+    · exact (h2 hs).elim
   | «axiom» _ _ _ h1 H ih | «opaque» _ _ _ h1 H ih =>
     obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
     · exact (ih h).mono (VEnv.addConst_le h1)
