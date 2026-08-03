@@ -164,4 +164,50 @@ theorem NatBitwiseFixCertificate.NormalizedValid.reflects
   have h₃ := h₂.app_same wf' trivial (.app (.app hf' hop.1) haT) hbT
   exact h₃.trans wf' trivial hfix
 
+/-- Install the semantic result of a checked `Nat.bitwise` certificate into
+the primitive invariant after adding the definition and its reduction rule. -/
+theorem NatBitwiseFixCertificate.NormalizedValid.conservesHasPrimitives
+    {c : TypeChecker.VContext} {env' : VEnv}
+    {r : NatBitwiseFixCertificate} {bitwise : Expr}
+    {v : VDefVal} {ite decide : VExpr}
+    (hv : r.NormalizedValid c bitwise)
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    (hbeqC : c.venv.contains ``Nat.beq)
+    (haddC : c.venv.contains ``Nat.add)
+    (hmodC : c.venv.contains ``Nat.mod)
+    (hdivC : c.venv.contains ``Nat.div)
+    (hadd : c.venv.ReflectsNatNatNat ``Nat.add Nat.add)
+    (hmod : c.venv.ReflectsNatNatNat ``Nat.mod Nat.mod)
+    (hdiv : c.venv.ReflectsNatNatNat ``Nat.div Nat.div)
+    (hbitwise : TrExprS c.venv [] [] bitwise v.value)
+    (hiteS : TrExprS c.venv [] [] Condition.bool.boolNatITE ite)
+    (hite : c.venv.ReflectsBoolNatITE ite)
+    (hdecideS : TrExprS c.venv [] [] Condition.natEqDecideFn decide)
+    (hdecide : VEnv.ReflectsNatEqDecide c.venv decide)
+    (hname : v.name = ``Nat.bitwise)
+    (haddConst : c.venv.addConst ``Nat.bitwise v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hu : v.uvars = 0)
+    (hty : c.venv.IsDefEqU 0 [] v.type
+      (.forallE (.forallE .bool <| .forallE .bool .bool) <|
+        .forallE .nat <| .forallE .nat .nat)) :
+    (env'.addDefEq v.toDefEq).HasPrimitives := by
+  let env'' := env'.addDefEq v.toDefEq
+  have hle : c.venv ≤ env'' :=
+    (VEnv.addConst_le haddConst).trans VEnv.addDefEq_le
+  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.bitwise [])
+      (.forallE (.forallE .bool <| .forallE .bool .bool) <|
+        .forallE .nat <| .forallE .nat .nat) :=
+    VEnv.HasType.const_of_type_defeq hwf (by
+      change env'.constants ``Nat.bitwise = some v.toVConstant
+      exact VEnv.addConst_self haddConst) hu (hty.mono hle) U Γ
+  have hcf := VDefVal.const_defeq_value hwf hu
+  rw [hname] at hcf
+  have href : env''.ReflectsNatBitwise ``Nat.bitwise :=
+    hv.reflects hlparams hvlctx hle hwf hbool hnat hbeqC
+      haddC hmodC hdivC hadd hmod hdiv (hbitwise.mono hle) hf hcf
+      hiteS hite hdecideS hdecide
+  exact c.hasPrimitives.addNatBitwiseDef haddConst href
+
 end Lean4Lean.Environment
