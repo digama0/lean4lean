@@ -398,6 +398,108 @@ theorem checkSafeNatPowDefinition.WF
     huvars, htype⟩, hvname⟩, hvalue⟩
 
 
+theorem checkSafeNatShiftLeftDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.shiftLeft)
+    (hsafety : v.safety = .safe) :
+    ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+        ∃ v' : VDefVal,
+          TrDefVal .safe (ves.venv .safe) (.defnInfo v) v' ∧
+          v'.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
+          v.levelParams = [] ∧
+          (ves.venv .safe).contains ``Nat.mul ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length [] v'.type
+            (.forallE .nat <| .forallE .nat .nat) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .nat <| .app (.app v'.value (.bvar 0)) .natZero)
+            (.lam .nat <| .bvar 0) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .nat <| .lam .nat <|
+              .app (.app v'.value (.bvar 0)) (.app .natSucc (.bvar 1)))
+            (.lam .nat <| .lam .nat <|
+              .app (.app v'.value
+                (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0)))
+                (.bvar 1)) := by
+  refine (checkDefinitionBody.WF wf v).bind fun _ state' _ hbody => ?_
+  obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
+  have hvalueT' := hvalueT
+  change (ves.venv .safe).HasType v'.uvars [] v'.value v'.type at hvalueT'
+  rw [← huvars] at hvalueT'
+  refine (Environment.checkPrimitiveDef.natShiftLeft.WF_typed
+    (c := .mk' wf .safe v.levelParams) (s := state')
+    (ty' := v'.type) (value' := v'.value)
+    hname rfl htype hvalue hvalueT').bind fun allow state'' _ hcheck => ?_
+  refine (TypeChecker.M.WF.liftExcept
+    (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+    fun _ _ _ hcheckedName => ?_
+  have hallow : allow = true := hcheckedName.2 (by
+    rw [hname]
+    simp [Lean.Kernel.Environment.primitives,
+      NameSet.contains, NameSet.ofList])
+  obtain ⟨hlevels, hmulC, hty, hz, hs⟩ := hcheck hallow
+  refine ⟨v', ?_, hvalueT, hcheckedName.1,
+    hlevels, hmulC, hty, hz, hs⟩
+  exact ⟨⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hsafety]
+    exact DefinitionSafety.le_rfl,
+    huvars, htype⟩, hvname⟩, hvalue⟩
+
+
+theorem checkSafeNatShiftRightDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.shiftRight)
+    (hsafety : v.safety = .safe) :
+    ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+        ∃ v' : VDefVal,
+          TrDefVal .safe (ves.venv .safe) (.defnInfo v) v' ∧
+          v'.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
+          v.levelParams = [] ∧
+          (ves.venv .safe).contains ``Nat.div ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length [] v'.type
+            (.forallE .nat <| .forallE .nat .nat) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .nat <| .app (.app v'.value (.bvar 0)) .natZero)
+            (.lam .nat <| .bvar 0) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .nat <| .lam .nat <|
+              .app (.app v'.value (.bvar 0)) (.app .natSucc (.bvar 1)))
+            (.lam .nat <| .lam .nat <|
+              .app (.app (.const ``Nat.div [])
+                (.app (.app v'.value (.bvar 0)) (.bvar 1))) (.natLit 2)) := by
+  refine (checkDefinitionBody.WF wf v).bind fun _ state' _ hbody => ?_
+  obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
+  have hvalueT' := hvalueT
+  change (ves.venv .safe).HasType v'.uvars [] v'.value v'.type at hvalueT'
+  rw [← huvars] at hvalueT'
+  refine (Environment.checkPrimitiveDef.natShiftRight.WF_typed
+    (c := .mk' wf .safe v.levelParams) (s := state')
+    (ty' := v'.type) (value' := v'.value)
+    hname rfl htype hvalue hvalueT').bind fun allow state'' _ hcheck => ?_
+  refine (TypeChecker.M.WF.liftExcept
+    (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+    fun _ _ _ hcheckedName => ?_
+  have hallow : allow = true := hcheckedName.2 (by
+    rw [hname]
+    simp [Lean.Kernel.Environment.primitives,
+      NameSet.contains, NameSet.ofList])
+  obtain ⟨hlevels, hdivC, hty, hz, hs⟩ := hcheck hallow
+  refine ⟨v', ?_, hvalueT, hcheckedName.1,
+    hlevels, hdivC, hty, hz, hs⟩
+  exact ⟨⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hsafety]
+    exact DefinitionSafety.le_rfl,
+    huvars, htype⟩, hvname⟩, hvalue⟩
+
+
+
 theorem checkSafeNonprimitiveDefinition.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hsafety : v.safety = .safe)
@@ -875,6 +977,73 @@ theorem addDefinition.WF_safe_natPow
   exact (wf.hasPrimitives (safety := safety)).addNatPowDef
     (wf.tr (safety := safety)).wf hmulC' hname' hadd' hwf'
     huvars' hty' hz' hs'
+
+
+theorem addDefinition.WF_safe_natShiftLeft
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.shiftLeft)
+    (hsafety : v.safety = .safe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  refine (checkSafeNatShiftLeftDefinition.WF wf v hname hsafety).run wf |>.map
+    fun _ h => ?_
+  obtain ⟨v', htr, hvWF, hfresh, hlevels, hmulC, hty, hz, hs⟩ := h
+  apply wf.addSafePrimitiveDefinition hsafety hlevels hfresh htr hvWF
+  intro safety out hadd hwf'
+  have hmono : ves.venv .safe ≤ ves.venv safety :=
+    wf.mono DefinitionSafety.le_safe
+  have hmulC' : (ves.venv safety).contains ``Nat.mul := by
+    obtain ⟨ci, hci⟩ := hmulC
+    exact ⟨ci, hmono.constants hci⟩
+  have hname' : v'.name = ``Nat.shiftLeft := htr.1.2.symm.trans hname
+  have huvars : v.levelParams.length = v'.uvars := htr.1.1.2.1
+  have huvars' : v'.uvars = 0 := by simpa [hlevels] using huvars.symm
+  have hty' := hty.mono hmono
+  have hz' := hz.mono hmono
+  have hs' := hs.mono hmono
+  rw [hlevels] at hty' hz' hs'
+  have hadd' : (ves.venv safety).addConst ``Nat.shiftLeft v'.toVConstant =
+      some out := by simpa [hname] using hadd
+  exact (wf.hasPrimitives (safety := safety)).addNatShiftLeftDef
+    (wf.tr (safety := safety)).wf hmulC' hname' hadd' hwf'
+    huvars' hty' hz' hs'
+
+
+theorem addDefinition.WF_safe_natShiftRight
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.shiftRight)
+    (hsafety : v.safety = .safe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  refine (checkSafeNatShiftRightDefinition.WF wf v hname hsafety).run wf |>.map
+    fun _ h => ?_
+  obtain ⟨v', htr, hvWF, hfresh, hlevels, hdivC, hty, hz, hs⟩ := h
+  apply wf.addSafePrimitiveDefinition hsafety hlevels hfresh htr hvWF
+  intro safety out hadd hwf'
+  have hmono : ves.venv .safe ≤ ves.venv safety :=
+    wf.mono DefinitionSafety.le_safe
+  have hdivC' : (ves.venv safety).contains ``Nat.div := by
+    obtain ⟨ci, hci⟩ := hdivC
+    exact ⟨ci, hmono.constants hci⟩
+  have hname' : v'.name = ``Nat.shiftRight := htr.1.2.symm.trans hname
+  have huvars : v.levelParams.length = v'.uvars := htr.1.1.2.1
+  have huvars' : v'.uvars = 0 := by simpa [hlevels] using huvars.symm
+  have hty' := hty.mono hmono
+  have hz' := hz.mono hmono
+  have hs' := hs.mono hmono
+  rw [hlevels] at hty' hz' hs'
+  have hadd' : (ves.venv safety).addConst ``Nat.shiftRight v'.toVConstant =
+      some out := by simpa [hname] using hadd
+  exact (wf.hasPrimitives (safety := safety)).addNatShiftRightDef
+    (wf.tr (safety := safety)).wf hdivC' hname' hadd' hwf'
+    huvars' hty' hz' hs'
+
 
 
 /-- The intended main theorem of the `Verify` development, currently unproved:
