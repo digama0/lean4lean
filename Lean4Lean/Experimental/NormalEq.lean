@@ -5,7 +5,7 @@ import Lean4Lean.Theory.Typing.Pattern
 
 namespace Lean4Lean
 
-open VExpr
+open Lean4Lean VExpr
 
 variable (IsDefEqU : List VExpr → VExpr → VExpr → Prop) (Γ₀ : List VExpr) in
 inductive IsDefEqCtx : List VExpr → List VExpr → Prop

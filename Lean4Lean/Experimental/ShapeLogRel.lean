@@ -1,6 +1,7 @@
 import Lean4Lean.Experimental.SExpr
 
 namespace Lean4Lean
+open Lean4Lean
 
 namespace SExpr
 variable [Params]
@@ -2156,9 +2157,7 @@ theorem WShape.ctor'_join {l l' : List (WShape n)} {c : Name}
     exact ih (fun z hz => h2' z (.tail _ hz))
   · rw [dif_pos (key.mpr (.inr h2))]; simp [ctor, bot, Shape.bot_join]
     have h1' : ∀ x ∈ l, x.1 ≤ Shape.bot := by
-      have ⟨hIs, hNZ⟩ : IsStruct c = true ∧ ¬ListNonZero l := by
-        refine ⟨?_, fun hNZ => h1 fun _ => hNZ⟩
-        by_contra hIs; exact h1 fun h => (hIs h).elim
+      have ⟨_, hNZ⟩ := Decidable.not_imp_iff_and_not.1 h1
       simp [ListNonZero] at hNZ; exact hNZ
     congr 1; clear h1 h2 key
     induction h with | nil => rfl | @cons x y L L' hh _ ih
@@ -2531,7 +2530,7 @@ theorem Shape.HasType.unfold_iff {m a : Shape n} : HasType m a ↔ HasTypeU m a 
     | indTy => rfl
     | forallE => simpa [HasType, hasType] using h
   | sort => cases n <;> rfl
-  | forallE H => simpa [HasType, hasType, hasType.core.iff] using H
+  | forallE H => simpa [HasType, hasType, hasType.core.iff, HasTypePi] using H
   | lam H => simp [HasType, hasType, hasType.core.iff]; exact H
   | ctor | indTy => rfl
 
@@ -3440,7 +3439,7 @@ theorem LE_Interp.Matches.head_wf (H : Matches p c rargs m) (wf : p.WF cl top k)
 theorem LE_Interp.Matches.head_wf_eq (H : Matches p c rargs m) (wf : p.WF cl top k) :
     cl c = some (if top then .symb (k + rargs.length) else .ctor (k + rargs.length)) := by
   induction H generalizing k with
-  | const => simpa using wf
+  | const => simpa [Pattern.WF] using wf
   | var _ ih =>
     have := ih (k := k + 1) wf
     rw [List.length_cons]; rw [Nat.add_succ, ← Nat.succ_add]; exact this
@@ -3615,8 +3614,8 @@ theorem pat_arity (hP : Params.Pat p r) (h : Arity (.const c) n p) :
   clear r hP h; intro cl n k h1 h2
   induction h2 generalizing k with
   | refl => simpa only [Nat.zero_add]
-  | var _ ih => simpa [Nat.succ_add] using ih _ h1
-  | app _ ih => simpa [Nat.succ_add] using ih _ h1.1
+  | var _ ih => simpa [Nat.succ_add, ← Nat.add_assoc] using ih _ h1
+  | app _ ih => simpa [Nat.succ_add, ← Nat.add_assoc] using ih _ h1.1
 
 theorem LE_Interp.Matches.lift (le : n ≤ n') (H : Matches (n := n) p c rargs m) :
     ∃ m', Matches p c (rargs.map (.lift n')) m' ∧ ∀ p, m p ≤ m' p ∧ m' p ≤ m p := by
@@ -4627,7 +4626,7 @@ structure StrongSoundEq (Γ : List SExpr) (M N A : SExpr) : Prop where
   left : StrongSound Γ M A
   right : StrongSound Γ N A
 
-theorem SoundEq.rfl : SoundEq Γ M M := fun _ _ _ _ => .rfl
+protected theorem SoundEq.rfl : SoundEq Γ M M := fun _ _ _ _ => .rfl
 theorem SoundEq.symm : SoundEq Γ M N → SoundEq Γ N M := fun H _ _ W _ => (H W).symm
 theorem StrongSoundEq.hasType : StrongSoundEq Γ M N A → StrongSound Γ M A ∧ StrongSound Γ N A
   | ⟨_, _, h1, h2⟩ => ⟨h1, h2⟩
@@ -4713,7 +4712,8 @@ theorem SoundEq.forallE_inv (H : SoundEq Γ (.forallE A B) (.forallE A' B'))
       · refine fun _ => ⟨_, WShape.bot_le, .bot' (.bot' .sort), ?_⟩
         simpa [WShapeFun.single_app] using .rfl
       · intro x h'; cases h'.bot_r
-        simpa [WShapeFun.single_app] using h.mono_l fun _ => TShape.bot_le'
+        simpa [WShapeFun.single_app, show m.2.T = m from rfl] using
+          h.mono_l fun _ => TShape.bot_le'
     | @cons Γ ρ A a x b1 b2 b3 b4 =>
       let k := max (max x.1 m.1) a.1
       have hk := Nat.max_le.1 (Nat.le_refl k); simp [Nat.max_le] at hk

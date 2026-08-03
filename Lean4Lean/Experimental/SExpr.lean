@@ -2,6 +2,7 @@ import Lean4Lean.Theory.Typing.Lemmas
 import Lean4Lean.Theory.Typing.Pattern
 
 namespace Lean4Lean
+open Lean4Lean
 
 inductive Classification where
   | ctor (arity : Nat)

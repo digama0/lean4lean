@@ -4,7 +4,7 @@ import Lean4Lean.Theory.Typing.Strong
 namespace Lean4Lean
 namespace VEnv
 
-open VExpr
+open Lean4Lean VExpr
 
 def DefInv (env : VEnv) (U : Nat) (Γ : List VExpr) : VExpr → VExpr → Prop
   | .forallE A B, .forallE A' B' =>
