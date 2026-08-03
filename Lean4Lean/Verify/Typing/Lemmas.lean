@@ -534,7 +534,8 @@ protected theorem WF.instL : ∀ {Δ}, VLCtx.WF env ls.length Δ →
     VLCtx.WF env U (Δ.instL ls)
   | [], _ => ⟨⟩
   | (_, d) :: Δ, ⟨h1, h2, h3⟩ =>
-    ⟨h1.instL, by simpa [instL_eq_map, fvars] using h2, by simpa using h3.instL hls⟩
+    ⟨h1.instL, by simpa [instL_eq_map, fvars, Function.comp_def] using h2,
+      by simpa using h3.instL hls⟩
 
 theorem find?_instL : find? Δ v = some (e, A) →
     find? (Δ.instL ls) v = some (e.instL ls, A.instL ls) := by
@@ -737,7 +738,7 @@ theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
     · rintro ⟨⟩ ⟨⟩; exact ⟨⟨_, h4⟩, h3⟩
     · simp
       rintro d₁' n₁' H1' rfl rfl d₂' n₂' H2' rfl rfl
-      simpa [VLocalDecl.depth] using find?_uniq hΔ H1' H2'
+      simpa [VLocalDecl.depth, VLCtx.toCtx] using find?_uniq hΔ H1' H2'
 
 theorem VLCtx.IsDefEq.find?_defeqDFC (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
     (H : Δ₁.find? v = some (e₁, A₁)) :

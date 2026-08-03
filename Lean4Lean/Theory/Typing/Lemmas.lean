@@ -1,5 +1,5 @@
 import Lean4Lean.Theory.Typing.Basic
-import Lean4Lean.Std.Variable!
+import Lean4Lean.Std.VariableBang
 
 namespace Lean4Lean
 
