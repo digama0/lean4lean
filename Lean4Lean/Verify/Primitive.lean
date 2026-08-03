@@ -5668,6 +5668,33 @@ theorem Condition.bool.check.WF {c : VContext} {s : VState}
   exact (isDefEqGuard.WF hfalseL hfalseR hfail).mono fun _ _ _ hfalseEq =>
     ⟨hnatITEHas, htrueEq, hfalseEq⟩
 
+theorem Condition.bool.check.WF.reflects
+    {c : VContext} {s : VState} {fail : ∀ {α}, M α}
+    {ite tl tr fl fr : VExpr}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    (hiteS : c.TrExprS Condition.bool.boolNatITE ite)
+    (htl : c.TrExprS (mkApp Condition.bool.boolNatITE q(true)) tl)
+    (htr : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 1) tr)
+    (hfl : c.TrExprS (mkApp Condition.bool.boolNatITE q(false)) fl)
+    (hfr : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 0) fr)
+    (hcheck : M.WF c s (Condition.bool.check fail (ite := true))
+      fun _ _ =>
+        c.HasType ite
+          (.forallE .bool <| .forallE .nat <| .forallE .nat .nat) ∧
+        c.IsDefEqU tl tr ∧ c.IsDefEqU fl fr) :
+    M.WF c s (Condition.bool.check fail (ite := true)) fun _ _ =>
+      c.venv.ReflectsBoolNatITE ite := by
+  refine hcheck.mono fun _ _ _ ⟨hiteT, hteq, hfeq⟩ => ?_
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hiteS htl htr hfl hfr
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hiteT
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hteq hfeq
+  rw [hlparams, hvlctx] at hiteS htl htr hfl hfr hiteT hteq hfeq
+  exact VEnv.reflectsBoolNatITE_of_equations c.Ewf c.hasPrimitives
+    hbool hnat hiteS hiteT htl htr hteq hfl hfr hfeq
+
 theorem checkPrimitiveDef.charOfNat.WF {c : VContext} {s : VState}
     (hname : v.name = ``Char.ofNat) (hty : c.TrExprS v.type ty')
     (hchar : c.TrExprS q(Char) .char)
