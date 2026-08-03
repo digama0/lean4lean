@@ -3422,6 +3422,21 @@ private theorem VEnv.nat_of_reflected_binary_contains
   obtain ⟨_, hnat, _⟩ := hnatType.const_inv wf trivial
   exact ⟨_, hnat⟩
 
+private theorem VEnv.HasPrimitives.nat_bool_of_bitwise_contains
+    {env : VEnv} (h : env.HasPrimitives) (wf : env.WF)
+    (hbitwise : env.contains ``Nat.bitwise) :
+    env.contains ``Nat ∧ env.contains ``Bool := by
+  have hfun := (h.natBitwise hbitwise).1 0 []
+  have ⟨_, hfunType⟩ := hfun.isType wf trivial
+  obtain ⟨⟨_, hopType⟩, ⟨_, hrestType⟩⟩ := hfunType.forallE_inv wf
+  obtain ⟨⟨_, hboolType⟩, _⟩ := hopType.forallE_inv wf
+  obtain ⟨_, hbool, _⟩ := hboolType.const_inv wf trivial
+  obtain ⟨⟨_, hnatType⟩, _⟩ := hrestType.forallE_inv wf
+  have hctx : OnCtx [(.forallE .bool <| .forallE .bool .bool)]
+      (env.IsType 0) := ⟨trivial, ⟨_, hopType⟩⟩
+  obtain ⟨_, hnat, _⟩ := hnatType.const_inv wf hctx
+  exact ⟨⟨_, hnat⟩, ⟨_, hbool⟩⟩
+
 theorem VContext.contains_safe_primitive
     (c : VContext) (hsrc : c.env.contains n)
     (hprimitive : Lean.Kernel.Environment.primitives.contains n) :
