@@ -1878,4 +1878,40 @@ theorem Condition.natEqDecideFn.reflects
               hbetaBranches.symm.trans wf trivial <|
                 hselectorCondEq.trans wf trivial hselector
 
+/-- Package the typing and equality facts exported by the condition checker
+as the semantic equality-decision interface consumed by bitwise reflection. -/
+theorem Condition.natEq.check.WF.reflects
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {fail : ∀ {α}, TypeChecker.M α}
+    {rtype rite decide reflectFn decFn : VExpr}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    (hbeqC : c.venv.contains ``Nat.beq)
+    (hrtype : c.TrExprS Reflection.defn₂.type rtype)
+    (hrite : c.TrExprS Reflection.defn₂.ite rite)
+    (hdecide : c.TrExprS Condition.natEqDecideFn decide)
+    (hreflect : c.TrExprS Condition.natEqReflectedFn reflectFn)
+    (hdecFn : c.TrExprS Condition.natEq.dec decFn)
+    (hcheck : TypeChecker.M.WF c s
+      (Condition.natEq.check fail (ite := true)) fun _ _ =>
+        VEnv.ReflectionITECertificate c.venv ∧
+        c.HasType rtype
+          (.forallE (.sort .zero) <| .forallE .bool (.sort .zero)) ∧
+        c.HasType decide (.forallE .nat <| .forallE .nat .bool) ∧
+        c.IsDefEqU reflectFn decFn) :
+    TypeChecker.M.WF c s (Condition.natEq.check fail (ite := true))
+      fun _ _ =>
+        VEnv.ReflectionITECertificate c.venv ∧
+        VEnv.ReflectsNatEqDecide c.venv decide := by
+  refine hcheck.mono fun _ _ _ ⟨hcert, hrtypeT, hdecideT, heq⟩ => ?_
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hrtype hrite hdecide hreflect hdecFn
+  change c.venv.HasType c.lparams.length c.vlctx.toCtx _ _ at hrtypeT hdecideT
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at heq
+  rw [hlparams, hvlctx] at hrtype hrite hdecide hreflect hdecFn hrtypeT hdecideT heq
+  have hctors := VEnv.HasNatBoolConstructors.of_primitives
+    c.hasPrimitives hbool hnat
+  exact ⟨hcert, Condition.natEqDecideFn.reflects c.Ewf
+    c.hasPrimitives hctors hbeqC hcert hrtype hrite hrtypeT
+    hdecide hdecideT hreflect hdecFn heq⟩
+
 end Lean4Lean.Environment
