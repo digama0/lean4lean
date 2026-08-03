@@ -1165,6 +1165,53 @@ def checkStringOfListPrimitive (env : Environment) (v : DefinitionVal) : M Unit 
   -- String.ofList : List Char → String
   unless ← isDefEq v.type q(List Char → String) do fail
 
+def checkNatModPrimitive (env : Environment) (v : DefinitionVal)
+    (fail : ∀ {α}, M α) : M Unit := do
+  unless env.contains ``Nat.sub && env.contains ``Bool &&
+      v.levelParams.isEmpty do fail
+  unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
+  let zero := q(Nat.zero)
+  let x := .bvar 0
+  let mod := mkApp2 v.value
+  unless ← isDefEq (.lam0 q(Nat) <| mod zero x)
+    (.lam0 q(Nat) zero) do fail
+  unless ← isDefEq (← checkType q(@LE.le Nat _))
+    q(Nat → Nat → Prop) do fail
+  unless ← isDefEq (← checkType q(Nat.modCore.go))
+    q(∀ n, Nat.succ Nat.zero ≤ n →
+      ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
+  let c := Condition.natLE
+  c.check fail (ite := true) (dite := true)
+  let (topL, topR) := natModTopEquation v.value
+  _ ← checkType topL
+  _ ← checkType topR
+  unless ← isDefEq topL topR do fail
+  let (goL, goR) := natModGoEquation
+  _ ← checkType goL
+  _ ← checkType goR
+  unless ← isDefEq goL goR do fail
+
+def checkNatDivPrimitive (env : Environment) (v : DefinitionVal)
+    (fail : ∀ {α}, M α) : M Unit := do
+  unless env.contains ``Nat.sub && env.contains ``Bool &&
+      v.levelParams.isEmpty do fail
+  unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
+  let c := Condition.natLE
+  c.check fail (dite := true)
+  unless ← isDefEq (← checkType q(@LE.le Nat _))
+    q(Nat → Nat → Prop) do fail
+  unless ← isDefEq (← checkType q(Nat.div.go))
+    q(∀ y, Nat.succ Nat.zero ≤ y →
+      ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
+  let (topL, topR) := natDivTopEquation v.value
+  _ ← checkType topL
+  _ ← checkType topR
+  unless ← isDefEq topL topR do fail
+  let (goL, goR) := natDivGoEquation
+  _ ← checkType goL
+  _ ← checkType goR
+  unless ← isDefEq goL goR do fail
+
 def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
   let fail {α} : M α := throw <| .other s!"invalid form for primitive def {v.name}"
   let tru := q(true)
@@ -1223,35 +1270,9 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← defeq1 (pow x zero) one do fail
     unless ← defeq2 (pow y (succ x)) (mul (pow y x) y) do fail
   | ``Nat.mod =>
-    unless env.contains ``Nat.sub && env.contains ``Bool && v.levelParams.isEmpty do fail
-    -- mod : Nat → Nat → Nat
-    unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    let mod := mkApp2 v.value
-    unless ← defeq1 (mod zero x) zero do fail
-    unless ← isDefEq (← checkType q(@LE.le Nat _)) q(Nat → Nat → Prop) do fail
-    unless ← isDefEq (← checkType q(Nat.modCore.go))
-      q(∀ n, Nat.succ Nat.zero ≤ n → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
-    let c := Condition.natLE; c.check fail (ite := true) (dite := true)
-    let (topL, topR) := natModTopEquation v.value
-    _ ← checkType topR
-    unless ← isDefEq topL topR do fail
-    let (goL, goR) := natModGoEquation
-    _ ← checkType goR
-    unless ← isDefEq goL goR do fail
+    checkNatModPrimitive env v fail
   | ``Nat.div =>
-    unless env.contains ``Nat.sub && env.contains ``Bool && v.levelParams.isEmpty do fail
-    -- div : Nat → Nat → Nat
-    unless ← isDefEq v.type q(Nat → Nat → Nat) do fail
-    let c := Condition.natLE; c.check fail (dite := true)
-    unless ← isDefEq (← checkType q(@LE.le Nat _)) q(Nat → Nat → Prop) do fail
-    unless ← isDefEq (← checkType q(Nat.div.go))
-      q(∀ y, Nat.succ Nat.zero ≤ y → ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) do fail
-    let (topL, topR) := natDivTopEquation v.value
-    _ ← checkType topR
-    unless ← isDefEq topL topR do fail
-    let (goL, goR) := natDivGoEquation
-    _ ← checkType goR
-    unless ← isDefEq goL goR do fail
+    checkNatDivPrimitive env v fail
   | ``Nat.gcd =>
     unless env.contains ``Nat.mod && v.levelParams.isEmpty do fail
     -- gcd : Nat → Nat → Nat
