@@ -6232,7 +6232,9 @@ theorem checkPrimitiveDef.natBLE.WF {c : VContext} {s : VState}
 
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natBitwise.WF {c : VContext} {s : VState}
-    (hname : v.name = ``Nat.bitwise) (hty : c.TrExprS v.type ty')
+    (hname : v.name = ``Nat.bitwise)
+    (hcparams : c.lparams = v.levelParams)
+    (hty : c.TrExprS v.type ty')
     (hcanon : c.TrExprS q((Bool → Bool → Bool) → Nat → Nat → Nat)
       (.forallE (.forallE .bool <| .forallE .bool .bool) <|
         .forallE .nat <| .forallE .nat .nat))
@@ -6258,9 +6260,11 @@ theorem checkPrimitiveDef.natBitwise.WF {c : VContext} {s : VState}
     (hvz₁ : c.TrExprS (natBitwiseZeroEquation v.value).1 vz₁)
     (hvz₂ : c.TrExprS (natBitwiseZeroEquation v.value).2 vz₂)
     (hnatCheck : ∀ {fail : ∀ {α}, M α} {s'},
+      c.lparams = [] →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
       M.WF c s' (Condition.natEq.check fail (ite := true)) fun _ _ => Rnat)
     (hboolCheck : ∀ {fail : ∀ {α}, M α} {s'},
+      c.lparams = [] →
       (∀ {α} {s''}, M.WF c s'' (fail : M α) fun _ _ => False) →
       M.WF c s' (Condition.bool.check fail (ite := true)) fun _ _ => Rbool) :
     M.WF c s (checkPrimitiveDef v) fun b _ => b →
@@ -6282,6 +6286,7 @@ theorem checkPrimitiveDef.natBitwise.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
+    have hclparams : c.lparams = [] := hcparams.trans hlparams
     simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
@@ -6298,9 +6303,9 @@ theorem checkPrimitiveDef.natBitwise.WF {c : VContext} {s : VState}
             exact (isDefEq.WF hequationTy hcanon).bind fun b _ _ hequationTyEq => by
               split
               · have hequationTyEq := hequationTyEq (by assumption)
-                exact (hnatCheck (fun {_} {_} => .throw)).bind
+                exact (hnatCheck hclparams (fun {_} {_} => .throw)).bind
                   fun _ _ _ hnatCert =>
-                  (hboolCheck (fun {_} {_} => .throw)).bind
+                  (hboolCheck hclparams (fun {_} {_} => .throw)).bind
                     fun _ _ _ hboolCert =>
                     (checkType.WF hbody.fvarsIn).bind fun _ _ _ _ =>
                     (isDefEq.WF hequation hbody).bind fun b _ _ hbodyEq => by
