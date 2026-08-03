@@ -3,6 +3,204 @@ import Lean4Lean.Verify.BitwiseCondition
 namespace Lean4Lean.Environment
 open Lean VEnv
 
+private theorem reflectionNatDITE_type_shape
+    {env : VEnv} {r : Reflection} {ty : VExpr}
+    (h : TrExprS env [] []
+      (.arrow q(Prop) <| .arrow q(Bool) <|
+       .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
+       .arrow (.arrow (.bvar 2) q(Nat)) <|
+       .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) q(Nat)) ty) :
+    ∃ rtype, ty =
+      (.forallE (.sort .zero) <|
+       .forallE .bool <|
+       .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+       .forallE (.forallE (.bvar 2) .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) (.bvar 3)) .nat) .nat) ∧
+      TrExprS env []
+        [(none, .vlam .bool), (none, .vlam (.sort .zero))]
+        r.type rtype := by
+  cases h with
+  | forallE _ _ hpropS hrest =>
+    cases hpropS with
+    | sort hlevel =>
+      simp [VLevel.ofLevel] at hlevel
+      subst hlevel
+      cases hrest with
+      | forallE _ _ hboolS hrest =>
+        cases hboolS with
+        | const _ hus _ =>
+          simp at hus
+          subst hus
+          cases hrest with
+          | forallE _ _ hproofTyS hrest =>
+            cases hproofTyS with
+            | app _ _ hfn hbS =>
+              cases hfn with
+              | app _ _ hrtypeS hpS =>
+                cases hpS with
+                | bvar hp =>
+                  simp [VLCtx.find?, VLCtx.next] at hp
+                  rcases hp with ⟨rfl, rfl⟩
+                  cases hbS with
+                  | bvar hb =>
+                    simp [VLCtx.find?, VLCtx.next] at hb
+                    rcases hb with ⟨rfl, rfl⟩
+                    cases hrest with
+                    | forallE _ _ htS hrest =>
+                      cases htS with
+                      | forallE _ _ hpS hnatS =>
+                        cases hpS with
+                        | bvar hp =>
+                          simp [VLCtx.find?, VLCtx.next] at hp
+                          rcases hp with ⟨rfl, rfl⟩
+                          cases hnatS with
+                          | const _ hus _ =>
+                            simp at hus
+                            subst hus
+                            cases hrest with
+                            | forallE _ _ heS hnatS =>
+                              cases heS with
+                              | forallE _ _ hnotpS hnatS₁ =>
+                                cases hnotpS with
+                                | app _ _ hnotS hpS =>
+                                  cases hnotS with
+                                  | const _ hus _ =>
+                                    simp at hus
+                                    subst hus
+                                    cases hpS with
+                                    | bvar hp =>
+                                      simp [VLCtx.find?, VLCtx.next] at hp
+                                      rcases hp with ⟨rfl, rfl⟩
+                                      cases hnatS₁ with
+                                      | const _ hus _ =>
+                                        simp at hus
+                                        subst hus
+                                        cases hnatS with
+                                        | const _ hus _ =>
+                                          simp at hus
+                                          subst hus
+                                          exact ⟨_, rfl, hrtypeS⟩
+
+/-- Normalize the checked type of a translated dependent selector to a
+chosen global translation of `Reflection.type`. -/
+theorem VEnv.reflectionNatDITE_hasType_canonical
+    {env : VEnv} (wf : env.WF) {r : Reflection}
+    (hrtypeUnique : TrExprS.IsUnique r.type)
+    {rtype rdite diteTy : VExpr}
+    (hrtype : TrExprS env [] [] r.type rtype)
+    (hditeTy : TrExprS env [] []
+      (.arrow q(Prop) <| .arrow q(Bool) <|
+       .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
+       .arrow (.arrow (.bvar 2) q(Nat)) <|
+       .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) q(Nat)) diteTy)
+    (hditeHas : env.HasType 0 [] rdite diteTy) :
+    env.HasType 0 [] rdite
+      (.forallE (.sort .zero) <|
+       .forallE .bool <|
+       .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+       .forallE (.forallE (.bvar 2) .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) (.bvar 3)) .nat) .nat) := by
+  obtain ⟨rtypeLocal, rfl, hrtypeLocal⟩ :=
+    reflectionNatDITE_type_shape hditeTy
+  have hrtypeClosed : r.type.looseBVarRange' = 0 :=
+    hrtype.closed.looseBVarRange_zero
+  have hrtypeLocalEq : rtypeLocal = rtype :=
+    TrExprS.unique_closed_weak wf hrtypeUnique hrtypeClosed hrtype
+      hrtypeLocal (.skip (.vlam .bool)
+        (.skip (.vlam (.sort .zero)) .refl))
+  subst rtypeLocal
+  exact hditeHas
+
+/-- Exact argument types forced by the normalized type of a fully applied
+reflected dependent selector. -/
+theorem VEnv.reflectionNatDITE_call_types
+    {env : VEnv} (wf : env.WF)
+    {rtype rdite p boolV H t e R : VExpr}
+    (hrtypeClosed : rtype.ClosedN)
+    (hrdite : env.HasType 0 [] rdite
+      (.forallE (.sort .zero) <|
+       .forallE .bool <|
+       .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+       .forallE (.forallE (.bvar 2) .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) (.bvar 3)) .nat) .nat))
+    (hcall : env.HasType 0 []
+      (.app (.app (.app (.app (.app rdite p) boolV) H) t) e) R) :
+    env.HasType 0 [] p (.sort .zero) ∧
+    env.HasType 0 [] t (.forallE p .nat) ∧
+    env.HasType 0 [] e
+      (.forallE (.app (.const ``Not []) p) .nat) := by
+  obtain ⟨_, _, hthenAppT, heRaw⟩ := hcall.app_inv wf.ordered trivial
+  obtain ⟨_, _, hproofAppT, htRaw⟩ :=
+    hthenAppT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hboolAppT, hHRaw⟩ :=
+    hproofAppT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hpropAppT, hboolRaw⟩ :=
+    hboolAppT.app_inv wf.ordered trivial
+  obtain ⟨pTy, _, hrditeRaw, hpRaw⟩ :=
+    hpropAppT.app_inv wf.ordered trivial
+  have hrditeTyEq := hrditeRaw.uniqU wf trivial hrdite
+  obtain ⟨_, hpTyEq⟩ := (hrditeTyEq.forallE_inv wf trivial).1
+  have hp := hpRaw.defeqU_r wf trivial hpTyEq.toU
+  have hpClosed : p.ClosedN :=
+    (hp.closedN' wf.ordered.closed trivial).1
+  have hpropCanonT : env.HasType 0 [] (.app rdite p)
+      (.forallE .bool <|
+       .forallE (.app (.app rtype p) (.bvar 0)) <|
+       .forallE (.forallE p .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) p) .nat) .nat) := by
+    simpa [VExpr.inst, VExpr.bool, VExpr.nat,
+      hrtypeClosed.instN_eq, hpClosed.lift_eq, hpClosed.instN_eq] using
+      (VEnv.HasType.app hrdite hp)
+  have hpropTyEq := hpropAppT.uniqU wf trivial hpropCanonT
+  obtain ⟨_, hboolTyEq⟩ := (hpropTyEq.forallE_inv wf trivial).1
+  have hbool := hboolRaw.defeqU_r wf trivial hboolTyEq.toU
+  have hboolClosed : boolV.ClosedN :=
+    (hbool.closedN' wf.ordered.closed trivial).1
+  have hboolCanonT : env.HasType 0 []
+      (.app (.app rdite p) boolV)
+      (.forallE (.app (.app rtype p) boolV) <|
+       .forallE (.forallE p .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) p) .nat) .nat) := by
+    simpa [VExpr.inst, VExpr.nat, hrtypeClosed.instN_eq,
+      hpClosed.lift_eq, hpClosed.instN_eq,
+      hboolClosed.lift_eq, hboolClosed.instN_eq] using
+      (VEnv.HasType.app hpropCanonT hbool)
+  have hboolPrefixTyEq := hboolAppT.uniqU wf trivial hboolCanonT
+  obtain ⟨_, hHTyEq⟩ :=
+    (hboolPrefixTyEq.forallE_inv wf trivial).1
+  have hH := hHRaw.defeqU_r wf trivial hHTyEq.toU
+  have hHClosed : H.ClosedN :=
+    (hH.closedN' wf.ordered.closed trivial).1
+  have hproofCanonT : env.HasType 0 []
+      (.app (.app (.app rdite p) boolV) H)
+      (.forallE (.forallE p .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) p) .nat) .nat) := by
+    simpa [VExpr.inst, hpClosed.lift_eq, hpClosed.instN_eq,
+      hboolClosed.lift_eq, hboolClosed.instN_eq,
+      hHClosed.lift_eq, hHClosed.instN_eq] using
+      (VEnv.HasType.app hboolCanonT hH)
+  have hproofPrefixTyEq := hproofAppT.uniqU wf trivial hproofCanonT
+  obtain ⟨_, htTyEq⟩ :=
+    (hproofPrefixTyEq.forallE_inv wf trivial).1
+  have ht := htRaw.defeqU_r wf trivial htTyEq.toU
+  have htClosed : t.ClosedN :=
+    (ht.closedN' wf.ordered.closed trivial).1
+  have hthenCanonT : env.HasType 0 []
+      (.app (.app (.app (.app rdite p) boolV) H) t)
+      (.forallE (.forallE (.app (.const ``Not []) p) .nat) .nat) := by
+    simpa [VExpr.inst, hpClosed.lift_eq, hpClosed.instN_eq,
+      htClosed.lift_eq, htClosed.instN_eq] using
+      (VEnv.HasType.app hproofCanonT ht)
+  have hthenTyEq := hthenAppT.uniqU wf trivial hthenCanonT
+  obtain ⟨_, heTyEq⟩ := (hthenTyEq.forallE_inv wf trivial).1
+  exact ⟨hp, ht, heRaw.defeqU_r wf trivial heTyEq.toU⟩
+
 private theorem reflectionNatDITE_true_lhs_shape
     {env : VEnv} {r : Reflection} {l : VExpr}
     (h : TrExprS env [] []
@@ -966,16 +1164,21 @@ theorem VEnv.reflectionNatDITE_true_of_condition
        .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
        .lam (.app (.app rtype (.bvar 2)) .boolTrue) <|
        .app (.bvar 2) (.app (.app ofTrue (.bvar 3)) (.bvar 0))))
+    (hrditeHas : env.HasType 0 [] rdite
+      (.forallE (.sort .zero) <|
+       .forallE .bool <|
+       .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+       .forallE (.forallE (.bvar 2) .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) (.bvar 3)) .nat) .nat))
     (hcallT : env.HasType 0 []
       (.app (.app (.app (.app (.app rdite p) boolV) H) t) e) R)
-    (hbool : env.IsDefEqU 0 [] boolV .boolTrue)
-    (hp : env.HasType 0 [] p (.sort .zero))
-    (ht : env.HasType 0 [] t (.forallE p .nat))
-    (he : env.HasType 0 [] e
-      (.forallE (.app (.const ``Not []) p) .nat)) :
+    (hbool : env.IsDefEqU 0 [] boolV .boolTrue) :
     ∃ proof, env.IsDefEqU 0 []
       (.app (.app (.app (.app (.app rdite p) boolV) H) t) e)
       (.app t proof) := by
+  obtain ⟨hp, ht, he⟩ := VEnv.reflectionNatDITE_call_types wf
+    hrtypeClosed hrditeHas hcallT
   have hreplace := VEnv.replaceNatDITECondition wf hcallT hbool
   have hcallTrueT := (hreplace.of_l wf trivial hcallT).hasType.2
   obtain ⟨proof, hselect⟩ :=
@@ -1001,21 +1204,109 @@ theorem VEnv.reflectionNatDITE_false_of_condition
        .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
        .lam (.app (.app rtype (.bvar 2)) .boolFalse) <|
        .app (.bvar 1) (.app (.app ofFalse (.bvar 3)) (.bvar 0))))
+    (hrditeHas : env.HasType 0 [] rdite
+      (.forallE (.sort .zero) <|
+       .forallE .bool <|
+       .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+       .forallE (.forallE (.bvar 2) .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) (.bvar 3)) .nat) .nat))
     (hcallT : env.HasType 0 []
       (.app (.app (.app (.app (.app rdite p) boolV) H) t) e) R)
-    (hbool : env.IsDefEqU 0 [] boolV .boolFalse)
-    (hp : env.HasType 0 [] p (.sort .zero))
-    (ht : env.HasType 0 [] t (.forallE p .nat))
-    (he : env.HasType 0 [] e
-      (.forallE (.app (.const ``Not []) p) .nat)) :
+    (hbool : env.IsDefEqU 0 [] boolV .boolFalse) :
     ∃ proof, env.IsDefEqU 0 []
       (.app (.app (.app (.app (.app rdite p) boolV) H) t) e)
       (.app e proof) := by
+  obtain ⟨hp, ht, he⟩ := VEnv.reflectionNatDITE_call_types wf
+    hrtypeClosed hrditeHas hcallT
   have hreplace := VEnv.replaceNatDITECondition wf hcallT hbool
   have hcallFalseT := (hreplace.of_l wf trivial hcallT).hasType.2
   obtain ⟨proof, hselect⟩ :=
     VEnv.reflectionNatDITE_false_select_from_call wf
       hrtypeClosed hrditeClosed hofFalseClosed heq hcallFalseT hp ht he
   exact ⟨proof, hreplace.trans wf trivial hselect⟩
+
+/-- A concrete true `Nat.ble` result selects the true branch of the checked
+dependent selector. -/
+theorem VEnv.reflectionNatDITE_of_natBLE_true
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {rtype rdite ofTrue p bleV H t e R : VExpr}
+    (hrtypeClosed : rtype.ClosedN) (hrditeClosed : rdite.ClosedN)
+    (hofTrueClosed : ofTrue.ClosedN)
+    (heq : env.IsDefEqU 0 []
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolTrue) <|
+       .app (.app (.app (.app (.app rdite (.bvar 3)) .boolTrue)
+         (.bvar 0)) (.bvar 2)) (.bvar 1))
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolTrue) <|
+       .app (.bvar 2) (.app (.app ofTrue (.bvar 3)) (.bvar 0))))
+    (hrditeHas : env.HasType 0 [] rdite
+      (.forallE (.sort .zero) <|
+       .forallE .bool <|
+       .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+       .forallE (.forallE (.bvar 2) .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) (.bvar 3)) .nat) .nat))
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b))) bleV)
+    (hble : Nat.ble a b = true)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app rdite p) bleV) H) t) e) R) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app rdite p) bleV) H) t) e)
+      (.app t proof) := by
+  have hbleEq := Condition.natBLE_application_eval
+    wf hprim hctors hbleC hbleS
+  rw [hble] at hbleEq
+  exact VEnv.reflectionNatDITE_true_of_condition wf
+    hrtypeClosed hrditeClosed hofTrueClosed heq hrditeHas hcallT hbleEq
+
+/-- A concrete false `Nat.ble` result selects the false branch. -/
+theorem VEnv.reflectionNatDITE_of_natBLE_false
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {rtype rdite ofFalse p bleV H t e R : VExpr}
+    (hrtypeClosed : rtype.ClosedN) (hrditeClosed : rdite.ClosedN)
+    (hofFalseClosed : ofFalse.ClosedN)
+    (heq : env.IsDefEqU 0 []
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolFalse) <|
+       .app (.app (.app (.app (.app rdite (.bvar 3)) .boolFalse)
+         (.bvar 0)) (.bvar 2)) (.bvar 1))
+      (.lam (.sort .zero) <|
+       .lam (.forallE (.bvar 0) .nat) <|
+       .lam (.forallE (.app (.const ``Not []) (.bvar 1)) .nat) <|
+       .lam (.app (.app rtype (.bvar 2)) .boolFalse) <|
+       .app (.bvar 1) (.app (.app ofFalse (.bvar 3)) (.bvar 0))))
+    (hrditeHas : env.HasType 0 [] rdite
+      (.forallE (.sort .zero) <|
+       .forallE .bool <|
+       .forallE (.app (.app rtype (.bvar 1)) (.bvar 0)) <|
+       .forallE (.forallE (.bvar 2) .nat) <|
+       .forallE (.forallE
+         (.app (.const ``Not []) (.bvar 3)) .nat) .nat))
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.lit (.natVal a)) (.lit (.natVal b))) bleV)
+    (hble : Nat.ble a b = false)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app rdite p) bleV) H) t) e) R) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app rdite p) bleV) H) t) e)
+      (.app e proof) := by
+  have hbleEq := Condition.natBLE_application_eval
+    wf hprim hctors hbleC hbleS
+  rw [hble] at hbleEq
+  exact VEnv.reflectionNatDITE_false_of_condition wf
+    hrtypeClosed hrditeClosed hofFalseClosed heq hrditeHas hcallT hbleEq
 
 end Lean4Lean.Environment
