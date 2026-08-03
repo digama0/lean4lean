@@ -1914,4 +1914,72 @@ theorem Condition.natEq.check.WF.reflects
     c.hasPrimitives hctors hbeqC hcert hrtype hrite hrtypeT
     hdecide hdecideT hreflect hdecFn heq⟩
 
+theorem Condition.natEq.check.WF.semantic
+    {c : TypeChecker.VContext} {s : TypeChecker.VState}
+    {fail : ∀ {α}, TypeChecker.M α}
+    {rtype rite decide reflectFn decFn beq : VExpr}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    (hbeqC : c.venv.contains ``Nat.beq)
+    (hdec : c.TrExprS Condition.natEq.dec decFn)
+    (hprop : c.TrExprS Condition.natEq.prop prop')
+    (hpropTy : c.TrExprS q(Nat → Nat → Prop) propTy')
+    (hrtype : c.TrExprS Reflection.defn₂.type rtype)
+    (hrtypeUnique : TrExprS.IsUnique Reflection.defn₂.type)
+    (hrtypeCanon : c.TrExprS q(Prop → Bool → Prop)
+      (.forallE (.sort .zero) <| .forallE .bool (.sort .zero)))
+    (hite : c.TrExprS Reflection.defn₂.ite rite)
+    (hiteUnique : TrExprS.IsUnique Reflection.defn₂.ite)
+    (hiteTy : c.TrExprS (.arrow q(Prop) <| .arrow q(Bool) <|
+      .arrow (mkApp2 Reflection.defn₂.type (.bvar 1) (.bvar 0))
+        q(∀ α : Type, α → α → α)) iteTy')
+    (htrueL : c.TrExprS
+      (.lam0 q(Prop) <|
+        .lam0 (mkApp2 Reflection.defn₂.type (.bvar 0) q(true)) <|
+          mkApp3 Reflection.defn₂.ite (.bvar 1) q(true) (.bvar 0)) trueL')
+    (htrueR : c.TrExprS
+      (.lam0 q(Prop) <|
+        .lam0 (mkApp2 Reflection.defn₂.type (.bvar 0) q(true)) <|
+          .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <|
+            .bvar 1) trueR')
+    (hfalseL : c.TrExprS
+      (.lam0 q(Prop) <|
+        .lam0 (mkApp2 Reflection.defn₂.type (.bvar 0) q(false)) <|
+          mkApp3 Reflection.defn₂.ite (.bvar 1) q(false) (.bvar 0)) falseL')
+    (hfalseR : c.TrExprS
+      (.lam0 q(Prop) <|
+        .lam0 (mkApp2 Reflection.defn₂.type (.bvar 0) q(false)) <|
+          .lam0 q(Type) <| .lam0 (.bvar 0) <| .lam0 (.bvar 1) <|
+            .bvar 0) falseR')
+    (hreflect : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3 Reflection.defn₂.toDec
+        (mkApp2 Condition.natEq.prop (.bvar 1) (.bvar 0))
+        (mkApp2 q(Nat.beq) (.bvar 1) (.bvar 0))
+        (mkApp2
+          q(fun n m {q : Prop} (H : _ → _ → q) =>
+            H (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m))
+          (.bvar 1) (.bvar 0))) reflectFn)
+    (hdecide : c.TrExprS Condition.natEqDecideFn decide)
+    (hdecideTy : c.TrExprS q(Nat → Nat → Bool)
+      (.forallE .nat <| .forallE .nat .bool))
+    (hasBool : c.TrExprS q(Nat.beq) beq)
+    (hasBoolTy : c.TrExprS q(Nat → Nat → Bool)
+      (.forallE .nat <| .forallE .nat .bool))
+    (hproof : c.TrExprS
+      q(fun n m {q : Prop} (H : _ → _ → q) =>
+        H (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m)) proof')
+    (hfail : ∀ {α} {s'}, TypeChecker.M.WF c s'
+      (fail : TypeChecker.M α) fun _ _ => False) :
+    TypeChecker.M.WF c s (Condition.natEq.check fail (ite := true))
+      fun _ _ => VEnv.ReflectionITECertificate c.venv ∧
+        VEnv.ReflectsNatEqDecide c.venv decide := by
+  apply Condition.natEq.check.WF.reflects hlparams hvlctx hbool hnat
+    hbeqC hrtype hite hdecide hreflect hdec
+  refine (Condition.natEq.check.WF hlparams hvlctx hdec hprop hpropTy
+    hrtype hrtypeUnique hrtypeCanon hite hiteUnique hiteTy htrueL htrueR
+    hfalseL hfalseR hreflect hdecide hdecideTy hasBool hasBoolTy hproof
+    hfail).mono ?_
+  rintro _ _ _ ⟨hcert, hrtypeT, _, _, hdecideT, _, _, heq⟩
+  exact ⟨hcert, hrtypeT, hdecideT, heq⟩
+
 end Lean4Lean.Environment

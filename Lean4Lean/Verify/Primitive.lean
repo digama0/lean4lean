@@ -5756,6 +5756,32 @@ theorem Condition.bool.check.WF.reflects
   exact VEnv.reflectsBoolNatITE_of_equations c.Ewf c.hasPrimitives
     hbool hnat hiteS hiteT htl htr hteq hfl hfr hfeq
 
+theorem Condition.bool.check.WF.semantic
+    {c : VContext} {s : VState} {fail : ∀ {α}, M α}
+    {ite tl tr fl fr : VExpr}
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    (hdec : c.TrExprS Condition.bool.dec dec')
+    (hprop : c.TrExprS Condition.bool.prop prop')
+    (hpropTy : c.TrExprS q(Bool → Prop) propTy')
+    (hite : c.TrExprS Condition.bool.boolNatITE ite)
+    (hiteUnique : TrExprS.IsUnique Condition.bool.boolNatITE)
+    (hiteTy : c.TrExprS q(Bool → Nat → Nat → Nat)
+      (.forallE .bool <| .forallE .nat <| .forallE .nat .nat))
+    (htl : c.TrExprS (mkApp Condition.bool.boolNatITE q(true)) tl)
+    (htr : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 1) tr)
+    (hfl : c.TrExprS (mkApp Condition.bool.boolNatITE q(false)) fl)
+    (hfr : c.TrExprS
+      (.lam0 q(Nat) <| .lam0 q(Nat) <| .bvar 0) fr)
+    (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
+    M.WF c s (Condition.bool.check fail (ite := true)) fun _ _ =>
+      c.venv.ReflectsBoolNatITE ite := by
+  apply Condition.bool.check.WF.reflects hlparams hvlctx hbool hnat
+    hite htl htr hfl hfr
+  exact Condition.bool.check.WF hdec hprop hpropTy hite hiteUnique
+    hiteTy htl htr hfl hfr hfail
+
 theorem checkPrimitiveDef.charOfNat.WF {c : VContext} {s : VState}
     (hname : v.name = ``Char.ofNat) (hty : c.TrExprS v.type ty')
     (hchar : c.TrExprS q(Char) .char)
