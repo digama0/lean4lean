@@ -1047,6 +1047,33 @@ theorem Condition.natBLE_constructor_application_eval
         (.refl wf (U := 0) (Δ := []) trivial) hbleS hcanonS
       exact hlocalEq.trans wf trivial (hbleEval a b)
 
+/-- Evaluate a translated `Nat.ble` call from arbitrary source presentations
+of two concrete naturals. -/
+theorem Condition.natBLE_application_eval_of_args
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {aS bS : Expr} {bleV : VExpr}
+    (haS : TrExprS env [] [] aS (.natLit a))
+    (hbS : TrExprS env [] [] bS (.natLit b))
+    (hbleS : TrExprS env [] [] (mkApp2 q(Nat.ble) aS bS) bleV) :
+    env.IsDefEqU 0 [] bleV (.boolLit (Nat.ble a b)) := by
+  have ⟨hbleT, hbleEval⟩ := hprim.natBLE hbleC
+  obtain ⟨ci, hci, _, hlen⟩ := (hbleT 0 []).const_inv wf trivial
+  have hfnS : TrExprS env [] [] q(Nat.ble) (.const ``Nat.ble []) :=
+    .const hci rfl hlen
+  have haT := (hctors.natLitS a (Us := []) (Δ := [])).2
+  have hbT := (hctors.natLitS b (Us := []) (Δ := [])).2
+  have hinnerS : TrExprS env [] [] (mkApp q(Nat.ble) aS)
+      (.app (.const ``Nat.ble []) (.natLit a)) :=
+    .app (hbleT 0 []) haT hfnS haS
+  have hcanonS : TrExprS env [] [] (mkApp2 q(Nat.ble) aS bS)
+      (.app (.app (.const ``Nat.ble []) (.natLit a)) (.natLit b)) :=
+    .app (.app (hbleT 0 []) haT) hbT hinnerS hbS
+  have hlocalEq := TrExprS.uniq (Us := []) wf
+    (.refl wf (U := 0) (Δ := []) trivial) hbleS hcanonS
+  exact hlocalEq.trans wf trivial (hbleEval a b)
+
 /-- Replace the Boolean argument of a fully applied reflected dependent
 selector.  Typing of the proof and both branches is transported through the
 dependent function equality. -/
