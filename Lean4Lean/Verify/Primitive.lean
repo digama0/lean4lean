@@ -1292,21 +1292,24 @@ theorem VEnv.ReflectsNatNatNat.of_divCore_equations (henv : VEnv.WF env)
     (hf : ∀ U Γ, env.HasType U Γ (.const ``Nat.div [])
       (.forallE .nat <| .forallE .nat .nat))
     (hcf : env.IsDefEqU 0 [] (.const ``Nat.div []) f)
-    (hgoT : ∀ y fuel x hy hfuel,
-      env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat)
     (htop : ∀ a b,
       if 0 < b then
-        ∃ hy hfuel, env.IsDefEqU 0 []
-          (.app (.app f (.natLit a)) (.natLit b))
-          (.natDivGo b (a + 1) a hy hfuel)
+        ∃ hy hfuel,
+          env.HasType 0 [] (.natDivGo b (a + 1) a hy hfuel) .nat ∧
+          env.IsDefEqU 0 []
+            (.app (.app f (.natLit a)) (.natLit b))
+            (.natDivGo b (a + 1) a hy hfuel)
       else
         env.IsDefEqU 0 []
           (.app (.app f (.natLit a)) (.natLit b)) .natZero)
     (hgo : ∀ y fuel x hy hfuel,
+      env.HasType 0 [] (.natDivGo y (fuel + 1) x hy hfuel) .nat →
       if y ≤ x then
-        ∃ hy' hfuel', env.IsDefEqU 0 []
-          (.natDivGo y (fuel + 1) x hy hfuel)
-          (.app .natSucc (.natDivGo y fuel (x - y) hy' hfuel'))
+        ∃ hy' hfuel',
+          env.HasType 0 [] (.natDivGo y fuel (x - y) hy' hfuel') .nat ∧
+          env.IsDefEqU 0 []
+            (.natDivGo y (fuel + 1) x hy hfuel)
+            (.app .natSucc (.natDivGo y fuel (x - y) hy' hfuel'))
       else
         env.IsDefEqU 0 []
           (.natDivGo y (fuel + 1) x hy hfuel) .natZero) :
@@ -1323,22 +1326,23 @@ theorem VEnv.ReflectsNatNatNat.of_divCore_equations (henv : VEnv.WF env)
     have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit x [])
     exact h₁.app_same henv trivial (.app (hf 0 []) (hlit x [])) (hlit y [])
   have goEval (y : Nat) (hypos : 0 < y) :
-      ∀ fuel x hy hfuel, x < fuel → env.IsDefEqU 0 []
+      ∀ fuel x hy hfuel, x < fuel →
+        env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat →
+        env.IsDefEqU 0 []
         (.natDivGo y fuel x hy hfuel) (.natLit (x.div y)) := by
     intro fuel
     induction fuel with
-    | zero => intro x _ _ hlt; omega
+    | zero => intro x _ _ hlt _; omega
     | succ fuel ih =>
-      intro x hy hfuel hlt
-      have hg := hgo y fuel x hy hfuel
+      intro x hy hfuel hlt hcallT
+      have hg := hgo y fuel x hy hfuel hcallT
       split at hg
       · rename_i hyx
-        obtain ⟨hy', hfuel', hg⟩ := hg
+        obtain ⟨hy', hfuel', hrecT, hg⟩ := hg
         have hsubx : x - y < x := Nat.sub_lt_self hypos hyx
         have hsubfuel : x - y < fuel := by omega
-        have hrec := ih (x - y) hy' hfuel' hsubfuel
-        have hsucc := hrec.app_arg henv trivial (hsuccT [])
-          (hgoT y fuel (x - y) hy' hfuel')
+        have hrec := ih (x - y) hy' hfuel' hsubfuel hrecT
+        have hsucc := hrec.app_arg henv trivial (hsuccT []) hrecT
         have heq : x.div y = (x - y).div y + 1 := by
           simpa [hypos, hyx] using Nat.div_eq x y
         rw [heq]
@@ -1355,9 +1359,10 @@ theorem VEnv.ReflectsNatNatNat.of_divCore_equations (henv : VEnv.WF env)
   have ht := htop a b
   split at ht
   · rename_i hb
-    obtain ⟨hy, hfuel, ht⟩ := ht
+    obtain ⟨hy, hfuel, hgoT, ht⟩ := ht
     exact (hcfApp a b).trans henv trivial <|
-      ht.trans henv trivial (goEval b hb (a + 1) a hy hfuel (by omega))
+      ht.trans henv trivial
+        (goEval b hb (a + 1) a hy hfuel (by omega) hgoT)
   · rename_i hb
     have heq : a.div b = 0 := by
       have hformula : a.div b =

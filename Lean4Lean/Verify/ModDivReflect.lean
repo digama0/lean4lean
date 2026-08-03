@@ -553,9 +553,11 @@ theorem VEnv.natDivTop_semantics
     (heq : env.IsDefEqU 0 [] topL topR) :
     ∀ a b,
       if 0 < b then
-        ∃ hy hfuel, env.IsDefEqU 0 []
-          (.app (.app divV (.natLit a)) (.natLit b))
-          (.natDivGo b (a + 1) a hy hfuel)
+        ∃ hy hfuel,
+          env.HasType 0 [] (.natDivGo b (a + 1) a hy hfuel) .nat ∧
+          env.IsDefEqU 0 []
+            (.app (.app divV (.natLit a)) (.natLit b))
+            (.natDivGo b (a + 1) a hy hfuel)
       else
         env.IsDefEqU 0 []
           (.app (.app divV (.natLit a)) (.natLit b)) .natZero := by
@@ -579,8 +581,11 @@ theorem VEnv.natDivTop_semantics
       VEnv.natDivTopThen_beta wf a b htS hbranchT
     obtain ⟨hfuel, hbody⟩ := VEnv.natDivTopThenBody_inst
       wf hctors hpropType hproofT a b hbodyS
-    exact ⟨proof, hfuel, htop.trans wf trivial hselect |>.trans wf trivial hbeta
-      |>.trans wf trivial hbody⟩
+    have hbodyInstT := (hbeta.of_l wf trivial hbranchT).hasType.2
+    have hgoT := (hbody.of_l wf trivial hbodyInstT).hasType.2
+    exact ⟨proof, hfuel, hgoT,
+      htop.trans wf trivial hselect |>.trans wf trivial hbeta
+        |>.trans wf trivial hbody⟩
   · rename_i hb
     rw [if_neg hb] at hselect
     obtain ⟨proof, hselect⟩ := hselect
@@ -1623,9 +1628,11 @@ theorem VEnv.natDivGoThen_beta
     (hhfuelT : env.HasType 0 [] hfuel B)
     (happT : env.HasType 0 []
       (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof) R) :
-    ∃ hfuel', env.IsDefEqU 0 []
-      (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof)
-      (.app .natSucc (.natDivGo y fuel (x - y) hy hfuel')) := by
+    ∃ hfuel',
+      env.HasType 0 [] (.natDivGo y fuel (x - y) hy hfuel') .nat ∧
+      env.IsDefEqU 0 []
+        (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof)
+        (.app .natSucc (.natDivGo y fuel (x - y) hy hfuel')) := by
   obtain ⟨propV, hfuelV, rfl⟩ := VEnv.natDivGoThen_canonical htS
   let propI :=
     (((((propV.inst (.natLit y) 4).inst hy 3).inst
@@ -1720,7 +1727,11 @@ theorem VEnv.natDivGoThen_beta
   have hprefix₄Eq := hsubEq.app_arg wf trivial hprefix₃T hsubArgT
   have hcallEq := hprefix₄Eq.app_same wf trivial hprefix₄T hhfuelIT
   have hsuccEq := hcallEq.app_arg wf trivial hsuccFnT hcallT
-  exact ⟨hfuelI, hbeta.trans wf trivial hsuccEq⟩
+  have hrecRawT := (hcallEq.of_l wf trivial hcallT).hasType.2
+  have hsuccTyEq := hsuccFnT.uniqU wf trivial hsuccT
+  obtain ⟨_, hsuccDomEq⟩ := (hsuccTyEq.forallE_inv wf trivial).1
+  have hrecT := hrecRawT.defeqU_r wf trivial hsuccDomEq.toU
+  exact ⟨hfuelI, hrecT, hbeta.trans wf trivial hsuccEq⟩
 
 /-- Transport the final fuel proof of a canonical closed `Nat.div.go` call
 to the corresponding final binder of the checked left equation. -/
@@ -1847,14 +1858,15 @@ theorem VEnv.natDivGo_semantics
     (eqCert : VEnv.NatDivGoEquationTranslation env)
     {goTyV : VExpr}
     (typeCert : VEnv.NatDivGoTypeTranslation env goTyV)
-    (hgoT : env.HasType 0 [] (.const ``Nat.div.go []) goTyV)
-    (hgoCallT : ∀ y fuel x hy hfuel,
-      env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat) :
+    (hgoT : env.HasType 0 [] (.const ``Nat.div.go []) goTyV) :
     ∀ y fuel x hy hfuel,
+      env.HasType 0 [] (.natDivGo y (fuel + 1) x hy hfuel) .nat →
       if y ≤ x then
-        ∃ hy' hfuel', env.IsDefEqU 0 []
-          (.natDivGo y (fuel + 1) x hy hfuel)
-          (.app .natSucc (.natDivGo y fuel (x - y) hy' hfuel'))
+        ∃ hy' hfuel',
+          env.HasType 0 [] (.natDivGo y fuel (x - y) hy' hfuel') .nat ∧
+          env.IsDefEqU 0 []
+            (.natDivGo y (fuel + 1) x hy hfuel)
+            (.app .natSucc (.natDivGo y fuel (x - y) hy' hfuel'))
       else
         env.IsDefEqU 0 []
           (.natDivGo y (fuel + 1) x hy hfuel) .natZero := by
@@ -1866,8 +1878,7 @@ theorem VEnv.natDivGo_semantics
       yTyLType hyTyLType fuelTyLType xTyLType hTyLType
       yTyRType hyTyRType fuelTyRType xTyRType hTyRType
       leftS rightS heq =>
-    intro y fuel x hy hfuel
-    have hcallT := hgoCallT y (fuel + 1) x hy hfuel
+    intro y fuel x hy hfuel hcallT
     obtain ⟨yTy, hyTy, fuelTy, xTy, hTy, resultTy,
       yTyS, hyTyS, hhyCanon, hhfuelCanon⟩ :=
       typeCert.call_proof_types wf hctors hgoT
@@ -1916,9 +1927,10 @@ theorem VEnv.natDivGo_semantics
       rw [if_pos hyx] at hselect
       obtain ⟨proof, hselect⟩ := hselect
       have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
-      obtain ⟨hfuel', hbranch⟩ := VEnv.natDivGoThen_beta
+      obtain ⟨hfuel', hrecT, hbranch⟩ := VEnv.natDivGoThen_beta
         wf hprim hctors hsubC htS y fuel x hhyL hhfuelL hbranchT
-      exact ⟨hy, hfuel', hEq.trans wf trivial hselect |>.trans wf trivial hbranch⟩
+      exact ⟨hy, hfuel', hrecT,
+        hEq.trans wf trivial hselect |>.trans wf trivial hbranch⟩
     · rename_i hyx
       rw [if_neg hyx] at hselect
       obtain ⟨proof, hselect⟩ := hselect
