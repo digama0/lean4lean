@@ -714,6 +714,58 @@ theorem checkSafeNatLandDefinition.WF
     huvars, htype⟩, hvname⟩, hvalue⟩
 
 
+theorem checkSafeNatLorDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (op : Expr)
+    (hname : v.name = ``Nat.lor)
+    (hshape : v.value = .app (.const ``Nat.bitwise []) op)
+    (hsafety : v.safety = .safe) :
+    ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+        ∃ v' : VDefVal, ∃ op' : VExpr,
+          TrDefVal .safe (ves.venv .safe) (.defnInfo v) v' ∧
+          v'.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
+          v.levelParams = [] ∧
+          (ves.venv .safe).contains ``Nat ∧
+          (ves.venv .safe).contains ``Bool ∧
+          (ves.venv .safe).contains ``Nat.bitwise ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length [] v'.type
+            (.forallE .nat <| .forallE .nat .nat) ∧
+          v'.value = .app (.const ``Nat.bitwise []) op' ∧
+          (ves.venv .safe).HasType v.levelParams.length [] op'
+            (.forallE .bool <| .forallE .bool .bool) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .bool <| .app (.app op' .boolFalse) (.bvar 0))
+            (.lam .bool <| .bvar 0) ∧
+          (ves.venv .safe).IsDefEqU v.levelParams.length []
+            (.lam .bool <| .app (.app op' .boolTrue) (.bvar 0))
+            (.lam .bool .boolTrue) := by
+  refine (checkDefinitionBody.WF wf v).bind fun _ state' _ hbody => ?_
+  obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
+  refine (Environment.checkPrimitiveDef.natLor.WF_typed
+    (c := .mk' wf .safe v.levelParams) (s := state')
+    (ty' := v'.type) (value' := v'.value)
+    hname hshape rfl htype hvalue).bind fun allow state'' _ hcheck => ?_
+  refine (TypeChecker.M.WF.liftExcept
+    (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+    fun _ _ _ hcheckedName => ?_
+  have hallow : allow = true := hcheckedName.2 (by
+    rw [hname]
+    simp [Lean.Kernel.Environment.primitives,
+      NameSet.contains, NameSet.ofList])
+  obtain ⟨hlevels, hnat, hbool, hbitwise, hty, op', hvalueShape,
+    hopTy, hf, ht⟩ := hcheck hallow
+  refine ⟨v', op', ?_, hvalueT, hcheckedName.1, hlevels,
+    hnat, hbool, hbitwise, hty, hvalueShape, hopTy, hf, ht⟩
+  exact ⟨⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hsafety]
+    exact DefinitionSafety.le_rfl,
+    huvars, htype⟩, hvname⟩, hvalue⟩
+
+
 
 theorem checkSafeNonprimitiveDefinition.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
