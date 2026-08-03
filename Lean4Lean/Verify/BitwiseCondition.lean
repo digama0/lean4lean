@@ -712,6 +712,122 @@ theorem VEnv.reflectionITE_true_select
       (hbetaT.app_same wf trivial hselectorAppT he).trans
         wf trivial hbetaE
 
+/-- The checked false selector equation at an arbitrary target type. -/
+theorem VEnv.reflectionITE_false_select
+    {env : VEnv} (wf : env.WF) {rtypeL rtypeR rite p H α t e : VExpr}
+    (hrtypeLClosed : rtypeL.ClosedN) (hrtypeRClosed : rtypeR.ClosedN)
+    (hriteClosed : rite.ClosedN)
+    (heq : env.IsDefEqU 0 []
+      (.lam (.sort .zero) <|
+        .lam (.app (.app rtypeL (.bvar 0)) .boolFalse) <|
+          .app (.app (.app rite (.bvar 1)) .boolFalse) (.bvar 0))
+      (.lam (.sort .zero) <|
+        .lam (.app (.app rtypeR (.bvar 0)) .boolFalse) <|
+          .lam (.sort (.succ .zero)) <|
+            .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 0))
+    (hp : env.HasType 0 [] p (.sort .zero))
+    (hHL : env.HasType 0 [] H (.app (.app rtypeL p) .boolFalse))
+    (hHR : env.HasType 0 [] H (.app (.app rtypeR p) .boolFalse))
+    (hα : env.HasType 0 [] α (.sort (.succ .zero)))
+    (ht : env.HasType 0 [] t α) (he : env.HasType 0 [] e α) :
+    env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app (.app rite p) .boolFalse) H) α) t) e) e := by
+  have heq' := heq
+  obtain ⟨_, hd⟩ := heq'
+  obtain ⟨⟨_, hpropSort⟩, _, hleftBodyT⟩ :=
+    hd.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightBodyT⟩ := hd.hasType.2.lam_inv wf trivial
+  have h₁ := VEnv.IsDefEqU.lam_instU wf trivial heq hpropSort
+    hleftBodyT hrightBodyT hp
+  simp [VExpr.inst, hrtypeLClosed.instN_eq, hrtypeRClosed.instN_eq,
+    hriteClosed.instN_eq] at h₁
+  have h₁' := h₁
+  obtain ⟨_, hd₁⟩ := h₁'
+  obtain ⟨⟨_, hHSort⟩, _, hleftInnerT⟩ :=
+    hd₁.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hrightInnerT⟩ := hd₁.hasType.2.lam_inv wf trivial
+  have h₂ := VEnv.IsDefEqU.lam_instU_hetero wf trivial h₁ hHSort
+    hleftInnerT hrightInnerT hHL hHR
+  simp [VExpr.inst, VExpr.inst_lift, hriteClosed.instN_eq] at h₂
+  have hselect : env.IsDefEqU 0 []
+      (.app (.app (.app rite p) .boolFalse) H)
+      (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 0) := by
+    simpa [VExpr.boolFalse, VExpr.inst, VExpr.lift, VExpr.liftN, liftVar]
+      using h₂
+  have hselectorT : env.HasType 0 []
+      (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 0)
+      (.forallE (.sort (.succ .zero)) <|
+        .forallE (.bvar 0) <| .forallE (.bvar 1) <| .bvar 2) :=
+    .lam (.sort trivial) <| .lam (.bvar .zero) <|
+      .lam (.bvar (.succ .zero)) (.bvar .zero)
+  have hprefixT := (hselect.of_r wf trivial hselectorT).hasType.1
+  have h₃ := hselect.app_same wf trivial hprefixT hα
+  have hprefixαT := VEnv.HasType.app hprefixT hα
+  have hαClosed : α.ClosedN := (hα.closedN' wf.ordered.closed trivial).1
+  have hprefixαT' : env.HasType 0 []
+      (.app (.app (.app (.app rite p) .boolFalse) H) α)
+      (.forallE α <| .forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq] using hprefixαT
+  have h₄ := h₃.app_same wf trivial hprefixαT' ht
+  have hprefixαtT := VEnv.HasType.app hprefixαT' ht
+  have hprefixαtT' : env.HasType 0 []
+      (.app (.app (.app (.app (.app rite p) .boolFalse) H) α) t)
+      (.forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      hprefixαtT
+  have h₅ := h₄.app_same wf trivial hprefixαtT' he
+  obtain ⟨_, houterBodyT⟩ := (hselectorT.lam_inv wf trivial).2
+  have hbetaα : env.IsDefEqU 0 []
+      (.app (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 0) α)
+      (.lam α <| .lam α <| .bvar 0) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      (show env.IsDefEqU 0 [] _ _ from ⟨_, .beta houterBodyT hα⟩)
+  have hselectorαT :=
+    (hbetaα.of_l wf trivial (.app hselectorT hα)).hasType.2
+  have hselectorαT' : env.HasType 0 []
+      (.lam α <| .lam α <| .bvar 0)
+      (.forallE α <| .forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      hselectorαT
+  obtain ⟨_, htrueBodyT⟩ := (hselectorαT'.lam_inv wf trivial).2
+  have htClosed : t.ClosedN := (ht.closedN' wf.ordered.closed trivial).1
+  have hbetaT : env.IsDefEqU 0 []
+      (.app (.lam α <| .lam α <| .bvar 0) t) (.lam α <| .bvar 0) := by
+    simpa [VExpr.inst, hαClosed.instN_eq, htClosed.lift_eq] using
+      (show env.IsDefEqU 0 [] _ _ from ⟨_, .beta htrueBodyT ht⟩)
+  have hselectorT' : env.HasType 0 [] (.lam α <| .bvar 0) (.forallE α α) := by
+    have h := (hbetaT.of_l wf trivial (.app hselectorαT' ht)).hasType.2
+    simpa [VExpr.inst, hαClosed.instN_eq] using h
+  obtain ⟨_, hfalseBodyT⟩ := (hselectorT'.lam_inv wf trivial).2
+  have hbetaE : env.IsDefEqU 0 [] (.app (.lam α <| .bvar 0) e) e :=
+    by
+      simpa [VExpr.inst] using
+        (show env.IsDefEqU 0 [] _ _ from ⟨_, .beta hfalseBodyT he⟩)
+  have hselectorAppT : env.HasType 0 []
+      (.app (.lam α <| .lam α <| .bvar 0) t) (.forallE α α) := by
+    simpa [VExpr.inst, hαClosed.instN_eq] using
+      (VEnv.HasType.app hselectorαT' ht)
+  have hselectorOuterAppT : env.HasType 0 []
+      (.app (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 0) α)
+      (.forallE α <| .forallE α α) := by
+    simpa [VExpr.inst, hαClosed.lift_eq, hαClosed.instN_eq] using
+      (VEnv.HasType.app hselectorT hα)
+  have hselectorOuterTt : env.HasType 0 []
+      (.app (.app (.lam (.sort (.succ .zero)) <|
+        .lam (.bvar 0) <| .lam (.bvar 1) <| .bvar 0) α) t)
+      (.forallE α α) := by
+    simpa [VExpr.inst, hαClosed.instN_eq] using
+      (VEnv.HasType.app hselectorOuterAppT ht)
+  have hbetaαApps :=
+    (hbetaα.app_same wf trivial hselectorOuterAppT ht).app_same
+      wf trivial hselectorOuterTt he
+  exact h₅.trans wf trivial <| hbetaαApps.trans wf trivial <|
+    (hbetaT.app_same wf trivial hselectorAppT he).trans wf trivial hbetaE
+
 private theorem reflectionITE_true_translation_shape
     {env : VEnv} {r : Reflection} {l : VExpr}
     (h : TrExprS env [] []
