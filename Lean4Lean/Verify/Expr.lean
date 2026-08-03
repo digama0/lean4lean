@@ -738,6 +738,7 @@ open private mkAppRevRangeAux from Lean.Expr in
 theorem mkAppRevRange_eq(h1 : args.toList = l₁ ++ l₂ ++ l₃)
       (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
     mkAppRevRange e i j args = mkAppList e l₂.reverse := by
+  unfold mkAppRevRange
   simpa using loop l₁ l₂.reverse l₃ [] (by simpa using h1) h2 (by simpa using h3)
 where
   loop {start i} (l₁ l₂ l₃ l₄) (h1 : args.toList = l₁ ++ l₂.reverse ++ l₃)
