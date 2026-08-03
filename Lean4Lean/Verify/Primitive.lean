@@ -3561,6 +3561,25 @@ theorem VContext.contains_safe_primitive
     exact DefinitionSafety.le_safe)
   exact ⟨ci', hci'⟩
 
+/-- Translate a constant directly from the source/target environment
+alignment. Primitive checker branches use this after their source-side
+lookup, universe, and safety guards have succeeded. -/
+theorem VContext.trConst_of_find?
+    (c : VContext) (hfind : c.env.find? n = some ci)
+    (hsafety : c.safety ≤ ci.safety)
+    (hlevels : us.length = ci.levelParams.length)
+    (htranslate : us.mapM (VLevel.ofLevel c.lparams) = some us') :
+    c.TrExprS (.const n us) (.const n us') := by
+  obtain ⟨ci', hci', htr⟩ := c.trenv.find? hfind hsafety
+  exact .const hci' htranslate (hlevels.trans htr.2.1)
+
+/-- Monomorphic specialization of `VContext.trConst_of_find?`. -/
+theorem VContext.trConst_of_find?_empty
+    (c : VContext) (hfind : c.env.find? n = some ci)
+    (hsafety : c.safety ≤ ci.safety) (hlevels : ci.levelParams = []) :
+    c.TrExprS (.const n []) (.const n []) :=
+  VContext.trConst_of_find? c hfind hsafety (by simp [hlevels]) rfl
+
 /-- The natural-number constructor fragment of `HasPrimitives`. -/
 structure VEnv.HasNatConstructors (env : VEnv) : Prop where
   nat : env.contains ``Nat
@@ -6747,14 +6766,10 @@ theorem checkPrimitiveDef.charOfNat.WF_typed {c : VContext} {s : VState}
             simpa [hsafety] using hcharSafety
           have hcharSafety' : charInfo.safety = .safe := by
             simp [ConstantInfo.safety, hcharSafety''.1, hcharSafety''.2]
-          obtain ⟨charInfo', hcharInfo, hcharTr⟩ :=
-            c.trenv.find? hcharFind (by
-              rw [hcharSafety']
-              exact DefinitionSafety.le_safe)
-          have hcharLen : ([] : List Level).length = charInfo'.uvars := by
-            simpa [hcharLevels'] using hcharTr.2.1
           have hchar : c.TrExprS q(Char) .char :=
-            .const hcharInfo rfl hcharLen
+            VContext.trConst_of_find?_empty c hcharFind (by
+              rw [hcharSafety']
+              exact DefinitionSafety.le_safe) hcharLevels'
           simp only [pure_bind]
           refine M.WF.bind (f := fun _ => do
             let b ← isDefEq v.type q(Nat → Char)
