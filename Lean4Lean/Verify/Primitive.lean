@@ -3308,6 +3308,17 @@ theorem checkPrimitiveDef.WF_of_not_primitive {c : VContext} {s : VState}
   split <;> simp_all
   exact getEnv.WF.bind fun _ _ _ _ => .pure rfl
 
+theorem checkPrimitiveDef.WF_of_inductive_name {c : VContext} {s : VState}
+    (hname : v.name = ``Bool ∨ v.name = ``Bool.false ∨
+      v.name = ``Bool.true ∨ v.name = ``Nat ∨
+      v.name = ``Nat.zero ∨ v.name = ``Nat.succ) :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b = false := by
+  refine getEnv.WF.bind fun _ _ _ _ => ?_
+  rcases hname with hname | hname | hname | hname | hname | hname
+  all_goals
+    simp [checkPrimitiveDef, hname]
+    exact .pure rfl
+
 /-- A globally closed translation can be reused under freshly introduced
 bound variables without changing its target expression. -/
 private theorem TrExprS.closed_weak

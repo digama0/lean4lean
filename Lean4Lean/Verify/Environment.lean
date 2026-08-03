@@ -2115,6 +2115,95 @@ theorem addDefinition.WF_safe_natXor
   exact addDefinition.WF_safe_natXor_of_shape
     wf v op hname hshape hsafety env' hsuccess
 
+theorem addDefinition.WF_safe_inductiveName
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hsafety : v.safety = .safe)
+    (hname : v.name = ``Bool ∨ v.name = ``Bool.false ∨
+      v.name = ``Bool.true ∨ v.name = ``Nat ∨
+      v.name = ``Nat.zero ∨ v.name = ``Nat.succ) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  have hrun : ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ => False := by
+    refine (checkDefinitionBody.WF wf v).bind fun _ state' _ _ => ?_
+    refine (Environment.checkPrimitiveDef.WF_of_inductive_name
+      (c := .mk' wf .safe v.levelParams) (s := state') hname).bind
+      fun allow _ _ hallow => ?_
+    refine (TypeChecker.M.WF.liftExcept
+      (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+      fun _ _ _ hcheckedName => ?_
+    have : allow = true := hcheckedName.2 (by
+      rcases hname with hname | hname | hname | hname | hname | hname
+      all_goals
+        rw [hname]
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    simp_all
+  exact hrun.run wf |>.map fun _ h => False.elim h
+
+set_option maxRecDepth 4000 in
+theorem addDefinition.WF_safe
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hsafety : v.safety = .safe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  by_cases hn : ¬Lean.Kernel.Environment.primitives.contains v.name
+  · exact addDefinition.WF_safe_of_not_primitive wf v hsafety hn
+  · have hp₀ : Lean.Kernel.Environment.primitives.contains v.name :=
+      Classical.byContradiction fun h => hn h
+    have hp : v.name = ``Bool ∨ v.name = ``Bool.false ∨
+        v.name = ``Bool.true ∨ v.name = ``Nat ∨
+        v.name = ``Nat.zero ∨ v.name = ``Nat.succ ∨
+        v.name = ``Nat.add ∨ v.name = ``Nat.pred ∨
+        v.name = ``Nat.sub ∨ v.name = ``Nat.mul ∨
+        v.name = ``Nat.pow ∨ v.name = ``Nat.gcd ∨
+        v.name = ``Nat.mod ∨ v.name = ``Nat.div ∨
+        v.name = ``Nat.beq ∨ v.name = ``Nat.ble ∨
+        v.name = ``Nat.bitwise ∨ v.name = ``Nat.land ∨
+        v.name = ``Nat.lor ∨ v.name = ``Nat.xor ∨
+        v.name = ``Nat.shiftLeft ∨ v.name = ``Nat.shiftRight ∨
+        v.name = ``String.ofList ∨ v.name = ``Char.ofNat := by
+      simp [Lean.Kernel.Environment.primitives,
+        NameSet.contains, NameSet.ofList] at hp₀
+      simpa only [eq_comm] using hp₀
+    rcases hp with h | h | h | h | h | h | h | h | h | h | h | h | h |
+      h | h | h | h | h | h | h | h | h | h | h
+    · exact addDefinition.WF_safe_inductiveName wf v hsafety (.inl h)
+    · exact addDefinition.WF_safe_inductiveName wf v hsafety (.inr <| .inl h)
+    · exact addDefinition.WF_safe_inductiveName wf v hsafety
+        (.inr <| .inr <| .inl h)
+    · exact addDefinition.WF_safe_inductiveName wf v hsafety
+        (.inr <| .inr <| .inr <| .inl h)
+    · exact addDefinition.WF_safe_inductiveName wf v hsafety
+        (.inr <| .inr <| .inr <| .inr <| .inl h)
+    · exact addDefinition.WF_safe_inductiveName wf v hsafety
+        (.inr <| .inr <| .inr <| .inr <| .inr h)
+    · exact addDefinition.WF_safe_natAdd wf v h hsafety
+    · exact addDefinition.WF_safe_natPred wf v h hsafety
+    · exact addDefinition.WF_safe_natSub wf v h hsafety
+    · exact addDefinition.WF_safe_natMul wf v h hsafety
+    · exact addDefinition.WF_safe_natPow wf v h hsafety
+    · exact addDefinition.WF_safe_natGcd wf v h hsafety
+    · exact addDefinition.WF_safe_natMod wf v h hsafety
+    · exact addDefinition.WF_safe_natDiv wf v h hsafety
+    · exact addDefinition.WF_safe_natBEq wf v h hsafety
+    · exact addDefinition.WF_safe_natBLE wf v h hsafety
+    · exact addDefinition.WF_safe_natBitwise wf v h hsafety
+    · exact addDefinition.WF_safe_natLand wf v h hsafety
+    · exact addDefinition.WF_safe_natLor wf v h hsafety
+    · exact addDefinition.WF_safe_natXor wf v h hsafety
+    · exact addDefinition.WF_safe_natShiftLeft wf v h hsafety
+    · exact addDefinition.WF_safe_natShiftRight wf v h hsafety
+    · exact addDefinition.WF_safe_stringOfList wf v h hsafety
+    · exact addDefinition.WF_safe_charOfNat wf v h hsafety
+
 
 
 /-- The intended main theorem of the `Verify` development, currently unproved:
