@@ -2613,6 +2613,29 @@ theorem VEnv.HasPrimitives.addNatPowDef {env env' : VEnv} {v : VDefVal}
     ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
 
+theorem VEnv.HasPrimitives.addNatGcd {env env' : VEnv}
+    (h : env.HasPrimitives)
+    (hadd : env.addConst ``Nat.gcd ci = some env')
+    (href : (env'.addDefEq df).ReflectsNatNatNat ``Nat.gcd Nat.gcd) :
+    (env'.addDefEq df).HasPrimitives := by
+  exact h.addPrimitiveDefEq hadd (by decide) (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide)
+    ((h.natPred.addConst hadd (by decide)).addDefEq)
+    ((h.natAdd.addConst hadd (by decide)).addDefEq)
+    ((h.natSub.addConst hadd (by decide)).addDefEq)
+    ((h.natMul.addConst hadd (by decide)).addDefEq)
+    ((h.natPow.addConst hadd (by decide)).addDefEq) href
+    ((h.natMod.addConst hadd (by decide)).addDefEq)
+    ((h.natDiv.addConst hadd (by decide)).addDefEq)
+    ((h.natBEq.addConst hadd (by decide)).addDefEq)
+    ((h.natBLE.addConst hadd (by decide)).addDefEq)
+    ((h.natBitwise.addConst hadd (by decide)).addDefEq)
+    ((h.natLAnd.addConst hadd (by decide)).addDefEq)
+    ((h.natLOr.addConst hadd (by decide)).addDefEq)
+    ((h.natXor.addConst hadd (by decide)).addDefEq)
+    ((h.natShiftLeft.addConst hadd (by decide)).addDefEq)
+    ((h.natShiftRight.addConst hadd (by decide)).addDefEq)
+
 theorem VEnv.HasPrimitives.addNatGcdDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (henv : env.WF) (hmodC : env.contains ``Nat.mod)
     (hname : v.name = ``Nat.gcd)
@@ -3245,37 +3268,53 @@ theorem VEnv.HasPrimitives.addStringOfList {env env' : VEnv}
 
 namespace Environment
 
-/-- The constructor fragment of `HasPrimitives` needed by primitive
-certificate semantics.  It is monotone under arbitrary environment
-extensions, unlike the full invariant while a primitive is being added. -/
-structure VEnv.HasNatBoolConstructors (env : VEnv) : Prop where
-  bool : env.contains ``Bool
-  boolFalse : env.constants ``Bool.false =
-    some { uvars := 0, type := .bool }
-  boolTrue : env.constants ``Bool.true =
-    some { uvars := 0, type := .bool }
+/-- The natural-number constructor fragment of `HasPrimitives`. -/
+structure VEnv.HasNatConstructors (env : VEnv) : Prop where
   nat : env.contains ``Nat
   natZero : env.constants ``Nat.zero =
     some { uvars := 0, type := .nat }
   natSucc : env.constants ``Nat.succ =
     some { uvars := 0, type := .forallE .nat .nat }
 
+/-- The constructor fragment of `HasPrimitives` needed by bitwise
+certificate semantics. -/
+structure VEnv.HasNatBoolConstructors (env : VEnv) : Prop
+    extends VEnv.HasNatConstructors env where
+  bool : env.contains ``Bool
+  boolFalse : env.constants ``Bool.false =
+    some { uvars := 0, type := .bool }
+  boolTrue : env.constants ``Bool.true =
+    some { uvars := 0, type := .bool }
+
+theorem VEnv.HasNatConstructors.of_primitives {env : VEnv}
+    (h : env.HasPrimitives) (hnat : env.contains ``Nat) :
+    VEnv.HasNatConstructors env := by
+  obtain ⟨hzero, hsucc⟩ := h.nat hnat
+  rcases hzero with ⟨zeroCi, hzeroCi⟩
+  rcases hsucc with ⟨succCi, hsuccCi⟩
+  exact {
+    nat := hnat
+    natZero := by simpa [h.natZero hzeroCi] using hzeroCi
+    natSucc := by simpa [h.natSucc hsuccCi] using hsuccCi }
+
+theorem VEnv.HasNatConstructors.mono {env env' : VEnv}
+    (h : VEnv.HasNatConstructors env) (le : env ≤ env') :
+    VEnv.HasNatConstructors env' where
+  nat := let ⟨ci, hci⟩ := h.nat; ⟨ci, le.constants hci⟩
+  natZero := le.constants h.natZero
+  natSucc := le.constants h.natSucc
+
 theorem VEnv.HasNatBoolConstructors.of_primitives {env : VEnv}
     (h : env.HasPrimitives) (hbool : env.contains ``Bool)
     (hnat : env.contains ``Nat) : VEnv.HasNatBoolConstructors env := by
   obtain ⟨hfalse, htrue⟩ := h.bool hbool
-  obtain ⟨hzero, hsucc⟩ := h.nat hnat
   rcases hfalse with ⟨falseCi, hfalseCi⟩
   rcases htrue with ⟨trueCi, htrueCi⟩
-  rcases hzero with ⟨zeroCi, hzeroCi⟩
-  rcases hsucc with ⟨succCi, hsuccCi⟩
   exact {
     bool := hbool
     boolFalse := by simpa [h.boolFalse hfalseCi] using hfalseCi
     boolTrue := by simpa [h.boolTrue htrueCi] using htrueCi
-    nat := hnat
-    natZero := by simpa [h.natZero hzeroCi] using hzeroCi
-    natSucc := by simpa [h.natSucc hsuccCi] using hsuccCi }
+    toHasNatConstructors := VEnv.HasNatConstructors.of_primitives h hnat }
 
 theorem VEnv.HasNatBoolConstructors.mono {env env' : VEnv}
     (h : VEnv.HasNatBoolConstructors env) (le : env ≤ env') :
@@ -3283,9 +3322,7 @@ theorem VEnv.HasNatBoolConstructors.mono {env env' : VEnv}
   bool := let ⟨ci, hci⟩ := h.bool; ⟨ci, le.constants hci⟩
   boolFalse := le.constants h.boolFalse
   boolTrue := le.constants h.boolTrue
-  nat := let ⟨ci, hci⟩ := h.nat; ⟨ci, le.constants hci⟩
-  natZero := le.constants h.natZero
-  natSucc := le.constants h.natSucc
+  toHasNatConstructors := h.toHasNatConstructors.mono le
 
 theorem VEnv.HasNatBoolConstructors.boolFalseS
     (h : VEnv.HasNatBoolConstructors env) :
@@ -3305,20 +3342,20 @@ theorem VEnv.HasNatBoolConstructors.boolLitS
       env.HasType Us.length Δ.toCtx (.boolLit b) .bool := by
   cases b <;> first | exact h.boolFalseS | exact h.boolTrueS
 
-theorem VEnv.HasNatBoolConstructors.natZeroS
-    (h : VEnv.HasNatBoolConstructors env) :
+theorem VEnv.HasNatConstructors.natZeroS
+    (h : VEnv.HasNatConstructors env) :
     TrExprS env Us Δ .natZero .natZero ∧
       env.HasType Us.length Δ.toCtx .natZero .nat :=
   ⟨.const h.natZero rfl rfl, .const h.natZero nofun rfl⟩
 
-theorem VEnv.HasNatBoolConstructors.natSuccS
-    (h : VEnv.HasNatBoolConstructors env) :
+theorem VEnv.HasNatConstructors.natSuccS
+    (h : VEnv.HasNatConstructors env) :
     TrExprS env Us Δ .natSucc .natSucc ∧
       env.HasType Us.length Δ.toCtx .natSucc (.forallE .nat .nat) :=
   ⟨.const h.natSucc rfl rfl, .const h.natSucc nofun rfl⟩
 
-theorem VEnv.HasNatBoolConstructors.natLitS
-    (h : VEnv.HasNatBoolConstructors env) (n : Nat) :
+theorem VEnv.HasNatConstructors.natLitS
+    (h : VEnv.HasNatConstructors env) (n : Nat) :
     TrExprS env Us Δ (.lit (.natVal n)) (.natLit n) ∧
       env.HasType Us.length Δ.toCtx (.natLit n) .nat := by
   induction n with
@@ -3326,6 +3363,24 @@ theorem VEnv.HasNatBoolConstructors.natLitS
   | succ n ih =>
     exact ⟨.lit h.nat (.app h.natSuccS.2 ih.2 h.natSuccS.1 ih.1),
       .app h.natSuccS.2 ih.2⟩
+
+theorem VEnv.HasNatBoolConstructors.natZeroS
+    (h : VEnv.HasNatBoolConstructors env) :
+    TrExprS env Us Δ .natZero .natZero ∧
+      env.HasType Us.length Δ.toCtx .natZero .nat :=
+  h.toHasNatConstructors.natZeroS
+
+theorem VEnv.HasNatBoolConstructors.natSuccS
+    (h : VEnv.HasNatBoolConstructors env) :
+    TrExprS env Us Δ .natSucc .natSucc ∧
+      env.HasType Us.length Δ.toCtx .natSucc (.forallE .nat .nat) :=
+  h.toHasNatConstructors.natSuccS
+
+theorem VEnv.HasNatBoolConstructors.natLitS
+    (h : VEnv.HasNatBoolConstructors env) (n : Nat) :
+    TrExprS env Us Δ (.lit (.natVal n)) (.natLit n) ∧
+      env.HasType Us.length Δ.toCtx (.natLit n) .nat :=
+  h.toHasNatConstructors.natLitS n
 
 theorem withLambda.WF {c : VContext} {s : VState}
     {name : Name} {dom body : Expr} {bi : BinderInfo} {dom' body' : VExpr}
@@ -4002,8 +4057,8 @@ theorem VEnv.BitwiseGoCall.mono {env env' : VEnv}
 /-- The normalized top equation places each candidate gcd application in the
 certified recursive-call relation at fuel `a + 1`. -/
 theorem NatGcdFixCertificate.top_semantics {env : VEnv}
-    (wf : env.WF) (hprim : env.HasPrimitives)
-    (hnat : env.contains ``Nat) {r : NatGcdFixCertificate} {gcd : Expr}
+    (wf : env.WF) (hctors : VEnv.HasNatConstructors env)
+    {r : NatGcdFixCertificate} {gcd : Expr}
     (hgoClosedFlag : r.core.goFn.hasLooseBVars = false) {l rr f : VExpr}
     (hl : TrExprS env [] [] (r.expectedTopLhs gcd) l)
     (hr : TrExprS env [] [] r.expectedTopRhs rr)
@@ -4017,12 +4072,12 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
       env.IsDefEqU 0 [] (.app (.app f (.natLit a)) (.natLit b)) e := by
   have ⟨hnatS, hnatTy⟩ : TrExprS env [] [] q(Nat) .nat ∧
       env.IsType 0 [] .nat := by
-    have hzT := (TrExprS.natZero hprim hnat (Us := []) (Δ := [])).2
+    have hzT := (hctors.natZeroS (Us := []) (Δ := [])).2
     obtain ⟨u, hnatTy⟩ := hzT.isType wf trivial
     obtain ⟨ci, hci, _, hlen⟩ := hnatTy.const_inv wf trivial
     refine ⟨?_, ⟨u, hnatTy⟩⟩
     exact .const hci rfl (by simpa using hlen)
-  have lit (n) := TrExprS.natLit hprim hnat n (Us := []) (Δ := [])
+  have lit (n) := hctors.natLitS n (Us := []) (Δ := [])
   intro a b
   have haT := (lit a).2
   have hbT := (lit b).2
@@ -4057,7 +4112,7 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
               rw [Expr.instantiate1'_eq_self hgoLe,
                 Expr.instantiate1_eq_self hgoClosed] at hgo
               have hzCanon :=
-                (TrExprS.natZero hprim hnat (Us := []) (Δ := [])).1
+                (hctors.natZeroS (Us := []) (Δ := [])).1
               have hz1' : TrExprS env [] [] q(Nat.zero) z1V := by
                 simpa using hz1
               have hz2' : TrExprS env [] [] q(Nat.zero) z2V := by
@@ -4081,9 +4136,9 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
                   Expr.looseBVarRange', NatGcdFixCertificate.stateExpr] using state
               obtain ⟨eager, heagerS, heagerEq⟩ := heager (a+1)
               have hsuccS :=
-                (TrExprS.natSucc hprim hnat (Us := []) (Δ := [])).1
+                (hctors.natSuccS (Us := []) (Δ := [])).1
               have hsuccT :=
-                (TrExprS.natSucc hprim hnat (Us := []) (Δ := [])).2
+                (hctors.natSuccS (Us := []) (Δ := [])).2
               have hsaS : TrExprS env [] []
                   (mkApp q(Nat.succ) (.natLitToConstructor a))
                   (.natLit (a+1)) := .app hsuccT haT hsuccS haS
@@ -4131,8 +4186,9 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
 
 /-- A certified zero equation reduces every well-typed semantic gcd call
 with zero as its first state component to the second component. -/
-theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
-    (hnat : env.contains ``Nat) {r : NatGcdFixCertificate}
+theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatConstructors env)
+    {r : NatGcdFixCertificate}
     {l rr : VExpr}
     (hl : TrExprS env [] [] r.expectedZeroLhs l)
     (hr : TrExprS env [] [] r.expectedZeroRhs rr)
@@ -4141,12 +4197,12 @@ theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF) (hprim : 
       env.IsDefEqU 0 [] e e → env.IsDefEqU 0 [] e (.natLit b) := by
   have ⟨hnatS, hnatTy⟩ : TrExprS env [] [] q(Nat) .nat ∧
       env.IsType 0 [] .nat := by
-    have hzT := (TrExprS.natZero hprim hnat (Us := []) (Δ := [])).2
+    have hzT := (hctors.natZeroS (Us := []) (Δ := [])).2
     obtain ⟨u, hnatTy⟩ := hzT.isType wf trivial
     obtain ⟨ci, hci, _, hlen⟩ := hnatTy.const_inv wf trivial
     refine ⟨?_, ⟨u, hnatTy⟩⟩
     exact .const hci rfl (by simpa using hlen)
-  have lit (n) := TrExprS.natLit hprim hnat n (Us := []) (Δ := [])
+  have lit (n) := hctors.natLitS n (Us := []) (Δ := [])
   intro fuel b e hG heSelf
   rcases hG with ⟨goV, fuelV, stateV, hpE, hpV, hgo, hstate, hpS,
     hfuelEq, rfl⟩
@@ -4194,7 +4250,7 @@ theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF) (hprim : 
               hgoZerosT.app_inv wf.ordered trivial
             obtain ⟨z1A, z1B, hgoT, hz1T⟩ :=
               hgoZ1T.app_inv wf.ordered trivial
-            have hzS := (TrExprS.natZero hprim hnat (Us := []) (Δ := [])).1
+            have hzS := (hctors.natZeroS (Us := []) (Δ := [])).1
             have hgoZ1S : TrExprS env [] []
                 (mkApp r.core.goFn q(Nat.zero)) (.app goV .natZero) :=
               .app hgoT hz1T hgo hzS
@@ -4203,9 +4259,9 @@ theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF) (hprim : 
                 (.app (.app goV .natZero) .natZero) :=
               .app hgoZ1T hz2T hgoZ1S hzS
             have hsuccS :=
-              (TrExprS.natSucc hprim hnat (Us := []) (Δ := [])).1
+              (hctors.natSuccS (Us := []) (Δ := [])).1
             have hsuccT :=
-              (TrExprS.natSucc hprim hnat (Us := []) (Δ := [])).2
+              (hctors.natSuccS (Us := []) (Δ := [])).2
             have hsfS : TrExprS env [] []
                 (mkApp q(Nat.succ) (.natLitToConstructor fuel))
                 (.natLit (fuel+1)) := .app hsuccT hfT hsuccS hfS
@@ -4376,8 +4432,9 @@ theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF) (hprim : 
 
 /-- A certified successor equation turns a well-typed semantic gcd call
 into the Euclidean recursive call at one less unit of fuel. -/
-theorem NatGcdFixCertificate.succ_semantics {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
-    (hnat : env.contains ``Nat) (hmodC : env.contains ``Nat.mod)
+theorem NatGcdFixCertificate.succ_semantics {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatConstructors env)
+    (hmodC : env.contains ``Nat.mod)
     (hmod : env.ReflectsNatNatNat ``Nat.mod Nat.mod)
     {r : NatGcdFixCertificate}
     {l rr : VExpr}
@@ -4390,12 +4447,12 @@ theorem NatGcdFixCertificate.succ_semantics {env : VEnv} (wf : env.WF) (hprim : 
         env.IsDefEqU 0 [] e e' := by
   have ⟨hnatS, hnatTy⟩ : TrExprS env [] [] q(Nat) .nat ∧
       env.IsType 0 [] .nat := by
-    have hzT := (TrExprS.natZero hprim hnat (Us := []) (Δ := [])).2
+    have hzT := (hctors.natZeroS (Us := []) (Δ := [])).2
     obtain ⟨u, hnatTy⟩ := hzT.isType wf trivial
     obtain ⟨ci, hci, _, hlen⟩ := hnatTy.const_inv wf trivial
     refine ⟨?_, ⟨u, hnatTy⟩⟩
     exact .const hci rfl (by simpa using hlen)
-  have lit (n) := TrExprS.natLit hprim hnat n (Us := []) (Δ := [])
+  have lit (n) := hctors.natLitS n (Us := []) (Δ := [])
   intro fuel a b e hG heSelf
   rcases hG with ⟨goV, fuelV, stateV, hpE, hpV, hgo, hstate, hpS,
     hfuelEq, rfl⟩
@@ -4449,7 +4506,7 @@ theorem NatGcdFixCertificate.succ_semantics {env : VEnv} (wf : env.WF) (hprim : 
                 hgoZerosT.app_inv wf.ordered trivial
               obtain ⟨z1A, z1B, hgoT, hz1T⟩ :=
                 hgoZ1T.app_inv wf.ordered trivial
-              have hzS := (TrExprS.natZero hprim hnat
+              have hzS := (hctors.natZeroS
                 (Us := []) (Δ := [])).1
               have hgoZ1S : TrExprS env [] []
                   (mkApp r.core.goFn q(Nat.zero)) (.app goV .natZero) :=
@@ -4458,9 +4515,9 @@ theorem NatGcdFixCertificate.succ_semantics {env : VEnv} (wf : env.WF) (hprim : 
                   (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
                   (.app (.app goV .natZero) .natZero) :=
                 .app hgoZ1T hz2T hgoZ1S hzS
-              have hsuccS := (TrExprS.natSucc hprim hnat
+              have hsuccS := (hctors.natSuccS
                 (Us := []) (Δ := [])).1
-              have hsuccT := (TrExprS.natSucc hprim hnat
+              have hsuccT := (hctors.natSuccS
                 (Us := []) (Δ := [])).2
               have hsfS : TrExprS env [] []
                   (mkApp q(Nat.succ) (.natLitToConstructor fuel))
@@ -4941,18 +4998,20 @@ theorem NatGcdFixCertificate.Valid.normalize {c : VContext}
   · exact TrExprS.of_exprShapeEq (exprShapeEq_sound hsrs) hsr
 
 theorem NatGcdFixCertificate.NormalizedValid.reflects
-    {c : TypeChecker.VContext} {r : NatGcdFixCertificate} {gcd : Expr} {f : VExpr}
+    {c : TypeChecker.VContext} {env : VEnv}
+    {r : NatGcdFixCertificate} {gcd : Expr} {f : VExpr}
     (hv : r.NormalizedValid c gcd)
     (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hle : c.venv ≤ env) (hwf : env.WF)
     (hnat : c.venv.contains ``Nat)
     (hbeqC : c.venv.contains ``Nat.beq)
     (hmodC : c.venv.contains ``Nat.mod)
     (hmod : c.venv.ReflectsNatNatNat ``Nat.mod Nat.mod)
-    (hgcd : TrExprS c.venv [] [] gcd f)
-    (hf : ∀ U Γ, c.venv.HasType U Γ (.const ``Nat.gcd [])
+    (hgcd : TrExprS env [] [] gcd f)
+    (hf : ∀ U Γ, env.HasType U Γ (.const ``Nat.gcd [])
       (.forallE .nat <| .forallE .nat .nat))
-    (hcf : c.venv.IsDefEqU 0 [] (.const ``Nat.gcd []) f) :
-    c.venv.ReflectsNatNatNat ``Nat.gcd Nat.gcd := by
+    (hcf : env.IsDefEqU 0 [] (.const ``Nat.gcd []) f) :
+    env.ReflectsNatNatNat ``Nat.gcd Nat.gcd := by
   rcases hv with ⟨hcore, htop, hzero, hsucc⟩
   rcases hcore.normalizeAux with ⟨heager, htrue, _hfalse⟩
   rcases heager with ⟨el, er, hel, her, heeq⟩
@@ -4977,27 +5036,41 @@ theorem NatGcdFixCertificate.NormalizedValid.reflects
   change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx succL succR at hsuccEq
   rw [hlparams, hvlctx] at hel her heeq htl htr hteq htopL htopR htopEq hzeroL hzeroR hzeroEq hsuccL hsuccR hsuccEq
   have hprim := c.hasPrimitives
-  have wf := c.Ewf
-  have heager' (n) := VEnv.eager_natLit_of_aux_equations wf hprim hnat
+  have hctors := VEnv.HasNatConstructors.of_primitives hprim hnat
+  have baseWf := c.Ewf
+  have heager' (n) := VEnv.eager_natLit_of_aux_equations baseWf hprim hnat
     hbeqC hel her heeq htl htr hteq (n := n)
   have heagerCanon (n) : ∃ eager,
-      TrExprS c.venv [] [] q(WellFounded.Nat.eager) eager ∧
-      c.venv.IsDefEqU 0 [] (.app eager (.natLit n)) (.natLit n) := by
-    simpa [hcore.eagerFn_eq, Expr.instantiate1'] using heager' n
-  have hfValue := (hcf.of_l wf trivial (hf 0 [])).hasType.2
-  have htop' := NatGcdFixCertificate.top_semantics wf hprim hnat
-    hcore.goFn_closed htopL htopR htopEq hgcd hfValue heagerCanon
-  have hzero' := NatGcdFixCertificate.zero_semantics wf hprim hnat
-    hzeroL hzeroR hzeroEq
-  have hsucc' := NatGcdFixCertificate.succ_semantics wf hprim hnat
-    hmodC hmod hsuccL hsuccR hsuccEq
-  have hzeroT (Γ) : c.venv.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero hprim hnat (Us := []) (Δ := [])).2.weak0 wf
-  have hsuccT (Γ) : c.venv.HasType 0 Γ .natSucc
+      TrExprS env [] [] q(WellFounded.Nat.eager) eager ∧
+      env.IsDefEqU 0 [] (.app eager (.natLit n)) (.natLit n) := by
+    have h := show ∃ eager,
+        TrExprS c.venv [] [] q(WellFounded.Nat.eager) eager ∧
+        c.venv.IsDefEqU 0 [] (.app eager (.natLit n)) (.natLit n) by
+      simpa [hcore.eagerFn_eq, Expr.instantiate1'] using heager' n
+    rcases h with ⟨eager, hs, heq⟩
+    exact ⟨eager, hs.mono hle, heq.mono hle⟩
+  have hctors' := hctors.mono hle
+  have hmodC' : env.contains ``Nat.mod :=
+    let ⟨ci, hci⟩ := hmodC; ⟨ci, hle.constants hci⟩
+  have hmod' : env.ReflectsNatNatNat ``Nat.mod Nat.mod := by
+    intro _
+    exact ⟨fun U Γ => ((hmod hmodC).1 U Γ).mono hle,
+      fun x y => ((hmod hmodC).2 x y).mono hle⟩
+  have hfValue := (hcf.of_l hwf trivial (hf 0 [])).hasType.2
+  have htop' := NatGcdFixCertificate.top_semantics hwf hctors'
+    hcore.goFn_closed (htopL.mono hle) (htopR.mono hle)
+      (htopEq.mono hle) hgcd hfValue heagerCanon
+  have hzero' := NatGcdFixCertificate.zero_semantics hwf hctors'
+    (hzeroL.mono hle) (hzeroR.mono hle) (hzeroEq.mono hle)
+  have hsucc' := NatGcdFixCertificate.succ_semantics hwf hctors'
+    hmodC' hmod' (hsuccL.mono hle) (hsuccR.mono hle) (hsuccEq.mono hle)
+  have hzeroT (Γ) : env.HasType 0 Γ .natZero .nat :=
+    (hctors'.natZeroS (Us := []) (Δ := [])).2.weak0 hwf
+  have hsuccT (Γ) : env.HasType 0 Γ .natSucc
       (.forallE .nat .nat) :=
-    (TrExprS.natSucc hprim hnat (Us := []) (Δ := [])).2.weak0 wf
-  apply VEnv.ReflectsNatNatNat.of_gcd_fix_relation wf hzeroT hsuccT
-    hf hcf (VEnv.GcdGoCall c.venv r) htop'
+    (hctors'.natSuccS (Us := []) (Δ := [])).2.weak0 hwf
+  apply VEnv.ReflectsNatNatNat.of_gcd_fix_relation hwf hzeroT hsuccT
+    hf hcf (VEnv.GcdGoCall env r) htop'
   intro fuel a b e hG he
   by_cases ha : a = 0
   · subst a
@@ -5006,6 +5079,37 @@ theorem NatGcdFixCertificate.NormalizedValid.reflects
     | zero => contradiction
     | succ a =>
       simpa using hsucc' fuel a b e hG he
+
+theorem NatGcdFixCertificate.NormalizedValid.conservesHasPrimitives
+    {c : TypeChecker.VContext} {env' : VEnv}
+    {r : NatGcdFixCertificate} {gcd : Expr} {v : VDefVal}
+    (hv : r.NormalizedValid c gcd)
+    (hlparams : c.lparams = []) (hvlctx : c.vlctx = [])
+    (hnat : c.venv.contains ``Nat)
+    (hbeqC : c.venv.contains ``Nat.beq)
+    (hmodC : c.venv.contains ``Nat.mod)
+    (hmod : c.venv.ReflectsNatNatNat ``Nat.mod Nat.mod)
+    (hgcd : TrExprS c.venv [] [] gcd v.value)
+    (hname : v.name = ``Nat.gcd)
+    (hadd : c.venv.addConst ``Nat.gcd v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hu : v.uvars = 0)
+    (hty : c.venv.IsDefEqU 0 [] v.type
+      (.forallE .nat <| .forallE .nat .nat)) :
+    (env'.addDefEq v.toDefEq).HasPrimitives := by
+  let env'' := env'.addDefEq v.toDefEq
+  have hle : c.venv ≤ env'' :=
+    (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
+  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.gcd [])
+      (.forallE .nat <| .forallE .nat .nat) :=
+    VEnv.HasType.const_of_type_defeq hwf (by
+      change env'.constants ``Nat.gcd = some v.toVConstant
+      exact VEnv.addConst_self hadd) hu (hty.mono hle) U Γ
+  have hcf := VDefVal.const_defeq_value hwf hu
+  rw [hname] at hcf
+  have href := hv.reflects hlparams hvlctx hle hwf hnat hbeqC
+    hmodC hmod (hgcd.mono hle) hf hcf
+  exact c.hasPrimitives.addNatGcd hadd href
 
 theorem checkNatGcdFixCertificate.WF {c : VContext} {s : VState}
     {core : NatWellFoundedCoreResult} {gcd : Expr} {fail : ∀ {α}, M α} :
@@ -6392,6 +6496,39 @@ theorem checkPrimitiveDef.natGcd.WF {c : VContext} {s : VState}
               · exact .throw
       · exact .throw
   · exact .throw
+
+theorem checkPrimitiveDef.natGcd.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hnat : c.venv.contains ``Nat)
+    (hbeqC : c.venv.contains ``Nat.beq)
+    (hmodC : c.venv.contains ``Nat.mod)
+    (hmod : c.venv.ReflectsNatNatNat ``Nat.mod Nat.mod)
+    (hgcd : c.TrExprS src.value v.value)
+    (hname : v.name = ``Nat.gcd)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.gcd v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
+      ∃ cert : NatGcdFixCertificate,
+        cert.Valid c ∧ cert.shape src.value = true) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, cert, hvalid, hshape⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change TrExprS c.venv c.lparams c.vlctx _ _ at hgcd
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty
+  rw [hclparams, hvlctx] at hgcd hty
+  exact (hvalid.normalize hshape).conservesHasPrimitives
+    hclparams hvlctx hnat hbeqC hmodC hmod hgcd hname hadd hwf
+    hvuvars hty
 
 theorem checkPrimitiveDef.natBEq.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.beq) (hty : c.TrExprS v.type ty')
