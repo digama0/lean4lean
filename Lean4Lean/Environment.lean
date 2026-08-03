@@ -41,14 +41,18 @@ def addDefinition (env : Environment) (v : DefinitionVal)
     if check then
       _ ← (checkConstantVal env v.toConstantVal).run env
         (safety := .unsafe) (lparams := v.levelParams) (fuel := fuel)
-    let env' := env.add (.defnInfo v)
+    -- Check a recursive unsafe body against an opaque self header.  Exposing
+    -- the value here lets definitional equality unfold the declaration whose
+    -- well-typedness is exactly what this check is trying to establish.
+    let header : AxiomVal := { v.toConstantVal with isUnsafe := true }
+    let env' := env.add (.axiomInfo header)
     if check then
       checkNoMVarNoFVar env' v.name v.value
       M.run env' (safety := .unsafe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.defnDecl v) valType
-    return env'
+    return env.add (.defnInfo v)
   else
     if check then
       M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do

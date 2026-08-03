@@ -1119,6 +1119,7 @@ theorem TrEnv.addDefinition
     exact hfresh) hciWF hadd htr
 
 theorem TrEnv.addUnsafeDefinition
+    {ci : DefinitionVal} {ci' : VDefVal}
     (htr : TrEnv .unsafe env venv)
     (hheader : TrConstVal .unsafe venv (.defnInfo ci) ci'.toVConstVal)
     (hfresh : env.find? ci.name = none)
