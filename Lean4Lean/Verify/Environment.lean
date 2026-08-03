@@ -315,6 +315,32 @@ theorem Environment.safePrimitives_add_of_not_primitive
     rw [hmap.find?'_eq_find?]
     exact hfind
 
+theorem Environment.safePrimitives_add_of_safe_primitive
+    {env : Environment} {ci ci' : ConstantInfo} {n : Name}
+    (hmap : env.constants.WF)
+    (hfresh : env.find? ci.name = none)
+    (hold : env.find? n = some ci' →
+      Lean.Kernel.Environment.primitives.contains n →
+      ci'.safety = .safe ∧ ci'.levelParams = [])
+    (hnewSafety : ci.safety = .safe) (hnewLevels : ci.levelParams = []) :
+    (env.add ci).find? n = some ci' →
+      Lean.Kernel.Environment.primitives.contains n →
+      ci'.safety = .safe ∧ ci'.levelParams = [] := by
+  intro hfind hprim
+  have hfresh' : SMap.find? env.constants ci.name = none := by
+    rw [← hmap.find?'_eq_find?]
+    exact hfresh
+  have hmap' := hmap.insert ci.name ci hfresh'
+  change (env.constants.insert ci.name ci).find?' n = some ci' at hfind
+  rw [hmap'.find?'_eq_find?, hmap.find?_insert] at hfind
+  split at hfind
+  · cases hfind
+    exact ⟨hnewSafety, hnewLevels⟩
+  · apply hold ?_ hprim
+    change env.constants.find?' n = some ci'
+    rw [hmap.find?'_eq_find?]
+    exact hfind
+
 theorem VEnvs.WF.addSafeDefinition_of_not_primitive
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     {v : DefinitionVal} {v' : VDefVal}
@@ -366,6 +392,73 @@ theorem VEnvs.WF.addSafeDefinition_of_not_primitive
     · intro safety safety' hs
       have hbase := wf.mono hs
       have haddMono := VEnv.addConst_mono hbase (hadd safety') (hadd safety)
+      exact VEnv.addDefEq_mono haddMono
+  · intro safety
+    exact (VEnv.addConst_le (hadd safety)).trans VEnv.addDefEq_le
+
+theorem VEnvs.WF.addSafePrimitiveDefinition
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    {v : DefinitionVal} {v' : VDefVal}
+    (hsafety : v.safety = .safe) (hlevels : v.levelParams = [])
+    (hfresh : env.find? v.name = none)
+    (htr : TrDefVal .safe (ves.venv .safe) (.defnInfo v) v')
+    (hvWF : v'.WF (ves.venv .safe))
+    (hpreserves : ∀ (safety : DefinitionSafety) {out : VEnv},
+      (ves.venv safety).addConst v.name v'.toVConstant = some out →
+      (out.addDefEq v'.toDefEq).WF →
+      (out.addDefEq v'.toDefEq).HasPrimitives) :
+    ∃ ves' : VEnvs, ves'.WF (env.add (.defnInfo v)) ∧
+      ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  classical
+  have haddExists (safety : DefinitionSafety) :
+      ∃ out, (ves.venv safety).addConst v.name v'.toVConstant = some out :=
+    TrEnv.addConst_of_find?_eq_none (wf.tr (safety := safety)) hfresh
+  let added (safety : DefinitionSafety) : VEnv :=
+    Classical.choose (haddExists safety)
+  have hadd (safety : DefinitionSafety) :
+      (ves.venv safety).addConst v.name v'.toVConstant = some (added safety) :=
+    Classical.choose_spec (haddExists safety)
+  let ves' : VEnvs :=
+    ⟨fun safety => (added safety).addDefEq v'.toDefEq⟩
+  refine ⟨ves', ?_, ?_⟩
+  · refine {
+      tr := ?_
+      hasPrimitives := ?_
+      safePrimitives := ?_
+      mono := ?_ }
+    · intro safety
+      have hsafe : ves.venv .safe ≤ ves.venv safety :=
+        wf.mono DefinitionSafety.le_safe
+      have hsafety' : safety ≤ (ConstantInfo.defnInfo v).safety := by
+        rw [ConstantInfo.defnInfo_safety, hsafety]
+        exact DefinitionSafety.le_safe
+      have htr' : TrDefVal safety (ves.venv safety) (.defnInfo v) v' := by
+        rcases htr with ⟨⟨hconst, hname⟩, hvalue⟩
+        exact ⟨⟨⟨hsafety', hconst.2.1, hconst.2.2.mono hsafe⟩,
+          hname⟩, hvalue.mono hsafe⟩
+      exact TrEnv.addDefinition (wf.tr (safety := safety)) htr' hfresh
+        (hvWF.mono hsafe) (hadd safety)
+    · intro safety
+      apply hpreserves safety (hadd safety)
+      exact (TrEnv.addDefinition (wf.tr (safety := safety)) (by
+        have hsafe : ves.venv .safe ≤ ves.venv safety :=
+          wf.mono DefinitionSafety.le_safe
+        rcases htr with ⟨⟨hconst, hname⟩, hvalue⟩
+        exact ⟨⟨⟨by
+          rw [ConstantInfo.defnInfo_safety, hsafety]
+          exact DefinitionSafety.le_safe,
+          hconst.2.1, hconst.2.2.mono hsafe⟩, hname⟩,
+          hvalue.mono hsafe⟩) hfresh
+        (hvWF.mono (wf.mono DefinitionSafety.le_safe))
+        (hadd safety)).wf
+    · intro n ci hfind hprim
+      exact Environment.safePrimitives_add_of_safe_primitive
+        (ci := .defnInfo v) (wf.tr (safety := .safe)).map_wf hfresh
+        wf.safePrimitives (by rw [ConstantInfo.defnInfo_safety, hsafety])
+        (by simpa using hlevels) hfind hprim
+    · intro safety safety' hs
+      have haddMono := VEnv.addConst_mono (wf.mono hs)
+        (hadd safety') (hadd safety)
       exact VEnv.addDefEq_mono haddMono
   · intro safety
     exact (VEnv.addConst_le (hadd safety)).trans VEnv.addDefEq_le
