@@ -768,8 +768,7 @@ theorem checkSafeNatLorDefinition.WF
 theorem checkSafeCharOfNatDefinition.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hname : v.name = ``Char.ofNat)
-    (hsafety : v.safety = .safe)
-    (hchar : TrExprS (ves.venv .safe) v.levelParams [] q(Char) .char) :
+    (hsafety : v.safety = .safe) :
     ((do
       checkDefinitionBody env v
       let allowPrimitive ← Environment.checkPrimitiveDef v
@@ -786,7 +785,7 @@ theorem checkSafeCharOfNatDefinition.WF
   obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
   refine (Environment.checkPrimitiveDef.charOfNat.WF_typed
     (c := .mk' wf .safe v.levelParams) (s := state')
-    (ty' := v'.type) hname rfl htype hchar).bind
+    (ty' := v'.type) hname hsafety rfl htype).bind
       fun allow state'' _ hcheck => ?_
   refine (TypeChecker.M.WF.liftExcept
     (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
@@ -1424,18 +1423,17 @@ theorem addDefinition.WF_safe_natBLE
   exact (wf.hasPrimitives (safety := safety)).addNatBLEDef
     hnat' hbool' hname' hadd' hwf' huvars' hty' h00' h0s' hs0' hss'
 
-theorem addDefinition.WF_safe_charOfNat_of_translation
+theorem addDefinition.WF_safe_charOfNat
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hname : v.name = ``Char.ofNat)
-    (hsafety : v.safety = .safe)
-    (hchar : TrExprS (ves.venv .safe) v.levelParams [] q(Char) .char) :
+    (hsafety : v.safety = .safe) :
     (addDefinition env v).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧
         ∀ safety, ves.venv safety ≤ ves'.venv safety := by
   unfold addDefinition
   simp [hsafety]
   refine (checkSafeCharOfNatDefinition.WF
-    wf v hname hsafety hchar).run wf |>.map fun _ h => ?_
+    wf v hname hsafety).run wf |>.map fun _ h => ?_
   obtain ⟨v', htr, hvWF, hfresh, hlevels, _, hty⟩ := h
   apply wf.addSafePrimitiveDefinition hsafety hlevels hfresh htr hvWF
   intro safety out hadd hwf'

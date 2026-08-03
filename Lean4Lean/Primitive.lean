@@ -1300,6 +1300,9 @@ def checkPrimitiveDef (v : DefinitionVal) : M Bool := do
     unless ← defeq2 (shr x (succ y)) (div (shr x y) two) do fail
   | ``Char.ofNat =>
     unless env.contains ``Nat && v.levelParams.isEmpty do fail
+    let some charInfo := env.find? ``Char | fail
+    unless charInfo.levelParams.isEmpty do fail
+    unless v.safety != .safe || (!charInfo.isUnsafe && !charInfo.isPartial) do fail
     -- Char : Type
     _ ← ensureType q(Char)
     -- @Char.ofNat : Nat → Char
