@@ -6013,13 +6013,13 @@ theorem Condition.check.reflectNatNat_dite.WF {c : VContext} {s : VState}
 
 theorem Condition.check.reflectNatNat_ite_dite.WF {c : VContext} {s : VState}
     {cond : Condition} {asBool : Expr} {reflect : Reflection} {proof : Expr}
-    {fail : ∀ {α}, M α} {Rite Rdite : Prop}
+    {fail : ∀ {α}, M α} {Rreflect Rite Rdite : Prop}
     (himpl : cond.impl = .reflectNatNat asBool reflect proof)
     (hdec : c.TrExprS cond.dec dec')
     (hprop : c.TrExprS cond.prop prop')
     (hpropTy : c.TrExprS q(Nat → Nat → Prop) propTy')
     (hreflect : ∀ {β} {next : M β} {Q} {s'},
-      (∀ s'', M.WF c s'' next Q) →
+      (∀ s'', Rreflect → M.WF c s'' next Q) →
       M.WF c s' (do reflect.check fail; next) Q)
     (hcheckITE : ∀ {β} {next : M β} {Q} {s'},
       (∀ s'', Rite → M.WF c s'' next Q) →
@@ -6042,18 +6042,19 @@ theorem Condition.check.reflectNatNat_ite_dite.WF {c : VContext} {s : VState}
     (hproof : c.TrExprS proof proof')
     (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
     M.WF c s (cond.check fail (ite := true) (dite := true)) fun _ _ =>
-      Rite ∧ Rdite ∧ c.IsDefEqU e' dec' := by
+      Rreflect ∧ Rite ∧ Rdite ∧ c.IsDefEqU e' dec' := by
   simp [Condition.check, himpl]
   refine checkTypeDiscard.bind_WF hdec.fvarsIn fun _ => ?_
   refine inferTypeIsDefEqGuard.bind_WF hprop hpropTy hfail fun _ _ => ?_
-  refine hreflect fun _ => ?_
+  refine hreflect fun _ hreflect => ?_
   refine hcheckITE fun _ hite => ?_
   refine hcheckDITE fun _ hdite => ?_
   refine checkTypeDiscard.bind_WF he.fvarsIn fun _ => ?_
   refine inferTypeIsDefEqGuard.bind_WF hdecide hdecideTy hfail fun _ _ => ?_
   refine inferTypeIsDefEqGuard.bind_WF hasBool hasBoolTy hfail fun _ _ => ?_
   refine inferTypeIsPropGuard.bind_WF hproof hfail fun _ _ => ?_
-  exact (isDefEqGuard.WF he hdec hfail).mono fun _ _ _ heq => ⟨hite, hdite, heq⟩
+  exact (isDefEqGuard.WF he hdec hfail).mono fun _ _ _ heq =>
+    ⟨hreflect, hite, hdite, heq⟩
 
 def Condition.natLEReflectProof : Expr :=
   q(fun n m {q : Prop} (H : _ → _ → q) =>
@@ -6160,6 +6161,7 @@ theorem Condition.natLE.check.WF
     (hfail : ∀ {α} {s'}, M.WF c s' (fail : M α) fun _ _ => False) :
     M.WF c s (Condition.natLE.check fail (ite := true) (dite := true))
       fun _ _ =>
+        c.HasType rtype' rtypeCanon' ∧
         (c.HasType ite' iteTy' ∧
           VEnv.ReflectionITEChecked c.venv Reflection.defn₁) ∧
         (c.HasType dite' diteTy' ∧
@@ -6172,7 +6174,9 @@ theorem Condition.natLE.check.WF
     (proof := Condition.natLEReflectProof) (by rfl)
     hdec hprop hpropTy
   · intro β next Q s' hnext
-    exact Reflection.check.bind_WF hrtype hrtypeUnique hrtypeCanon hfail hnext
+    exact (Reflection.check.WF hrtype hrtypeUnique hrtypeCanon
+      (fun _ => hfail)).bind fun _ s'' _ hrtypeHas =>
+        hnext s'' hrtypeHas
   · intro β next Q s' hnext
     exact (Reflection.checkITE.WF.checked hlparams hvlctx hite hiteUnique
       hiteTy hiteTrueL hiteTrueR hiteFalseL hiteFalseR hfail).bind
