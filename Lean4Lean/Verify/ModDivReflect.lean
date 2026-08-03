@@ -708,6 +708,81 @@ theorem VEnv.NatDivGoTypeTranslation.of_translation
               hyTyType hhyTyType hfuelTyType hxTyType hhTyType
               hresultTyType rfl
 
+/-- Recover the two proof-argument typings of a concrete canonical
+`Nat.div.go` call from its retained dependent function type. -/
+theorem VEnv.NatDivGoTypeTranslation.call_proof_types
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {goTyV : VExpr} (cert : VEnv.NatDivGoTypeTranslation env goTyV)
+    (hgoT : env.HasType 0 [] (.const ``Nat.div.go []) goTyV)
+    (y fuel x : Nat) {hy hfuel : VExpr}
+    (hcallT : env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat) :
+    ∃ yTy hyTy fuelTy xTy hTy resultTy : VExpr,
+      env.HasType 0 [] hy (hyTy.inst (.natLit y)) ∧
+      env.HasType 0 [] hfuel
+        ((((hTy.inst (.natLit y) 3).inst hy 2).inst
+          (.natLit fuel) 1).inst (.natLit x)) := by
+  cases cert with
+  | intro yTy hyTy fuelTy xTy hTy resultTy
+      yTyS hyTyS fuelTyS xTyS hTyS resultTyS
+      yTyType hyTyType fuelTyType xTyType hTyType resultTyType shape =>
+    subst goTyV
+    simp only [VExpr.natDivGo] at hcallT
+    obtain ⟨_, _, h₄Raw, hhRaw⟩ := hcallT.app_inv wf.ordered trivial
+    obtain ⟨_, _, h₃Raw, hxRaw⟩ := h₄Raw.app_inv wf.ordered trivial
+    obtain ⟨_, _, h₂Raw, hfuelRaw⟩ := h₃Raw.app_inv wf.ordered trivial
+    obtain ⟨_, _, h₁Raw, hhyRaw⟩ := h₂Raw.app_inv wf.ordered trivial
+    obtain ⟨_, _, hgoRaw, hyRaw⟩ := h₁Raw.app_inv wf.ordered trivial
+    have hgoTyEq := hgoRaw.uniqU wf trivial hgoT
+    obtain ⟨_, hyDomEq⟩ := (hgoTyEq.forallE_inv wf trivial).1
+    have hyT := hyRaw.defeqU_r wf trivial hyDomEq.toU
+    have h₁Canon := VEnv.HasType.app hgoT hyT
+    have h₁TyEq := h₁Raw.uniqU wf trivial h₁Canon
+    obtain ⟨_, hhyDomEq⟩ := (h₁TyEq.forallE_inv wf trivial).1
+    have hhyT := hhyRaw.defeqU_r wf trivial hhyDomEq.toU
+    have h₂Canon := VEnv.HasType.app h₁Canon hhyT
+    have h₂TyEq := h₂Raw.uniqU wf trivial h₂Canon
+    obtain ⟨_, hfuelDomEq⟩ := (h₂TyEq.forallE_inv wf trivial).1
+    have hfuelT := hfuelRaw.defeqU_r wf trivial hfuelDomEq.toU
+    have h₃Canon := VEnv.HasType.app h₂Canon hfuelT
+    have h₃TyEq := h₃Raw.uniqU wf trivial h₃Canon
+    obtain ⟨_, hxDomEq⟩ := (h₃TyEq.forallE_inv wf trivial).1
+    have hxT := hxRaw.defeqU_r wf trivial hxDomEq.toU
+    have h₄Canon := VEnv.HasType.app h₃Canon hxT
+    have h₄TyEq := h₄Raw.uniqU wf trivial h₄Canon
+    obtain ⟨_, hhDomEq⟩ := (h₄TyEq.forallE_inv wf trivial).1
+    have hhT := hhRaw.defeqU_r wf trivial hhDomEq.toU
+    exact ⟨yTy, hyTy, fuelTy, xTy, hTy, resultTy,
+      by simpa [VExpr.inst] using hhyT,
+      by simpa [VExpr.inst] using hhT⟩
+
+/-- Align the first dependent proof domain of two translations of the same
+one-variable source proposition, then instantiate the shared natural. -/
+theorem VEnv.align_nat_proof_domain
+    {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    {yTyL yTyR proofTyL proofTyR : VExpr} {pS : Expr}
+    (hyTyL : TrExprS env [] [] q(Nat) yTyL)
+    (hyTyR : TrExprS env [] [] q(Nat) yTyR)
+    (hproofTyL : TrExprS env [] [(none, .vlam yTyL)] pS proofTyL)
+    (hproofTyR : TrExprS env [] [(none, .vlam yTyR)] pS proofTyR)
+    (y : Nat) (hyL : env.HasType 0 [] (.natLit y) yTyL) :
+    env.IsDefEqU 0 [] (proofTyL.inst (.natLit y))
+      (proofTyR.inst (.natLit y)) := by
+  have hdomL := translated_nat_type_eq wf hctors (by trivial) hyTyL
+  have hdomR := translated_nat_type_eq wf hctors (by trivial) hyTyR
+  have hyTyEq := hdomL.trans wf trivial hdomR.symm
+  have hzT := (hctors.natZeroS (Us := []) (Δ := [])).2
+  obtain ⟨_, hnatSort⟩ := hzT.isType wf trivial
+  have hyTyLT := (hdomL.of_r wf trivial hnatSort).hasType.1
+  have hyTyEqD := hyTyEq.of_l wf trivial hyTyLT
+  have hctx : VLCtx.IsDefEq env 0
+      [(none, .vlam yTyL)] [(none, .vlam yTyR)] :=
+    .cons .nil nofun (.vlam hyTyEqD)
+  have hproofCtx := TrExprS.uniq (Us := []) wf hctx hproofTyL hproofTyR
+  exact hproofCtx.instN wf.ordered
+    (.zero : Ctx.InstN [] (.natLit y) yTyL 0 [yTyL] []) hyL
+
 /-- Instantiate definitionally equal target lambdas when both domains have
 already been normalized to `Nat`.  This is reused for the divisor, fuel, and
 dividend binders of `Nat.div.go`. -/
@@ -834,6 +909,34 @@ theorem VEnv.IsDefEqU.inst_outer4
   exact h₃.instN wf.ordered
     (.zero : Ctx.InstN [] d (((D.inst a 2).inst b 1).inst c) 0
       [(((D.inst a 2).inst b 1).inst c)] []) hd
+
+theorem VEnv.HasType.inst_outer4_keep_head
+    {env : VEnv} (wf : env.WF)
+    {A B C D E a b c d e T : VExpr}
+    (ha : env.HasType 0 [] a A)
+    (hb : env.HasType 0 [] b (B.inst a))
+    (hc : env.HasType 0 [] c ((C.inst a 1).inst b))
+    (hd : env.HasType 0 [] d
+      (((D.inst a 2).inst b 1).inst c))
+    (h : env.HasType 0 [E, D, C, B, A] e T) :
+    env.HasType 0
+      [((((E.inst a 3).inst b 2).inst c 1).inst d)]
+      ((((e.inst a 4).inst b 3).inst c 2).inst d 1)
+      ((((T.inst a 4).inst b 3).inst c 2).inst d 1) := by
+  have h₁ := h.instN wf.ordered
+    (.succ (.succ (.succ (.succ
+      (.zero : Ctx.InstN [] a A 0 [A] []))))) ha
+  have h₂ := h₁.instN wf.ordered
+    (.succ (.succ (.succ
+      (.zero : Ctx.InstN [] b (B.inst a) 0 [B.inst a] [])))) hb
+  have h₃ := h₂.instN wf.ordered
+    (.succ (.succ
+      (.zero : Ctx.InstN [] c ((C.inst a 1).inst b) 0
+        [((C.inst a 1).inst b)] []))) hc
+  exact h₃.instN wf.ordered
+    (.succ (.zero : Ctx.InstN [] d
+      (((D.inst a 2).inst b 1).inst c) 0
+      [(((D.inst a 2).inst b 1).inst c)] [])) hd
 
 /-- Semantically instantiate all five binders of the retained recursive
 division equation.  The two proof arguments need only target-level typing. -/
