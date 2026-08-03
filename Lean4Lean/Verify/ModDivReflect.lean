@@ -1493,6 +1493,110 @@ theorem VEnv.natDivGoElse_beta
       hzeroClosed.instN_eq (Nat.zero_le _)] using
         (VEnv.IsDefEq.beta hbodyT hproofT')⟩
 
+/-- Normalize the computational skeleton of the retained true recursive
+branch, leaving only its generated fuel proof opaque. -/
+theorem VEnv.natDivGoThen_canonical
+    {env : VEnv} {yTy hyTy fuelTy xTy hTy tV : VExpr}
+    (htS : TrExprS env []
+      [(none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy),
+        (none, .vlam yTy)]
+      (natDivGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV) :
+    ∃ propV hfuelV,
+      tV = .lam propV
+        (.app .natSucc
+          (.app
+            (.app
+              (.app
+                (.app
+                  (.app (.const ``Nat.div.go []) (.bvar 5))
+                  (.bvar 4))
+                (.bvar 3))
+              (.app (.app (.const ``Nat.sub []) (.bvar 2)) (.bvar 5)))
+            hfuelV)) := by
+  simp only [natDivGoThen, Expr.lam0] at htS
+  cases htS with
+  | lam hpropType hpS hbodyS =>
+    rename_i propV bodyV
+    let Δ : VLCtx :=
+      [(none, .vlam propV), (none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy), (none, .vlam yTy)]
+    change TrExprS env [] Δ _ bodyV at hbodyS
+    simp only [natDivGoThenBody, mkApp6, mkApp5, mkApp4, mkApp3,
+      mkApp2, mkApp, mkAppB] at hbodyS
+    cases hbodyS with
+    | app hsuccT hcallT hsuccS hcallS =>
+      rename_i succV A₆ B₆ callV
+      cases hcallS with
+      | app h₄T hhfuelT h₄ hhfuelS =>
+        rename_i A₄ B₄ hfuelV
+        cases h₄ with
+        | app h₃T hsubT h₃ hsubS =>
+          rename_i A₃ B₃ subV
+          cases h₃ with
+          | app h₂T hfuelT h₂ hfuelS =>
+            rename_i A₂ B₂ fuelV
+            cases h₂ with
+            | app h₁T hhyT h₁ hhyS =>
+              rename_i A₁ B₁ hyV
+              cases h₁ with
+              | app hgoT hyT hgoS hyS =>
+                rename_i goV A₀ B₀ yV
+                cases hsubS with
+                | app hsubInnerT hsubYT hsubInner hsubYS =>
+                  rename_i subInnerV AS BS subYV
+                  cases hsubInner with
+                  | app hsubFnT hsubXT hsubFnS hsubXS =>
+                    rename_i subFnV AS₀ BS₀ subXV
+                    have hyS' : TrExprS env [] Δ (.bvar 5) yV := by
+                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hyS
+                    have hhyS' : TrExprS env [] Δ (.bvar 4) hyV := by
+                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hhyS
+                    have hfuelS' : TrExprS env [] Δ (.bvar 3) fuelV := by
+                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hfuelS
+                    have hsubXS' : TrExprS env [] Δ (.bvar 2) subXV := by
+                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hsubXS
+                    have hsubYS' : TrExprS env [] Δ (.bvar 5) subYV := by
+                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hsubYS
+                    have hyEq : yV = .bvar 5 := translated_bvar_target_eq
+                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                        VExpr.lift, liftVar]) hyS'
+                    have hhyEq : hyV = .bvar 4 := translated_bvar_target_eq
+                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                        VExpr.lift, liftVar]) hhyS'
+                    have hfuelEq : fuelV = .bvar 3 := translated_bvar_target_eq
+                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                        VExpr.lift, liftVar]) hfuelS'
+                    have hsubXEq : subXV = .bvar 2 := translated_bvar_target_eq
+                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                        VExpr.lift, liftVar]) hsubXS'
+                    have hsubYEq : subYV = .bvar 5 := translated_bvar_target_eq
+                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                        VExpr.lift, liftVar]) hsubYS'
+                    subst yV
+                    subst hyV
+                    subst fuelV
+                    subst subXV
+                    subst subYV
+                    cases hsuccS with
+                    | const _ hsuccUs _ =>
+                      simp at hsuccUs
+                      subst hsuccUs
+                      cases hgoS with
+                      | const _ hgoUs _ =>
+                        simp at hgoUs
+                        subst hgoUs
+                        cases hsubFnS with
+                        | const _ hsubUs _ =>
+                          simp at hsubUs
+                          subst hsubUs
+                          exact ⟨propV, hfuelV, rfl⟩
+
 /-- Transport the final fuel proof of a canonical closed `Nat.div.go` call
 to the corresponding final binder of the checked left equation. -/
 theorem VEnv.align_natDivGo_final_proof
