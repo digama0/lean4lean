@@ -1056,18 +1056,23 @@ def natModGoEquation : Expr × Expr :=
     (.bvar 2)
   (lhs, rhs)
 
-def natDivTopEquation (divFn : Expr) : Expr × Expr :=
+def natDivTopRhs (x y : Expr) : Expr :=
   let succ := mkApp q(Nat.succ)
-  let div := mkApp2 divFn
   let go := mkApp5 q(Nat.div.go)
   let c := Condition.natLE
+  let x' := x.liftLooseBVars 0 1
+  let y' := y.liftLooseBVars 0 1
+  c.reflectedDITE #[q(Nat.succ Nat.zero), y]
+    (go y' (.bvar 0) (succ x') x'
+      (mkApp q(Nat.lt_succ_self) x')) q(Nat.zero)
+
+def natDivTopEquation (divFn : Expr) : Expr × Expr :=
+  let div := mkApp2 divFn
   let x := .bvar 1
   let y := .bvar 0
   let lhs := .lam0 q(Nat) <| .lam0 q(Nat) <| div x y
   let rhs := .lam0 q(Nat) <| .lam0 q(Nat) <|
-    c.reflectedDITE #[q(Nat.succ Nat.zero), y]
-      (go (.bvar 1) (.bvar 0) (succ (.bvar 2)) (.bvar 2)
-        (mkApp q(Nat.lt_succ_self) (.bvar 2))) q(Nat.zero)
+    natDivTopRhs x y
   (lhs, rhs)
 
 def natDivGoEquation : Expr × Expr :=

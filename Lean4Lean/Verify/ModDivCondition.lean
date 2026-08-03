@@ -1013,6 +1013,40 @@ theorem Condition.natBLE_application_eval
     (.refl wf (U := 0) (Δ := []) trivial) hbleS hcanonS
   exact hlocalEq.trans wf trivial (hbleEval a b)
 
+/-- Constructor-syntax counterpart of `natBLE_application_eval`, matching
+the expressions produced by instantiating checked lambda equations. -/
+theorem Condition.natBLE_constructor_application_eval
+    {env : VEnv} (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {bleV : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.natLitToConstructor a)
+        (.natLitToConstructor b)) bleV) :
+    env.IsDefEqU 0 [] bleV (.boolLit (Nat.ble a b)) := by
+  have haLit := hctors.natLitS a (Us := []) (Δ := [])
+  have hbLit := hctors.natLitS b (Us := []) (Δ := [])
+  cases haLit.1 with
+  | lit _ haS =>
+    cases hbLit.1 with
+    | lit _ hbS =>
+      have ⟨hbleT, hbleEval⟩ := hprim.natBLE hbleC
+      obtain ⟨ci, hci, _, hlen⟩ := (hbleT 0 []).const_inv wf trivial
+      have hfnS : TrExprS env [] [] q(Nat.ble) (.const ``Nat.ble []) :=
+        .const hci rfl hlen
+      have hinnerS : TrExprS env [] []
+          (mkApp q(Nat.ble) (.natLitToConstructor a))
+          (.app (.const ``Nat.ble []) (.natLit a)) :=
+        .app (hbleT 0 []) haLit.2 hfnS haS
+      have hcanonS : TrExprS env [] []
+          (mkApp2 q(Nat.ble) (.natLitToConstructor a)
+            (.natLitToConstructor b))
+          (.app (.app (.const ``Nat.ble []) (.natLit a)) (.natLit b)) :=
+        .app (.app (hbleT 0 []) haLit.2) hbLit.2 hinnerS hbS
+      have hlocalEq := TrExprS.uniq (Us := []) wf
+        (.refl wf (U := 0) (Δ := []) trivial) hbleS hcanonS
+      exact hlocalEq.trans wf trivial (hbleEval a b)
+
 /-- Replace the Boolean argument of a fully applied reflected dependent
 selector.  Typing of the proof and both branches is transported through the
 dependent function equality. -/
@@ -1732,6 +1766,59 @@ theorem VEnv.NatLESelectorCertificate.selectDITEFalse
     (TrExprS.target_closed wf cert.rditeS)
     (TrExprS.target_closed wf cert.ofFalseS)
     heqs.2 cert.rditeHas hbleS hble hcallT
+
+/-- Constructor-syntax form of `selectDITETrue`, for checked equations after
+closed-lambda instantiation. -/
+theorem VEnv.NatLESelectorCertificate.selectDITETrueConstructor
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {p bleV H t e R : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.natLitToConstructor a)
+        (.natLitToConstructor b)) bleV)
+    (hble : Nat.ble a b = true)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e) R) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e)
+      (.app t proof) := by
+  have hbool := Condition.natBLE_constructor_application_eval
+    wf hprim hctors hbleC hbleS
+  rw [hble] at hbool
+  have heqs := cert.dite_equations wf
+  exact VEnv.reflectionNatDITE_true_of_condition wf
+    (TrExprS.target_closed wf cert.rtypeS)
+    (TrExprS.target_closed wf cert.rditeS)
+    (TrExprS.target_closed wf cert.ofTrueS)
+    heqs.1 cert.rditeHas hcallT hbool
+
+/-- Constructor-syntax form of `selectDITEFalse`. -/
+theorem VEnv.NatLESelectorCertificate.selectDITEFalseConstructor
+    {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
+    (wf : env.WF) (hprim : env.HasPrimitives)
+    (hctors : VEnv.HasNatBoolConstructors env)
+    (hbleC : env.contains ``Nat.ble)
+    {a b : Nat} {p bleV H t e R : VExpr}
+    (hbleS : TrExprS env [] []
+      (mkApp2 q(Nat.ble) (.natLitToConstructor a)
+        (.natLitToConstructor b)) bleV)
+    (hble : Nat.ble a b = false)
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e) R) :
+    ∃ proof, env.IsDefEqU 0 []
+      (.app (.app (.app (.app (.app cert.rdite p) bleV) H) t) e)
+      (.app e proof) := by
+  have hbool := Condition.natBLE_constructor_application_eval
+    wf hprim hctors hbleC hbleS
+  rw [hble] at hbool
+  have heqs := cert.dite_equations wf
+  exact VEnv.reflectionNatDITE_false_of_condition wf
+    (TrExprS.target_closed wf cert.rtypeS)
+    (TrExprS.target_closed wf cert.rditeS)
+    (TrExprS.target_closed wf cert.ofFalseS)
+    heqs.2 cert.rditeHas hcallT hbool
 
 theorem VEnv.NatLESelectorCertificate.selectITETrue
     {env : VEnv} (cert : VEnv.NatLESelectorCertificate env)
