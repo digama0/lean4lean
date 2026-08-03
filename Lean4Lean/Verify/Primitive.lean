@@ -6329,6 +6329,44 @@ theorem checkPrimitiveDef.natBEq.WF {c : VContext} {s : VState}
       · exact .throw
   · exact .throw
 
+theorem checkPrimitiveDef.natBEq.WF.conservesHasPrimitives
+    {c : VContext} {s : VState} {src : DefinitionVal}
+    {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
+    (hnat : c.venv.contains ``Nat) (hbool : c.venv.contains ``Bool)
+    (hname : v.name = ``Nat.beq)
+    (huvars : src.levelParams.length = v.uvars)
+    (hadd : c.venv.addConst ``Nat.beq v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hcheck : M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      src.levelParams = [] ∧
+      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .bool) ∧
+      c.IsDefEqU (.app (.app v.value .natZero) .natZero) .boolTrue ∧
+      c.IsDefEqU
+        (.lam .nat <| .app (.app v.value .natZero)
+          (.app .natSucc (.bvar 0))) (.lam .nat .boolFalse) ∧
+      c.IsDefEqU
+        (.lam .nat <| .app (.app v.value (.app .natSucc (.bvar 0)))
+          .natZero) (.lam .nat .boolFalse) ∧
+      c.IsDefEqU
+        (.lam .nat <| .lam .nat <|
+          .app (.app v.value (.app .natSucc (.bvar 1)))
+            (.app .natSucc (.bvar 0)))
+        (.lam .nat <| .lam .nat <|
+          .app (.app v.value (.bvar 1)) (.bvar 0))) :
+    M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      (env'.addDefEq v.toDefEq).HasPrimitives := by
+  refine hcheck.mono fun _ _ _ h b => ?_
+  rcases h b with ⟨hsrcParams, hty, h00, h0s, hs0, hss⟩
+  have hclparams : c.lparams = [] := hcparams.trans hsrcParams
+  have hvuvars : v.uvars = 0 := by
+    rw [← huvars, hsrcParams]
+    rfl
+  change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hty h00 h0s hs0 hss
+  rw [hclparams, hvlctx] at hty h00 h0s hs0 hss
+  exact c.hasPrimitives.addNatBEqDef hnat hbool hname hadd hwf
+    hvuvars hty h00 h0s hs0 hss
+
 theorem checkPrimitiveDef.natBLE.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.ble) (hty : c.TrExprS v.type ty')
     (hcanon : c.TrExprS q(Nat → Nat → Bool)
