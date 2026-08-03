@@ -528,4 +528,105 @@ theorem VEnv.natDivTop_semantics
     have hzero := VEnv.natDivTopElse_beta wf b heS hbranchT
     exact htop.trans wf trivial hselect |>.trans wf trivial hzero
 
+/-- The two translated five-binder bodies and their dependent target
+contexts, extracted from the checked closed `Nat.div.go` equation. -/
+inductive VEnv.NatDivGoEquationTranslation (env : VEnv) : Prop where
+  | intro
+      (yTyL hyTyL fuelTyL xTyL hTyL bodyL : VExpr)
+      (yTyR hyTyR fuelTyR xTyR hTyR bodyR : VExpr)
+      (yTyLS : TrExprS env [] [] q(Nat) yTyL)
+      (hyTyLS : TrExprS env [] [(none, .vlam yTyL)]
+        (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTyL)
+      (fuelTyLS : TrExprS env []
+        [(none, .vlam hyTyL), (none, .vlam yTyL)] q(Nat) fuelTyL)
+      (xTyLS : TrExprS env []
+        [(none, .vlam fuelTyL), (none, .vlam hyTyL),
+          (none, .vlam yTyL)] q(Nat) xTyL)
+      (hTyLS : TrExprS env []
+        [(none, .vlam xTyL), (none, .vlam fuelTyL),
+          (none, .vlam hyTyL), (none, .vlam yTyL)]
+        (mkApp2 q(@LE.le Nat _)
+          (mkApp q(Nat.succ) (.bvar 0))
+          (mkApp q(Nat.succ) (.bvar 1))) hTyL)
+      (yTyRS : TrExprS env [] [] q(Nat) yTyR)
+      (hyTyRS : TrExprS env [] [(none, .vlam yTyR)]
+        (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTyR)
+      (fuelTyRS : TrExprS env []
+        [(none, .vlam hyTyR), (none, .vlam yTyR)] q(Nat) fuelTyR)
+      (xTyRS : TrExprS env []
+        [(none, .vlam fuelTyR), (none, .vlam hyTyR),
+          (none, .vlam yTyR)] q(Nat) xTyR)
+      (hTyRS : TrExprS env []
+        [(none, .vlam xTyR), (none, .vlam fuelTyR),
+          (none, .vlam hyTyR), (none, .vlam yTyR)]
+        (mkApp2 q(@LE.le Nat _)
+          (mkApp q(Nat.succ) (.bvar 0))
+          (mkApp q(Nat.succ) (.bvar 1))) hTyR)
+      (hyTyLType : env.IsType 0 [yTyL] hyTyL)
+      (fuelTyLType : env.IsType 0 [hyTyL, yTyL] fuelTyL)
+      (xTyLType : env.IsType 0 [fuelTyL, hyTyL, yTyL] xTyL)
+      (hTyLType : env.IsType 0 [xTyL, fuelTyL, hyTyL, yTyL] hTyL)
+      (hyTyRType : env.IsType 0 [yTyR] hyTyR)
+      (fuelTyRType : env.IsType 0 [hyTyR, yTyR] fuelTyR)
+      (xTyRType : env.IsType 0 [fuelTyR, hyTyR, yTyR] xTyR)
+      (hTyRType : env.IsType 0 [xTyR, fuelTyR, hyTyR, yTyR] hTyR)
+      (leftS : TrExprS env []
+        [(none, .vlam hTyL), (none, .vlam xTyL),
+          (none, .vlam fuelTyL), (none, .vlam hyTyL),
+          (none, .vlam yTyL)]
+        (natDivGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+        bodyL)
+      (rightS : TrExprS env []
+        [(none, .vlam hTyR), (none, .vlam xTyR),
+          (none, .vlam fuelTyR), (none, .vlam hyTyR),
+          (none, .vlam yTyR)]
+        (natDivGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+        bodyR)
+      (eq : env.IsDefEqU 0 []
+        (.lam yTyL <| .lam hyTyL <| .lam fuelTyL <| .lam xTyL <|
+          .lam hTyL bodyL)
+        (.lam yTyR <| .lam hyTyR <| .lam fuelTyR <| .lam xTyR <|
+          .lam hTyR bodyR)) :
+      VEnv.NatDivGoEquationTranslation env
+
+/-- Parse the checked closed recursive division equation into its two local
+translated bodies. -/
+theorem VEnv.NatDivGoEquationTranslation.of_checked
+    {env : VEnv}
+    {goL goR : VExpr}
+    (hl : TrExprS env [] [] natDivGoEquation.1 goL)
+    (hr : TrExprS env [] [] natDivGoEquation.2 goR)
+    (heq : env.IsDefEqU 0 [] goL goR) :
+    VEnv.NatDivGoEquationTranslation env := by
+  simp only [natDivGoEquation] at hl hr
+  cases hl with
+  | lam hyTyLType hyTyLS hL₁ =>
+    cases hL₁ with
+    | lam hhyTyLType hhyTyLS hL₂ =>
+      cases hL₂ with
+      | lam hfuelTyLType hfuelTyLS hL₃ =>
+        cases hL₃ with
+        | lam hxTyLType hxTyLS hL₄ =>
+          cases hL₄ with
+          | lam hhTyLType hhTyLS hbodyL =>
+            rename_i yTyL hyTyL fuelTyL xTyL hTyL bodyL
+            cases hr with
+            | lam hyTyRType hyTyRS hR₁ =>
+              cases hR₁ with
+              | lam hhyTyRType hhyTyRS hR₂ =>
+                cases hR₂ with
+                | lam hfuelTyRType hfuelTyRS hR₃ =>
+                  cases hR₃ with
+                  | lam hxTyRType hxTyRS hR₄ =>
+                    cases hR₄ with
+                    | lam hhTyRType hhTyRS hbodyR =>
+                      rename_i yTyR hyTyR fuelTyR xTyR hTyR bodyR
+                      exact .intro yTyL hyTyL fuelTyL xTyL hTyL bodyL
+                        yTyR hyTyR fuelTyR xTyR hTyR bodyR
+                        hyTyLS hhyTyLS hfuelTyLS hxTyLS hhTyLS
+                        hyTyRS hhyTyRS hfuelTyRS hxTyRS hhTyRS
+                        hhyTyLType hfuelTyLType hxTyLType hhTyLType
+                        hhyTyRType hfuelTyRType hxTyRType hhTyRType
+                        hbodyL hbodyR heq
+
 end Lean4Lean.Environment
