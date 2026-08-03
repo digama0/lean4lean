@@ -244,6 +244,45 @@ theorem checkSafeNatModDefinition.WF
     exact DefinitionSafety.le_rfl,
     huvars, htype⟩, hvname⟩, hvalue⟩
 
+theorem checkSafeNatDivDefinition.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.div)
+    (hsafety : v.safety = .safe) :
+    ((do
+      checkDefinitionBody env v
+      let allowPrimitive ← Environment.checkPrimitiveDef v
+      Lean.Kernel.Environment.checkName env v.name allowPrimitive) :
+      TypeChecker.M Unit).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+        ∃ v' : VDefVal,
+          TrDefVal .safe (ves.venv .safe) (.defnInfo v) v' ∧
+          v'.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
+          v.levelParams = [] ∧
+          Environment.NatDivPrimitiveEvidence
+            (.mk' wf .safe v.levelParams) v v'.type := by
+  refine (checkDefinitionBody.WF wf v).bind fun _ state' _ hbody => ?_
+  obtain ⟨v', huvars, htype, hvname, hvalue, hvalueT⟩ := hbody
+  refine (Environment.checkPrimitiveDef.natDiv.WF_typed
+    (c := .mk' wf .safe v.levelParams) (s := state')
+    (ty' := v'.type) (value' := v'.value)
+    hname rfl rfl htype hvalue).bind fun allow _ _ hcheck => ?_
+  refine (TypeChecker.M.WF.liftExcept
+    (checkName.WF (wf.tr (safety := .safe)).map_wf)).mono
+    fun _ _ _ hcheckedName => ?_
+  have hallow : allow = true := hcheckedName.2 (by
+    rw [hname]
+    simp [Lean.Kernel.Environment.primitives,
+      NameSet.contains, NameSet.ofList])
+  have hevidence := hcheck hallow
+  have hlevels : v.levelParams = [] := by
+    rcases hevidence with
+      ⟨_, _, _, _, _, _, _, _, _, _, _, _, hlevels, _⟩
+    exact hlevels
+  refine ⟨v', ?_, hvalueT, hcheckedName.1, hlevels, hevidence⟩
+  exact ⟨⟨⟨by
+    rw [ConstantInfo.defnInfo_safety, hsafety]
+    exact DefinitionSafety.le_rfl,
+    huvars, htype⟩, hvname⟩, hvalue⟩
+
 theorem checkSafeNatPredDefinition.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hname : v.name = ``Nat.pred)
@@ -1270,6 +1309,46 @@ theorem addDefinition.WF_safe_natMod
       let ⟨ci, hci⟩ := hble; ⟨ci, hmono.constants hci⟩,
       let ⟨ci, hci⟩ := hsub; ⟨ci, hmono.constants hci⟩,
       hty.mono hmono, hzeroEq.mono hmono, selector.mono hmono,
+      hgoHas.mono hmono, htopEq.mono hmono, hgoEq.mono hmono⟩
+  exact hevidence'.conservesHasPrimitives rfl rfl
+    (htr.2.mono hmono) hname' huvars hadd' hwf'
+
+theorem addDefinition.WF_safe_natDiv
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) (hname : v.name = ``Nat.div)
+    (hsafety : v.safety = .safe) :
+    (addDefinition env v).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold addDefinition
+  simp [hsafety]
+  refine (checkSafeNatDivDefinition.WF wf v hname hsafety).run wf |>.map
+    fun _ h => ?_
+  obtain ⟨v', htr, hvWF, hfresh, hlevels, hevidence⟩ := h
+  apply wf.addSafePrimitiveDefinition hsafety hlevels hfresh htr hvWF
+  intro safety out hadd hwf'
+  have hmono : ves.venv .safe ≤ ves.venv safety :=
+    wf.mono DefinitionSafety.le_safe
+  have hname' : v'.name = ``Nat.div := htr.1.2.symm.trans hname
+  have huvars : v.levelParams.length = v'.uvars := htr.1.1.2.1
+  have hadd' : (ves.venv safety).addConst ``Nat.div v'.toVConstant =
+      some out := by simpa [hname] using hadd
+  have hevidence' : Environment.NatDivPrimitiveEvidence
+      (.mk' wf safety v.levelParams) v v'.type := by
+    rcases hevidence with
+      ⟨go', goTy', topL', topR', goL', goR',
+        hgoS, hgoTyS, htopL, htopR, hgoL, hgoR,
+        hparams, hnat, hbool, hble, hsub, hty,
+        selector, hgoHas, htopEq, hgoEq⟩
+    exact ⟨go', goTy', topL', topR', goL', goR',
+      hgoS.mono hmono, hgoTyS.mono hmono,
+      htopL.mono hmono, htopR.mono hmono,
+      hgoL.mono hmono, hgoR.mono hmono, hparams,
+      let ⟨ci, hci⟩ := hnat; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := hbool; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := hble; ⟨ci, hmono.constants hci⟩,
+      let ⟨ci, hci⟩ := hsub; ⟨ci, hmono.constants hci⟩,
+      hty.mono hmono, selector.mono hmono,
       hgoHas.mono hmono, htopEq.mono hmono, hgoEq.mono hmono⟩
   exact hevidence'.conservesHasPrimitives rfl rfl
     (htr.2.mono hmono) hname' huvars hadd' hwf'

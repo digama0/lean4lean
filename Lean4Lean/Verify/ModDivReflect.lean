@@ -3923,38 +3923,65 @@ theorem NatModPrimitiveEvidence.conservesHasPrimitives
 
 /-- Turn the semantic evidence retained by the `Nat.div` primitive checker
 into conservation of the complete primitive-reflection invariant. -/
-theorem checkPrimitiveDef.natDiv.WF.conservesHasPrimitives
+abbrev NatDivPrimitiveEvidence
+    (c : TypeChecker.VContext) (src : DefinitionVal) (ty' : VExpr) : Prop :=
+  ∃ go' goTy' topL' topR' goL' goR',
+    c.TrExprS q(Nat.div.go) go' ∧
+    c.TrExprS q(∀ y, Nat.succ Nat.zero ≤ y →
+      ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy' ∧
+    c.TrExprS (natDivTopEquation src.value).1 topL' ∧
+    c.TrExprS (natDivTopEquation src.value).2 topR' ∧
+    c.TrExprS natDivGoEquation.1 goL' ∧
+    c.TrExprS natDivGoEquation.2 goR' ∧
+    src.levelParams = [] ∧
+    c.venv.contains ``Nat ∧ c.venv.contains ``Bool ∧
+    c.venv.contains ``Nat.ble ∧ c.venv.contains ``Nat.sub ∧
+    c.IsDefEqU ty' (.forallE .nat <| .forallE .nat .nat) ∧
+    ∃ selector : VEnv.NatLESelectorCertificate c.venv,
+      c.HasType go' goTy' ∧
+      c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR'
+
+theorem checkPrimitiveDef.natDiv.WF_typed
     {c : TypeChecker.VContext} {s : TypeChecker.VState}
-    {src : DefinitionVal} {v : VDefVal} {env' : VEnv}
-    {go' goTy' topL' topR' goL' goR' : VExpr}
+    {src : DefinitionVal} {ty' value' : VExpr}
+    (hname : src.name = ``Nat.div)
     (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
-    (hnat : c.venv.contains ``Nat) (hbool : c.venv.contains ``Bool)
-    (hbleC : c.venv.contains ``Nat.ble)
-    (hsubC : c.venv.contains ``Nat.sub)
+    (hty : c.TrExprS src.type ty') (hvalue : c.TrExprS src.value value') :
+    TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
+      NatDivPrimitiveEvidence c src ty' := by
+  rw [checkPrimitiveDef.natDiv_eq hname]
+  refine TypeChecker.getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  exact (checkNatDivPrimitive.WF_typed hcparams hty hvlctx hvalue
+    (fun hlparams hfail =>
+      Condition.natLE.checkForPrimitive.WF.selector
+        hlparams hvlctx hfail)).bind fun _ _ _ h => by
+      rcases h with ⟨go', goTy', topL', topR', goL', goR',
+        hgoS, hgoTyS, htopL, htopR, hgoL, hgoR,
+        hparams, hnat, hbool, hble, hsub, htyEq,
+        ⟨selector, _⟩, hgoHas, htopEq, hgoEq⟩
+      exact .pure fun _ =>
+        ⟨go', goTy', topL', topR', goL', goR',
+          hgoS, hgoTyS, htopL, htopR, hgoL, hgoR,
+          hparams, hnat, hbool, hble, hsub, htyEq,
+          selector, hgoHas, htopEq, hgoEq⟩
+
+theorem NatDivPrimitiveEvidence.conservesHasPrimitives
+    {c : TypeChecker.VContext}
+    {src : DefinitionVal} {v : VDefVal} {env' : VEnv}
+    (hcparams : c.lparams = src.levelParams) (hvlctx : c.vlctx = [])
     (hdiv : c.TrExprS src.value v.value)
-    (hgoS : c.TrExprS q(Nat.div.go) go')
-    (hgoTyS : c.TrExprS
-      q(∀ y, Nat.succ Nat.zero ≤ y →
-        ∀ fuel x : Nat, Nat.succ x ≤ fuel → Nat) goTy')
-    (htopL : c.TrExprS (natDivTopEquation src.value).1 topL')
-    (htopR : c.TrExprS (natDivTopEquation src.value).2 topR')
-    (hgoL : c.TrExprS natDivGoEquation.1 goL')
-    (hgoR : c.TrExprS natDivGoEquation.2 goR')
     (hname : v.name = ``Nat.div)
     (huvars : src.levelParams.length = v.uvars)
     (hadd : c.venv.addConst ``Nat.div v.toVConstant = some env')
     (hwf : (env'.addDefEq v.toDefEq).WF)
-    (hcheck : TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
-      src.levelParams = [] ∧
-      c.IsDefEqU v.type (.forallE .nat <| .forallE .nat .nat) ∧
-      ∃ selector : VEnv.NatLESelectorCertificate c.venv,
-        c.HasType go' goTy' ∧
-        c.IsDefEqU topL' topR' ∧ c.IsDefEqU goL' goR') :
-    TypeChecker.M.WF c s (checkPrimitiveDef src) fun b _ => b →
-      (env'.addDefEq v.toDefEq).HasPrimitives := by
-  refine hcheck.mono fun _ _ _ h b => ?_
-  rcases h b with
-    ⟨hsrcParams, hty, selector, hgoHas, htopEq, hgoEq⟩
+    (hevidence : NatDivPrimitiveEvidence c src v.type) :
+    (env'.addDefEq v.toDefEq).HasPrimitives := by
+  rcases hevidence with
+    ⟨go', goTy', topL', topR', goL', goR',
+      hgoS, hgoTyS, htopL, htopR, hgoL, hgoR,
+      hsrcParams, hnat, hbool, hbleC, hsubC, hty,
+      selector, hgoHas, htopEq, hgoEq⟩
   have hclparams : c.lparams = [] := hcparams.trans hsrcParams
   have hvuvars : v.uvars = 0 := by
     rw [← huvars, hsrcParams]
