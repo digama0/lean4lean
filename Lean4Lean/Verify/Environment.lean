@@ -1849,6 +1849,89 @@ theorem TrEnv.addOpaque
     simp only [addMutualFinalEnv, List.foldl_cons]
     exact ih.trans rfl
 
+theorem ConstMap.foldInsert_no_inductInfo
+    {C : ConstMap} {vs : List DefinitionVal}
+    {info : DefinitionVal → ConstantInfo}
+    (hmap : C.WF)
+    (hfresh : ∀ v ∈ vs, C.find? v.name = none)
+    (hnodup : (vs.map (fun v => v.name)).Nodup)
+    (hkind : ∀ v i, info v ≠ .inductInfo i)
+    (hold : C.find? n ≠ some (.inductInfo i)) :
+    (vs.foldl (fun C v => C.insert v.name (info v)) C).find? n ≠
+      some (.inductInfo i) := by
+  induction vs generalizing C with
+  | nil => exact hold
+  | cons v vs ih =>
+    have hheadNone := hfresh v (by simp)
+    have hmap' := hmap.insert v.name (info v) hheadNone
+    have hnodupPair := List.nodup_cons.mp (show
+      (v.name :: vs.map (fun v => v.name)).Nodup by simpa using hnodup)
+    have hfresh' : ∀ w ∈ vs,
+        (C.insert v.name (info v)).find? w.name = none := by
+      intro w hw
+      rw [hmap.find?_insert]
+      split
+      · rename_i heq
+        have hmem : w.name ∈ vs.map (fun x => x.name) :=
+          List.mem_map.mpr ⟨w, hw, rfl⟩
+        exact (hnodupPair.1 ((LawfulBEq.eq_of_beq heq).symm ▸ hmem)).elim
+      · exact hfresh w (by simp [hw])
+    apply ih hmap' hfresh' hnodupPair.2
+    intro hfind
+    rw [hmap.find?_insert] at hfind
+    split at hfind
+    · exact hkind v i (Option.some.inj hfind)
+    · exact hold hfind
+
+theorem TrEnv'.no_inductInfo (H : TrEnv' .unsafe C Q venv) :
+    C.find? name ≠ some (.inductInfo info) := by
+  induction H with
+  | empty => simp [SMap.find?]
+  | block _ hhidden _ _ =>
+    exact False.elim <| hhidden DefinitionSafety.unsafe_le
+  | «axiom» _ _ _ _ H ih
+  | defn _ _ _ _ H ih
+  | «theorem» _ _ _ _ H ih
+  | unsafeDefn _ _ _ _ _ _ H ih
+  | «opaque» _ _ _ _ H ih =>
+    rw [H.map_wf.find?_insert]
+    split
+    · simp
+    · exact ih
+  | «mutual» _ hfresh _ _ _ _ _ H ih =>
+    exact ConstMap.foldInsert_no_inductInfo H.map_wf hfresh.1 hfresh.2
+      (fun _ _ h => by cases h) ih
+  | mutualCheck _ hfresh _ _ H ih =>
+    exact ConstMap.foldInsert_no_inductInfo H.map_wf hfresh.1 hfresh.2
+      (fun _ _ h => by cases h) ih
+  | quot _ hadd H ih =>
+    dsimp [AddQuot, AddQuot1] at hadd
+    obtain ⟨lp₁, ty₁, env₁, _, hn₁, _,
+      lp₂, ty₂, env₂, _, hn₂, _,
+      lp₃, ty₃, env₃, _, hn₃, _,
+      lp₄, ty₄, env₄, _, hn₄, _, rfl, _⟩ := hadd
+    have wf₀ := H.map_wf
+    have wf₁ := wf₀.insert ``Quot
+      (.quotInfo (.mk (.mk ``Quot lp₁ ty₁) .type)) hn₁
+    have wf₂ := wf₁.insert ``Quot.mk
+      (.quotInfo (.mk (.mk ``Quot.mk lp₂ ty₂) .ctor)) hn₂
+    have wf₃ := wf₂.insert ``Quot.lift
+      (.quotInfo (.mk (.mk ``Quot.lift lp₃ ty₃) .lift)) hn₃
+    rw [wf₃.find?_insert]
+    split
+    · simp
+    rw [wf₂.find?_insert]
+    split
+    · simp
+    rw [wf₁.find?_insert]
+    split
+    · simp
+    rw [wf₀.find?_insert]
+    split
+    · simp
+    exact ih
+  | induct _ hadd _ _ => exact nomatch hadd
+
 theorem TrEnv.addMutualCheckHeaders
     (htr : TrEnv safety env venv)
     (hrel : List.Forall₂ (fun v v' =>
@@ -3992,17 +4075,52 @@ theorem addMutual.WF
         simp only [addMutual, hsafety, hunique', ↓reduceIte]
         exact .throw
 
+theorem checkEqType.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
+    (checkEqType env).WF fun _ => False := by
+  intro _ h
+  unfold checkEqType at h
+  simp only [Environment.get] at h
+  split at h <;> try contradiction
+  rename_i ci hfind
+  cases ci with
+  | inductInfo info =>
+    have hfind' : env.constants.find? ``Eq = some (.inductInfo info) := by
+      rw [← (wf.tr (safety := .unsafe)).map_wf.find?'_eq_find?]
+      exact hfind
+    exact False.elim <|
+      (wf.tr (safety := .unsafe)).no_inductInfo hfind'
+  | _ =>
+    simp_all [( · >>= · ), Except.bind, pure, Pure.pure, Except.pure]
 
+theorem addQuot.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
+    (Environment.addQuot env).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  unfold Environment.addQuot
+  split
+  · exact .pure ⟨ves, wf, fun _ => VEnv.LE.rfl⟩
+  · exact (checkEqType.WF wf).bind fun _ h => False.elim h
 
-/-- The intended main theorem of the `Verify` development, currently unproved:
-if `env` is well-formed and `addDecl env decl` (in checking mode) succeeds,
-then the resulting environment is also well-formed, and it extends `env`.
+/- Verification boundary for inductive declarations and their generated
+constants.  This is the sole remaining `addDecl` conservation obligation. -/
+theorem addInductive.WF
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (lparams : List Name) (nparams : Nat) (types : List InductiveType)
+    (isUnsafe : Bool) :
+    (addDecl env (.inductDecl lparams nparams types isUnsafe)).WF fun env' =>
+      ∃ ves' : VEnvs, ves'.WF env' ∧
+        ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  sorry
 
-None of the pieces of this theorem exist yet: nothing relates
-`Lean.Kernel.Environment.add` to the `TrEnv` relation, and nothing repackages
-the `checkType.WF`/`isDefEq.WF` postconditions at the empty local context into
-the abstract `VDecl.WF` premises needed to extend `TrEnv`. -/
 theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration) :
     (addDecl env decl).WF fun env' =>
-      ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety :=
-  sorry
+      ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+  cases decl with
+  | axiomDecl v => exact addAxiom.WF wf v
+  | defnDecl v => exact addDefinition.WF wf v
+  | thmDecl v => exact addTheorem.WF wf v
+  | opaqueDecl v => exact addOpaque.WF wf v
+  | mutualDefnDecl vs => exact addMutual.WF wf vs
+  | quotDecl => exact addQuot.WF wf
+  | inductDecl lparams nparams types isUnsafe =>
+    exact addInductive.WF wf lparams nparams types isUnsafe
