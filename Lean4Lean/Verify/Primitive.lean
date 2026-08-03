@@ -3339,6 +3339,39 @@ private theorem TrExprS.natType_of_contains
   exact ⟨.const hci rfl rfl,
     ⟨.succ .zero, .const hci nofun rfl⟩⟩
 
+private theorem TrExprS.boolType_of_contains
+    {env : VEnv} (hprim : env.HasPrimitives)
+    (hbool : env.contains ``Bool) (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(Bool) .bool ∧
+      env.IsType Us.length Δ.toCtx .bool := by
+  obtain ⟨ci, hci⟩ := hbool
+  have hshape := hprim.boolType hci
+  subst ci
+  exact ⟨.const hci rfl rfl,
+    ⟨.succ .zero, .const hci nofun rfl⟩⟩
+
+private theorem TrExprS.boolFalse
+    {env : VEnv} (hprim : env.HasPrimitives)
+    (hbool : env.contains ``Bool) (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(false) .boolFalse ∧
+      env.HasType Us.length Δ.toCtx .boolFalse .bool := by
+  obtain ⟨hfalse, _⟩ := hprim.bool hbool
+  obtain ⟨ci, hci⟩ := hfalse
+  have hshape := hprim.boolFalse hci
+  subst ci
+  exact ⟨.const hci rfl rfl, .const hci nofun rfl⟩
+
+private theorem TrExprS.boolTrue
+    {env : VEnv} (hprim : env.HasPrimitives)
+    (hbool : env.contains ``Bool) (Us : List Name) (Δ : VLCtx) :
+    TrExprS env Us Δ q(true) .boolTrue ∧
+      env.HasType Us.length Δ.toCtx .boolTrue .bool := by
+  obtain ⟨_, htrue⟩ := hprim.bool hbool
+  obtain ⟨ci, hci⟩ := htrue
+  have hshape := hprim.boolTrue hci
+  subst ci
+  exact ⟨.const hci rfl rfl, .const hci nofun rfl⟩
+
 private theorem TrExprS.reflectedNatUnary
     {env : VEnv} (wf : env.WF) {name : Name} {f : Nat → Nat}
     (hreflect : env.ReflectsNatNat name f)
@@ -8196,6 +8229,276 @@ theorem checkPrimitiveDef.natBEq.WF {c : VContext} {s : VState}
               · exact .throw
           · exact .throw
       · exact .throw
+  · exact .throw
+
+theorem checkPrimitiveDef.natBEq.WF_typed {c : VContext} {s : VState}
+    (hname : v.name = ``Nat.beq)
+    (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS v.type ty')
+    (hvalue : c.TrExprS v.value value')
+    (hvalueT : c.HasType value' ty') :
+    M.WF c s (checkPrimitiveDef v) fun b _ => b →
+      v.levelParams = [] ∧
+      c.venv.contains ``Nat ∧ c.venv.contains ``Bool ∧
+      c.venv.IsDefEqU c.lparams.length [] ty'
+        (.forallE .nat <| .forallE .nat .bool) ∧
+      c.venv.IsDefEqU c.lparams.length []
+        (.app (.app value' .natZero) .natZero) .boolTrue ∧
+      c.venv.IsDefEqU c.lparams.length []
+        (.lam .nat <| .app (.app value' .natZero)
+          (.app .natSucc (.bvar 0))) (.lam .nat .boolFalse) ∧
+      c.venv.IsDefEqU c.lparams.length []
+        (.lam .nat <| .app (.app value' (.app .natSucc (.bvar 0)))
+          .natZero) (.lam .nat .boolFalse) ∧
+      c.venv.IsDefEqU c.lparams.length []
+        (.lam .nat <| .lam .nat <|
+          .app (.app value' (.app .natSucc (.bvar 1)))
+            (.app .natSucc (.bvar 0)))
+        (.lam .nat <| .lam .nat <|
+          .app (.app value' (.bvar 1)) (.bvar 0)) := by
+  simp only [checkPrimitiveDef, hname]
+  refine getEnv.WF.bind ?_
+  intro _ _ _ ⟨rfl, rfl⟩
+  split
+  · rename_i hdeps
+    have hdeps' : (c.env.contains ``Nat = true ∧
+        c.env.contains ``Bool = true) ∧ v.levelParams = [] := by
+      simpa using hdeps
+    have hlevels : v.levelParams = [] := hdeps'.2
+    have hnat : c.venv.contains ``Nat :=
+      Environment.VContext.contains_safe_primitive c hdeps'.1.1 (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    have hbool : c.venv.contains ``Bool :=
+      Environment.VContext.contains_safe_primitive c hdeps'.1.2 (by
+        simp [Lean.Kernel.Environment.primitives,
+          NameSet.contains, NameSet.ofList])
+    have hvalue0 := hvalue
+    change TrExprS c.venv c.lparams c.vlctx v.value value' at hvalue0
+    rw [hvlctx] at hvalue0
+    have hvalueT0 := hvalueT
+    change c.venv.HasType c.lparams.length c.vlctx.toCtx value' ty' at hvalueT0
+    rw [hvlctx] at hvalueT0
+    let Δ1 : VLCtx := [(none, .vlam .nat)]
+    let Δ2 : VLCtx := [(none, .vlam .nat), (none, .vlam .nat)]
+    have hnat0 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams []
+    have hnat1 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams Δ1
+    have hnat2 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams Δ2
+    have hbool2 := TrExprS.boolType_of_contains c.hasPrimitives hbool c.lparams Δ2
+    have hΔ1 : Δ1.WF c.venv c.lparams.length :=
+      ⟨trivial, nofun, hnat0.2⟩
+    have hΔ2 : Δ2.WF c.venv c.lparams.length :=
+      ⟨hΔ1, nofun, hnat1.2⟩
+    have hinnerType : c.venv.IsType c.lparams.length [.nat]
+        (.forallE .nat .bool) := by
+      obtain ⟨u, hA⟩ := hnat1.2
+      obtain ⟨w, hB⟩ := hbool2.2
+      exact ⟨.imax u w, .forallEDF hA hB⟩
+    have hcanon0 : TrExprS c.venv c.lparams [] q(Nat → Nat → Bool)
+        (.forallE .nat <| .forallE .nat .bool) := by
+      have hinnerS : TrExprS c.venv c.lparams Δ1 q(Nat → Bool)
+          (.forallE .nat .bool) :=
+        .forallE hnat1.2 hbool2.2 hnat1.1 hbool2.1
+      exact .forallE hnat0.2 hinnerType hnat0.1 hinnerS
+    have hcanon : c.TrExprS q(Nat → Nat → Bool)
+        (.forallE .nat <| .forallE .nat .bool) := by
+      change TrExprS c.venv c.lparams c.vlctx _ _
+      rw [hvlctx]
+      exact hcanon0
+    simp only [pure_bind]
+    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+      by_cases hb : b = true
+      · rw [if_pos hb]
+        have htyEq0 := htyEq hb
+        change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx ty'
+          (.forallE .nat <| .forallE .nat .bool) at htyEq0
+        rw [hvlctx] at htyEq0
+        have hvalueCanonT : c.venv.HasType c.lparams.length [] value'
+            (.forallE .nat <| .forallE .nat .bool) :=
+          hvalueT0.defeqU_r c.Ewf trivial htyEq0
+        have hv1 : TrExprS c.venv c.lparams Δ1 v.value value' :=
+          TrExprS.closed_weak c.Ewf hvalue0 (.skip (.vlam .nat) .refl)
+        have hv2 : TrExprS c.venv c.lparams Δ2 v.value value' :=
+          TrExprS.closed_weak c.Ewf hvalue0
+            (.skip (.vlam .nat) (.skip (.vlam .nat) .refl))
+        have hv1T := hvalueCanonT.weak0 c.Ewf (Γ := [.nat])
+        have hv2T := hvalueCanonT.weak0 c.Ewf (Γ := [.nat, .nat])
+        have hz0 := TrExprS.natZero c.hasPrimitives hnat
+          (Us := c.lparams) (Δ := [])
+        have hz1 := TrExprS.natZero c.hasPrimitives hnat
+          (Us := c.lparams) (Δ := Δ1)
+        have hs1 := TrExprS.natSucc c.hasPrimitives hnat
+          (Us := c.lparams) (Δ := Δ1)
+        have hs2 := TrExprS.natSucc c.hasPrimitives hnat
+          (Us := c.lparams) (Δ := Δ2)
+        have hf1 := TrExprS.boolFalse c.hasPrimitives hbool c.lparams Δ1
+        have ht0 := TrExprS.boolTrue c.hasPrimitives hbool c.lparams []
+        have hx1S : TrExprS c.venv c.lparams Δ1 (.bvar 0) (.bvar 0) :=
+          .bvar (A := .nat) (by simp [Δ1, VLCtx.find?, VLCtx.next,
+            VLocalDecl.value, VLocalDecl.type,
+            VExpr.liftN, VExpr.lift, VExpr.nat])
+        have hx1T : c.venv.HasType c.lparams.length [.nat]
+            (.bvar 0) .nat := by
+          simpa [VExpr.lift] using
+            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
+              (A := .nat) (i := 0) Lookup.zero)
+        have hx2S : TrExprS c.venv c.lparams Δ2 (.bvar 0) (.bvar 0) :=
+          .bvar (A := .nat) (by simp [Δ2, VLCtx.find?, VLCtx.next,
+            VLocalDecl.value, VLocalDecl.type,
+            VExpr.liftN, VExpr.lift, VExpr.nat])
+        have hy2S : TrExprS c.venv c.lparams Δ2 (.bvar 1) (.bvar 1) :=
+          .bvar (A := .nat) (by simp [Δ2, VLCtx.find?, VLCtx.next,
+            VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
+            VExpr.liftN, VExpr.lift, VExpr.nat, liftVar])
+        have hx2T : c.venv.HasType c.lparams.length [.nat, .nat]
+            (.bvar 0) .nat := by
+          simpa [VExpr.lift] using
+            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
+              (A := .nat) (i := 0) Lookup.zero)
+        have hy2T : c.venv.HasType c.lparams.length [.nat, .nat]
+            (.bvar 1) .nat := by
+          simpa [VExpr.lift] using
+            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
+              (A := .nat) (i := 1) (Lookup.succ Lookup.zero))
+        have h00₁0 : TrExprS c.venv c.lparams []
+            (mkApp2 v.value q(Nat.zero) q(Nat.zero))
+            (.app (.app value' .natZero) .natZero) :=
+          .app (.app hvalueCanonT hz0.2) hz0.2
+            (.app hvalueCanonT hz0.2 hvalue0 hz0.1) hz0.1
+        have h00₁ : c.TrExprS
+            (mkApp2 v.value q(Nat.zero) q(Nat.zero))
+            (.app (.app value' .natZero) .natZero) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]; exact h00₁0
+        have h00₂ : c.TrExprS q(true) .boolTrue := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]; exact ht0.1
+        have hsx1S : TrExprS c.venv c.lparams Δ1
+            (mkApp q(Nat.succ) (.bvar 0)) (.app .natSucc (.bvar 0)) :=
+          .app hs1.2 hx1T hs1.1 hx1S
+        have hsx1T : c.venv.HasType c.lparams.length [.nat]
+            (.app .natSucc (.bvar 0)) .nat := .app hs1.2 hx1T
+        have h0sBody : TrExprS c.venv c.lparams Δ1
+            (mkApp2 v.value q(Nat.zero) (mkApp q(Nat.succ) (.bvar 0)))
+            (.app (.app value' .natZero) (.app .natSucc (.bvar 0))) :=
+          .app (.app hv1T hz1.2) hsx1T
+            (.app hv1T hz1.2 hv1 hz1.1) hsx1S
+        have hs0Body : TrExprS c.venv c.lparams Δ1
+            (mkApp2 v.value (mkApp q(Nat.succ) (.bvar 0)) q(Nat.zero))
+            (.app (.app value' (.app .natSucc (.bvar 0))) .natZero) :=
+          .app (.app hv1T hsx1T) hz1.2
+            (.app hv1T hsx1T hv1 hsx1S) hz1.1
+        have hfalseLam : TrExprS c.venv c.lparams []
+            (.lam0 q(Nat) q(false)) (.lam .nat .boolFalse) :=
+          .lam hnat0.2 hnat0.1 hf1.1
+        have h0s₁0 : TrExprS c.venv c.lparams []
+            (.lam0 q(Nat) <| mkApp2 v.value q(Nat.zero)
+              (mkApp q(Nat.succ) (.bvar 0)))
+            (.lam .nat <| .app (.app value' .natZero)
+              (.app .natSucc (.bvar 0))) :=
+          .lam hnat0.2 hnat0.1 h0sBody
+        have hs0₁0 : TrExprS c.venv c.lparams []
+            (.lam0 q(Nat) <| mkApp2 v.value
+              (mkApp q(Nat.succ) (.bvar 0)) q(Nat.zero))
+            (.lam .nat <| .app (.app value' (.app .natSucc (.bvar 0)))
+              .natZero) := .lam hnat0.2 hnat0.1 hs0Body
+        have h0s₁ : c.TrExprS
+            (.lam0 q(Nat) <| mkApp2 v.value q(Nat.zero)
+              (mkApp q(Nat.succ) (.bvar 0)))
+            (.lam .nat <| .app (.app value' .natZero)
+              (.app .natSucc (.bvar 0))) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]; exact h0s₁0
+        have hs0₁ : c.TrExprS
+            (.lam0 q(Nat) <| mkApp2 v.value
+              (mkApp q(Nat.succ) (.bvar 0)) q(Nat.zero))
+            (.lam .nat <| .app (.app value' (.app .natSucc (.bvar 0)))
+              .natZero) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]; exact hs0₁0
+        have hfalse : c.TrExprS (.lam0 q(Nat) q(false))
+            (.lam .nat .boolFalse) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]; exact hfalseLam
+        have hsx2S : TrExprS c.venv c.lparams Δ2
+            (mkApp q(Nat.succ) (.bvar 0)) (.app .natSucc (.bvar 0)) :=
+          .app hs2.2 hx2T hs2.1 hx2S
+        have hsy2S : TrExprS c.venv c.lparams Δ2
+            (mkApp q(Nat.succ) (.bvar 1)) (.app .natSucc (.bvar 1)) :=
+          .app hs2.2 hy2T hs2.1 hy2S
+        have hsx2T : c.venv.HasType c.lparams.length [.nat, .nat]
+            (.app .natSucc (.bvar 0)) .nat := .app hs2.2 hx2T
+        have hsy2T : c.venv.HasType c.lparams.length [.nat, .nat]
+            (.app .natSucc (.bvar 1)) .nat := .app hs2.2 hy2T
+        have hssLeft : TrExprS c.venv c.lparams Δ2
+            (mkApp2 v.value (mkApp q(Nat.succ) (.bvar 1))
+              (mkApp q(Nat.succ) (.bvar 0)))
+            (.app (.app value' (.app .natSucc (.bvar 1)))
+              (.app .natSucc (.bvar 0))) :=
+          .app (.app hv2T hsy2T) hsx2T
+            (.app hv2T hsy2T hv2 hsy2S) hsx2S
+        have hssRight : TrExprS c.venv c.lparams Δ2
+            (mkApp2 v.value (.bvar 1) (.bvar 0))
+            (.app (.app value' (.bvar 1)) (.bvar 0)) :=
+          .app (.app hv2T hy2T) hx2T
+            (.app hv2T hy2T hv2 hy2S) hx2S
+        have hss₁0 : TrExprS c.venv c.lparams []
+            (.lam0 q(Nat) <| .lam0 q(Nat) <|
+              mkApp2 v.value (mkApp q(Nat.succ) (.bvar 1))
+                (mkApp q(Nat.succ) (.bvar 0)))
+            (.lam .nat <| .lam .nat <|
+              .app (.app value' (.app .natSucc (.bvar 1)))
+                (.app .natSucc (.bvar 0))) :=
+          .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1 hssLeft)
+        have hss₂0 : TrExprS c.venv c.lparams []
+            (.lam0 q(Nat) <| .lam0 q(Nat) <|
+              mkApp2 v.value (.bvar 1) (.bvar 0))
+            (.lam .nat <| .lam .nat <|
+              .app (.app value' (.bvar 1)) (.bvar 0)) :=
+          .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1 hssRight)
+        have hss₁ : c.TrExprS
+            (.lam0 q(Nat) <| .lam0 q(Nat) <|
+              mkApp2 v.value (mkApp q(Nat.succ) (.bvar 1))
+                (mkApp q(Nat.succ) (.bvar 0)))
+            (.lam .nat <| .lam .nat <|
+              .app (.app value' (.app .natSucc (.bvar 1)))
+                (.app .natSucc (.bvar 0))) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]; exact hss₁0
+        have hss₂ : c.TrExprS
+            (.lam0 q(Nat) <| .lam0 q(Nat) <|
+              mkApp2 v.value (.bvar 1) (.bvar 0))
+            (.lam .nat <| .lam .nat <|
+              .app (.app value' (.bvar 1)) (.bvar 0)) := by
+          change TrExprS c.venv c.lparams c.vlctx _ _
+          rw [hvlctx]; exact hss₂0
+        exact (isDefEq.WF h00₁ h00₂).bind fun b00 _ _ h00Eq => by
+          by_cases hb00 : b00 = true
+          · rw [if_pos hb00]
+            have h00 := h00Eq hb00
+            exact (isDefEq.WF h0s₁ hfalse).bind fun b0s _ _ h0sEq => by
+              by_cases hb0s : b0s = true
+              · rw [if_pos hb0s]
+                have h0s := h0sEq hb0s
+                exact (isDefEq.WF hs0₁ hfalse).bind fun bs0 _ _ hs0Eq => by
+                  by_cases hbs0 : bs0 = true
+                  · rw [if_pos hbs0]
+                    have hs0 := hs0Eq hbs0
+                    exact (isDefEq.WF hss₁ hss₂).bind fun bss _ _ hssEq => by
+                      by_cases hbss : bss = true
+                      · rw [if_pos hbss]
+                        have hss := hssEq hbss
+                        change c.venv.IsDefEqU c.lparams.length
+                          c.vlctx.toCtx _ _ at h00 h0s hs0 hss
+                        rw [hvlctx] at h00 h0s hs0 hss
+                        exact .pure fun _ =>
+                          ⟨hlevels, hnat, hbool, htyEq0,
+                            h00, h0s, hs0, hss⟩
+                      · rw [if_neg hbss]; exact .throw
+                  · rw [if_neg hbs0]; exact .throw
+              · rw [if_neg hb0s]; exact .throw
+          · rw [if_neg hb00]; exact .throw
+      · rw [if_neg hb]; exact .throw
   · exact .throw
 
 theorem checkPrimitiveDef.natBEq.WF.conservesHasPrimitives
