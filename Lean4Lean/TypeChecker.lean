@@ -7,15 +7,6 @@ import Lean4Lean.ForEachExprV
 import Lean4Lean.EquivManager
 import Lean4Lean.FuelConfig
 
-/-
-The `Lean4Lean.Verify` proofs about the definitions below are written against the term shape
-the legacy `do` elaborator produces, destructuring with `extract_lets` the join points it
-emits as `let`s. leanprover/lean4#13305 made the new `do` elaborator the default in v4.32.0,
-and it emits `have __do_jp` join points and inlines the `if` chains instead. Pin the legacy
-elaborator here until those proofs are migrated (digama0/lean4lean#31).
--/
-set_option backward.do.legacy true
-
 namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel

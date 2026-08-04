@@ -1,14 +1,5 @@
 import Lean4Lean.Experimental.SExpr
 
-/-
-`Shape.plift` and friends below are written in `Option`-monad `do`/`return` notation, and
-the proofs about them `simp` through the exact term that notation elaborates to.
-leanprover/lean4#13305 made the new `do` elaborator the default in v4.32.0, which reshapes
-those terms. Pin the legacy elaborator here until the proofs are migrated
-(digama0/lean4lean#31).
--/
-set_option backward.do.legacy true
-
 namespace Lean4Lean
 open Lean4Lean
 
@@ -427,15 +418,29 @@ def Shape.plift : ∀ {n m}, Shape n → Shape m × Option (Shape m)
   | 0, _, .sort r | _+1, _, .sort r => (.sort r, some (.sort r))
   | 0, _, .bot | _+1, _, .bot => (.bot, some .bot)
   | _+1, 0, _ => (.bot, none)
-  | _+1, _+1, .forallE s f =>
+  | _+1, m+1, .forallE s f =>
     let (s₀, s₁) := s.plift
     let (f₀, f₁) := ShapeFun.plift plift f
-    (.forallE s₀ f₀, return .forallE (← s₁) (← f₁))
-  | _+1, _+1, .lam f =>
+    (show Shape (m+1) from .forallE s₀ f₀,
+      s₁.bind fun s => f₁.bind fun f => some (show Shape (m+1) from .forallE s f))
+  | _+1, m+1, .lam f =>
     let (f₀, f₁) := ShapeFun.plift plift f
-    (.lam f₀, return .lam (← f₁))
-  | _+1, _+1, .ctor c l => (.ctor c (l.map (·.plift.1)), return .ctor c (← l.mapM (·.plift.2)))
+    (show Shape (m+1) from .lam f₀,
+      f₁.bind fun f => some (show Shape (m+1) from .lam f))
+  | _+1, m+1, .ctor c l =>
+    (show Shape (m+1) from .ctor c (l.map (fun x => (Shape.plift (m := m) x).1)),
+      (l.mapM fun x => (Shape.plift (m := m) x).2).bind fun l =>
+        some (show Shape (m+1) from .ctor c l))
   | _+1, _+1, .indTy => (.indTy, some .indTy)
+
+omit [Params] in
+@[simp] private theorem List.mapM_some (f : α → β) (l : List α) :
+    l.mapM (fun x => some (f x)) = some (l.map f) := by
+  induction l with
+  | nil => rfl
+  | cons a l ih => simp only [List.mapM_cons, ih]; rfl
+
+attribute [local simp] Option.bind_eq_some_iff
 
 omit [Params] in
 theorem Shape.plift_eq_lift (le : n ≤ m) {s : Shape n} :
@@ -447,8 +452,9 @@ theorem Shape.plift_eq_lift (le : n ≤ m) {s : Shape n} :
     · rw [← List.filterMap_eq_map]; rfl
     · rw [List.mapM_eq_some, List.forall₂_map_right_iff]
       exact .rfl fun _ _ => rfl
-  unfold plift; split <;> simp [lift] at le ⊢ <;> simp [plift_eq_lift le, go plift_eq_lift le]
-  · exact ⟨_, List.mapM_pure, rfl⟩
+  unfold plift; split <;> simp [lift] at le ⊢ <;>
+    simp [plift_eq_lift le, go plift_eq_lift le]
+  all_goals rfl
 
 omit [Params] in
 theorem ShapeFun.plift_eq_lift (le : n ≤ m) {s : ShapeFun n} :
@@ -469,7 +475,7 @@ theorem Shape.plift_lift (le : n ≤ m) {s : Shape n} :
   · simp [plift_lift le, go plift_lift le]
   · simp [go plift_lift le]
   · simp [Function.comp_def, plift_lift le]
-    exact ⟨_, List.mapM_pure, List.map_id _ ▸ rfl⟩
+    exact ⟨_, List.mapM_some _ _, congrArg _ (List.map_id _)⟩
 
 omit [Params] in
 @[simp] theorem Shape.bot_plift : (bot (n := n)).plift (m := m) = (bot, some bot) := by
@@ -508,9 +514,15 @@ theorem Shape.plift_plift (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) {s : Shape n₁
   cases n₃ with
   | zero =>
     cases s with simp [plift]
-    | forallE s f => cases s.plift.2 <;> simp; cases (ShapeFun.plift plift f).2 <;> simp [plift]
-    | lam f => cases (ShapeFun.plift plift f).2 <;> simp [plift]
-    | ctor _ l => cases eq: l.mapM (·.plift (m := n₂) |>.2) <;> simp [plift]
+    | forallE s f =>
+      cases s.plift.2 <;> cases (ShapeFun.plift plift f).2 <;>
+        simp only [Option.bind_none, Option.bind_some] <;> rfl
+    | lam f =>
+      cases (ShapeFun.plift plift f).2 <;>
+        simp only [Option.bind_none, Option.bind_some] <;> rfl
+    | ctor _ l =>
+      cases l.mapM (·.plift (m := n₂) |>.2) <;>
+        simp only [Option.bind_none, Option.bind_some] <;> rfl
   | succ n₃
   simp at h1 h2; replace ih {s} := ih (s := s) h1 h2
   let rec go {s : ShapeFun n₁} :
@@ -526,11 +538,11 @@ theorem Shape.plift_plift (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) {s : Shape n₁
     · rw [List.mapM_mapM_option]; congr 1; ext1
       simp [Option.map_eq_bind, Option.bind_assoc, Function.comp_def, ih]
   cases s with simp [plift, ih, go, Function.comp_def, Option.bind_assoc]
-  | forallE => congr 1; ext; rw [Option.bind_comm]
-  | ctor _ l =>
-    rw [← Option.bind_assoc]; congr 1
-    induction l with simp | cons a l ihl
-    simp [Option.bind_assoc, ihl]; congr 1; ext1; rw [Option.bind_comm]
+  | forallE s f =>
+    cases (s.plift (m := n₂)).2 <;> simp
+    rename_i s'
+    cases (ShapeFun.plift (Shape.plift (m := n₂)) f).2 <;> simp
+  | ctor => rw [← List.mapM_mapM_option, Option.bind_assoc]
 
 omit [Params] in
 theorem ShapeFun.plift_plift (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) {s : ShapeFun n₁} :
@@ -642,9 +654,14 @@ def Shape.olift : ∀ {n m}, Shape n → Option (Shape m)
   | 0, _, .sort r | _+1, _, .sort r => some (.sort r)
   | 0, _, .bot | _+1, _, .bot => some .bot
   | _+1, 0, _ => none
-  | _+1, _+1, .forallE s f => return .forallE (← s.olift) (← ShapeFun.olift olift f)
-  | _+1, _+1, .lam f => return .lam (← ShapeFun.olift olift f)
-  | _+1, _+1, .ctor c l => return .ctor c (← l.mapM (·.olift))
+  | _+1, m+1, .forallE s f =>
+    (s.olift (m := m)).bind fun s => (ShapeFun.olift (Shape.olift (m := m)) f).bind fun f =>
+      some (show Shape (m+1) from .forallE s f)
+  | _+1, m+1, .lam f =>
+    (ShapeFun.olift (Shape.olift (m := m)) f).bind fun f => some (show Shape (m+1) from .lam f)
+  | _+1, m+1, .ctor c l =>
+    (l.mapM fun x => Shape.olift (m := m) x).bind fun l =>
+      some (show Shape (m+1) from .ctor c l)
   | _+1, _+1, .indTy => some .indTy
 
 omit [Params] in
@@ -656,8 +673,9 @@ theorem Shape.olift_eq_lift (le : n ≤ m) {s : Shape n} :
     simp only [ShapeFun.olift, ShapeFun.lift, IH le]
     rw [List.mapM_eq_some, List.forall₂_map_right_iff]
     exact .rfl fun _ _ => rfl
-  unfold olift; split <;> simp [lift] at le ⊢ <;> simp [olift_eq_lift le, go olift_eq_lift le]
-  · exact ⟨_, List.mapM_pure, rfl⟩
+  unfold olift; split <;> simp [lift] at le ⊢ <;>
+    simp [olift_eq_lift le, go olift_eq_lift le]
+  all_goals rfl
 
 omit [Params] in
 theorem ShapeFun.olift_eq_lift (le : n ≤ m) {s : ShapeFun n} :
