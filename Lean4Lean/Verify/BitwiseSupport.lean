@@ -561,4 +561,201 @@ theorem VEnv.instantiate_bitwise_lam4_equation {env : VEnv}
           hopL hopR hfT haT hbT hfL hfR haL haR hbL hbR
           hbodyL hbodyR hfinal
 
+/-- Weaken a closed translation under the four bitwise equation binders. -/
+theorem bitwise_weak4
+    {env : VEnv} (wf : env.WF) {src : Expr}
+    {closedV funTy natTy₁ natTy₂ proofTy : VExpr}
+    (hS : TrExprS env [] [] src closedV) :
+    TrExprS env []
+      [(none, .vlam proofTy), (none, .vlam natTy₂),
+        (none, .vlam natTy₁), (none, .vlam funTy)] src
+      (closedV.liftN 4) := by
+  have hlift : src.liftLooseBVars' 0 4 = src :=
+    Expr.liftLooseBVars_eq_self hS.closed.looseBVarRange_le
+  simpa [VLocalDecl.depth, hlift] using hS.weakBV wf.ordered
+    (.skip (.vlam proofTy) <| .skip (.vlam natTy₂) <|
+      .skip (.vlam natTy₁) <| .skip (.vlam funTy) <|
+        (.refl : VLCtx.BVLift [] [] 0 0 0 0))
+
+/-- Weaken a closed translation under the five successor-equation binders. -/
+theorem bitwise_weak5
+    {env : VEnv} (wf : env.WF) {src : Expr}
+    {closedV funTy natTy₁ natTy₂ natTy₃ proofTy : VExpr}
+    (hS : TrExprS env [] [] src closedV) :
+    TrExprS env []
+      [(none, .vlam proofTy), (none, .vlam natTy₃),
+        (none, .vlam natTy₂), (none, .vlam natTy₁),
+        (none, .vlam funTy)] src
+      (closedV.liftN 5) := by
+  have hlift : src.liftLooseBVars' 0 5 = src :=
+    Expr.liftLooseBVars_eq_self hS.closed.looseBVarRange_le
+  simpa [VLocalDecl.depth, hlift] using hS.weakBV wf.ordered
+    (.skip (.vlam proofTy) <| .skip (.vlam natTy₃) <|
+      .skip (.vlam natTy₂) <| .skip (.vlam natTy₁) <|
+        .skip (.vlam funTy) <|
+          (.refl : VLCtx.BVLift [] [] 0 0 0 0))
+
+/-- Instantiate a local occurrence of a closed expression under the three
+semantic bitwise binders, discarding the vanishing instantiations on the
+closed side. -/
+theorem bitwise_local_closed_eq
+    {env : VEnv} (wf : env.WF)
+    {funTy natTy₁ natTy₂ proofTy op localV closedV : VExpr} {n₁ n₂ : Nat}
+    (hop : env.HasType 0 [] op funTy)
+    (h₁ : env.HasType 0 [] (.natLit n₁) (natTy₁.inst op))
+    (h₂ : env.HasType 0 [] (.natLit n₂)
+      ((natTy₂.inst op 1).inst (.natLit n₁)))
+    (hclosed : closedV.ClosedN)
+    (hctxEq : env.IsDefEqU 0 [proofTy, natTy₂, natTy₁, funTy]
+      localV (closedV.liftN 4)) :
+    env.IsDefEqU 0
+      [((proofTy.inst op 2).inst (.natLit n₁) 1).inst (.natLit n₂)]
+      (((localV.inst op 3).inst (.natLit n₁) 2).inst (.natLit n₂) 1)
+      closedV := by
+  simpa [hclosed.liftN_eq (Nat.zero_le _),
+    hclosed.instN_eq (Nat.zero_le _)] using
+    VEnv.IsDefEqU.inst_bitwise_outer3 wf hop h₁ h₂ hctxEq
+
+/-- Instantiate a local occurrence of a closed expression under the four
+semantic successor-equation binders, discarding the vanishing
+instantiations on the closed side. -/
+theorem bitwise_local_closed_eq4
+    {env : VEnv} (wf : env.WF)
+    {funTy natTy₁ natTy₂ natTy₃ proofTy op localV closedV : VExpr}
+    {fuel a b : Nat}
+    (hop : env.HasType 0 [] op funTy)
+    (hf : env.HasType 0 [] (.natLit fuel) (natTy₁.inst op))
+    (ha : env.HasType 0 [] (.natLit a)
+      ((natTy₂.inst op 1).inst (.natLit fuel)))
+    (hb : env.HasType 0 [] (.natLit b)
+      (((natTy₃.inst op 2).inst (.natLit fuel) 1).inst (.natLit a)))
+    (hclosed : closedV.ClosedN)
+    (hctxEq : env.IsDefEqU 0 [proofTy, natTy₃, natTy₂, natTy₁, funTy]
+      localV (closedV.liftN 5)) :
+    env.IsDefEqU 0
+      [(((proofTy.inst op 3).inst (.natLit fuel) 2).inst
+        (.natLit a) 1).inst (.natLit b)]
+      ((((localV.inst op 4).inst (.natLit fuel) 3).inst
+        (.natLit a) 2).inst (.natLit b) 1)
+      closedV := by
+  simpa [hclosed.liftN_eq (Nat.zero_le _),
+    hclosed.instN_eq (Nat.zero_le _)] using
+    VEnv.IsDefEqU.inst_bitwise_outer4 wf hop hf ha hb hctxEq
+
+/-- Substitute the four semantic successor-equation binders and the
+dependent proof value, discharging the local context completely. -/
+theorem bitwise_root_eq {env : VEnv} (wf : env.WF)
+    {funTy natTy₁ natTy₂ natTy₃ proofTy op hpV x y : VExpr}
+    {fuel a b : Nat}
+    (hop : env.HasType 0 [] op funTy)
+    (hf : env.HasType 0 [] (.natLit fuel) (natTy₁.inst op))
+    (ha : env.HasType 0 [] (.natLit a)
+      ((natTy₂.inst op 1).inst (.natLit fuel)))
+    (hb : env.HasType 0 [] (.natLit b)
+      (((natTy₃.inst op 2).inst (.natLit fuel) 1).inst (.natLit a)))
+    (hp : env.HasType 0 [] hpV
+      ((((proofTy.inst op 3).inst (.natLit fuel) 2).inst
+        (.natLit a) 1).inst (.natLit b)))
+    (h : env.IsDefEqU 0 [proofTy, natTy₃, natTy₂, natTy₁, funTy] x y) :
+    env.IsDefEqU 0 []
+      (((((x.inst op 4).inst (.natLit fuel) 3).inst
+        (.natLit a) 2).inst (.natLit b) 1).inst hpV)
+      (((((y.inst op 4).inst (.natLit fuel) 3).inst
+        (.natLit a) 2).inst (.natLit b) 1).inst hpV) :=
+  (VEnv.IsDefEqU.inst_bitwise_outer4 wf hop hf ha hb h).instN wf.ordered
+    (.zero : Ctx.InstN [] hpV
+      ((((proofTy.inst op 3).inst (.natLit fuel) 2).inst
+        (.natLit a) 1).inst (.natLit b)) 0
+      [(((proofTy.inst op 3).inst (.natLit fuel) 2).inst
+        (.natLit a) 1).inst (.natLit b)] []) hp
+
+/-- `bitwise_root_eq` against a weakened closed expression, discarding the
+vanishing instantiations on the closed side. -/
+theorem bitwise_root_closed_eq {env : VEnv} (wf : env.WF)
+    {funTy natTy₁ natTy₂ natTy₃ proofTy op hpV localV closedV : VExpr}
+    {fuel a b : Nat}
+    (hop : env.HasType 0 [] op funTy)
+    (hf : env.HasType 0 [] (.natLit fuel) (natTy₁.inst op))
+    (ha : env.HasType 0 [] (.natLit a)
+      ((natTy₂.inst op 1).inst (.natLit fuel)))
+    (hb : env.HasType 0 [] (.natLit b)
+      (((natTy₃.inst op 2).inst (.natLit fuel) 1).inst (.natLit a)))
+    (hp : env.HasType 0 [] hpV
+      ((((proofTy.inst op 3).inst (.natLit fuel) 2).inst
+        (.natLit a) 1).inst (.natLit b)))
+    (hclosed : closedV.ClosedN)
+    (hctxEq : env.IsDefEqU 0 [proofTy, natTy₃, natTy₂, natTy₁, funTy]
+      localV (closedV.liftN 5)) :
+    env.IsDefEqU 0 []
+      (((((localV.inst op 4).inst (.natLit fuel) 3).inst
+        (.natLit a) 2).inst (.natLit b) 1).inst hpV)
+      closedV := by
+  simpa [hclosed.liftN_eq (Nat.zero_le _),
+    hclosed.instN_eq (Nat.zero_le _)] using
+    bitwise_root_eq wf hop hf ha hb hp hctxEq
+
+/-- Evaluate a fully decomposed `boolNatITE` structure against reflected
+condition and branch values. -/
+theorem bitwise_struct_eval
+    {env : VEnv} (wf : env.WF)
+    {e iteV iteFinal condFinal thenFinal zeroFinal A : VExpr}
+    {c : Bool} {t z : Nat}
+    (hite : env.ReflectsBoolNatITE iteV)
+    (heT : env.HasType 0 [] e A)
+    (he : env.IsDefEqU 0 [] e
+      (.app (.app (.app iteFinal condFinal) thenFinal) zeroFinal))
+    (hiteEq : env.IsDefEqU 0 [] iteFinal iteV)
+    (hcond : env.IsDefEqU 0 [] condFinal (.boolLit c))
+    (hthen : env.IsDefEqU 0 [] thenFinal (.natLit t))
+    (hzeroEq : env.IsDefEqU 0 [] zeroFinal (.natLit z)) :
+    env.IsDefEqU 0 [] e (.natLit (if c then t else z)) := by
+  have hstructT := (he.of_l wf trivial heT).hasType.2
+  obtain ⟨_, _, hTwoT, hzT⟩ := hstructT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hOneT, hthenT⟩ := hTwoT.app_inv wf.ordered trivial
+  obtain ⟨_, _, hiteT, hcondT⟩ := hOneT.app_inv wf.ordered trivial
+  have h₁ := hiteEq.app_both wf trivial hcond hiteT hcondT
+  have h₂ := h₁.app_both wf trivial hthen hOneT hthenT
+  have h₃ := h₂.app_both wf trivial hzeroEq hTwoT hzT
+  exact he.trans wf trivial (h₃.trans wf trivial (hite.2 c t z))
+
+/-- Canonical translation and typing of a `g (Nat.succ x) 2` call for a
+reflected binary `Nat` primitive, from a translated `Nat`-typed argument.
+The successor-transition semantics uses this for its `Nat.mod` bit tests
+and its `Nat.div` recursion arguments. -/
+theorem VEnv.ReflectsNatNatNat.succ_two_canonS
+    {env : VEnv} (wf : env.WF)
+    (hctors : Lean4Lean.Environment.VEnv.HasNatBoolConstructors env)
+    {g : Name} {G : Nat → Nat → Nat}
+    (hg : env.ReflectsNatNatNat g G) (hgC : env.contains g)
+    {Δ : VLCtx} {x : Expr} {x' : VExpr}
+    (hx : TrExprS env [] Δ x x')
+    (hxT : env.HasType 0 Δ.toCtx x' .nat) :
+    TrExprS env [] Δ
+      (mkApp2 (.const g []) (mkApp q(Nat.succ) x)
+        (mkApp q(Nat.succ) (mkApp q(Nat.succ) q(Nat.zero))))
+      (.app (.app (.const g []) (.app .natSucc x')) (.natLit 2)) ∧
+    env.HasType 0 Δ.toCtx
+      (.app (.app (.const g []) (.app .natSucc x')) (.natLit 2)) .nat := by
+  have ⟨hgT, _⟩ := hg hgC
+  obtain ⟨_, hgCi, _, hgLen⟩ := (hgT 0 []).const_inv wf trivial
+  have hgS : TrExprS env [] Δ (.const g []) (.const g []) :=
+    .const hgCi rfl (by simpa using hgLen)
+  have hsuccS := (hctors.natSuccS (Us := []) (Δ := Δ)).1
+  have hsuccT := (hctors.natSuccS (Us := []) (Δ := Δ)).2
+  have hzeroS := (hctors.natZeroS (Us := []) (Δ := Δ)).1
+  have hzeroT := (hctors.natZeroS (Us := []) (Δ := Δ)).2
+  have hsxS : TrExprS env [] Δ (mkApp q(Nat.succ) x)
+      (.app .natSucc x') := .app hsuccT hxT hsuccS hx
+  have hsxT := VEnv.HasType.app hsuccT hxT
+  have honeS : TrExprS env [] Δ (mkApp q(Nat.succ) q(Nat.zero))
+      (.natLit 1) := .app hsuccT hzeroT hsuccS hzeroS
+  have htwoS : TrExprS env [] Δ
+      (mkApp q(Nat.succ) (mkApp q(Nat.succ) q(Nat.zero)))
+      (.natLit 2) :=
+    .app hsuccT (VEnv.HasType.app hsuccT hzeroT) hsuccS honeS
+  have htwoT := (hctors.natLitS 2 (Us := []) (Δ := Δ)).2
+  exact ⟨.app (VEnv.HasType.app (hgT 0 Δ.toCtx) hsxT) htwoT
+      (.app (hgT 0 Δ.toCtx) hsxT hgS hsxS) htwoS,
+    .app (.app (hgT 0 Δ.toCtx) hsxT) htwoT⟩
+
 end Lean4Lean.Environment

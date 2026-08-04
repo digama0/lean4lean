@@ -3,67 +3,6 @@ import Lean4Lean.Verify.BitwiseSupport
 namespace Lean4Lean.Environment
 open Lean VEnv
 
-/-- Weaken a closed translation under the four bitwise equation binders. -/
-private theorem bitwise_weak4
-    {env : VEnv} (wf : env.WF) {src : Expr}
-    {closedV funTy natTy₁ natTy₂ proofTy : VExpr}
-    (hS : TrExprS env [] [] src closedV) :
-    TrExprS env []
-      [(none, .vlam proofTy), (none, .vlam natTy₂),
-        (none, .vlam natTy₁), (none, .vlam funTy)] src
-      (closedV.liftN 4) := by
-  have hlift : src.liftLooseBVars' 0 4 = src :=
-    Expr.liftLooseBVars_eq_self hS.closed.looseBVarRange_le
-  simpa [VLocalDecl.depth, hlift] using hS.weakBV wf.ordered
-    (.skip (.vlam proofTy) <| .skip (.vlam natTy₂) <|
-      .skip (.vlam natTy₁) <| .skip (.vlam funTy) <|
-        (.refl : VLCtx.BVLift [] [] 0 0 0 0))
-
-/-- Instantiate a local occurrence of a closed expression under the three
-semantic bitwise binders, discarding the vanishing instantiations on the
-closed side. -/
-private theorem bitwise_local_closed_eq
-    {env : VEnv} (wf : env.WF)
-    {funTy natTy₁ natTy₂ proofTy op localV closedV : VExpr} {n₁ n₂ : Nat}
-    (hop : env.HasType 0 [] op funTy)
-    (h₁ : env.HasType 0 [] (.natLit n₁) (natTy₁.inst op))
-    (h₂ : env.HasType 0 [] (.natLit n₂)
-      ((natTy₂.inst op 1).inst (.natLit n₁)))
-    (hclosed : closedV.ClosedN)
-    (hctxEq : env.IsDefEqU 0 [proofTy, natTy₂, natTy₁, funTy]
-      localV (closedV.liftN 4)) :
-    env.IsDefEqU 0
-      [((proofTy.inst op 2).inst (.natLit n₁) 1).inst (.natLit n₂)]
-      (((localV.inst op 3).inst (.natLit n₁) 2).inst (.natLit n₂) 1)
-      closedV := by
-  simpa [hclosed.liftN_eq (Nat.zero_le _),
-    hclosed.instN_eq (Nat.zero_le _)] using
-    VEnv.IsDefEqU.inst_bitwise_outer3 wf hop h₁ h₂ hctxEq
-
-/-- Evaluate a fully decomposed `boolNatITE` structure against reflected
-condition and branch values. -/
-private theorem bitwise_struct_eval
-    {env : VEnv} (wf : env.WF)
-    {e iteV iteFinal condFinal thenFinal zeroFinal A : VExpr}
-    {c : Bool} {t z : Nat}
-    (hite : env.ReflectsBoolNatITE iteV)
-    (heT : env.HasType 0 [] e A)
-    (he : env.IsDefEqU 0 [] e
-      (.app (.app (.app iteFinal condFinal) thenFinal) zeroFinal))
-    (hiteEq : env.IsDefEqU 0 [] iteFinal iteV)
-    (hcond : env.IsDefEqU 0 [] condFinal (.boolLit c))
-    (hthen : env.IsDefEqU 0 [] thenFinal (.natLit t))
-    (hzeroEq : env.IsDefEqU 0 [] zeroFinal (.natLit z)) :
-    env.IsDefEqU 0 [] e (.natLit (if c then t else z)) := by
-  have hstructT := (he.of_l wf trivial heT).hasType.2
-  obtain ⟨_, _, hTwoT, hzT⟩ := hstructT.app_inv wf.ordered trivial
-  obtain ⟨_, _, hOneT, hthenT⟩ := hTwoT.app_inv wf.ordered trivial
-  obtain ⟨_, _, hiteT, hcondT⟩ := hOneT.app_inv wf.ordered trivial
-  have h₁ := hiteEq.app_both wf trivial hcond hiteT hcondT
-  have h₂ := h₁.app_both wf trivial hthen hOneT hthenT
-  have h₃ := h₂.app_both wf trivial hzeroEq hTwoT hzT
-  exact he.trans wf trivial (h₃.trans wf trivial (hite.2 c t z))
-
 set_option linter.unusedSimpArgs false in
 theorem NatBitwiseFixCertificate.zero_semantics {env : VEnv}
     (wf : env.WF)
