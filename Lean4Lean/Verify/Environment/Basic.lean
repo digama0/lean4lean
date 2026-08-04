@@ -1,15 +1,10 @@
+import Lean4Lean.Declaration
 import Lean4Lean.Verify.LocalContext
 import Lean4Lean.Theory.Typing.EnvLemmas
 
 namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
-
-theorem ConstantInfo.hasValue_eq (ci : ConstantInfo) : ci.hasValue = ci.value?.isSome := by
-  cases ci <;> rfl
-
-theorem ConstantInfo.value!_eq (ci : ConstantInfo) : ci.value! = ci.value?.get! := by
-  cases ci <;> simp [ConstantInfo.value?, ConstantInfo.value!]
 
 def _root_.Lean.ConstantInfo.safety (ci : ConstantInfo) : DefinitionSafety :=
   if ci.isUnsafe then .unsafe else if ci.isPartial then .partial else .safe
@@ -26,11 +21,11 @@ def TrConstVal (ci : ConstantInfo) (ci' : VConstVal) : Prop :=
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrDefVal (ci : ConstantInfo) (ci' : VDefVal) : Prop :=
   TrConstVal safety env ci ci'.toVConstVal ∧
-  TrExprS env ci.levelParams [] ci.value! ci'.value
+  TrExprS env ci.levelParams [] ci.deltaValue?.get! ci'.value
 
 variable (safety : DefinitionSafety) (env : VEnv) in
-def TrThmVal (ci : TheoremVal) (ci' : VDefVal) : Prop :=
-  TrConstVal safety env (.thmInfo ci) ci'.toVConstVal ∧
+def TrOpaqueVal (ci : OpaqueVal) (ci' : VDefVal) : Prop :=
+  TrConstVal safety env (.opaqueInfo ci) ci'.toVConstVal ∧
   TrExprS env ci.levelParams [] ci.value ci'.value
 
 def AddQuot1 (name : Name) (kind : QuotKind) (ci' : VConstant) (P : ConstMap → VEnv → Prop)
@@ -80,11 +75,27 @@ nonrec theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
   nomatch H
 
+def ConstMap.addMutualDefinitions (C : ConstMap) (vs : List DefinitionVal) : ConstMap :=
+  vs.foldl (fun C v => C.insert v.name (.defnInfo v)) C
+
+def mutualOpaqueHeader (v : DefinitionVal) : OpaqueVal := {
+  v.toConstantVal with
+  value := v.value
+  isUnsafe := v.safety == .unsafe
+  all := v.all }
+
+def ConstMap.addMutualOpaqueHeaders (C : ConstMap) (vs : List DefinitionVal) : ConstMap :=
+  vs.foldl (fun C v => C.insert v.name (.opaqueInfo (mutualOpaqueHeader v))) C
+
+def ConstMap.MutualFresh (C : ConstMap) (vs : List DefinitionVal) : Prop :=
+  (∀ v ∈ vs, C.find? v.name = none) ∧ (vs.map (fun v => v.name)).Nodup
+
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | empty : TrEnv' {} false .empty
-  | ignore :
-    C.find? ci.name = none → ¬safety ≤ ci.safety →
+  | block :
+    C.find? ci.name = none →
+    ¬safety ≤ ci.safety →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name ci) Q env
   | axiom :
@@ -99,21 +110,46 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
-  | thm {ci' : VDefVal} :
-    TrThmVal safety env ci ci' →
+  | theorem {ci' : VDefVal} :
+    TrDefVal safety env (.thmInfo ci) ci' →
     C.find? ci.name = none → ci'.WF env →
-    env.HasType ci'.uvars [] ci'.type (.sort .zero) →
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
-    TrEnv' (C.insert ci.name (.thmInfo ci)) Q env'
-  /-- Opaque bodies do not contribute definitional equalities, so `TrEnv'` retains only
-  the checked header. Soundness of the opaque-body checker is not represented here. -/
-  | opaque {ci' : VConstVal} :
-    TrConstVal safety env (.opaqueInfo ci) ci' →
+    TrEnv' (C.insert ci.name (.thmInfo ci)) Q (env'.addDefEq ci'.toDefEq)
+  | unsafeDefn {ci' : VDefVal} :
+    TrConstVal safety env (.defnInfo ci) ci'.toVConstVal →
     C.find? ci.name = none → ci'.toVConstant.WF env →
+    env.addConst ci.name ci'.toVConstant = some env' →
+    TrExprS env' ci.levelParams [] ci.value ci'.value →
+    ci'.WF env' →
+    TrEnv' C Q env →
+    TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
+  | opaque {ci' : VDefVal} :
+    TrOpaqueVal safety env ci ci' →
+    C.find? ci.name = none → ci'.WF env →
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.opaqueInfo ci)) Q env'
+  | mutual :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety env (.defnInfo v) v'.toVConstVal) vs vs' →
+    ConstMap.MutualFresh C vs →
+    (∀ v' ∈ vs', v'.toVConstant.WF env) →
+    env.addMutualHeaders vs' = some headers →
+    (∀ v' ∈ vs', headers.constants v'.name = some v'.toVConstant) →
+    List.Forall₂ (fun v v' =>
+      TrExprS headers v.levelParams [] v.value v'.value) vs vs' →
+    (∀ v' ∈ vs', v'.WF headers) →
+    TrEnv' C Q env →
+    TrEnv' (ConstMap.addMutualDefinitions C vs) Q (headers.addMutualDefEqs vs')
+  | mutualCheck :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety env (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs' →
+    ConstMap.MutualFresh C vs →
+    (∀ v' ∈ vs', v'.toVConstant.WF env) →
+    env.addMutualHeaders vs' = some headers →
+    TrEnv' C Q env →
+    TrEnv' (ConstMap.addMutualOpaqueHeaders C vs) Q headers
   | quot :
     env.QuotReady →
     AddQuot C C' env env' →
@@ -128,10 +164,33 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
   TrEnv' safety env.constants env.quotInit venv
 
+private theorem VEnv.WF.addMutualHeaders
+    {env headers : VEnv} {vs' : List VDefVal}
+    (H : env.WF)
+    (htypes : ∀ v' ∈ vs', v'.toVConstant.WF env)
+    (hadd : env.addMutualHeaders vs' = some headers) : headers.WF := by
+  obtain ⟨ds, H⟩ := H
+  induction vs' generalizing env headers ds with
+  | nil =>
+    simp [VEnv.addMutualHeaders] at hadd
+    subst headers
+    exact ⟨ds, H⟩
+  | cons v vs ih =>
+    cases hhead : env.addConst v.name v.toVConstant with
+    | none => simp [VEnv.addMutualHeaders, hhead] at hadd
+    | some next =>
+      simp [VEnv.addMutualHeaders, hhead] at hadd
+      apply ih (env := next) (ds := .axiom v.toVConstVal :: ds) ?_ hadd
+      · exact .decl (.axiom (htypes v (by simp)) hhead) H
+      · intro w hw
+        exact (htypes w (by simp [hw])).mono (VEnv.addConst_le hhead)
+
 theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   induction H with
   | empty => exact ⟨_, .empty⟩
-  | ignore _ _ _ ih => exact ih
+  | @block _ _ _ ci _ _ _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.decl (VDecl.WF.block (n := ci.name))⟩
   | «axiom» _ _ h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .axiom (ci := ⟨_, _⟩) h1 h2⟩
@@ -139,18 +198,24 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .def h2 (this ▸ h3)⟩
-  | thm h1 _ h2 h3 h4 _ ih =>
+  | «theorem» h1 _ h2 h3 _ ih =>
     have ⟨_, H⟩ := ih
-    have hn := h1.1.2
-    dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at hn
-    exact ⟨_, (H.decl (.example h2)).decl (.axiom ⟨_, h3⟩ (hn ▸ h4))⟩
-  | «opaque» h1 _ h2 h3 _ ih =>
+    have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
+    exact ⟨_, H.decl <| .def h2 (this ▸ h3)⟩
+  | unsafeDefn h1 _ h2 h3 _ h4 _ ih =>
     have ⟨_, H⟩ := ih
     have := h1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
-    exact ⟨_, H.decl <| .axiom h2 (this ▸ h3)⟩
+    exact ⟨_, H.decl <| .unsafeDef h2 (this ▸ h3) h4⟩
+  | «opaque» h1 _ h2 h3 _ ih =>
+    have ⟨_, H⟩ := ih
+    have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
+    exact ⟨_, H.decl <| .opaque h2 (this ▸ h3)⟩
+  | «mutual» _ _ htypes hadd hcontains _ hbodies _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.decl <| .mutual htypes hadd hcontains hbodies⟩
+  | mutualCheck _ _ htypes hadd _ ih =>
+    exact ih.addMutualHeaders htypes hadd
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩
-  | induct h1 h2 _ ih =>
-    have ⟨_, H⟩ := ih
-    exact ⟨_, H.decl <| .induct h1 h2.to_addInduct⟩
+  | induct _ h _ _ => exact nomatch h

@@ -1,4 +1,5 @@
 import Lean4Lean.Theory.Typing.Basic
+import Lean4Lean.Theory.Typing.Env
 import Lean4Lean.Verify.NameGenerator
 import Lean4Lean.Verify.VLCtx
 import Lean4Lean.Verify.Axioms
@@ -112,12 +113,29 @@ def VExpr.boolLit : Bool → VExpr
   | .false => .boolFalse
   | .true => .boolTrue
 
+@[simp] theorem VExpr.boolLit_false : VExpr.boolLit false = .boolFalse := rfl
+@[simp] theorem VExpr.boolLit_true : VExpr.boolLit true = .boolTrue := rfl
+@[simp] theorem VExpr.inst_boolTrue : VExpr.boolTrue.inst e k = .boolTrue := rfl
+@[simp] theorem VExpr.inst_boolFalse : VExpr.boolFalse.inst e k = .boolFalse := rfl
+
 def VExpr.nat : VExpr := .const ``Nat []
 def VExpr.natZero : VExpr := .const ``Nat.zero []
 def VExpr.natSucc : VExpr := .const ``Nat.succ []
 def VExpr.natLit : Nat → VExpr
   | 0 => .natZero
   | n+1 => .app .natSucc (.natLit n)
+
+@[simp] theorem VExpr.natLit_zero : VExpr.natLit 0 = .natZero := rfl
+@[simp] theorem VExpr.inst_nat : VExpr.nat.inst e k = .nat := rfl
+@[simp] theorem VExpr.inst_natZero : VExpr.natZero.inst e k = .natZero := rfl
+@[simp] theorem VExpr.inst_natSucc : VExpr.natSucc.inst e k = .natSucc := rfl
+@[simp] theorem VExpr.inst_natLit : (VExpr.natLit n).inst e k = .natLit n := by
+  induction n <;> simp [VExpr.natLit, VExpr.inst, *]
+@[simp] theorem VExpr.liftN_nat : VExpr.nat.liftN n k = .nat := rfl
+@[simp] theorem VExpr.liftN_natZero : VExpr.natZero.liftN n k = .natZero := rfl
+@[simp] theorem VExpr.liftN_natSucc : VExpr.natSucc.liftN n k = .natSucc := rfl
+@[simp] theorem VExpr.liftN_natLit : (VExpr.natLit m).liftN n k = .natLit m := by
+  induction m <;> simp [VExpr.natLit, VExpr.liftN, *]
 
 def VExpr.char : VExpr := .const ``Char []
 def VExpr.string : VExpr := .const ``String []
@@ -136,20 +154,54 @@ def VExpr.trLiteral : Literal → VExpr
 
 def VEnv.ReflectsNatNatNat (env : VEnv) (fc : Name) (f : Nat → Nat → Nat) :=
   env.contains fc →
-  ∀ a b, env.IsDefEqU 0 [] (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.natLit (f a b))
+  (∀ U Γ, env.HasType U Γ (.const fc [])
+    (.forallE .nat <| .forallE .nat .nat)) ∧
+  ∀ a b, env.IsDefEqU 0 []
+    (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.natLit (f a b))
+
+def VEnv.ReflectsNatNat (env : VEnv) (fc : Name) (f : Nat → Nat) :=
+  env.contains fc →
+  (∀ U Γ, env.HasType U Γ (.const fc []) (.forallE .nat .nat)) ∧
+  ∀ a, env.IsDefEqU 0 [] (.app (.const fc []) (.natLit a)) (.natLit (f a))
 
 def VEnv.ReflectsNatNatBool (env : VEnv) (fc : Name) (f : Nat → Nat → Bool) :=
   env.contains fc →
-  ∀ a b, env.IsDefEqU 0 [] (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.boolLit (f a b))
+  (∀ U Γ, env.HasType U Γ (.const fc [])
+    (.forallE .nat <| .forallE .nat .bool)) ∧
+  ∀ a b, env.IsDefEqU 0 []
+    (.app (.app (.const fc []) (.natLit a)) (.natLit b)) (.boolLit (f a b))
+
+def VEnv.ReflectsBoolBin (env : VEnv) (op : VExpr) (f : Bool → Bool → Bool) :=
+  env.HasType 0 [] op (.forallE .bool <| .forallE .bool .bool) ∧
+  ∀ a b, env.IsDefEqU 0 []
+    (.app (.app op (.boolLit a)) (.boolLit b)) (.boolLit (f a b))
+
+/-- A Kripke-style semantic certificate for `Nat.bitwise`. Quantifying over
+future environment extensions is what makes this intermediate primitive fact
+stable while the specialized operations (`land`, `lor`, and `xor`) are added. -/
+def VEnv.ReflectsNatBitwise (env : VEnv) (fc : Name) :=
+  env.contains fc →
+  (∀ U Γ, env.HasType U Γ (.const fc [])
+    (.forallE (.forallE .bool <| .forallE .bool .bool) <|
+      .forallE .nat <| .forallE .nat .nat)) ∧
+  ∀ env', env ≤ env' → env'.WF → ∀ op f, env'.ReflectsBoolBin op f → ∀ a b,
+    env'.IsDefEqU 0 []
+      (.app (.app (.app (.const fc []) op) (.natLit a)) (.natLit b))
+      (.natLit (Nat.bitwise f a b))
 
 structure VEnv.HasPrimitives (env : VEnv) : Prop where
   bool : env.contains ``Bool → env.contains ``Bool.false ∧ env.contains ``Bool.true
+  boolType : env.constants ``Bool = some ci →
+    ci = { uvars := 0, type := .sort (.succ .zero) }
   boolFalse : env.constants ``Bool.false = some ci → ci = { uvars := 0, type := .bool }
   boolTrue : env.constants ``Bool.true = some ci → ci = { uvars := 0, type := .bool }
   nat : env.contains ``Nat → env.contains ``Nat.zero ∧ env.contains ``Nat.succ
+  natType : env.constants ``Nat = some ci →
+    ci = { uvars := 0, type := .sort (.succ .zero) }
   natZero : env.constants ``Nat.zero = some ci → ci = { uvars := 0, type := .nat }
   natSucc : env.constants ``Nat.succ = some ci →
     ci = { uvars := 0, type := .forallE .nat .nat }
+  natPred : env.ReflectsNatNat ``Nat.pred Nat.pred
   natAdd : env.ReflectsNatNatNat ``Nat.add Nat.add
   natSub : env.ReflectsNatNatNat ``Nat.sub Nat.sub
   natMul : env.ReflectsNatNatNat ``Nat.mul Nat.mul
@@ -159,14 +211,17 @@ structure VEnv.HasPrimitives (env : VEnv) : Prop where
   natDiv : env.ReflectsNatNatNat ``Nat.div Nat.div
   natBEq : env.ReflectsNatNatBool ``Nat.beq Nat.beq
   natBLE : env.ReflectsNatNatBool ``Nat.ble Nat.ble
+  natBitwise : env.ReflectsNatBitwise ``Nat.bitwise
   natLAnd : env.ReflectsNatNatNat ``Nat.land Nat.land
   natLOr : env.ReflectsNatNatNat ``Nat.lor Nat.lor
   natXor : env.ReflectsNatNatNat ``Nat.xor Nat.xor
   natShiftLeft : env.ReflectsNatNatNat ``Nat.shiftLeft Nat.shiftLeft
   natShiftRight : env.ReflectsNatNatNat ``Nat.shiftRight Nat.shiftRight
   charOfNat : env.constants ``Char.ofNat = some ci →
-    ci = { uvars := 0, type := .forallE .nat .char }
+    ci.uvars = 0 ∧ ∀ U Γ,
+      env.HasType U Γ .charOfNat (.forallE .nat .char)
   stringOfList : env.constants ``String.ofList = some ci →
-    ci = { uvars := 0, type := .forallE .listChar .string } ∧
+    ci.uvars = 0 ∧
+    (∀ U Γ, env.HasType U Γ .stringOfList (.forallE .listChar .string)) ∧
     env.HasType 0 [] .listCharNil .listChar ∧
     env.HasType 0 [] .listCharCons (.forallE .char <| .forallE .listChar .listChar)

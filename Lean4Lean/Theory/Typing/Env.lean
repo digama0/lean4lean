@@ -8,6 +8,8 @@ namespace Lean4Lean
 def VDefVal.WF (env : VEnv) (ci : VDefVal) : Prop := env.HasType ci.uvars [] ci.value ci.type
 
 inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
+  | block :
+    VDecl.WF env (.block n) env
   | axiom :
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
@@ -16,10 +18,23 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
     VDecl.WF env (.def ci) (env'.addDefEq ci.toDefEq)
+  /-- Unsafe definitions may be recursive: their header is checked before the
+  constant is added, and their body is checked in the extended environment. -/
+  | unsafeDef :
+    ci.toVConstant.WF env →
+    env.addConst ci.name ci.toVConstant = some env' →
+    ci.WF env' →
+    VDecl.WF env (.def ci) (env'.addDefEq ci.toDefEq)
   | opaque :
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
     VDecl.WF env (.opaque ci) env'
+  | mutual :
+    (∀ ci ∈ cis, ci.toVConstant.WF env) →
+    env.addMutualHeaders cis = some headers →
+    (∀ ci ∈ cis, headers.constants ci.name = some ci.toVConstant) →
+    (∀ ci ∈ cis, ci.WF headers) →
+    VDecl.WF env (.mutual cis) (headers.addMutualDefEqs cis)
   | example :
     ci.WF env →
     VDecl.WF env (.example ci) env
