@@ -692,8 +692,8 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   | .const tf tl, .const sf sl =>
     if tf == sf && Level.isEquivList tl sl then return true
   | .fvar tv, .fvar sv => if tv == sv then return true
-  | .proj tn ti te, .proj sn si se =>
-    if tn == sn && ti == si then if ← isDefEq te se then return true
+  | .proj tStruct ti te, .proj sStruct si se =>
+    if tStruct == sStruct && ti == si then if ← isDefEq te se then return true
   | _, _ => pure ()
 
   let tnn ← whnfCore tn
