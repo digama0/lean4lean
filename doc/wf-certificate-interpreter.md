@@ -1,6 +1,8 @@
 # A certificate interpreter for well-founded `Nat` primitives
 
-Status: design + spine prototype. Branch `agent/wf-certificate-interpreter`,
+Status: design + spine prototype. Constraint: the executable checker
+(`Lean4Lean/Primitive.lean`, `Environment.lean`) must faithfully match the
+lean4 kernel and is never modified; all layers are verification-side. Branch `agent/wf-certificate-interpreter`,
 stacked on PR #32.
 
 ## Problem
@@ -57,11 +59,12 @@ Four layers, each usable independently:
    `zero`/`zero_right` near-duplication; the mod/div dependent-proof binder
    plumbing (the largest single cost there) flows through the same lemmas.
 
-4. **Entry certificates**: parameterize `NatWellFoundedCoreResult` and its
-   `unfoldNatWellFounded*Cert` wrappers by a telescope descriptor instead of
-   duplicating one wrapper per arity, and port mod/div's hand-rolled
-   top/go-equation route onto it, so all four families share one certificate
-   format and one entry lemma.
+4. **Entry certificates**: out of scope. Unifying the certificate entry
+   would mean re-emitting mod/div's checked equations through the shared
+   format, i.e. changing which defeqs the executable checker validates. The
+   checker must faithfully match the lean4 kernel's acceptance behavior, so
+   it is frozen; the verification layers below interpret exactly the
+   equations it already checks.
 
 What stays per-primitive: the transition inventory (gcd: zero/succ; bitwise:
 zero/zero-right/succ), gcd's argument swap (renormalizing the swapped state
@@ -94,13 +97,10 @@ four families.
 - Layer 3: the biggest verification win (est. 1.5-2k lines off gcd + bitwise
   transitions and the mod/div instantiation toolbox); medium-high effort,
   no executable-checker changes.
-- Layer 4: unification of the certificate entry; requires changing the
-  executable checker for mod/div (their equations re-emitted through the
-  shared certificate), so it re-opens kernel-facing review and
-  `divergences.md`; do it last, or not at all if the checker is considered
-  frozen.
+- Layer 4: dropped (checker is frozen; see above).
 
-Total realistic effect on the ~12k wf mass: down to roughly 6-7k, at a cost
-comparable to the whole deduplication round already landed on PR #32. The
-spine (this branch) is cheap and stands alone; each further layer can be
-evaluated after the previous one lands.
+Total realistic effect on the ~12k wf mass from layers 2 and 3 alone: down
+to roughly 6.5-7.5k, at a cost comparable to the whole deduplication round
+already landed on PR #32, with the executable checker byte-identical
+throughout. The spine (this branch) is cheap and stands alone; each further
+layer can be evaluated after the previous one lands.
