@@ -1,0 +1,23 @@
+{
+  "_comment": "Reconcile config for digama0/lean4lean: open/closed/merged plus CI status, using standard unicode emoji. See docs/zulip-emoji-quickstart.md in leanprover-community/mathlib-ci for setup, and docs/zulip-emoji-reconcile.md there for the full schema.",
+
+  "github_repo": "digama0/lean4lean",
+
+  "zulip": {
+    "site": "https://leanprover.zulipchat.com",
+    "email": "leanprover-community-repo-update-bot@leanprover.zulipchat.com"
+  },
+
+  "channels": {
+    "pr_reviews": "lean4lean"
+  },
+
+  "states": [
+    {"name": "merged", "group": "pr", "priority": 30, "source": {"state": "merged"}, "emoji": "merge"},
+    {"name": "closed", "group": "pr", "priority": 20, "source": {"state": "closed"}, "emoji": "closed-pr", "emoji_code": "61293", "reaction_type": "realm_emoji"},
+
+    {"name": "ci-running", "group": "ci", "source": {"ci": "running"}, "emoji": "yellow"},
+    {"name": "ci-success", "group": "ci", "source": {"ci": "success"}, "emoji": "check"},
+    {"name": "ci-failure", "group": "ci", "source": {"ci": "failure"}, "emoji": "cross_mark"}
+  ]
+}
