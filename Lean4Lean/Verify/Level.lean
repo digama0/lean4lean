@@ -7,7 +7,7 @@ import Std.Data.TreeMap.Lemmas
 namespace Lean
 
 namespace Name
-open Std
+open _root_.Std
 
 instance : TransCmp cmp := by
   have eq_swap {a b : Name} : a.cmp b = (b.cmp a).swap := by
@@ -111,6 +111,9 @@ attribute [simp] mkLevelSucc mkLevelMax mkLevelIMax updateSucc! updateMax! updat
   go (u : Level) (i) : u.getOffsetAux i = u.getOffset' + i := by
     unfold getOffsetAux getOffset'; split <;> simp
     rw [go]; simp [Nat.add_right_comm, Nat.add_assoc]
+
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
 
 theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := by
   rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
@@ -363,12 +366,13 @@ theorem normalizeAux_contains (H : acc.contains x) : (normalizeAux u path k acc)
     · exact H
     · exact NormLevel.addVar_contains H
 
-theorem imax_max : Nat.imax a (max' b c) = max' (Nat.imax a b) (Nat.imax a c) := by
-  simp [Nat.imax]; symm; split <;> simp [*]; split <;> simp [*, Nat.max_eq_max]
+theorem imax_max : Lean.Nat.imax a (max' b c) = max' (Lean.Nat.imax a b) (Lean.Nat.imax a c) := by
+  simp [Lean.Nat.imax]; symm; split <;> simp [*]; split <;> simp [*, Nat.max_eq_max]
   rw [Nat.max_left_comm b, ← Nat.max_assoc, Nat.max_self]
 
-theorem imax_imax : Nat.imax a (Nat.imax b c) = max' (Nat.imax a c) (Nat.imax b c) := by
-  simp [Nat.imax]; by_cases h : c = 0 <;> simp [*, Nat.max_eq_max]
+theorem imax_imax : Lean.Nat.imax a (Lean.Nat.imax b c) =
+    max' (Lean.Nat.imax a c) (Lean.Nat.imax b c) := by
+  simp [Lean.Nat.imax]; by_cases h : c = 0 <;> simp [*, Nat.max_eq_max]
   rw [Nat.max_left_comm c, Nat.max_self]
 
 theorem mem_orderedInsert [BEq α] [LawfulBEq α] [Std.LawfulBEqCmp (α := α) cmp] :
@@ -467,7 +471,7 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
   unfold normalizeAux; split
   · cases hu; simp [NormLevel.addConst_eval H le, VLevel.eval]
   · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
-    simp [VLevel.eval, Nat.imax, NormLevel.addConst_eval H le]
+    simp [VLevel.eval, Lean.Nat.imax, NormLevel.addConst_eval H le]
   · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
     rw [normalizeAux_eval hu H le, Nat.add_succ, ← Nat.succ_add]; rfl
   · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, hv, rfl⟩ := hu
@@ -500,7 +504,7 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
         rw [NormLevel.addNode_eval, NormLevel.addConst_eval H le, Nat.max_assoc]
       · rw [Nat.max_assoc, ← evalPath_max, this, evalPath_cons, ← evalPath_max,
           Nat.add_max_add_right]; congr 2
-        simp [VLevel.eval, ← evalParam_eq hv, Nat.imax]
+        simp [VLevel.eval, ← evalParam_eq hv, Lean.Nat.imax]
         cases evalParam .. <;> simp [Nat.max_eq_max, Nat.max_comm]
       · refine .insert h (Nat.le_trans ?_ (Nat.le_max_right ..)) le.max
         rw [this, evalPath_cons, ← evalPath_max]; apply evalPath_mono; grind
@@ -511,13 +515,13 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
         have ⟨p1, p2, a1, a2, a3, a4⟩ := le.of_mem hm
         have := evalPath_le.1 a3 (allNZ_mono a1 nz)
         simp [allNZ] at nz; specialize nz _ hm
-        simp [VLevel.eval, Nat.imax]; simp [← evalParam_eq hv]
+        simp [VLevel.eval, Lean.Nat.imax]; simp [← evalParam_eq hv]
         revert this nz; cases evalParam .. <;> simp
         rw [Nat.max_eq_max, Nat.max_comm (a := VLevel.eval ..), ← Nat.add_max_add_right, ← Nat.max_assoc]
         intro h; rw [Nat.max_eq_left (b := _+1+k)]; omega
       · rw [normalizeAux_eval hu (NormLevel.addVar_contains H)] <;> rw [NormLevel.addVar_eval H]
         · rw [Nat.max_assoc, ← evalPath_max, Nat.add_max_add_right, this,
-            evalPath_cons, evalPath_cons]; congr 2; split <;> simp [VLevel.eval, Nat.imax]
+            evalPath_cons, evalPath_cons]; congr 2; split <;> simp [VLevel.eval, Lean.Nat.imax]
           rename_i h; revert h; simp [← evalParam_eq hv]
           cases evalParam .. <;> simp [Nat.max_eq_max, Nat.max_comm]
         · exact le.max

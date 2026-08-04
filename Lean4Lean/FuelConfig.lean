@@ -9,11 +9,11 @@ Every field is a positive `Nat`; on exhaustion the corresponding loop throws
 `.deterministicTimeout` (whnf-family) or `.deepRecursion` (structural /
 mutual-recursion loops).
 
-Defaults are set so mathlib passes.  The C++ Lean kernel has no analog for any
-of these bounds (its whnf/lazy-delta loops are `while (true)` and its
-mutual-recursion depth is bounded only by the native stack); the counters exist
-in lean4lean purely as termination witnesses for the Lean-level proofs and as a
-defensive check against runaway reductions.
+Defaults are set so mathlib passes. Since lean4#13956 the native kernel bounds
+its mutually recursive type-checker entry points using `maxRecDepth`.
+Lean4lean instead keeps separate, explicit fuel for those calls and for loops
+that need structural termination witnesses; these counters also provide a
+deterministic defensive check against runaway reductions.
 -/
 structure FuelConfig where
   /-- `whnf'` unfold-loop, non-eager path (`TypeChecker.lean` whnf'). -/

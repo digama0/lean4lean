@@ -3259,11 +3259,13 @@ theorem addMutual.WF
       simp only [addMutual, hsafety, ↓reduceIte]
       exact .throw
     | «unsafe» =>
-      simpa only [addMutual, hsafety, ↓reduceIte, pure_bind] using
-        addMutualRuns.WF wf v₀ tail .unsafe hnodup
+      simp only [addMutual, hsafety, ↓reduceIte]
+      refine Except.WF.bind (Q := fun _ => True) (fun _ _ => trivial) fun _ _ => ?_
+      simpa only [pure_bind] using addMutualRuns.WF wf v₀ tail .unsafe hnodup
     | «partial» =>
-      simpa only [addMutual, hsafety, ↓reduceIte, pure_bind] using
-        addMutualRuns.WF wf v₀ tail .partial hnodup
+      simp only [addMutual, hsafety, ↓reduceIte]
+      refine Except.WF.bind (Q := fun _ => True) (fun _ _ => trivial) fun _ _ => ?_
+      simpa only [pure_bind] using addMutualRuns.WF wf v₀ tail .partial hnodup
 
 theorem checkEqType.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
     (checkEqType env).WF fun _ => False := by

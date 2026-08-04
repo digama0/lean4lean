@@ -18,7 +18,7 @@ inductive ShapeS (Shape : Type) : Type where
   | pi : Shape → List (Shape × Shape) → ShapeS Shape
   | lam : List (Shape × Shape) → ShapeS Shape
 
-def Shape : Nat → Type
+@[implicit_reducible] def Shape : Nat → Type
   | 0 => Shape0
   | n + 1 => ShapeS (Shape n)
 

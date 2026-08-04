@@ -103,6 +103,19 @@ def addMutualCheckEnv (env : Environment) (vs : List DefinitionVal) : Environmen
 def addMutualFinalEnv (env : Environment) (vs : List DefinitionVal) : Environment :=
   vs.foldl (fun env v => env.add (.defnInfo v)) env
 
+/-- The members of a mutual block must share their universe parameters and have distinct
+names.  The kernel gained both checks in v4.33.0-rc2 (leanprover/lean4#14608). -/
+def checkMutualNames (v₀ : DefinitionVal) (vs : List DefinitionVal) :
+    Except Exception Unit := do
+  let mut found : NameSet := {}
+  for v in vs do
+    if v.levelParams != v₀.levelParams then
+      throw <| .other
+        "invalid mutual definition, declarations must have the same universe level parameters"
+    if found.contains v.name then
+      throw <| .other s!"invalid mutual definition, duplicate declaration name '{v.name}'"
+    found := found.insert v.name
+
 def checkMutualHeaders (env : Environment) (safety : DefinitionSafety)
     (fuel : FuelConfig) (vs : List DefinitionVal) : Except Exception Unit :=
   match vs with
@@ -139,6 +152,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
   if let .safe := v₀.safety then
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
   if check then
+    checkMutualNames v₀ vs
     checkMutualHeaders env v₀.safety fuel vs
   -- Make every member available while checking bodies, but keep all unchecked
   -- values opaque.  Partial headers are safe only in this transient checking

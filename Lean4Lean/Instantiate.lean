@@ -5,6 +5,10 @@ import Lean.Util.InstantiateLevelParams
 namespace Lean
 namespace Expr
 
+/-- Beta-reduces an application `(fun x₁ ... xₙ => b) a₁ ... aₙ aₙ₊₁ ... aₘ` in the two cases where
+no substitution is needed: to `b aₙ₊₁ ... aₘ` when `b` has no loose bound variables, and to
+`aᵢ aₙ₊₁ ... aₘ` when `b` is the bound variable `xᵢ`. In any other case `e` is returned unchanged —
+this is what makes it cheap. -/
 def cheapBetaReduce (e : Expr) : Expr := Id.run do
   if !e.isApp then return e
   let fn := e.getAppFn
