@@ -832,6 +832,57 @@ theorem VEnv.ReflectsNatNatBool.of_rec_equations (henv : VEnv.WF env)
       exact (hcfApp (a+1) (b+1)).trans henv trivial <|
         heq.trans henv trivial <| (hcfApp a b).symm.trans henv trivial (ih b)
 
+/-- One unfolding step of a fuel-indexed recursion: either a terminal value,
+or a recursive call together with a post-processing of its result. -/
+inductive FuelStep (α : Type) where
+  | done (v : Nat)
+  | recur (next : α) (post : Nat → Nat)
+
+/-- The value of a step, given the meaning `F` of recursive calls. -/
+def FuelStep.out (F : α → Nat) : FuelStep α → Nat
+  | .done v => v
+  | .recur next post => post (F next)
+
+/-- The interpreter spine shared by every fuel-indexed primitive recursion
+(`Nat.modCore.go`, `Nat.div.go`, and the well-founded fixpoints of `Nat.gcd`
+and `Nat.bitwise`).  `G fuel x e` reads "`e` is a checked call at fuel `fuel`
+and arguments `x`", and `WT` is whatever well-formedness the call relation
+maintains.  If checked calls step according to `step` (terminating with a
+literal, or recursing at a smaller measure with a defeq-compatible
+post-processing of the result) and `F` satisfies the same recurrence, then
+every well-formed call with sufficient fuel is defeq to `F`'s value. -/
+theorem VEnv.natLit_defeq_of_fuel_relation (henv : VEnv.WF env)
+    {α : Type} {G : Nat → α → VExpr → Prop} {WT : VExpr → Prop}
+    (μ : α → Nat) (F : α → Nat) (step : α → FuelStep α)
+    (hF : ∀ x, F x = (step x).out F)
+    (hdec : ∀ x (next : α) (post : Nat → Nat),
+      step x = .recur next post → μ next < μ x)
+    (hstep : ∀ fuel x e, G (fuel + 1) x e → WT e →
+      match step x with
+      | .done v => env.IsDefEqU 0 [] e (.natLit v)
+      | .recur next post => ∃ e', G fuel next e' ∧ WT e' ∧
+          ∀ q, env.IsDefEqU 0 [] e' (.natLit q) →
+            env.IsDefEqU 0 [] e (.natLit (post q))) :
+    ∀ fuel x e, G fuel x e → WT e → μ x < fuel →
+      env.IsDefEqU 0 [] e (.natLit (F x)) := by
+  intro fuel
+  induction fuel with
+  | zero => intro x e _ _ h; omega
+  | succ fuel ih =>
+    intro x e hG hWT hlt
+    have h := hstep fuel x e hG hWT
+    cases hs : step x with
+    | done v =>
+      rw [hs] at h
+      rw [hF x, hs, FuelStep.out]
+      exact h
+    | recur next post =>
+      rw [hs] at h
+      obtain ⟨e', hG', hWT', hfin⟩ := h
+      have hd := hdec x next post hs
+      rw [hF x, hs, FuelStep.out]
+      exact hfin _ (ih next e' hG' hWT' (by omega))
+
 /-- Relational form of the fuel-level gcd argument.  This is the natural
 interface for checked source equations: independently translated recursive
 calls need only belong to the same semantic call relation, rather than be
@@ -865,26 +916,33 @@ theorem VEnv.ReflectsNatNatNat.of_gcd_fix_relation (henv : VEnv.WF env)
   have goEval : ∀ fuel a b e, G fuel a b e →
       env.IsDefEqU 0 [] e e → a < fuel →
       env.IsDefEqU 0 [] e (.natLit (Nat.gcd a b)) := by
-    intro fuel
-    induction fuel with
-    | zero => simp
-    | succ fuel ih =>
-      intro a b e hG heTy ha
-      by_cases ha0 : a = 0
-      · subst a
-        simpa using hgo fuel 0 b e hG heTy
-      · obtain ⟨e', hG', hstep⟩ := by
-          simpa [ha0] using hgo fuel a b e hG heTy
-        have hapos : 0 < a := Nat.zero_lt_of_ne_zero ha0
-        have hmod : b % a < fuel :=
-          Nat.lt_of_lt_of_le (Nat.mod_lt b hapos) (Nat.lt_succ_iff.mp ha)
-        have hrec := ih (b % a) a e' hG'
-          (hstep.symm.trans henv trivial hstep) hmod
-        cases a with
-        | zero => contradiction
-        | succ a =>
-          exact hstep.trans henv trivial <| by
-            simpa [Nat.gcd_succ] using hrec
+    intro fuel a b e hG hWT hlt
+    refine VEnv.natLit_defeq_of_fuel_relation henv
+      (G := fun fuel p e => G fuel p.1 p.2 e)
+      (WT := fun e => env.IsDefEqU 0 [] e e)
+      (fun p => p.1) (fun p => Nat.gcd p.1 p.2)
+      (fun p => match p with
+        | (0, b) => .done b
+        | (a + 1, b) => .recur (b % (a + 1), a + 1) id)
+      ?_ ?_ ?_ fuel (a, b) e hG hWT hlt
+    · rintro ⟨a, b⟩
+      cases a with
+      | zero => simp [FuelStep.out]
+      | succ a => simp [FuelStep.out, Nat.gcd_succ]
+    · rintro ⟨a, b⟩ next post hs
+      cases a with
+      | zero => cases hs
+      | succ a =>
+        cases hs
+        exact Nat.mod_lt b (Nat.succ_pos a)
+    · rintro fuel ⟨a, b⟩ e hG hWT
+      cases a with
+      | zero => simpa using hgo fuel 0 b e hG hWT
+      | succ a =>
+        obtain ⟨e', hG', hstep⟩ := by
+          simpa using hgo fuel (a + 1) b e hG hWT
+        exact ⟨e', hG', hstep.symm.trans henv trivial hstep,
+          fun q hq => hstep.trans henv trivial hq⟩
   obtain ⟨e, hG, htop⟩ := htop a b
   exact (hcfApp a b).trans henv trivial <|
     htop.trans henv trivial (goEval (a + 1) a b e hG
@@ -942,26 +1000,36 @@ theorem VEnv.ReflectsNatNatNat.of_modCore_equations (henv : VEnv.WF env)
         env.HasType 0 [] (.natModGo y fuel x hy hfuel) .nat →
         env.IsDefEqU 0 []
         (.natModGo y fuel x hy hfuel) (.natLit (x.mod y)) := by
-    intro fuel
-    induction fuel with
-    | zero => intro x _ _ hlt _; omega
-    | succ fuel ih =>
-      intro x hy hfuel hlt hcallT
-      have hg := hgo y fuel x hy hfuel hcallT
-      split at hg
-      · rename_i hyx
+    intro fuel x hy hfuel hlt hcallT
+    refine VEnv.natLit_defeq_of_fuel_relation henv
+      (G := fun fuel x e => ∃ hy hfuel, e = VExpr.natModGo y fuel x hy hfuel)
+      (WT := fun e => env.HasType 0 [] e .nat)
+      id (fun x => x.mod y)
+      (fun x => if y ≤ x then .recur (x - y) id else .done x)
+      ?_ ?_ ?_ fuel x _ ⟨hy, hfuel, rfl⟩ hcallT hlt
+    · intro x
+      by_cases h : y ≤ x
+      · simp only [if_pos h]
+        show x.mod y = (x - y).mod y
+        simpa [hypos, h] using Nat.mod_eq x y
+      · simp only [if_neg h]
+        show x.mod y = x
+        simpa [h] using Nat.mod_eq x y
+    · intro x next post hs
+      by_cases h : y ≤ x
+      · simp only [if_pos h] at hs
+        cases hs
+        exact Nat.sub_lt_self hypos h
+      · simp only [if_neg h] at hs
+        cases hs
+    · rintro fuel x e ⟨hy, hfuel, rfl⟩ hWT
+      have hg := hgo y fuel x hy hfuel hWT
+      by_cases h : y ≤ x
+      · simp only [if_pos h] at hg ⊢
         obtain ⟨hy', hfuel', hrecT, hg⟩ := hg
-        have hsubx : x - y < x := Nat.sub_lt_self hypos hyx
-        have hsubfuel : x - y < fuel := by omega
-        have hrec := ih (x - y) hy' hfuel' hsubfuel hrecT
-        have heq : x.mod y = (x - y).mod y := by
-          simpa [hypos, hyx] using Nat.mod_eq x y
-        rw [heq]
-        exact hg.trans henv trivial hrec
-      · rename_i hyx
-        have heq : x.mod y = x := by
-          simpa [hyx] using Nat.mod_eq x y
-        rw [heq]
+        exact ⟨_, ⟨hy', hfuel', rfl⟩, hrecT,
+          fun q hq => hg.trans henv trivial hq⟩
+      · simp only [if_neg h] at hg ⊢
         exact hg
   have ht := htop a b
   split at ht
@@ -1026,31 +1094,41 @@ theorem VEnv.ReflectsNatNatNat.of_divCore_equations (henv : VEnv.WF env)
         env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat →
         env.IsDefEqU 0 []
         (.natDivGo y fuel x hy hfuel) (.natLit (x.div y)) := by
-    intro fuel
-    induction fuel with
-    | zero => intro x _ _ hlt _; omega
-    | succ fuel ih =>
-      intro x hy hfuel hlt hcallT
-      have hg := hgo y fuel x hy hfuel hcallT
-      split at hg
-      · rename_i hyx
+    intro fuel x hy hfuel hlt hcallT
+    refine VEnv.natLit_defeq_of_fuel_relation henv
+      (G := fun fuel x e => ∃ hy hfuel, e = VExpr.natDivGo y fuel x hy hfuel)
+      (WT := fun e => env.HasType 0 [] e .nat)
+      id (fun x => x.div y)
+      (fun x => if y ≤ x then .recur (x - y) (· + 1) else .done 0)
+      ?_ ?_ ?_ fuel x _ ⟨hy, hfuel, rfl⟩ hcallT hlt
+    · intro x
+      by_cases h : y ≤ x
+      · simp only [if_pos h]
+        show x.div y = (x - y).div y + 1
+        simpa [hypos, h] using Nat.div_eq x y
+      · simp only [if_neg h]
+        show x.div y = 0
+        have hformula : x.div y =
+            if 0 < y ∧ y ≤ x then (x - y).div y + 1 else 0 := by
+          simpa using Nat.div_eq x y
+        rw [hformula]
+        simp [h]
+    · intro x next post hs
+      by_cases h : y ≤ x
+      · simp only [if_pos h] at hs
+        cases hs
+        exact Nat.sub_lt_self hypos h
+      · simp only [if_neg h] at hs
+        cases hs
+    · rintro fuel x e ⟨hy, hfuel, rfl⟩ hWT
+      have hg := hgo y fuel x hy hfuel hWT
+      by_cases h : y ≤ x
+      · simp only [if_pos h] at hg ⊢
         obtain ⟨hy', hfuel', hrecT, hg⟩ := hg
-        have hsubx : x - y < x := Nat.sub_lt_self hypos hyx
-        have hsubfuel : x - y < fuel := by omega
-        have hrec := ih (x - y) hy' hfuel' hsubfuel hrecT
-        have hsucc := hrec.app_arg henv trivial (hsuccT []) hrecT
-        have heq : x.div y = (x - y).div y + 1 := by
-          simpa [hypos, hyx] using Nat.div_eq x y
-        rw [heq]
+        refine ⟨_, ⟨hy', hfuel', rfl⟩, hrecT, fun q hq => ?_⟩
+        have hsucc := hq.app_arg henv trivial (hsuccT []) hrecT
         simpa [VExpr.natLit] using hg.trans henv trivial hsucc
-      · rename_i hyx
-        have heq : x.div y = 0 := by
-          have hformula : x.div y =
-              if 0 < y ∧ y ≤ x then (x - y).div y + 1 else 0 := by
-            simpa using Nat.div_eq x y
-          rw [hformula]
-          simp [hyx]
-        rw [heq]
+      · simp only [if_neg h] at hg ⊢
         exact hg
   have ht := htop a b
   split at ht
@@ -1117,35 +1195,47 @@ theorem VEnv.evalNatBitwise_of_fix_relation (henv : VEnv.WF env)
   have goEval : ∀ fuel a b e, G fuel a b e →
       env.IsDefEqU 0 [] e e → a < fuel →
       env.IsDefEqU 0 [] e (.natLit (Nat.bitwise f a b)) := by
-    intro fuel
-    induction fuel with
-    | zero => simp
-    | succ fuel ih =>
-      intro a b e hG heTy haFuel
-      by_cases ha : a = 0
-      · subst a
-        simpa [Nat.bitwise] using hgo fuel 0 b e hG heTy
-      · by_cases hb : b = 0
-        · subst b
-          simpa [Nat.bitwise, ha] using hgo fuel a 0 e hG heTy
-        · obtain ⟨e', hG', he'Ty, hfinish⟩ := by
-            simpa [ha, hb] using hgo fuel a b e hG heTy
-          have haPos : 0 < a := Nat.zero_lt_of_ne_zero ha
-          have haHalf : a / 2 < fuel :=
-            Nat.lt_of_lt_of_le (Nat.bitwise_rec_lemma ha)
-              (Nat.lt_succ_iff.mp haFuel)
-          have hrec := ih (a / 2) (b / 2) e' hG' he'Ty haHalf
-          have hresult : Nat.bitwise f a b =
-              if f (a % 2 = 1) (b % 2 = 1) then
-                Nat.bitwise f (a / 2) (b / 2) +
-                  Nat.bitwise f (a / 2) (b / 2) + 1
-              else
-                Nat.bitwise f (a / 2) (b / 2) +
-                  Nat.bitwise f (a / 2) (b / 2) := by
-            rw [Nat.bitwise]
-            simp [ha, hb]
-          rw [hresult]
-          exact hfinish _ hrec
+    intro fuel a b e hG hWT hlt
+    refine VEnv.natLit_defeq_of_fuel_relation henv
+      (G := fun fuel p e => G fuel p.1 p.2 e)
+      (WT := fun e => env.IsDefEqU 0 [] e e)
+      (fun p => p.1) (fun p => Nat.bitwise f p.1 p.2)
+      (fun p => match p with
+        | (0, b) => .done (if f false true then b else 0)
+        | (a + 1, 0) => .done (if f true false then a + 1 else 0)
+        | (a + 1, b + 1) => .recur ((a + 1) / 2, (b + 1) / 2)
+            (fun q => if f ((a + 1) % 2 = 1) ((b + 1) % 2 = 1)
+              then q + q + 1 else q + q))
+      ?_ ?_ ?_ fuel (a, b) e hG hWT hlt
+    · rintro ⟨a, b⟩
+      cases a with
+      | zero => rw [Nat.bitwise]; simp [FuelStep.out]
+      | succ a =>
+        cases b with
+        | zero => rw [Nat.bitwise]; simp [FuelStep.out]
+        | succ b =>
+          show Nat.bitwise f (a + 1) (b + 1) = _
+          rw [Nat.bitwise]
+          simp [FuelStep.out]
+    · rintro ⟨a, b⟩ next post hs
+      cases a with
+      | zero => cases hs
+      | succ a =>
+        cases b with
+        | zero => cases hs
+        | succ b =>
+          cases hs
+          exact Nat.bitwise_rec_lemma (Nat.succ_ne_zero a)
+    · rintro fuel ⟨a, b⟩ e hG hWT
+      cases a with
+      | zero => simpa using hgo fuel 0 b e hG hWT
+      | succ a =>
+        cases b with
+        | zero => simpa using hgo fuel (a + 1) 0 e hG hWT
+        | succ b =>
+          obtain ⟨e', hG', he'Ty, hfinish⟩ := by
+            simpa using hgo fuel (a + 1) (b + 1) e hG hWT
+          exact ⟨e', hG', he'Ty, hfinish⟩
   intro a b
   obtain ⟨e, hG, ht⟩ := htop a b
   exact ht.trans henv trivial <| goEval (a + 1) a b e hG
