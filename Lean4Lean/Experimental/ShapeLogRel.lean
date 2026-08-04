@@ -31,12 +31,12 @@ private noncomputable instance : DecidableEq SLevel := fun a b => Classical.prop
     simp [SLevel.imax, SLevel.zero] at hv
     apply Subtype.ext; funext v
     have := congrFun hv v
-    simp [Nat.imax, VLevel.eval] at this
+    simp [Lean.Nat.imax, VLevel.eval] at this
     exact Decidable.byContradiction fun h => absurd (this h).2 h
   · intro h
     subst h
     apply Subtype.ext; funext v
-    simp [SLevel.imax, SLevel.zero, Nat.imax, VLevel.eval]
+    simp [SLevel.imax, SLevel.zero, Lean.Nat.imax, VLevel.eval]
 
 inductive Shape0 : Type where
   | bot : Shape0
@@ -50,7 +50,7 @@ inductive ShapeS (Shape : Type) : Type where
   | ctor : Name → List Shape → ShapeS Shape
   | indTy : ShapeS Shape
 
-def Shape : Nat → Type
+@[implicit_reducible] def Shape : Nat → Type
   | 0 => Shape0
   | n + 1 => ShapeS (Shape n)
 
@@ -925,8 +925,8 @@ protected theorem Shape.WF.sort : (Shape.sort (n := n) r).WF := by cases n <;> t
 protected theorem ShapeFun.WF.bot : (ShapeFun.bot (n := n)).WF Shape.WF := by
   simp [WF, bot, Shape.Compat.bot_l, Shape.bot_join, Shape.WF.bot]
 
-def WShape (n : Nat) := {s : Shape n // s.WF}
-def WShapeFun (n : Nat) := {s : ShapeFun n // s.WF Shape.WF}
+@[implicit_reducible] def WShape (n : Nat) := {s : Shape n // s.WF}
+@[implicit_reducible] def WShapeFun (n : Nat) := {s : ShapeFun n // s.WF Shape.WF}
 
 instance : Membership (WShape n × WShape n) (WShapeFun n) := ⟨fun f a => (a.1.1, a.2.1) ∈ f.1⟩
 
@@ -1526,7 +1526,7 @@ theorem ih_fun {f f' : WShapeFun n} :
         have ⟨_, g1, g2, dg⟩ := app_core ih f' x; have ⟨g3, g4, g2⟩ := f'.mem_val' g2
         have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc x)
         have ⟨c₁, c₂, c1, c2, c3⟩ := H ⟨_, Shape.join_bot ▸ x.2⟩ ⟨_, Shape.join_bot ▸ e1 ▸ e.2⟩
-          ⟨_, hf, _, hf', Compat.bot_r, rfl⟩
+          (ShapeFun.mem_join.2 ⟨_, hf, ⟨_, hf', Compat.bot_r, rfl⟩⟩)
         simp only [bot, Shape.join_bot] at c2 c3
         exact ⟨_, _, c1, c2, .trans ((cf _ hf .rfl).trans (e1 ▸ (show _ ≤ e.1 from ((e2 _).1 .rfl).1) :)) c3⟩
       · have ⟨_, hf⟩ := f.bot_mem
@@ -1534,10 +1534,15 @@ theorem ih_fun {f f' : WShapeFun n} :
         have ⟨_, g1, g2, dg⟩ := app_core ih f' x; have ⟨g3, g4, g2⟩ := f'.mem_val' g2
         have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc x)
         have ⟨c₁, c₂, c1, c2, c3⟩ := H ⟨_, Shape.bot_join ▸ x.2⟩ ⟨_, Shape.bot_join ▸ e1 ▸ e.2⟩
-          ⟨_, hf, _, hf', Compat.bot_l, rfl⟩
+          (ShapeFun.mem_join.2 ⟨_, hf, ⟨_, hf', Compat.bot_l, rfl⟩⟩)
         simp only [bot, Shape.bot_join] at c2 c3
         exact ⟨_, _, c1, c2, .trans ((dg _ hf' .rfl).trans (e1 ▸ (show _ ≤ e.1 from ((e2 _).1 .rfl).2) :)) c3⟩
-    · rintro ⟨_, hx⟩ ⟨_, hy⟩ ⟨x, a3, y, b3, xy, ⟨⟩⟩
+    · rintro ⟨a, hx⟩ ⟨b, hy⟩ hab
+      have ⟨x, a3, y, b3, xy, hab⟩ := ShapeFun.mem_join.1 hab
+      dsimp only at hab
+      have ha : a = Shape.join x.1 y.1 := congrArg Prod.fst hab
+      have hb : b = Shape.join (f.1.app (Shape.join x.1 y.1))
+          (f'.1.app (Shape.join x.1 y.1)) := congrArg Prod.snd hab
       have ⟨a1, a2, a3⟩ := f.mem_val' a3; have ⟨b1, b2, b3⟩ := f'.mem_val' b3
       have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, a1⟩) (x' := ⟨_, b1⟩) xy
       have ⟨f₁, f1, f2, cf⟩ := app_core ih f e; have ⟨f3, f4, f2⟩ := f.mem_val' f2
@@ -1545,8 +1550,14 @@ theorem ih_fun {f f' : WShapeFun n} :
       have ⟨i, i1, i2, hi⟩ := app_core ih f₃ e; have ⟨i3, i4, i2⟩ := f₃.mem_val' i2
       have ⟨j, j1, j2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc e)
       have ⟨l1, l2⟩ := (e2 _).1 .rfl
-      refine ⟨_, _, i2, (e1 ▸ i1 :), ?_⟩
-      simp only [WShape.LE.def, ← e1, ← j1]
+      have hae : (⟨a, hx⟩ : WShape n) = e := Subtype.ext (ha.trans e1.symm)
+      have hb' : b = Shape.join (f.1.app e.1) (f'.1.app e.1) := by simpa only [e1] using hb
+      have hbj : (⟨b, hy⟩ : WShape n) = j := Subtype.ext (hb'.trans j1.symm)
+      have hie : (⟨i, i3⟩ : WShape n) ≤ e := by
+        exact WShape.LE.def.2 i1
+      refine ⟨_, _, i2, hae.symm ▸ hie, ?_⟩
+      rw [hbj]
+      simp only [WShape.LE.def]
       refine (j2 ⟨_, i4⟩).2 ⟨?_, ?_⟩
       · have ⟨m, m', m1, m2, m3⟩ := H1 _ _ f2; exact m3.trans (hi _ m1 (m2.trans f1))
       · have ⟨m, m', m1, m2, m3⟩ := H2 _ _ g2; exact m3.trans (hi _ m1 (m2.trans g1))
@@ -1815,7 +1826,7 @@ theorem WShapeFun.mem_ofElems {f : List (WShape n × WShape n)} {h1 h2} :
   exact ⟨fun ⟨⟨a, b⟩, h, ha, hb⟩ => by cases WShape.ext ha; cases WShape.ext hb; exact h,
     fun h => ⟨_, h, rfl, rfl⟩⟩
 
-def TShape := Σ n, WShape n
+@[implicit_reducible] def TShape := Σ n, WShape n
 abbrev WShape.T : WShape n → TShape := Sigma.mk _
 
 def TShape.LE (a b : TShape) : Prop := a.2.lift (max a.1 b.1) ≤ b.2.lift _

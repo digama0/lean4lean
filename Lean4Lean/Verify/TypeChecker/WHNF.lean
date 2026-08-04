@@ -23,7 +23,7 @@ theorem whnfFVar.WF {c : VContext} {s : VState} (he : c.TrExprS (.fvar fv) e') :
   exact .refl c.Ewf c.Δwf
 
 theorem reduceProj.WF {c : VContext} {s : VState} (he : c.TrExprS (.proj n i e) e') :
-    RecM.WF c s (reduceProj i e cheapRec cheapProj) fun oe _ =>
+    RecM.WF c s (reduceProj n i e cheapRec cheapProj) fun oe _ =>
       ∀ e₁, oe = some e₁ → c.FVarsBelow (.proj n i e) e₁ ∧ c.TrExpr e₁ e' := sorry
 
 theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :

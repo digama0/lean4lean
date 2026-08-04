@@ -1383,7 +1383,7 @@ theorem ofLevel_isNeverZero (h : VLevel.ofLevel Us u = some u') (H : u.isNeverZe
     exact H.elim (ih1 h1 · _ h.1) (ih2 h2 · _ h.2)
   | imax _ _ ih1 ih2 =>
     obtain ⟨_, h1, _, h2, rfl⟩ := h
-    simp [VLevel.eval, Nat.imax, ih2 h2 H ls]
+    simp [VLevel.eval, Lean.Nat.imax, ih2 h2 H ls]
 
 theorem ofLevel_isAlwaysZero (h : VLevel.ofLevel Us u = some u') (H : u.isAlwaysZero) :
     u' ≈ .zero := by
@@ -1396,7 +1396,7 @@ theorem ofLevel_isAlwaysZero (h : VLevel.ofLevel Us u = some u') (H : u.isAlways
     simp [VLevel.eval, VLevel.equiv_def.1 (ih1 h1 H.1) ls, VLevel.equiv_def.1 (ih2 h2 H.2) ls]
   | imax _ _ _ ih2 =>
     obtain ⟨_, _, _, h2, rfl⟩ := h
-    simp [VLevel.eval, Nat.imax, VLevel.equiv_def.1 (ih2 h2 H) ls]
+    simp [VLevel.eval, Lean.Nat.imax, VLevel.equiv_def.1 (ih2 h2 H) ls]
 
 theorem ofLevel_mkLevelIMax'
     (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :

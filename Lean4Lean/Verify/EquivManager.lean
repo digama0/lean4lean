@@ -300,7 +300,9 @@ theorem isEquiv.WF :
   · exact .bind (.andM isEquiv.WF isEquiv.WF) fun _ _ le H =>
       this le fun hb => .forallE (H hb).1 (H hb).2
   · exact .bind (.andM (.pure id) isEquiv.WF) fun _ _ le H =>
-      this le fun hb => (by simpa using (H hb).1) ▸ .proj (H hb).2
+      this le fun hb => by
+        have h := Bool.and_eq_true_iff.mp (H hb).1
+        exact beq_iff_eq.mp h.1 ▸ beq_iff_eq.mp h.2 ▸ .proj (H hb).2
   · exact .bind (.andM isEquiv.WF <| .andM isEquiv.WF isEquiv.WF) fun _ _ le H =>
       this le fun hb => .letE (H hb).1 (H hb).2.1 (H hb).2.2
   · exact .pure nofun

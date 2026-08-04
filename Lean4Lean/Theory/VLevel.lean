@@ -35,7 +35,7 @@ def eval : VLevel → Nat
   | .zero => 0
   | .succ l => l.eval + 1
   | .max l₁ l₂ => l₁.eval.max l₂.eval
-  | .imax l₁ l₂ => l₁.eval.imax l₂.eval
+  | .imax l₁ l₂ => Lean.Nat.imax l₁.eval l₂.eval
   | .param i => ls.getD i 0
 
 protected def LE (a b : VLevel) : Prop := ∀ ls, a.eval ls ≤ b.eval ls
@@ -94,22 +94,22 @@ theorem LE.max_eq_right (h : a.LE b) : max a b ≈ b := by
 theorem max_self : max a a ≈ a := by simp [equiv_def, eval]
 
 theorem zero_imax : imax zero a ≈ a := by
-  simp [equiv_def, eval, Nat.imax, eq_comm (b := 0)]
+  simp [equiv_def, eval, Lean.Nat.imax, eq_comm (b := 0)]
 
-theorem imax_zero : imax a zero ≈ zero := by simp [equiv_def, eval, Nat.imax]
+theorem imax_zero : imax a zero ≈ zero := by simp [equiv_def, eval, Lean.Nat.imax]
 
 theorem imax_self : imax a a ≈ a := by
-  simp [equiv_def, eval, Nat.imax, eq_comm (b := 0)]
+  simp [equiv_def, eval, Lean.Nat.imax, eq_comm (b := 0)]
 
 theorem imax_eq_zero : imax a b ≈ zero ↔ b ≈ zero := by
-  simp [equiv_def, eval, Nat.imax]
+  simp [equiv_def, eval, Lean.Nat.imax]
   refine ⟨fun H ls => ?_, fun H ls hn => nomatch hn (H ls)⟩
   exact Decidable.byContradiction fun h => h (H ls h).2
 
 def IsNeverZero (a : VLevel) : Prop := ∀ ls, a.eval ls ≠ 0
 
 theorem IsNeverZero.imax_eq_max (h : IsNeverZero b) : imax a b ≈ max a b := by
-  simp_all [equiv_def, eval, Nat.imax, IsNeverZero]
+  simp_all [equiv_def, eval, Lean.Nat.imax, IsNeverZero]
 
 variable (ls : List VLevel) in
 def inst : VLevel → VLevel

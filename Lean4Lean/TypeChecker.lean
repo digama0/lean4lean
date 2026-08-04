@@ -288,7 +288,8 @@ def whnfFVar (e : Expr) (cheapRec cheapProj : Bool) : RecM Expr := do
     return ← whnfCore v cheapRec cheapProj
   return e
 
-def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
+def reduceProj (typeName : Name) (idx : Nat) (struct : Expr)
+    (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
   let mut c ← (if cheapProj then whnfCore struct cheapRec cheapProj else whnf struct)
   if let .lit (.strVal s) := c then
     c ← whnf (.strLitToConstructor s)
@@ -296,6 +297,7 @@ def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (O
   let .const mkC _ := mk | return none
   let env ← getEnv
   let .ctorInfo mkInfo ← env.get mkC | return none
+  if mkInfo.induct != typeName then return none
   return args[mkInfo.numParams + idx]?
 
 def isLetFVar (lctx : LocalContext) (fvar : FVarId) : Bool :=
@@ -341,8 +343,8 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
       save <|← whnfCore r cheapRec cheapProj
   | .letE _ _ val body _ =>
     save <|← whnfCore (body.instantiate1 val) cheapRec cheapProj
-  | .proj _ idx s =>
-    if let some m ← reduceProj idx s cheapRec cheapProj then
+  | .proj typeName idx s =>
+    if let some m ← reduceProj typeName idx s cheapRec cheapProj then
       save <|← whnfCore m cheapRec cheapProj
     else
       save e
@@ -690,8 +692,8 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   | .const tf tl, .const sf sl =>
     if tf == sf && Level.isEquivList tl sl then return true
   | .fvar tv, .fvar sv => if tv == sv then return true
-  | .proj _ ti te, .proj _ si se =>
-    if ti == si then if ← isDefEq te se then return true
+  | .proj tn ti te, .proj sn si se =>
+    if tn == sn && ti == si then if ← isDefEq te se then return true
   | _, _ => pure ()
 
   let tnn ← whnfCore tn

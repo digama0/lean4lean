@@ -50,7 +50,7 @@ def isEquiv (e1 e2 : Expr) : StateM EquivManager Bool := do
     | .lam _ d1 b1 _, .lam _ d2 b2 _ => isEquiv d1 d2 <&&> isEquiv b1 b2
     | .mdata _ a1, .mdata _ a2 => isEquiv a1 a2
     | .forallE _ d1 b1 _, .forallE _ d2 b2 _ => isEquiv d1 d2 <&&> isEquiv b1 b2
-    | .proj _ i1 e1, .proj _ i2 e2 => pure (i1 == i2) <&&> isEquiv e1 e2
+    | .proj n1 i1 e1, .proj n2 i2 e2 => pure (n1 == n2 && i1 == i2) <&&> isEquiv e1 e2
     | .letE _ t1 v1 b1 _, .letE _ t2 v2 b2 _ => isEquiv t1 t2 <&&> isEquiv v1 v2 <&&> isEquiv b1 b2
     | _, _ => return false
   if result then

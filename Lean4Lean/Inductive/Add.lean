@@ -223,7 +223,7 @@ def checkConstructors (indTypes : Array InductiveType)
             loop (body.instantiate1 param) (i + 1) fuel
           else
             let s ← ensureType dom
-            unless stats.resultLevel.isZero || stats.resultLevel.geq s.sortLevel! do
+            unless stats.resultLevel.isAlwaysZero || stats.resultLevel.geq s.sortLevel! do
               throw <| .other s!"universe level of type_of(arg #{i + 1}) of '{n}' \
                 is too big for the corresponding inductive datatype"
             if !isUnsafe then
@@ -268,7 +268,7 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
         withLocalDecl name bi dom.consumeTypeAnnotations fun arg => do
           let mut toCheck := toCheck
           if i ≥ stats.params.size then
-            if !(← ensureType dom).sortLevel!.isZero then
+            if !(← ensureType dom).sortLevel!.isAlwaysZero then
               toCheck := toCheck.push arg
           loop (body.instantiate1 arg) (i + 1) toCheck fuel
       else
@@ -288,7 +288,7 @@ def getElimLevel (stats : InductiveStats) (indTypes : Array InductiveType) :
 
 def isKTarget (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool := do
   let #[indType] := indTypes | return false
-  unless stats.resultLevel.isZero do return false
+  unless stats.resultLevel.isAlwaysZero do return false
   let [ctor] := indType.ctors | return false
   let rec loop i
     | .forallE _ _ body _ => i < stats.params.size && loop (i + 1) body
@@ -515,14 +515,16 @@ def getNestedIfAuxCtor (r : Result) (env' : Environment) (c : Name) : Option (Ex
   let .ctorInfo { induct, .. } ← env'.find? c | none
   return (← r.aux2nested.find? induct, induct)
 
-def restoreCtorName (r : Result) (env' : Environment) (c : Name) : Name := Id.run do
-  let (e, name) := (r.getNestedIfAuxCtor env' c).get!
-  let .const I _ := e.getAppFn | unreachable!
-  c.replacePrefix name I
+def restoreCtorName (r : Result) (env' : Environment) (c : Name) : Except Exception Name := do
+  let some (e, name) := r.getNestedIfAuxCtor env' c
+    | throw <| .other s!"failed to restore nested inductive types, '{c}' is not a constructor of an auxiliary type"
+  let .const I _ := e.getAppFn
+    | throw <| .other "failed to restore nested inductive types, nested occurrence is not an inductive type application"
+  return c.replacePrefix name I
 
 def restoreNested (r : Result) (env' : Environment) (e : Expr)
-    (auxRec : NameMap Name := {}) : Expr :=
-  Id.run <| StateT.run' (s := { namePrefix := `_nested_fresh : NameGenerator }) do
+    (auxRec : NameMap Name := {}) : Except Exception Expr :=
+  StateT.run' (s := { namePrefix := `_nested_fresh : NameGenerator }) do
   let pi := e.isForall
   let mut e := e
   let mut As := #[]
@@ -535,24 +537,28 @@ def restoreNested (r : Result) (env' : Environment) (e : Expr)
       let arg := .fvar id
       e := body.instantiate1 arg
       As := As.push arg
-    | _ => unreachable!
-  e := e.replace fun t => do
+    | _ => throw <| .other "failed to restore nested inductive types, fewer binders than parameters"
+  e := ← e.replaceM fun t => do
     if let .const c ls := t then
       if let some recName := auxRec.find? c then
-        return .const recName ls
-    let .const c _ := t.getAppFn | none
+        return some (.const recName ls)
+    let .const c _ := t.getAppFn | return none
     if let some nested := r.aux2nested.find? c then
       let args := t.getAppArgs
-      assert! args.size ≥ r.nparams
-      return mkAppRange ((nested.abstract r.params).instantiateRev As) r.nparams args.size args
-    let (nested, auxI_name) ← r.getNestedIfAuxCtor env' c
+      if args.size < r.nparams then
+        throw <| .other "failed to restore nested inductive types, auxiliary type is not applied to all parameters"
+      return some <| mkAppRange
+        ((nested.abstract r.params).instantiateRev As) r.nparams args.size args
+    let some (nested, auxI_name) := r.getNestedIfAuxCtor env' c | return none
     let args := t.getAppArgs
-    assert! args.size ≥ r.nparams
+    if args.size < r.nparams then
+      throw <| .other "failed to restore nested inductive types, auxiliary constructor is not applied to all parameters"
     let nested' := (nested.abstract r.params).instantiateRev As
     nested'.withApp fun I I_args => do
-    let .const I_c I_ls := I | unreachable!
+    let .const I_c I_ls := I
+      | throw <| .other "failed to restore nested inductive types, nested occurrence is not an inductive type application"
     let c' := .const (c.replacePrefix auxI_name I_c) I_ls
-    return mkAppRange (mkAppN c' I_args) r.nparams args.size args
+    return some <| mkAppRange (mkAppN c' I_args) r.nparams args.size args
   return if pi then lctx.mkForall As e else lctx.mkLambda As e
 
 end Result
@@ -723,9 +729,22 @@ def mkAuxRecNameMap (env' : Environment) (types : List InductiveType) :
     oldRecNames := oldRecNames.push oldRecName
   return (oldRecNames.toList, recMap)
 
+def checkNoNestedAux (n : Name) (e : Expr) : Except Exception Unit := do
+  if (e.find? fun
+      | .const c _ => (`_nested).isPrefixOf c
+      | .proj s _ _ => (`_nested).isPrefixOf s
+      | _ => false).isSome then
+    throw <| .other s!"invalid declaration '{n}', it uses the reserved prefix '_nested'"
+
 def Environment.addInductive (env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe allowPrimitive : Bool) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
+  for indType in types do
+    env.checkNoMVarNoFVar indType.name indType.type
+    checkNoNestedAux indType.name indType.type
+    for ctor in indType.ctors do
+      env.checkNoMVarNoFVar ctor.name ctor.type
+      checkNoNestedAux ctor.name ctor.type
   let res ← ElimNestedInductive.run fuel.inductiveFuel nparams types env
     |>.run' { lvls := lparams.map .param, newTypes := types.toArray }
   let numNested := res.aux2nested.size
@@ -739,26 +758,43 @@ def Environment.addInductive (env : Environment) (lparams : List Name) (nparams 
   let processRec recName := do
     let newRecName := recNameMap'.getD recName recName
     let some (.recInfo recInfo) := env'.find? recName | unreachable!
-    let newRecType := res.restoreNested env' recInfo.type recNameMap'
+    let newRecType ← res.restoreNested env' recInfo.type recNameMap'
     let newRules ← recInfo.rules.mapM fun rule => do
-      let newRhs := res.restoreNested env' rule.rhs recNameMap'
-      let newCtorName := if newRecName == recName then rule.ctor else
+      let newRhs ← res.restoreNested env' rule.rhs recNameMap'
+      let newCtorName ← if newRecName == recName then pure rule.ctor else
         res.restoreCtorName env' rule.ctor
       return { rule with ctor := newCtorName, rhs := newRhs }
     (← MonadState.get).checkName newRecName allowPrimitive
     modify (·.add <| .recInfo { recInfo with
       name := newRecName, type := newRecType, all := allIndNames, rules := newRules })
+    return newRecName
+  let mut newRecNames := #[]
   for indType in types do
     let some (.inductInfo ind) := env'.find? indType.name | unreachable!
     (← get).checkName ind.name allowPrimitive
     modify (·.add <| .inductInfo { ind with all := allIndNames })
     for ctorName in ind.ctors do
       let some (.ctorInfo ctor) := env'.find? ctorName | unreachable!
-      let newType := res.restoreNested env' ctor.type
+      let newType ← res.restoreNested env' ctor.type
       (← get).checkName ctor.name allowPrimitive
       modify (·.add <| .ctorInfo { ctor with type := newType })
-    processRec (mkRecName indType.name)
-  recNames'.forM processRec
-  TypeChecker.M.run (← get) (safety := safety) (lctx := res.lctx)
+    newRecNames := newRecNames.push (← processRec (mkRecName indType.name))
+  for recName in recNames' do
+    newRecNames := newRecNames.push (← processRec recName)
+  let finalEnv ← get
+  TypeChecker.M.run finalEnv (safety := safety) (lctx := {})
+      (lparams := lparams) (fuel := fuel) do
+    for indType in types do
+      for ctor in indType.ctors do
+        let some (.ctorInfo ctorInfo) := finalEnv.find? ctor.name | unreachable!
+        _ ← TypeChecker.checkType ctorInfo.type
+  for recName in newRecNames do
+    let some (.recInfo recInfo) := finalEnv.find? recName | unreachable!
+    TypeChecker.M.run finalEnv (safety := safety) (lctx := {})
+        (lparams := recInfo.levelParams) (fuel := fuel) do
+      _ ← TypeChecker.checkType recInfo.type
+      for rule in recInfo.rules do
+        _ ← TypeChecker.checkType rule.rhs
+  TypeChecker.M.run finalEnv (safety := safety) (lctx := res.lctx)
       (lparams := lparams) (fuel := fuel) do
     res.aux2nested.forM fun _ e => do _ ← TypeChecker.checkType e

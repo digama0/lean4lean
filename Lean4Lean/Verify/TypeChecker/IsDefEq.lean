@@ -538,7 +538,7 @@ theorem isDefEqCore'.WF {c : VContext} {s : VState}
       have .proj c1 c2 := c1; have .proj d1 d2 := d1
       refine (isDefEq.WF c1 d1).bind fun _ _ _ h => ?_
       split <;> [skip; exact this]
-      simp at h2; subst h2; clear h
+      simp at h2; rcases h2 with ⟨rfl, rfl⟩; clear h
       exact .pure fun _ => c2.uniq c.Ewf (.refl c.Δwf) d2 (h ‹_›)
     · exact this
   intro; unfold F3

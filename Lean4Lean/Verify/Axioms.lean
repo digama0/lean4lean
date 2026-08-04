@@ -114,12 +114,14 @@ end Syntax
 namespace Level
 
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
-  if depth > Nat.pow 2 24 - 1 then panic! "universe level depth is too big"
-  else
-    h.toUInt32.toUInt64 +
-    hasMVar.toUInt64.shiftLeft 32 +
-    hasParam.toUInt64.shiftLeft 33 +
-    depth.toUInt64.shiftLeft 40
+  by
+    unfold Level.Data
+    exact if depth > Nat.pow 2 24 - 1 then panic! "universe level depth is too big"
+    else
+      h.toUInt32.toUInt64 +
+      hasMVar.toUInt64.shiftLeft 32 +
+      hasParam.toUInt64.shiftLeft 33 +
+      depth.toUInt64.shiftLeft 40
 
 /-- This exists only for the bit-twiddling proofs, it shouldn't appear
 in the main results, which use the functions below instead -/
@@ -166,33 +168,38 @@ namespace Expr
 def mkData'
     (h : UInt64) (looseBVarRange : Nat := 0) (approxDepth : UInt32 := 0)
     (hasFVar hasExprMVar hasLevelMVar hasLevelParam : Bool := false)
-    : Expr.Data :=
-  let approxDepth : UInt8 := if approxDepth > 255 then 255 else approxDepth.toUInt8
-  assert! (looseBVarRange ≤ Nat.pow 2 20 - 1)
-  h.toUInt32.toUInt64 +
-  approxDepth.toUInt64.shiftLeft 32 +
-  hasFVar.toUInt64.shiftLeft 40 +
-  hasExprMVar.toUInt64.shiftLeft 41 +
-  hasLevelMVar.toUInt64.shiftLeft 42 +
-  hasLevelParam.toUInt64.shiftLeft 43 +
-  looseBVarRange.toUInt64.shiftLeft 44
+    : Expr.Data := by
+  unfold Expr.Data
+  exact
+    let approxDepth : UInt8 := if approxDepth > 255 then 255 else approxDepth.toUInt8
+    assert! (looseBVarRange ≤ Nat.pow 2 20 - 1)
+    h.toUInt32.toUInt64 +
+    approxDepth.toUInt64.shiftLeft 32 +
+    hasFVar.toUInt64.shiftLeft 40 +
+    hasExprMVar.toUInt64.shiftLeft 41 +
+    hasLevelMVar.toUInt64.shiftLeft 42 +
+    hasLevelParam.toUInt64.shiftLeft 43 +
+    looseBVarRange.toUInt64.shiftLeft 44
 
 /-- This exists only for the bit-twiddling proofs, it shouldn't appear
 in the main results, which use the functions below instead -/
 axiom mkData_eq : @mkData = @mkData'
 
 @[inline] def mkAppData' (fData : Data) (aData : Data) : Data :=
-  let depth          := max fData.approxDepth.toUInt16 aData.approxDepth.toUInt16 + 1
-  let approxDepth    := if depth > 255 then 255 else depth.toUInt8
-  let looseBVarRange := max fData.looseBVarRange aData.looseBVarRange
-  let hash           := mixHash fData aData
-  let fData : UInt64 := fData
-  let aData : UInt64 := aData
-  assert! looseBVarRange ≤ (Nat.pow 2 20 - 1).toUInt32
-  (fData ||| aData) &&& (15 : UInt64) <<< (40 : UInt64) |||
-  hash.toUInt32.toUInt64 |||
-  approxDepth.toUInt64 <<< (32 : UInt64) |||
-  looseBVarRange.toUInt64 <<< (44 : UInt64)
+  by
+    unfold Data
+    exact
+      let depth          := max fData.approxDepth.toUInt16 aData.approxDepth.toUInt16 + 1
+      let approxDepth    := if depth > 255 then 255 else depth.toUInt8
+      let looseBVarRange := max fData.looseBVarRange aData.looseBVarRange
+      let hash           := mixHash fData aData
+      let fData : UInt64 := fData
+      let aData : UInt64 := aData
+      assert! looseBVarRange ≤ (Nat.pow 2 20 - 1).toUInt32
+      (fData ||| aData) &&& (15 : UInt64) <<< (40 : UInt64) |||
+      hash.toUInt32.toUInt64 |||
+      approxDepth.toUInt64 <<< (32 : UInt64) |||
+      looseBVarRange.toUInt64 <<< (44 : UInt64)
 
 /-- This exists only for the bit-twiddling proofs, it shouldn't appear
 in the main results, which use the functions below instead -/
