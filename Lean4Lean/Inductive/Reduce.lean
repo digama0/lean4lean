@@ -50,10 +50,11 @@ def expandEtaStruct (eType e : Expr) : Expr :=
     result := .app result (.proj I i e)
   pure result
 
-/-- When `e` is of struct type, converts it into a constructor application using projections.
+/-- When `e` is of non-recursive structure type, and that type is not a proposition, converts `e`
+into a constructor application using projections.
 
-For instance if we have `e : String`, it is converted into `String.mk (String.data e)`
-(which is definitionally equal to `e` by struct eta). -/
+For instance if we have `e : α × β`, it is converted into `Prod.mk α β e.1 e.2` (which is
+definitionally equal to `e` by struct eta). -/
 def toCtorWhenStruct (inductName : Name) (e : Expr) : m Expr := do
   if !env.isNonRecStructure inductName || (e.isConstructorApp?' env).isSome then
     return e
@@ -70,10 +71,12 @@ def getRecRuleFor (rval : RecursorVal) (major : Expr) : Option RecursorRule := d
 /-- Performs recursor reduction on `e` (returning `none` if not applicable).
 
 For recursor reduction to occur, `e` must be a recursor application where the major premise is
-either a complete constructor application or of a K- or structure-like inductive type (in which
-case it is converted into an equivalent constructor application). The reduction is done by applying
-the `RecursorRule.rhs` associated with the constructor to the parameters from the recursor
-application and the fields of the constructor application. -/
+either a complete constructor application, a `Nat` or `String` literal, or of a K- or
+structure-like inductive type (in each case it is converted into an equivalent constructor
+application). The reduction is done by applying the `RecursorRule.rhs` associated with the
+constructor to everything before the indices in the recursor application (its parameters, motives
+and minor premises) and then to the fields of the constructor application; any arguments after the
+major premise are re-applied to the result. -/
 def inductiveReduceRec [Monad m] (env : Environment) (e : Expr)
     (whnf : Expr → m Expr) (inferType : Expr → m Expr) (isDefEq : Expr → Expr → m Bool) :
     m (Option Expr) := do
@@ -94,8 +97,8 @@ def inductiveReduceRec [Monad m] (env : Environment) (e : Expr)
   if rule.nfields > majorArgs.size then return none
   if ls.length != info.levelParams.length then return none
   let mut rhs := rule.rhs.instantiateLevelParams info.levelParams ls
-  -- get parameters from recursor application (recursor rules don't need the indices,
-  -- as these are determined by the constructor and its parameters/fields)
+  -- get the parameters, motives and minor premises from the recursor application (recursor rules
+  -- don't need the indices, as these are determined by the constructor and its parameters/fields)
   rhs := mkAppRange rhs 0 info.getFirstIndexIdx recArgs
   -- get fields from constructor application
   rhs := mkAppRange rhs (majorArgs.size - rule.nfields) majorArgs.size majorArgs
