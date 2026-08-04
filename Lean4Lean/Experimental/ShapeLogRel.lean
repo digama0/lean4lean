@@ -31,12 +31,12 @@ private noncomputable instance : DecidableEq SLevel := fun a b => Classical.prop
     simp [SLevel.imax, SLevel.zero] at hv
     apply Subtype.ext; funext v
     have := congrFun hv v
-    simp [Nat.imax, VLevel.eval] at this
+    simp [Lean.Nat.imax, VLevel.eval] at this
     exact Decidable.byContradiction fun h => absurd (this h).2 h
   · intro h
     subst h
     apply Subtype.ext; funext v
-    simp [SLevel.imax, SLevel.zero, Nat.imax, VLevel.eval]
+    simp [SLevel.imax, SLevel.zero, Lean.Nat.imax, VLevel.eval]
 
 inductive Shape0 : Type where
   | bot : Shape0
@@ -50,7 +50,7 @@ inductive ShapeS (Shape : Type) : Type where
   | ctor : Name → List Shape → ShapeS Shape
   | indTy : ShapeS Shape
 
-def Shape : Nat → Type
+@[implicit_reducible] def Shape : Nat → Type
   | 0 => Shape0
   | n + 1 => ShapeS (Shape n)
 
@@ -925,8 +925,8 @@ protected theorem Shape.WF.sort : (Shape.sort (n := n) r).WF := by cases n <;> t
 protected theorem ShapeFun.WF.bot : (ShapeFun.bot (n := n)).WF Shape.WF := by
   simp [WF, bot, Shape.Compat.bot_l, Shape.bot_join, Shape.WF.bot]
 
-def WShape (n : Nat) := {s : Shape n // s.WF}
-def WShapeFun (n : Nat) := {s : ShapeFun n // s.WF Shape.WF}
+@[implicit_reducible] def WShape (n : Nat) := {s : Shape n // s.WF}
+@[implicit_reducible] def WShapeFun (n : Nat) := {s : ShapeFun n // s.WF Shape.WF}
 
 instance : Membership (WShape n × WShape n) (WShapeFun n) := ⟨fun f a => (a.1.1, a.2.1) ∈ f.1⟩
 
@@ -1518,7 +1518,8 @@ theorem ih_fun {f f' : WShapeFun n} :
     have ⟨_, g1, g2, dg⟩ := app_core ih f' d; have ⟨g3, g4, g2⟩ := f'.mem_val' g2
     have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc d)
     refine d1 ▸ e1 ▸ ⟨d.2, e.2⟩
-  · intro f₃; conv => enter [1,x,y,1]; simp only [WShapeFun.mem_def, ShapeFun.mem_join]
+  · intro f₃; conv =>
+      enter [1,x,y,1]; (conv => apply propext WShapeFun.mem_def); simp only [ShapeFun.mem_join]
     refine ⟨fun H => ?_, fun ⟨H1, H2⟩ => ?_⟩
     · refine ⟨fun x y hf => ?_, fun x y hf' => ?_⟩
       · have ⟨_, hf'⟩ := f'.bot_mem
@@ -1815,7 +1816,7 @@ theorem WShapeFun.mem_ofElems {f : List (WShape n × WShape n)} {h1 h2} :
   exact ⟨fun ⟨⟨a, b⟩, h, ha, hb⟩ => by cases WShape.ext ha; cases WShape.ext hb; exact h,
     fun h => ⟨_, h, rfl, rfl⟩⟩
 
-def TShape := Σ n, WShape n
+@[implicit_reducible] def TShape := Σ n, WShape n
 abbrev WShape.T : WShape n → TShape := Sigma.mk _
 
 def TShape.LE (a b : TShape) : Prop := a.2.lift (max a.1 b.1) ≤ b.2.lift _

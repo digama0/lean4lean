@@ -38,6 +38,10 @@ def checkEqType (env : Environment) : Except Exception Unit := do
 def Environment.addQuot (env : Environment) : Except Exception Environment := do
   if env.quotInit then return env
   checkEqType env
+  env.checkName ``Quot
+  env.checkName ``Quot.mk
+  env.checkName ``Quot.lift
+  env.checkName ``Quot.ind
   ExprBuildT.run do
   let u := .param `u
   withLocalDecl `α .implicit (.sort u) fun α => do

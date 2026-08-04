@@ -19,7 +19,7 @@ inductive Subpattern (p : Pattern) : Pattern → Prop where
   | appR : Subpattern p a → Subpattern p (.app f a)
   | varL : Subpattern p f → Subpattern p (.var f)
 
-def Subpattern.varN (h : Subpattern p f) : ∀ {n}, Subpattern p (.varN f n)
+theorem Subpattern.varN (h : Subpattern p f) : ∀ {n}, Subpattern p (.varN f n)
   | 0 => h
   | _+1 => .varL (.varN h)
 
@@ -86,7 +86,7 @@ theorem Pattern.Matches.uniq {p : Pattern} {e : VExpr} {m1 m2 m1' m2'}
   induction H1 generalizing m1' with cases H2
   | const => simp
   | var _ ih => rename_i h; simp [ih h]
-  | app _ _ ih1 ih2 => rename_i h2 h1; simp [ih1 h1, ih2 h2]
+  | app _ _ ih1 ih2 => rename_i h2 h1; simp [ih1 h1, ih2 h2]; rfl
 
 def Pattern.OnArgs (P : VExpr → Prop) : Pattern → Prop
   | .const .. => True
@@ -208,7 +208,7 @@ theorem Pattern.matches_determ
     (h1 : Matches p e m1 m2) (h2 : Matches p e m1' m2') : m1 = m1' ∧ m2 = m2' := by
   induction h1 generalizing m1' with
   | const => let .const := h2; simp
-  | app l1 l2 ih1 ih2 => let .app r1 r2 := h2; simp [ih1 r1, ih2 r2]
+  | app l1 l2 ih1 ih2 => let .app r1 r2 := h2; simp [ih1 r1, ih2 r2]; rfl
   | var l1 ih1 => let .var r1 := h2; simp [ih1 r1]
 
 def Pattern.Check.OK (defeq : VExpr → VExpr → Prop) {p : Pattern}

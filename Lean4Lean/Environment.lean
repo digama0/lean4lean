@@ -81,10 +81,17 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
   if check then
     M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
+      let mut found : NameSet := {}
       for v in vs do
         if v.safety != v₀.safety then
           throw <| .other
             "invalid mutual definition, declarations must have the same safety annotation"
+        if v.levelParams != v₀.levelParams then
+          throw <| .other
+            "invalid mutual definition, declarations must have the same universe level parameters"
+        if found.contains v.name then
+          throw <| .other s!"invalid mutual definition, duplicate declaration name '{v.name}'"
+        found := found.insert v.name
         checkConstantVal env v.toConstantVal
   let mut env' := env
   for v in vs do

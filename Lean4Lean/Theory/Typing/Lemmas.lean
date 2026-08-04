@@ -9,7 +9,7 @@ inductive Ctx.LiftN (n : Nat) : Nat → List VExpr → List VExpr → Prop where
   | zero (As) (h : As.length = n := by rfl) : Ctx.LiftN n 0 Γ (As ++ Γ)
   | succ : Ctx.LiftN n k Γ Γ' → Ctx.LiftN n (k+1) (A::Γ) (A.liftN n k :: Γ')
 
-def Ctx.LiftN.one : Ctx.LiftN 1 0 Γ (A::Γ) := .zero [_]
+theorem Ctx.LiftN.one : Ctx.LiftN 1 0 Γ (A::Γ) := .zero [_]
 
 theorem Ctx.LiftN.isSuffix (H : Ctx.LiftN n k Γ Γ') :
     ∃ Γ₀ As Δ Δ',

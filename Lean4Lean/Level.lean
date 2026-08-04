@@ -70,7 +70,7 @@ def orderedInsert (cmp : α → α → Ordering) (a : α) : List α → Option (
     | .eq => none
     | .gt => (orderedInsert cmp a l).map (b :: ·)
 
-def NormLevel := Std.TreeMap (List Name) Node compare
+@[reducible] def NormLevel := Std.TreeMap (List Name) Node compare
   deriving Repr
 
 instance : BEq NormLevel where

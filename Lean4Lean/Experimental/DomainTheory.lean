@@ -41,7 +41,7 @@ inductive FinElem where
   | bot
   | val : SExprF FinElem (FinFun FinElem FinElem) → FinElem
 
-def DomN : Nat → Type
+@[implicit_reducible] def DomN : Nat → Type
   | 0 => Unit
   | n+1 => Option (SExprF (DomN n) (DomN n → DomN n))
 
@@ -176,7 +176,7 @@ theorem DomN.cast_eq (x : DomN (a + 1)) :
       simp [SExprF.map_comp]; congr 1 <;> ext t <;> simp [this]
       congr 2; exact DomN.cast_upN (k := 1) _ (Nat.le_add_right ..)
 
-def Dom : Type := { f : ∀ n, DomN n // ∀ n, f n = (f (n + 1)).down }
+@[implicit_reducible] def Dom : Type := { f : ∀ n, DomN n // ∀ n, f n = (f (n + 1)).down }
 
 def Dom.bot : Dom := ⟨fun | 0 => () | _+1 => none, fun | 0 | _+1 => rfl⟩
 

@@ -73,7 +73,7 @@ theorem beq_refl (s : Substring.Raw) : s == s := by
   termination_by n.byteIdx - i.byteIdx
   refine ⟨?_, loop⟩
   obtain h | h := Nat.le_or_le s.repair.startPos.byteIdx s.repair.stopPos.byteIdx
-  · rw [Nat.add_sub_cancel' h]
+  · simp only [Nat.add_sub_cancel' h, decide_eq_true_eq]
     apply String.Pos.Raw.IsValid.le_rawEndPos
     simp [Substring.Raw.repair]; split <;> simp [*]
   · simp [Nat.sub_eq_zero_of_le h]
@@ -82,7 +82,8 @@ theorem beq_refl (s : Substring.Raw) : s == s := by
 
 open private substrEq.loop from Init.Data.String.Basic in
 theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
-  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq]
+  simp +contextual [(· == ·), Substring.Raw.beq, String.Pos.Raw.substrEq]
+  simp [Substring.Raw.bsize]
   let rec loop {s s' b b' i n} :
       substrEq.loop s s' ⟨b + i⟩ ⟨b' + i⟩ ⟨b + n⟩ ↔
       substrEq.loop s' s ⟨b' + i⟩ ⟨b + i⟩ ⟨b' + n⟩ := by
@@ -98,7 +99,8 @@ theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
 
 open private substrEq.loop from Init.Data.String.Basic in
 theorem beq_trans {s t : Substring.Raw} : s == t → t == u → s == u := by
-  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq]
+  simp +contextual [(· == ·), Substring.Raw.beq, String.Pos.Raw.substrEq]
+  simp [Substring.Raw.bsize]
   let ⟨s, ⟨b⟩, e⟩ := s.repair
   let ⟨s2, ⟨b2⟩, e2⟩ := t.repair
   let ⟨s3, ⟨b3⟩, e3⟩ := u.repair
@@ -247,6 +249,9 @@ private def flagAt (fv ev lv lp : Bool) : Nat → Bool
   | 2 => lv
   | 3 => lp
   | _ => false
+
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
 
 private theorem mkData_flags (H : br ≤ 2 ^ 20 - 1) :
     (mkData h br d fv ev lv lp).hasFVar = fv ∧
@@ -553,6 +558,9 @@ namespace Expr
 attribute [simp] mkConst mkBVar mkSort mkFVar mkMVar mkMData mkProj mkApp mkLambda mkForall mkLet
   updateApp! updateFVar! updateConst! updateSort! updateMData! updateProj!
   updateForall! updateForallE! updateLambda! updateLambdaE! updateLetE! updateLet!
+
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
 
 theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
     (mkData h br d fv ev lv lp).looseBVarRange.toNat = br := by
