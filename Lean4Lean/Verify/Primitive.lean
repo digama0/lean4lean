@@ -4128,7 +4128,6 @@ theorem checkNatWellFoundedEquation.WF {c : VContext} {s : VState}
   split
   · rename_i hclosed
     simp only [Bool.and_eq_true] at hclosed
-    simp only [pure_bind]
     have hlhs := closedExpr_fvarsIn (c := c)
       (by simpa using hclosed.1.1.1) (by simpa using hclosed.1.1.2)
     have hrhs := closedExpr_fvarsIn (c := c)
@@ -5667,7 +5666,6 @@ theorem checkNatGcdFixCertificate.WF {c : VContext} {s : VState}
   refine M.WF.sandbox.bind fun cert _ _ _ => ?_
   split
   · rename_i hshape
-    simp only [pure_bind]
     exact checkNatWellFoundedCertificate.WF.bind fun _ _ _ hcore =>
       checkNatWellFoundedEquation.WF.bind fun _ _ _ htop =>
       checkNatWellFoundedEquation.WF.bind fun _ _ _ hzero =>
@@ -5763,7 +5761,6 @@ theorem checkNatBitwiseFixCertificate.WF {c : VContext} {s : VState}
   refine M.WF.sandbox.bind fun cert _ _ _ => ?_
   split
   · rename_i hshape
-    simp only [pure_bind]
     have hflags := hshape
     simp only [NatBitwiseFixCertificate.shape, Bool.and_eq_true] at hflags
     have hnoFVar : cert.callFn.hasFVar = false := by
@@ -5796,7 +5793,6 @@ theorem unfoldNatWellFoundedCert.WF {c : VContext} {s : VState}
   refine M.WF.sandbox.bind fun cert _ _ _ => ?_
   split
   · rename_i hequation
-    simp only [pure_bind]
     exact checkNatWellFoundedCertificate.WF.bind fun _ _ _ hvalid =>
       .pure ⟨hequation, hvalid⟩
   · exact .throw
@@ -5830,7 +5826,6 @@ theorem unfoldNatWellFoundedNat2Cert.WF {c : VContext} {s : VState}
   refine hraw'.bind fun cert _ _ _ => ?_
   split
   · rename_i hequation
-    simp only [pure_bind]
     exact checkNatWellFoundedCertificate.WF.bind fun _ _ _ hvalid =>
       .pure ⟨hequation, hvalid⟩
   · exact .throw
@@ -5881,7 +5876,6 @@ theorem unfoldNatWellFoundedBoolNat2Cert.WF {c : VContext} {s : VState}
   refine hraw'.bind fun cert _ _ _ => ?_
   split
   · rename_i hequation
-    simp only [pure_bind]
     exact checkNatWellFoundedCertificate.WF.bind fun _ _ _ hvalid =>
       .pure ⟨hequation, hvalid⟩
   · exact .throw
@@ -6820,7 +6814,6 @@ theorem checkNatModPrimitive.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simpa using hempty
     have hclparams : c.lparams = [] := hcparams.trans hlparams
-    simp only [pure_bind]
     exact checkTypeDiscard.bind_WF hcanon.fvarsIn fun _ =>
       (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
@@ -6966,7 +6959,6 @@ theorem checkNatModPrimitive.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact TrExprS.natBinaryType_of_contains c.hasPrimitives hnat c.lparams []
-    simp only [pure_bind]
     exact checkTypeDiscard.bind_WF hcanon.fvarsIn fun _ =>
       (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
@@ -7085,7 +7077,6 @@ theorem checkNatDivPrimitive.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simpa using hempty
     have hclparams : c.lparams = [] := hcparams.trans hlparams
-    simp only [pure_bind]
     exact checkTypeDiscard.bind_WF hcanon.fvarsIn fun _ =>
       (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
@@ -7212,7 +7203,6 @@ theorem checkNatDivPrimitive.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact TrExprS.natBinaryType_of_contains c.hasPrimitives hnat c.lparams []
-    simp only [pure_bind]
     exact checkTypeDiscard.bind_WF hcanon.fvarsIn fun _ =>
       (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
@@ -7362,8 +7352,7 @@ theorem checkPrimitiveDef.charOfNat.WF {c : VContext} {s : VState}
     split
     · split
       · split
-        · simp only [pure_bind]
-          exact (ensureType.WF hchar).bind fun _ _ _ _ =>
+        · exact (ensureType.WF hchar).bind fun _ _ _ _ =>
             (isDefEq.WF hty hcanon).bind fun b _ _ hb => by
               split
               · exact .pure fun _ => ⟨hlparams, hb (by assumption)⟩
@@ -7410,7 +7399,6 @@ theorem checkPrimitiveDef.charOfNat.WF_typed {c : VContext} {s : VState}
             VContext.trConst_of_find?_empty c hcharFind (by
               rw [hcharSafety']
               exact DefinitionSafety.le_safe) hcharLevels'
-          simp only [pure_bind]
           refine M.WF.bind (f := fun _ => do
             let b ← isDefEq v.type q(Nat → Char)
             if b = true then pure true else do
@@ -7637,7 +7625,6 @@ theorem checkStringOfListPrimitive.WF {c : VContext} {s : VState}
         (.forallE .char <| .forallE .listChar .listChar) := by
   unfold checkStringOfListPrimitive
   dsimp only
-  simp only [pure_bind]
   let hfail : ∀ {α} {s'}, M.WF c s'
       ((throw <| .other s!"invalid form for primitive def {v.name}") : M α)
       fun _ _ => False := fun {_} {_} => .throw
@@ -7732,7 +7719,6 @@ theorem checkStringOfListPrimitive.WF_typed
         (.forallE .char <| .forallE .listChar .listChar) := by
   unfold checkStringOfListPrimitive
   dsimp only
-  simp only [pure_bind]
   let hfail : ∀ {α} {s'}, M.WF c s'
       ((throw <| .other s!"invalid form for primitive def {v.name}") : M α)
       fun _ _ => False := fun {_} {_} => .throw
@@ -7979,7 +7965,6 @@ theorem checkPrimitiveDef.natAdd.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -8058,7 +8043,6 @@ theorem checkPrimitiveDef.natAdd.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -8308,7 +8292,6 @@ theorem checkPrimitiveDef.natPred.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -8369,7 +8352,6 @@ theorem checkPrimitiveDef.natPred.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -8514,7 +8496,6 @@ theorem checkPrimitiveDef.natSub.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -8595,7 +8576,6 @@ theorem checkPrimitiveDef.natSub.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -8797,7 +8777,6 @@ theorem checkPrimitiveDef.natMul.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -8878,7 +8857,6 @@ theorem checkPrimitiveDef.natMul.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -9089,7 +9067,6 @@ theorem checkPrimitiveDef.natPow.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -9170,7 +9147,6 @@ theorem checkPrimitiveDef.natPow.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -9454,7 +9430,6 @@ theorem checkPrimitiveDef.natGcd.WF_typed {c : VContext} {s : VState}
     have hvalueT0 := hvalueT
     change c.venv.HasType c.lparams.length c.vlctx.toCtx value' ty' at hvalueT0
     rw [hvlctx] at hvalueT0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -9804,12 +9779,12 @@ theorem checkPrimitiveDef.natBEq.WF {c : VContext} {s : VState}
   simp only [checkPrimitiveDefCore, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Bool &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -9831,7 +9806,8 @@ theorem checkPrimitiveDef.natBEq.WF {c : VContext} {s : VState}
               · exact .throw
           · exact .throw
       · exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 theorem checkPrimitiveDef.natBEq.WF_typed {c : VContext} {s : VState}
     (hname : v.name = ``Nat.beq)
@@ -9862,8 +9838,9 @@ theorem checkPrimitiveDef.natBEq.WF_typed {c : VContext} {s : VState}
   simp only [checkPrimitiveDefCore, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Bool &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
     have hdeps' : (c.env.contains ``Nat = true ∧
         c.env.contains ``Bool = true) ∧ v.levelParams = [] := by
       simpa using hdeps
@@ -9908,7 +9885,6 @@ theorem checkPrimitiveDef.natBEq.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -10102,7 +10078,8 @@ theorem checkPrimitiveDef.natBEq.WF_typed {c : VContext} {s : VState}
               · rw [if_neg hb0s]; exact .throw
           · rw [if_neg hb00]; exact .throw
       · rw [if_neg hb]; exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 theorem checkPrimitiveDef.natBLE.WF_typed {c : VContext} {s : VState}
     (hname : v.name = ``Nat.ble)
@@ -10133,8 +10110,9 @@ theorem checkPrimitiveDef.natBLE.WF_typed {c : VContext} {s : VState}
   simp only [checkPrimitiveDefCore, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Bool &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
     have hdeps' : (c.env.contains ``Nat = true ∧
         c.env.contains ``Bool = true) ∧ v.levelParams = [] := by
       simpa using hdeps
@@ -10179,7 +10157,6 @@ theorem checkPrimitiveDef.natBLE.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -10381,7 +10358,8 @@ theorem checkPrimitiveDef.natBLE.WF_typed {c : VContext} {s : VState}
               · rw [if_neg hb0s]; exact .throw
           · rw [if_neg hb00]; exact .throw
       · rw [if_neg hb]; exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 theorem checkPrimitiveDef.natBEq.WF.conservesHasPrimitives
     {c : VContext} {s : VState} {src : DefinitionVal}
@@ -10449,12 +10427,12 @@ theorem checkPrimitiveDef.natBLE.WF {c : VContext} {s : VState}
   simp only [checkPrimitiveDefCore, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat && c.env.contains ``Bool &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -10476,7 +10454,8 @@ theorem checkPrimitiveDef.natBLE.WF {c : VContext} {s : VState}
               · exact .throw
           · exact .throw
       · exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 abbrev NatBitwisePrimitiveCoreEvidence
     (c : VContext) (src : DefinitionVal) (ty' : VExpr)
@@ -10579,7 +10558,6 @@ theorem checkPrimitiveDef.natBitwise.WF_typedCore
       change c.venv.IsType c.lparams.length c.vlctx.toCtx _
       rw [hvlctx]
       exact hnat0.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -10719,7 +10697,6 @@ theorem checkPrimitiveDef.natShiftLeft.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -10801,7 +10778,6 @@ theorem checkPrimitiveDef.natShiftLeft.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -11042,7 +11018,6 @@ theorem checkPrimitiveDef.natShiftRight.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -11123,7 +11098,6 @@ theorem checkPrimitiveDef.natShiftRight.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact hcanon0
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       by_cases hb : b = true
       · rw [if_pos hb]
@@ -11353,8 +11327,9 @@ theorem checkPrimitiveDef.natXor.WF {c : VContext} {s : VState}
   simp only [checkPrimitiveDefCore, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat.bitwise &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
@@ -11387,7 +11362,8 @@ theorem checkPrimitiveDef.natXor.WF {c : VContext} {s : VState}
             · exact .throw
         · exact .throw
       · exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
@@ -11410,8 +11386,9 @@ theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
   simp only [checkPrimitiveDefCore, hname]
   refine getEnv.WF.bind ?_
   intro _ _ _ ⟨rfl, rfl⟩
-  split
-  · rename_i hdeps
+  by_cases hdeps : (c.env.contains ``Nat.bitwise &&
+      v.levelParams.isEmpty) = true
+  · rw [if_pos hdeps]
     have hdeps' : c.env.contains ``Nat.bitwise = true ∧
         v.levelParams = [] := by simpa using hdeps
     have hlevels := hdeps'.2
@@ -11476,7 +11453,8 @@ theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
             · exact .throw
         · exact .throw
       · exact .throw
-  · exact .throw
+  · rw [if_neg hdeps]
+    exact .throw
 
 theorem checkPrimitiveDef.natXor.WF.conservesHasPrimitives
     {c : VContext} {s : VState} {src : DefinitionVal}
