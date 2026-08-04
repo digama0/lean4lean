@@ -9376,7 +9376,6 @@ theorem checkPrimitiveDef.natShiftRight.WF_typed {c : VContext} {s : VState}
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
     (hname : v.name = ``Nat.xor)
-    (hshape : v.value = .app (.const ``Nat.bitwise []) op)
     (hty : c.TrExprS v.type ty')
     (hvalue : c.TrExprS v.value value') :
     M.WF c s (checkPrimitiveDef v) fun b _ => b →
@@ -9411,6 +9410,9 @@ theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
       c.hasPrimitives hnat c.lparams c.vlctx
     have hopCanon := TrExprS.boolBinaryType_of_contains
       c.hasPrimitives hbool c.lparams c.vlctx
+    split
+    all_goals try exact .throw
+    rename_i op hshape
     have hvalue' := hvalue
     rw [hshape] at hvalue'
     obtain ⟨op', hvalueShape, hop, hopT⟩ :=
@@ -9429,8 +9431,6 @@ theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
     have htt₁ : c.TrExprS (mkApp2 op q(true) q(true))
         (.app (.app op' .boolTrue) .boolTrue) :=
       .app (.app hopT ht.2) ht.2 (.app hopT ht.2 hop ht.1) ht.1
-    rw [hshape]
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -9467,7 +9467,6 @@ theorem checkPrimitiveDef.natXor.WF_typed {c : VContext} {s : VState}
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natLand.WF_typed {c : VContext} {s : VState}
     (hname : v.name = ``Nat.land)
-    (hshape : v.value = .app (.const ``Nat.bitwise []) op)
     (hvlctx : c.vlctx = [])
     (hty : c.TrExprS v.type ty')
     (hvalue : c.TrExprS v.value value') :
@@ -9504,6 +9503,9 @@ theorem checkPrimitiveDef.natLand.WF_typed {c : VContext} {s : VState}
       c.hasPrimitives hnat c.lparams c.vlctx
     have hopCanon := TrExprS.boolBinaryType_of_contains
       c.hasPrimitives hbool c.lparams c.vlctx
+    split
+    all_goals try exact .throw
+    rename_i op hshape
     have hvalue' := hvalue
     rw [hshape] at hvalue'
     obtain ⟨op', hvalueShape, hopS, hopT⟩ :=
@@ -9538,8 +9540,6 @@ theorem checkPrimitiveDef.natLand.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact htId
-    rw [hshape]
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
@@ -9566,7 +9566,6 @@ theorem checkPrimitiveDef.natLand.WF_typed {c : VContext} {s : VState}
 set_option maxHeartbeats 800000 in
 theorem checkPrimitiveDef.natLor.WF_typed {c : VContext} {s : VState}
     (hname : v.name = ``Nat.lor)
-    (hshape : v.value = .app (.const ``Nat.bitwise []) op)
     (hvlctx : c.vlctx = [])
     (hty : c.TrExprS v.type ty')
     (hvalue : c.TrExprS v.value value') :
@@ -9603,6 +9602,9 @@ theorem checkPrimitiveDef.natLor.WF_typed {c : VContext} {s : VState}
       c.hasPrimitives hnat c.lparams c.vlctx
     have hopCanon := TrExprS.boolBinaryType_of_contains
       c.hasPrimitives hbool c.lparams c.vlctx
+    split
+    all_goals try exact .throw
+    rename_i op hshape
     have hvalue' := hvalue
     rw [hshape] at hvalue'
     obtain ⟨op', hvalueShape, hopS, hopT⟩ :=
@@ -9637,8 +9639,6 @@ theorem checkPrimitiveDef.natLor.WF_typed {c : VContext} {s : VState}
       change TrExprS c.venv c.lparams c.vlctx _ _
       rw [hvlctx]
       exact htTrue
-    rw [hshape]
-    simp only [pure_bind]
     exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
       split
       · have htyEq := htyEq (by assumption)
