@@ -1,4 +1,5 @@
 import Lean4Lean.Experimental.ShapeLogRel
+import Lean4Lean.Theory.Typing.Strong
 
 namespace Lean4Lean
 
@@ -471,3 +472,16 @@ theorem sort_inv (d : Γ ⊢ SExpr.sort u ≡ SExpr.sort v : V) : u = v := by
   have := (LR.adequacy d hM (hA.unlift h1') .sort).2 .id
   have ⟨w, h1, h2⟩ := (LR _).sort_iff.1 (subst_id ▸ subst_id ▸ subst_id ▸ this)
   cases WHNF.sort.whRedS h1; cases WHNF.sort.whRedS h2; rfl
+
+/-- Experimental end-to-end sort injectivity for `VExpr`, assuming the rewrite-rule
+infrastructure packaged by `SExpr.Params`. -/
+theorem _root_.Lean4Lean.VEnv.IsDefEqU.sort_invS
+    (hΓ : OnCtx Γ (Params.env.IsType Params.univs))
+    (h : Params.env.IsDefEqU Params.univs Γ (.sort u) (.sort v)) : u ≈ v := by
+  obtain ⟨A, h⟩ := h
+  have hΓwf := (VEnv.CtxStrong.strong Params.henv hΓ).levelWF
+  have hu : u.WF Params.univs := (h.levelWF hΓwf).1
+  have hv : v.WF Params.univs := (h.levelWF hΓwf).2.1
+  have huv := SExpr.sort_inv (SExpr.IsDefEq.mkS h hΓwf)
+  apply VLevel.equiv_def'.2
+  rw [← SLevel.mk_val hu, ← SLevel.mk_val hv, huv]
