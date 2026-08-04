@@ -93,31 +93,10 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
   refine let prims := _; have hprims : Environment.primitives = .ofList prims := rfl; ?_
   replace hprims {a} : Environment.primitives.contains a ↔ a ∈ prims := by
     simp [hprims, NameSet.contains, NameSet.ofList]
-  unfold reduceNat
-  by_cases hnargs1 : e.getAppNumArgs = 1
-  · rw [if_pos (by simpa using hnargs1)]
-    by_cases hsucc : (e.appFn! == .const ``Nat.succ []) = true
-    · rw [if_pos hsucc]
-      simp [Expr.getAppNumArgs_eq] at hnargs1
-      let .app f a := e; simp [Expr.appFn!, Expr.eqv_const] at hsucc ⊢; subst f
-      let .app ha1 ha2 hf ha := he
-      let .const h1 h2 h3 := hf
-      refine (whnf.WF ha).bind fun a₁ _ _ ⟨a1, _, a2, a3⟩ => ?_
-      split <;> [rename_i n h; exact hP ▸ .pure nofun]
-      obtain ⟨hn, rfl⟩ := rawNatLitExt?.WF h a2
-      refine hP ▸ .pure ?_; rintro _ ⟨⟩; refine ⟨fun _ _ _ => trivial, ?_⟩
-      have ⟨ci, c1, _⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
-      have ⟨c2, c3⟩ := c.safePrimitives c1 <| hprims.2 (by simp [prims])
-      have ⟨d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1; cases h2
-      refine have ⟨p1, p2⟩ := TrExprS.natLit c.hasPrimitives hn _; ⟨_, p1, ?_⟩
-      refine p2.toU.symm.trans c.Ewf c.Δwf ?_
-      exact ⟨_, ha1.appDF <| a3.of_r c.Ewf c.Δwf ha2⟩
-    · rw [if_neg hsucc]; exact hP ▸ .pure nofun
-  rw [if_neg (by simpa using hnargs1)]
-  by_cases hnargs2 : e.getAppNumArgs = 2
-  · rw [if_pos (by simpa using hnargs2)]
-    split <;> [skip; exact hP ▸ .pure nofun]
-    rename_i f ls a b
+  unfold reduceNat; extract_lets nargs F1 fn
+  cases h1 : nargs == 1 <;> simp only [Bool.false_eq_true, ↓reduceIte]
+  · cases nargs == 2 <;> [exact hP ▸ .pure nofun; simp only [↓reduceIte]]
+    split <;> [rename_i f ls a b; exact hP ▸ .pure nofun]
     have hfun guard {g fc G} [DecidableRel guard] (hprim : fc ∈ prims)
         (heval : c.venv.ReflectsNatNatNat fc g) (hG : RecM.WF c s G P) :
         RecM.WF c s (do if f == fc then {return ← reduceBinNatOpG guard g a b}; G) P := by
@@ -145,4 +124,18 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
     apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natShiftLeft
     apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natShiftRight
     exact hP ▸ .pure nofun
-  · rw [if_neg (by simpa using hnargs2)]; exact hP ▸ .pure nofun
+  · split <;> [rename_i h2; exact hP ▸ .pure nofun]
+    simp [nargs, Expr.getAppNumArgs_eq] at h1; subst fn
+    let .app f a := e; simp [Expr.appFn!, Expr.eqv_const] at h2 ⊢; subst h2
+    let .app ha1 ha2 hf ha := he
+    let .const h1 h2 h3 := hf
+    refine (whnf.WF ha).bind fun a₁ _ _ ⟨a1, _, a2, a3⟩ => ?_
+    split <;> [rename_i n h; exact hP ▸ .pure nofun]
+    obtain ⟨hn, rfl⟩ := rawNatLitExt?.WF h a2
+    refine hP ▸ .pure ?_; rintro _ ⟨⟩; refine ⟨fun _ _ _ => trivial, ?_⟩
+    have ⟨ci, c1, _⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
+    have ⟨c2, c3⟩ := c.safePrimitives c1 <| hprims.2 (by simp [prims])
+    have ⟨d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1; cases h2
+    refine have ⟨p1, p2⟩ := TrExprS.natLit c.hasPrimitives hn _; ⟨_, p1, ?_⟩
+    refine p2.toU.symm.trans c.Ewf c.Δwf ?_
+    exact ⟨_, ha1.appDF <| a3.of_r c.Ewf c.Δwf ha2⟩

@@ -422,7 +422,7 @@ theorem inferType'.WF
     have : ic.WF c s := by
       subst ic; cases inferOnly <;> [exact wf.inferTypeC_wf; exact wf.inferTypeI_wf]
     exact (this h).2.2.2.2 h1
-  generalize hP : (fun ty (_ : VState) => ∃ e' ty', c.TrTyping e ty e' ty') = P
+  generalize hP : (fun _ (_ : VState) => _) = P
   have hF {ty e' ty' s} (H : c.TrTyping e ty e' ty') : (F ty).WF c s P := by
     rintro _ mwf wf a s' ⟨⟩
     refine let s' := _; ⟨s', rfl, ?_⟩

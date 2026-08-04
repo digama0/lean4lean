@@ -164,8 +164,7 @@ theorem quickIsDefEq.WF {c : VContext} {s : VState}
     · intro h; apply (VEnv.IsDefEqU.weak'_iff c.Ewf a1 a2.toCtx).1
       exact (h1 h).uniq c.Ewf (a2.bvars_eq.trans c.mlctx.noBV)
         a1 (he₁.weakFV' c.Ewf a2 a1) (he₂.weakFV' c.Ewf a2 a1)
-  split <;> [exact .pure fun _ => h ‹_›; skip]
-  split
+  split <;> [exact .pure fun _ => h ‹_›; split]
   · exact .toLBoolM <| c.withMLC_self ▸
       isDefEqLambda.WF (subst := #[]) (fvs := []) rfl (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
   · exact .toLBoolM <| c.withMLC_self ▸
@@ -238,8 +237,7 @@ theorem tryEtaStruct.WF {c : VContext} {s : VState}
 theorem isDefEqApp.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqApp e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
-  unfold isDefEqApp
-  split <;> [skip; exact .pure nofun]
+  unfold isDefEqApp; split <;> [skip; exact .pure nofun]
   rw [Expr.withApp_eq, Expr.withApp_eq]
   split <;> [rename_i eq; exact .pure nofun]
   have ⟨_, he₁'⟩ := AppStack.build <| e₁.mkAppList_getAppArgsList ▸ he₁

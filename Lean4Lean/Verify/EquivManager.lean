@@ -261,16 +261,11 @@ theorem toNode.WF :
 
 theorem isEquiv.WF :
     M.WF env Us Δ m (isEquiv useHash e₁ e₂) fun b _ => b → IsDefEqE env Us Δ e₁ e₂ := by
-  unfold isEquiv
-  split <;> [exact .pure fun _ => ptrEqExpr_eq ‹_› ▸ .rfl; skip]
-  split <;> [exact .pure nofun; skip]
-  split
+  unfold isEquiv; split <;> [exact .pure fun _ => ptrEqExpr_eq ‹_› ▸ .rfl; skip]
+  split <;> [exact .pure nofun; split]
   · rename_i h; refine .pure ?_
-    simp only [Bool.and_eq_true] at h
-    rcases h with ⟨h1, h2⟩
-    unfold Expr.isBVar at h1 h2
-    split at h1 <;> cases h1
-    split at h2 <;> cases h2
+    simp only [Bool.and_eq_true, Expr.isBVar] at h
+    split at h <;> cases h.1; split at h <;> cases h.2
     simp [Expr.bvarIdx!]; rintro ⟨⟩; exact .rfl
   refine toNode.WF.bind fun i₁ _ _ a1 => find.WF.bind fun j₁ _ le₁ a2 => ?_
   refine toNode.WF.bind fun i₂ _ le₂ b1 => find.WF.bind fun j₂ m₀ le₃ b2 => ?_
