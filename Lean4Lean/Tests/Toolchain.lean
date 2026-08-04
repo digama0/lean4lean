@@ -9,7 +9,7 @@ theorem theoremDelta : True := trivial
 theorem proofOnlyDependency : True := trivial
 theorem dependencyOnlyInProof : True := proofOnlyDependency
 
-def stringProof (_ : String) : True := trivial
+theorem stringProof (_ : String) : True := trivial
 theorem stringOnlyInProof : True := stringProof "audit"
 
 run_meta

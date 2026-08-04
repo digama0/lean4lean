@@ -1,5 +1,13 @@
 import Lean4Lean.Verify.TypeChecker.Basic
 
+/-
+This file states `RecM.WF` goals with `do` blocks that have to match the shape the
+definitions in `Lean4Lean.TypeChecker` elaborate to, which is pinned to the legacy `do`
+elaborator (leanprover/lean4#13305). Pin it here too so the two agree
+(digama0/lean4lean#31).
+-/
+set_option backward.do.legacy true
+
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 open Kernel
