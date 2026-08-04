@@ -3315,7 +3315,7 @@ variable {p : Pattern} (ls : List SLevel) (m2 : p.Path → TShape)
   (R : TShape → SExpr → Prop) in
 inductive LE_Interp.RHS : TShape → p.RHS → Prop
   | bot : RHS (WShape.T .bot) r
-  | const : R m ((SExpr.mk e).instL ls) → RHS m (.fixed e cl)
+  | const : R m (SExpr.mkInst ls e) → RHS m (.fixed e cl)
   | var : m ≤ m2 path → RHS m (.var path)
   | app : RHS (WShape.T (n := n + 1) f) F → RHS a.T A → m ≤ (f.app a).T → RHS m (.app F A)
 
@@ -3345,7 +3345,7 @@ inductive LE_Interp : Valuation → TShape → SExpr → Prop
   | const :
     Params.env.constants c = some ci → ls.length = ci.uvars →
     m ≤ m' → m'.HasType a →
-    LE_Interp ρ a ((SExpr.mk ci.type).instL ls) →
+    LE_Interp ρ a (SExpr.mkInst ls ci.type) →
     LE_Interp.Const c ls R [] m' → (∀ m e, R m e → LE_Interp ρ m e) →
     LE_Interp ρ m (.const c ls)
 
@@ -3670,7 +3670,7 @@ theorem LE_Interp.RHS.closed
     (H : RHS m1 m2 R m r) : RHS m1 m2 (fun e A => A.ClosedN ∧ R e A) m r := by
   induction H with
   | bot => exact .bot
-  | @const _ _ cl h1 => exact .const ⟨cl.mkS.instL, h1⟩
+  | @const _ _ cl h1 => exact .const ⟨cl.mkInstS, h1⟩
   | var h1 => exact .var h1
   | app hf ha h1 ih_f ih_a => exact .app ih_f ih_a h1
 
@@ -3699,7 +3699,7 @@ theorem LE_Interp.closed (cl : ClosedN M k) (h : ∀ i < k, ρ i = ρ' i)
     intro | 0, _ => rfl | i+1, hi => exact h i (Nat.lt_of_succ_lt_succ hi)
   | const h1 h2 h3 h4 _ h6 _ ih1 ih2 =>
     refine .const h1 h2 h3 h4 (ih1 ?_ h) h6.closed fun m e ⟨a1, a2⟩ => ?_
-    · exact (Params.henv.closedC h1).mkS.instL.mono (Nat.zero_le _)
+    · exact (Params.henv.closedC h1).mkInstS.mono (Nat.zero_le _)
     · exact ih2 m e a2 (a1.mono (Nat.zero_le _)) h
 
 theorem LE_Interp.closed_iff {M : SExpr} (cl : ClosedN M)
@@ -3724,7 +3724,7 @@ theorem LE_Interp.weak'_iff (l : Lift) (h : ∀ i, ρ i = ρ' (l.liftVar i)) :
       exact ih_body y hy _ (fun i => by cases i <;> simp [Valuation.push, h]) rfl
     | const h1 h2 h3 h4 _ h6 _ ih1 ih2 =>
       refine .const h1 h2 h3 h4 ?_ h6.closed ?_
-      · exact ih1 _ h <| (Params.henv.closedC h1).mkS.instL.lift'_eq .zero
+      · exact ih1 _ h <| (Params.henv.closedC h1).mkInstS.lift'_eq .zero
       · rintro m A ⟨a1, a2⟩; exact ih2 _ _ a2 _ h <| a1.lift'_eq .zero
   · induction H generalizing ρ' l with
     | bot => exact .bot
@@ -3739,7 +3739,7 @@ theorem LE_Interp.weak'_iff (l : Lift) (h : ∀ i, ρ i = ρ' (l.liftVar i)) :
       exact ih_body y hy l.cons fun i => by cases i <;> simp [Valuation.push, h]
     | const h1 h2 h3 h4 _ h6 _ ih1 ih2 =>
       refine .const h1 h2 h3 h4 ?_ h6.closed ?_
-      · exact (Params.henv.closedC h1).mkS.instL.lift'_eq .zero ▸ ih1 _ h
+      · exact (Params.henv.closedC h1).mkInstS.lift'_eq .zero ▸ ih1 _ h
       · rintro m A ⟨a1, a2⟩; exact a1.lift'_eq .zero ▸ ih2 _ _ a2 _ h
 
 theorem LE_Interp.weak_iff : LE_Interp (ρ.push x) m M.lift ↔ LE_Interp ρ m M :=
@@ -4211,7 +4211,7 @@ theorem LE_Interp.subst : LE_Interp ρ m (M.subst σ) ↔
       | bvar => exact bvar eq (.const h1 h2 h3 h4 h5 h6 h7) | const => ?_ | _ => cases eq
       cases eq
       refine ⟨.nil, .const h1 h2 h3 h4 ?_ h6.closed fun m e ⟨a1, a2⟩ => ?_, fun _ => .bot⟩
-      · exact (closed_iff (Params.henv.closedC h1).mkS.instL).1 h5
+      · exact (closed_iff (Params.henv.closedC h1).mkInstS).1 h5
       · exact (closed_iff a1).1 (h7 m e a2)
   · rintro ⟨ρ', H, h⟩
     induction H generalizing ρ σ with
@@ -4227,7 +4227,7 @@ theorem LE_Interp.subst : LE_Interp ρ m (M.subst σ) ↔
       exact ih_body y hy fun | 0 => .bvar0 | i + 1 => (h i).weak
     | const h1 h2 h3 h4 _ h6 _ ih1 ih2 =>
       refine .const h1 h2 h3 h4 ?_ h6.closed fun _ _ ⟨a1, a2⟩ => ?_
-      · exact (Params.henv.closedC h1).mkS.instL.subst_eq .zero ▸ ih1 h
+      · exact (Params.henv.closedC h1).mkInstS.subst_eq .zero ▸ ih1 h
       · exact a1.subst_eq .zero ▸ ih2 _ _ a2 h
 
 theorem LE_Interp.inst : LE_Interp ρ f (F.inst A) ↔
@@ -4621,9 +4621,9 @@ inductive StrongSoundCore : List SExpr → SExpr → SExpr → Prop where
     StrongSound (A::Γ) e B → StrongSoundCore Γ (.lam A e) (.forallE A B)
   | const : Params.env.constants c = some ci → ls.length = ci.uvars →
     (F : ∀ cl, CtorBundle c cl) →
-    (∀ cl, SoundEq Γ ((SExpr.mk ci.type).instL ls) ((F cl).rhs ls)) →
+    (∀ cl, SoundEq Γ (SExpr.mkInst ls ci.type) ((F cl).rhs ls)) →
     (∀ cl, StrongSound Γ ((F cl).rhs ls) (.sort (F cl).u)) →
-    StrongSoundCore Γ (.const c ls) ((SExpr.mk ci.type).instL ls)
+    StrongSoundCore Γ (.const c ls) (SExpr.mkInst ls ci.type)
   | app : SoundTy Γ A (.sort u) →
     StrongSound Γ f (.forallE A B) → StrongSound Γ a A →
     StrongSoundCore Γ (.app f a) (B.inst a)
@@ -4763,7 +4763,7 @@ theorem StrongSound.uniq : StrongSound Γ M A → StrongSound Γ M B → SoundEq
 
 theorem LE_Interp.apps_realize_inv (W : Valuation.Fits Γ₀ Γ ρ)
     (h_env : Params.env.constants c = some ci)
-    (h_intr_defeq : SoundEq Γ ((SExpr.mk ci.type).instL ls) (List.foldr .forallE body Ts))
+    (h_intr_defeq : SoundEq Γ (SExpr.mkInst ls ci.type) (List.foldr .forallE body Ts))
     (h_k_eq : List.length srev + k = Ts.length)
     (hTy : StrongSound Γ (srev.foldr (fun A acc => acc.app A) (.const c ls)) T)
     (H : LE_Interp (srev.length.repeat (·.push .bot) ρ) m
@@ -5010,7 +5010,7 @@ theorem LE_Interp.build_spine {m1 : p.Path → TShape} {m2} (a2 : p.MatchesS LHS
         ∃ ci, Params.env.constants c_a = some ci ∧ f2.length = ci.uvars ∧ ∃ I Ts args u,
           Ts.length = rargs_a.length ∧ Params.classify I = some (.indTy args.length) ∧ u ≠ .zero ∧
           let e := List.foldr .forallE (List.foldr (fun A acc => acc.app A) (.const I f2) args) Ts
-          SoundEq Γ ((SExpr.mk ci.type).instL f2) e ∧ StrongSound Γ e (.sort u) := by
+          SoundEq Γ (SExpr.mkInst f2 ci.type) e ∧ StrongSound Γ e (.sort u) := by
       clear forall2_a hTy_f hTy_a foldr_eq_a hB
       induction As generalizing B with have ⟨_, _, hTy, _⟩ := hTy_at_foldr
       | nil =>

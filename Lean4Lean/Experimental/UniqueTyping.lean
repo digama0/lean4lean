@@ -31,8 +31,8 @@ inductive HasTypeS : List SExpr → SExpr → SExpr → Bool → Prop where
   | sort' : Γ ⊨ .sort l :! .sort (.succ l)
   | const :
     env.constants c = some ci → ls.length = ci.uvars →
-    Γ ⊨ (mk ci.type).instL ls : .sort u →
-    Γ ⊨ .const c ls :! (mk ci.type).instL ls
+    Γ ⊨ mkInst ls ci.type : .sort u →
+    Γ ⊨ .const c ls :! mkInst ls ci.type
   | app :
     Γ ⊨ f : .forallE A B → Γ ⊨ a : A →
     Γ ⊨ .app f a :! B.inst a
@@ -198,7 +198,7 @@ inductive IsDefEq' : List SExpr → SExpr → SExpr → SExpr → Prop where
   | trans : Γ ⊢' e₁ ≡ e₂ : A → Γ ⊢' e₂ ≡ e₃ : A → Γ ⊢' e₁ ≡ e₃ : A
   | sort : Γ ⊢' .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
-    Γ ⊢' .const c ls : (SExpr.mk ci.type).instL ls
+    Γ ⊢' .const c ls : SExpr.mkInst ls ci.type
   | appDF : Γ ⊢' f ≡ f' : .forallE A B → Γ ⊢' a ≡ a' : A →
     Γ ⊢' .app f a ≡ .app f' a' : B.inst a
   | lamDF : Γ ⊢' A ≡ A' : .sort u → A::Γ ⊢' body ≡ body' : B →
@@ -212,7 +212,7 @@ inductive IsDefEq' : List SExpr → SExpr → SExpr → SExpr → Prop where
     Γ ⊢' .lam A (.app e.lift (.bvar 0)) ≡ e : .forallE A B
   | proofIrrel : Γ ⊢' p : .sort .zero → Γ ⊢' h : p → Γ ⊢' h' : p → Γ ⊢' h ≡ h' : p
   | extra : env.defeqs df → ls.length = df.uvars →
-    Γ ⊢' .instL ls (.mk df.lhs) ≡ .instL ls (.mk df.rhs) : .instL ls (.mk df.type)
+    Γ ⊢' .mkInst ls df.lhs ≡ .mkInst ls df.rhs : .mkInst ls df.type
 
 end
 

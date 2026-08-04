@@ -148,9 +148,9 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
   | @const c ci Γ ls _ h1 h2 h3 =>
     cases hM with | bot => exact .bot hmem.isType | const a1 _ a3 a4 a5 a6
     cases h1.symm.trans a1
-    suffices ∀ {σ}, (LR Γ₀).DefEq (const c ls) (const c ls) (((mk ci.type).instL ls).subst σ) m a
+    suffices ∀ {σ}, (LR Γ₀).DefEq (const c ls) (const c ls) ((mkInst ls ci.type).subst σ) m a
       from ⟨fun _ _ _ => ⟨this, this⟩, fun _ _ => this⟩
-    intro σ; rw [(Params.henv.closedC h1).mkS.instL.subst_eq .zero]; clear σ
+    intro σ; rw [(Params.henv.closedC h1).mkInstS.subst_eq .zero]; clear σ
     sorry
   | @appDF Γ A u F F' B X X' v _ Hf Ha HBa _ ihf iha ihBa =>
     cases hM with | bot => exact .bot hmem.isType | @app _ nf_app f _ _ _ x hif hia le_m
@@ -427,7 +427,7 @@ theorem LR.adequacy (H : Γ ⊢ M ≡ N : A)
     · exact ((ihr ((LE_Interp.sound (.extra h1 h2) W.fits).1.1 hM) hA hmem).1 W).2
     · have ⟨⟨hA1, _⟩, hA2, hA3⟩ := Params.henv.closed.2 h1
       have := (ihl hM hA hmem).2 W; revert this
-      rw [hA1.mkS.instL.subst_eq .zero, hA2.mkS.instL.subst_eq .zero, hA3.mkS.instL.subst_eq .zero]
+      rw [hA1.mkInstS.subst_eq .zero, hA2.mkInstS.subst_eq .zero, hA3.mkInstS.subst_eq .zero]
       let ⟨_, _, _, _, _, a1, a2, a3, a4, a5⟩ := Params.extra_pat Γ₀ h1 h2
       exact ((LR _).whr .rfl (.tail .rfl (a5 ▸ .extra a1 a2 a3 a4))).1
 

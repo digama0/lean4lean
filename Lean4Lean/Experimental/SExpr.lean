@@ -82,6 +82,26 @@ def inst (ls : List SLevel) (l : SLevel) : SLevel := by
     rw [← List.forall₂_eq, List.forall₂_map_left_iff, List.forall₂_map_right_iff]
     exact h3.imp fun _ _ h => congrFun h.2 _
 
+/-- Instantiate a syntactic level directly into semantic levels. Unlike `inst ls (mk l)`,
+this does not require `l` to be well-formed in the ambient universe context. -/
+def instV (ls : List SLevel) (l : VLevel) : SLevel := by
+  refine ⟨fun v => l.eval (ls.map (·.1 v)), ?_⟩
+  have ⟨ls', h⟩ :
+      ∃ ls' : List VLevel, ls'.Forall₂ (fun l' l => l'.WF univs ∧ l'.eval = l.1) ls := by
+    induction ls with
+    | nil => exact ⟨_, .nil⟩
+    | cons a ls ih =>
+      let ⟨l', h1, h2⟩ := a.2
+      let ⟨ls', ih⟩ := ih
+      exact ⟨l' :: ls', .cons ⟨h1, h2⟩ ih⟩
+  refine ⟨l.inst ls', VLevel.WF.inst fun _ hl => ?_, ?_⟩
+  · let ⟨_, hl⟩ := h.forall_exists_l _ hl; exact hl.2.1
+  · funext v
+    simp only [VLevel.eval_inst]
+    congr 1
+    rw [← List.forall₂_eq, List.forall₂_map_left_iff, List.forall₂_map_right_iff]
+    exact h.imp fun _ _ hl => congrFun hl.2 _
+
 end SLevel
 
 inductive SExpr where
@@ -156,6 +176,23 @@ def mk : VExpr → SExpr
   | .app fn arg => .app (.mk fn) (.mk arg)
   | .lam ty body => .lam (.mk ty) (.mk body)
   | .forallE ty body => .forallE (.mk ty) (.mk body)
+
+/-- Translate an expression while instantiating its universe parameters. -/
+def mkInst (ls : List SLevel) : VExpr → SExpr
+  | .bvar i => .bvar i
+  | .sort u => .sort (.instV ls u)
+  | .const c us => .const c (us.map (.instV ls))
+  | .app fn arg => .app (mkInst ls fn) (mkInst ls arg)
+  | .lam ty body => .lam (mkInst ls ty) (mkInst ls body)
+  | .forallE ty body => .forallE (mkInst ls ty) (mkInst ls body)
+
+@[simp] theorem mkInst_lift' : mkInst ls (e.lift' ρ) = (mkInst ls e).lift' ρ := by
+  induction e generalizing ρ <;> simp [VExpr.lift', mkInst, *]
+
+theorem _root_.Lean4Lean.VExpr.ClosedN.mkInstS : ∀ {e : VExpr},
+    e.ClosedN k → (mkInst ls e).ClosedN k
+  | .bvar .., h | .sort .., h | .const .., h => h
+  | .app .., h | .lam .., h | .forallE .., h => ⟨h.1.mkInstS, h.2.mkInstS⟩
 
 theorem _root_.Lean4Lean.VExpr.ClosedN.mkS : ∀ {e : VExpr}, e.ClosedN k → ClosedN (.mk e) k
   | .bvar .., h | .sort .., h | .const .., h => h
@@ -516,7 +553,7 @@ inductive _root_.Lean4Lean.Pattern.MatchesS :
 
 def _root_.Lean4Lean.Pattern.RHS.applyS {p : Pattern}
     (m1 : List SLevel) (m2 : p.Path → SExpr) : p.RHS → SExpr
-  | .fixed c _ => .instL m1 (.mk c)
+  | .fixed c _ => .mkInst m1 c
   | .var path => m2 path
   | .app f a => .app (f.applyS m1 m2) (a.applyS m1 m2)
 
@@ -527,7 +564,7 @@ def _root_.Lean4Lean.Pattern.RHS.Closed {p : Pattern} : p.RHS → Prop
 
 def _root_.Lean4Lean.Pattern.RHS.Closed.applyS {p : Pattern} {m1 m2} :
     ∀ r : p.RHS, r.Closed → (∀ a, (m2 a).ClosedN k) → (r.applyS m1 m2).ClosedN k
-  | .fixed .., h1, _ => h1.mkS.instL.mono (Nat.zero_le _)
+  | .fixed .., h1, _ => h1.mkInstS.mono (Nat.zero_le _)
   | .var _, _, h2 => h2 _
   | .app .., h1, h2 => ⟨h1.1.applyS _ h2, h1.2.applyS _ h2⟩
 
@@ -595,7 +632,7 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
   | trans' : Γ ⊢ A ≡ B : .sort u → Γ ⊢ B ≡ C : .sort v → Γ ⊢ A ≡ C : .sort u
   | sort : Γ ⊢ .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
-    Γ ⊢ .const c ls : (SExpr.mk ci.type).instL ls
+    Γ ⊢ .const c ls : SExpr.mkInst ls ci.type
   | appDF : Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
     Γ ⊢ .app f a ≡ .app f' a' : B.inst a
   | lamDF : Γ ⊢ A ≡ A' : .sort u → A::Γ ⊢ body ≡ body' : B →
@@ -609,13 +646,13 @@ inductive IsDefEq : List SExpr → SExpr → SExpr → SExpr → Prop where
   -- | extra : Pat p r → p.MatchesS e m1 m2 → (dfs : List _).map (·.2) = r.2.defeqsS m1 m2 →
   --   (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b : A) → Γ ⊢ e ≡ r.1.applyS m1 m2' : A
   | extra : env.defeqs df → ls.length = df.uvars →
-    Γ ⊢ .instL ls (.mk df.lhs) ≡ .instL ls (.mk df.rhs) : .instL ls (.mk df.type)
+    Γ ⊢ .mkInst ls df.lhs ≡ .mkInst ls df.rhs : .mkInst ls df.type
 
 axiom Params.extra_pat (Γ) : env.defeqs df → ls.length = df.uvars →
-  ∃ p r m1 m2 dfs, Pat p r ∧ p.MatchesS (.instL ls (.mk df.lhs)) m1 m2 ∧
+  ∃ p r m1 m2 dfs, Pat p r ∧ p.MatchesS (.mkInst ls df.lhs) m1 m2 ∧
     (dfs : List _).map (·.2) = r.2.defeqsS m1 m2 ∧
     (∀ a b A, (A, a, b) ∈ dfs → Γ ⊢ a ≡ b : A) ∧
-    .instL ls (.mk df.rhs) = r.1.applyS m1 m2
+    .mkInst ls df.rhs = r.1.applyS m1 m2
 
 def CtorBundle.IsCtor (c : Name) : Prop :=
   ∃ cl, Params.classify c = some cl ∧ cl matches .ctor .. | .etaCtor ..
@@ -649,10 +686,10 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
   | trans' : Γ ⊢ A ≡ B : .sort u → Γ ⊢ B ≡ C : .sort v → Γ ⊢ A ≡ C : .sort u
   | sort : Γ ⊢ .sort l : .sort (.succ l)
   | const : env.constants c = some ci → ls.length = ci.uvars →
-    Γ ⊢ (SExpr.mk ci.type).instL ls : .sort u →
+    Γ ⊢ SExpr.mkInst ls ci.type : .sort u →
     (F : ∀ cl, CtorBundle c cl) →
-    (∀ cl, Γ ⊢ (SExpr.mk ci.type).instL ls ≡ (F cl).rhs ls : .sort (F cl).u) →
-    Γ ⊢ .const c ls : (SExpr.mk ci.type).instL ls
+    (∀ cl, Γ ⊢ SExpr.mkInst ls ci.type ≡ (F cl).rhs ls : .sort (F cl).u) →
+    Γ ⊢ .const c ls : SExpr.mkInst ls ci.type
   | appDF : Γ ⊢ A : .sort u →
     Γ ⊢ f ≡ f' : .forallE A B → Γ ⊢ a ≡ a' : A →
     Γ ⊢ B.inst a ≡ B.inst a' : .sort v →
@@ -671,9 +708,9 @@ inductive IsDefEqStrong : List SExpr → SExpr → SExpr → SExpr → Prop wher
     Γ ⊢ .lam A (.app e.lift (.bvar 0)) ≡ e : .forallE A B
   | proofIrrel : Γ ⊢ p : .sort .zero → Γ ⊢ h : p → Γ ⊢ h' : p → Γ ⊢ h ≡ h' : p
   | extra : env.defeqs df → ls.length = df.uvars →
-    Γ ⊢ .instL ls (.mk df.lhs) : .instL ls (.mk df.type) →
-    Γ ⊢ .instL ls (.mk df.rhs) : .instL ls (.mk df.type) →
-    Γ ⊢ .instL ls (.mk df.lhs) ≡ .instL ls (.mk df.rhs) : .instL ls (.mk df.type)
+    Γ ⊢ .mkInst ls df.lhs : .mkInst ls df.type →
+    Γ ⊢ .mkInst ls df.rhs : .mkInst ls df.type →
+    Γ ⊢ .mkInst ls df.lhs ≡ .mkInst ls df.rhs : .mkInst ls df.type
 end
 
 theorem IsDefEq.strong : Γ ⊢ e1 ≡ e2 : A → IsDefEqStrong Γ e1 e2 A := sorry
@@ -684,7 +721,7 @@ theorem _root_.Lean4Lean.Params.ctor_ty
     (hci : env.constants c = some ci) (h_len : ls.length = ci.uvars) :
     ∃ (I : Name) (Ts args : List SExpr) (u : SLevel),
       Ts.length = cl.arity ∧ Params.classify I = some (.indTy args.length) ∧ u ≠ .zero ∧
-      Γ ⊢ (SExpr.mk ci.type).instL ls ≡
+      Γ ⊢ SExpr.mkInst ls ci.type ≡
         Ts.foldr .forallE (args.foldr (fun A acc => acc.app A) (.const I ls)) : .sort u := sorry
 
 theorem IsDefEq.hasType (H : Γ ⊢ e1 ≡ e2 : A) :
@@ -805,7 +842,7 @@ theorem IsDefEq.weak' (W : Ctx.Lift' ρ Γ Γ') (H : Γ ⊢ e1 ≡ e2 : A) :
   | trans _ _ ih1 ih2 => exact .trans (ih1 W) (ih2 W)
   | trans' _ _ ih1 ih2 => exact .trans' (ih1 W) (ih2 W)
   | sort => exact .sort
-  | const h1 h2 => rw [(henv.closedC h1).mkS.instL.lift'_eq .zero]; exact .const h1 h2
+  | const h1 h2 => rw [((henv.closedC h1).mkInstS).lift'_eq .zero]; exact .const h1 h2
   | appDF _ _ ih1 ih2 => exact SExpr.lift'_inst_hi .. ▸ .appDF (ih1 W) (ih2 W)
   | lamDF _ _ ih1 ih2 => exact .lamDF (ih1 W) (ih2 W.cons)
   | forallEDF _ _ ih1 ih2 => exact .forallEDF (ih1 W) (ih2 W.cons)
@@ -817,7 +854,7 @@ theorem IsDefEq.weak' (W : Ctx.Lift' ρ Γ Γ') (H : Γ ⊢ e1 ≡ e2 : A) :
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel (ih1 W) (ih2 W) (ih3 W)
   | extra h1 h2 =>
     have ⟨⟨hA1, _⟩, hA2, hA3⟩ := henv.closed.2 h1
-    rw [hA1.mkS.instL.lift'_eq .zero, hA2.mkS.instL.lift'_eq .zero, hA3.mkS.instL.lift'_eq .zero]
+    rw [hA1.mkInstS.lift'_eq .zero, hA2.mkInstS.lift'_eq .zero, hA3.mkInstS.lift'_eq .zero]
     exact .extra h1 h2
 
 theorem IsDefEq.defeqDF_l' (h1 : Γ ⊢ A ≡ A' : .sort u)
@@ -1082,7 +1119,7 @@ inductive InferType : List SExpr → SExpr → SExpr → Prop where
   | bvar : Lookup Γ i A → Γ ⊢ .bvar i ▷ A
   | sort : Γ ⊢ .sort u ▷ .sort (.succ u)
   | const : env.constants c = some ci → ls.length = ci.uvars →
-    Γ ⊢ .const c ls ▷ (SExpr.mk ci.type).instL ls
+    Γ ⊢ .const c ls ▷ SExpr.mkInst ls ci.type
   | app : Γ ⊢ f ▷ F → Γ ⊢ F ⤳* .forallE A B → Γ ⊢ a :↑ A → Γ ⊢ .app f a ▷ B.inst a
   | lam : Γ ⊢ A :↑ .sort u → A::Γ ⊢ body ▷ B → Γ ⊢ .lam A body ▷ .forallE A B
   | forallE : Γ ⊢ A ▷ U → Γ ⊢ U ⤳* .sort u →
@@ -1106,7 +1143,7 @@ theorem InferType.determ (H1 : Γ ⊢ e ▷ A) (H2 : Γ ⊢ e ▷ A') : A = A' :
 theorem InferType.weak' (W : Ctx.Lift' ρ Γ Δ) : Γ ⊢ e ▷ A → Δ ⊢ e.lift' ρ ▷ A.lift' ρ
   | .bvar h => .bvar (h.weak' W)
   | .sort => .sort
-  | .const h1 h2 => by rw [(henv.closedC h1).mkS.instL.lift'_eq .zero]; exact .const h1 h2
+  | .const h1 h2 => by rw [(henv.closedC h1).mkInstS.lift'_eq .zero]; exact .const h1 h2
   | .app h1 h2 h3 => SExpr.lift'_inst_hi .. ▸ .app (h1.weak' W) (h2.weak' W) (h3.weak' W)
   | .lam h1 h2 => .lam (h1.weak' W) (h2.weak' W.cons)
   | .forallE h1 h2 h3 h4 => .forallE (h1.weak' W) (h2.weak' W) (h3.weak' W.cons) (h4.weak' W.cons)
@@ -1119,7 +1156,7 @@ theorem InferType.weakU_inv (W : Ctx.Lift' ρ Γ Δ) (H : Δ ⊢ e.lift' ρ ▷ 
   | sort => let .sort _ := e; cases he; exact ⟨_, rfl, .sort⟩
   | const h1 h2 =>
     let .const .. := e; cases he
-    exact ⟨_, ((henv.closedC h1).mkS.instL.lift'_eq .zero).symm, .const h1 h2⟩
+    exact ⟨_, ((henv.closedC h1).mkInstS.lift'_eq .zero).symm, .const h1 h2⟩
   | app h1 h2 h3 ih =>
     let .app .. := e; cases he
     obtain ⟨_, rfl, a1⟩ := ih W rfl
@@ -1151,7 +1188,7 @@ theorem InferType.subst (W : Ctx.Subst InferType Δ σ Γ)
     case succ i C h => rw [SExpr.lift, SExpr.subst_lift']; exact ih h
   | sort => exact .sort
   | const h1 h2 =>
-    rw [(henv.closedC h1).mkS.instL.subst_eq .zero]
+    rw [(henv.closedC h1).mkInstS.subst_eq .zero]
     exact .const h1 h2
   | app h1 h2 h3 ih => exact subst_inst ▸ .app (ih W) (h2.subst W) (h3.subst W)
   | lam h1 h2 ih => exact .lam (h1.subst W) (ih (W.lift .bvar))
