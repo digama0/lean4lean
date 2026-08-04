@@ -86,8 +86,7 @@ def Environment.addQuot (env : Environment) : Except Exception Environment := do
   }
   return markQuotInit env
 
-/--
-Reduces the head application of a quotient eliminator as follows:
+/-- Reduces the head application of a quotient eliminator as follows:
 
 ```
 Quot.lift.{u, v} {α : Sort u} {r : α → α → Prop} {β : Sort v} (f : α → β) :

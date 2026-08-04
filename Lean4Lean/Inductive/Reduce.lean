@@ -20,15 +20,12 @@ def mkNullaryCtor (type : Expr) (nparams : Nat) : Option Expr :=
   let name ← getFirstCtor env dName
   return mkAppRange (.const name ls) 0 nparams args
 
-/--
-When `e` has the type of a K-like inductive, converts it into a constructor
-application.
+/-- When `e` has the type of a K-like inductive, converts it into a constructor application.
 
-For instance if we have `e : Eq a a`, it is converted into `Eq.refl a` (which
-it is definitionally equal to by proof irrelevance). Note that the indices of
-`e`'s type must match those of the constructor application (for instance,
-`e : Eq a b` cannot be converted if `a` and `b` are not defeq).
--/
+For instance if we have `e : Eq a a`, it is converted into `Eq.refl a` (which it is definitionally
+equal to by proof irrelevance). Note that the indices of `e`'s type must match those of the
+constructor application (for instance, `e : Eq a b` cannot be converted if `a` and `b` are not
+defeq). -/
 def toCtorWhenK (rval : RecursorVal) (e : Expr) : m Expr := do
   assert! rval.k
   let appType ← whnf (← inferType e)
@@ -53,14 +50,10 @@ def expandEtaStruct (eType e : Expr) : Expr :=
     result := .app result (.proj I i e)
   pure result
 
-/--
-When `e` is of struct type, converts it into a constructor application using
-projections.
+/-- When `e` is of struct type, converts it into a constructor application using projections.
 
-For instance if we have `e : String`, it is converted into
-`String.mk (String.data e)` (which is definitionally equal to `e` by struct
-eta).
--/
+For instance if we have `e : String`, it is converted into `String.mk (String.data e)`
+(which is definitionally equal to `e` by struct eta). -/
 def toCtorWhenStruct (inductName : Name) (e : Expr) : m Expr := do
   if !env.isNonRecStructure inductName || (e.isConstructorApp?' env).isSome then
     return e
@@ -74,16 +67,13 @@ def getRecRuleFor (rval : RecursorVal) (major : Expr) : Option RecursorRule := d
   let .const fn _ := major.getAppFn | none
   rval.rules.find? (·.ctor == fn)
 
-/--
-Performs recursor reduction on `e` (returning `none` if not applicable).
+/-- Performs recursor reduction on `e` (returning `none` if not applicable).
 
-For recursor reduction to occur, `e` must be a recursor application where the
-major premise is either a complete constructor application or of a K- or
-structure-like inductive type (in which case it is converted into an equivalent
-constructor application). The reduction is done by applying the
-`RecursorRule.rhs` associated with the constructor to the parameters from the
-recursor application and the fields of the constructor application.
--/
+For recursor reduction to occur, `e` must be a recursor application where the major premise is
+either a complete constructor application or of a K- or structure-like inductive type (in which
+case it is converted into an equivalent constructor application). The reduction is done by applying
+the `RecursorRule.rhs` associated with the constructor to the parameters from the recursor
+application and the fields of the constructor application. -/
 def inductiveReduceRec [Monad m] (env : Environment) (e : Expr)
     (whnf : Expr → m Expr) (inferType : Expr → m Expr) (isDefEq : Expr → Expr → m Bool) :
     m (Option Expr) := do
