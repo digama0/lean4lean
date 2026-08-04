@@ -4,11 +4,11 @@ namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 
 theorem reduceRecursor.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
-    RecM.WF c s (reduceRecursor e cheapRec cheapProj) fun oe _ =>
+    RecM.WF c s (reduceRecursor e) fun oe _ =>
       ∀ e₁, oe = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := sorry
 
 theorem whnfFVar.WF {c : VContext} {s : VState} (he : c.TrExprS (.fvar fv) e') :
-    RecM.WF c s (whnfFVar (.fvar fv) cheapRec cheapProj) fun e₁ _ =>
+    RecM.WF c s (whnfFVar (.fvar fv) cheapProj) fun e₁ _ =>
       c.FVarsBelow (.fvar fv) e₁ ∧ c.TrExpr e₁ e' := by
   refine .getLCtx ?_
   simp [Expr.fvarId!]; split <;> [skip; exact .pure ⟨.rfl, he.trExpr c.Ewf c.Δwf⟩]
@@ -23,11 +23,11 @@ theorem whnfFVar.WF {c : VContext} {s : VState} (he : c.TrExprS (.fvar fv) e') :
   exact .refl c.Ewf c.Δwf
 
 theorem reduceProj.WF {c : VContext} {s : VState} (he : c.TrExprS (.proj n i e) e') :
-    RecM.WF c s (reduceProj i e cheapRec cheapProj) fun oe _ =>
+    RecM.WF c s (reduceProj i e cheapProj) fun oe _ =>
       ∀ e₁, oe = some e₁ → c.FVarsBelow (.proj n i e) e₁ ∧ c.TrExpr e₁ e' := sorry
 
 theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
-    RecM.WF c s (whnfCore' e cheapRec cheapProj) fun e₁ _ =>
+    RecM.WF c s (whnfCore' e cheapProj) fun e₁ _ =>
       c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := by
   unfold whnfCore'; extract_lets F
   let full := (· matches Expr.fvar _ | .app .. | .letE .. | .proj ..)
@@ -46,7 +46,7 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     refine ⟨h1, h3.defeq c.Ewf c.Δwf ?_⟩
     exact h2.uniq c.Ewf (.refl c.Ewf c.Δwf) he
   have hsave {e₁ s} (h1 : c.FVarsBelow e e₁) (h2 : c.TrExpr e₁ e') :
-      (save e cheapRec cheapProj e₁).WF c s P := by
+      (save e cheapProj e₁).WF c s P := by
     simp [save]
     split <;> [skip; exact hP ▸ .pure ⟨h1, h2⟩]
     rintro _ mwf wf a s' ⟨⟩
@@ -67,7 +67,7 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     split <;> [rename_i name dom body bi _; split]
     · let rec loop.WF {e e' i rargs f} (H : LambdaBodyN i e' f) (hi : i ≤ rargs.size) :
         ∃ n f', LambdaBodyN n e' f' ∧ n ≤ rargs.size ∧
-          loop e cheapRec cheapProj rargs i f = loop.cont e cheapRec cheapProj rargs n f' := by
+          loop e cheapProj rargs i f = loop.cont e cheapProj rargs n f' := by
         unfold loop; split
         · split
           · refine loop.WF (by simpa [Nat.add_comm] using H.add (.succ .zero)) ‹_›

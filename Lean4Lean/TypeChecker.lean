@@ -63,7 +63,7 @@ instance (priority := low) : MonadWithReaderOf LocalContext M where
 
 structure Methods where
   protected isDefEqCore : Expr → Expr → M Bool
-  protected whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : M Expr
+  protected whnfCore (e : Expr) (cheapProj := false) : M Expr
   protected whnf (e : Expr) : M Expr
   protected inferType (e : Expr) (inferOnly : Bool) : M Expr
 
@@ -307,40 +307,37 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
 /-- Reduces `e` to its weak-head normal form, without unfolding definitions. This is a conservative
 version of `whnf` (which does unfold definitions), to be used for efficiency purposes.
 
-Setting `cheapRec` or `cheapProj` to `true` will cause the major premise/struct argument to be
-reduced "lazily" (using `whnfCore` rather than `whnf`) when reducing recursor applications/struct
-projections, and suppresses caching of the result. This can be a useful optimization if we're
-checking the definitional equality of two recursor applications/struct projections of the same
-recursor/projection, where we might save some work by directly checking if the major premises/struct
-arguments are defeq (rather than eagerly applying a recursor rule/projection).
+Setting `cheapProj` to `true` will cause the struct argument to be reduced "lazily" (using
+`whnfCore` rather than `whnf`) when reducing struct projections, and suppresses caching of the
+result. This can be a useful optimization if we're checking the definitional equality of two struct
+projections of the same projection, where we might save some work by directly checking if the struct
+arguments are defeq (rather than eagerly applying a projection).
 
-In practice only `cheapProj` is ever set. `cheapRec` is threaded through to mirror the kernel, where
-it has been dead since lean4#9275 removed the old compiler: its one caller was `csimp`, through the
-`whnf_core_cheap` wrapper that still exists but is now unused. -/
-def whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
-  fun m => m.whnfCore e cheapRec cheapProj
+The kernel has a companion `cheap_rec` flag doing the same for the major premise of a recursor, but
+nothing has set it since lean4#9275 removed the old compiler, so it is omitted here. -/
+def whnfCore (e : Expr) (cheapProj := false) : RecM Expr :=
+  fun m => m.whnfCore e cheapProj
 
-def reduceRecursor (e : Expr) (cheapRec := false) (cheapProj := false) : RecM (Option Expr) := do
+def reduceRecursor (e : Expr) : RecM (Option Expr) := do
   let env ← getEnv
   if env.quotInit then
     if let some r ← quotReduceRec e whnf then
       return r
-  let whnf' e := if cheapRec then whnfCore e cheapRec cheapProj else whnf e
-  if let some r ← inductiveReduceRec env e whnf' inferType isDefEq then
+  if let some r ← inductiveReduceRec env e whnf inferType isDefEq then
     return r
   return none
 
 /-- Reduces the free variable `e`: to the `whnfCore` of its definition if `e` is a let variable,
 and to itself if it is a lambda variable. -/
-def whnfFVar (e : Expr) (cheapRec cheapProj : Bool) : RecM Expr := do
+def whnfFVar (e : Expr) (cheapProj : Bool) : RecM Expr := do
   if let some (.ldecl (value := v) ..) := (← getLCtx).find? e.fvarId! then
-    return ← whnfCore v cheapRec cheapProj
+    return ← whnfCore v cheapProj
   return e
 
 /-- Reduces a projection of `struct` at index `idx` (when `struct` is reducible to a constructor
 application). -/
-def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
-  let mut c ← (if cheapProj then whnfCore struct cheapRec cheapProj else whnf struct)
+def reduceProj (idx : Nat) (struct : Expr) (cheapProj : Bool) : RecM (Option Expr) := do
+  let mut c ← (if cheapProj then whnfCore struct cheapProj else whnf struct)
   if let .lit (.strVal s) := c then
     c ← whnf (.strLitToConstructor s)
   c.withApp fun mk args => do
@@ -353,42 +350,42 @@ def isLetFVar (lctx : LocalContext) (fvar : FVarId) : Bool :=
   lctx.find? fvar matches some (.ldecl ..)
 
 @[inherit_doc whnfCore]
-def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr := do
+def whnfCore' (e : Expr) (cheapProj := false) : RecM Expr := do
   match e with
   | .bvar .. | .sort .. | .mvar .. | .forallE .. | .const .. | .lam .. | .lit .. => return e
-  | .mdata _ e => return ← whnfCore' e cheapRec cheapProj
+  | .mdata _ e => return ← whnfCore' e cheapProj
   | .fvar id => if !isLetFVar (← getLCtx) id then return e
   | .app .. | .letE .. | .proj .. => pure ()
   if let some r := (← get).whnfCoreCache[e]? then
     return r
   let rec save r := do
-    if !cheapRec && !cheapProj then
+    if !cheapProj then
       modify fun s => { s with whnfCoreCache := s.whnfCoreCache.insert e r }
     return r
   match e with
   | .bvar .. | .sort .. | .mvar .. | .forallE .. | .const .. | .lam .. | .lit ..
   | .mdata .. => unreachable!
-  | .fvar _ => return ← whnfFVar e cheapRec cheapProj
+  | .fvar _ => return ← whnfFVar e cheapProj
   | .app .. =>
     -- beta-reduce at the head as much as possible, apply any remaining `rargs`
     -- to the resulting expression, and re-run `whnfCore`
     e.withAppRev fun f0 rargs => do
     -- the head may still be a let variable/binding, projection, or mdata-wrapped expression
-    let f ← whnfCore f0 cheapRec cheapProj
+    let f ← whnfCore f0 cheapProj
     if let .lam _ _ body _ := f then
       let rec loop m (f : Expr) : RecM Expr :=
         let rec cont := do
           let r := f.instantiateRange (rargs.size - m) rargs.size rargs
           let r := r.mkAppRevRange 0 (rargs.size - m) rargs
-          save <|← whnfCore r cheapRec cheapProj
+          save <|← whnfCore r cheapProj
         if let .lam _ _ body _ := f then
           if m < rargs.size then loop (m + 1) body
           else cont
         else cont
       loop 1 body
     else if f == f0 then
-      if let some r ← reduceRecursor e cheapRec cheapProj then
-        whnfCore r cheapRec cheapProj
+      if let some r ← reduceRecursor e then
+        whnfCore r cheapProj
       else
         pure e
     else
@@ -396,12 +393,12 @@ def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
       -- the recursive call re-decomposes `r` and reaches the `f == f0` branch above, so
       -- `reduceRecursor` is still applied; adding arguments can only enable further normalization
       -- if the head reduced to a partial recursor application
-      save <|← whnfCore r cheapRec cheapProj
+      save <|← whnfCore r cheapProj
   | .letE _ _ val body _ =>
-    save <|← whnfCore (body.instantiate1 val) cheapRec cheapProj
+    save <|← whnfCore (body.instantiate1 val) cheapProj
   | .proj _ idx s =>
-    if let some m ← reduceProj idx s cheapRec cheapProj then
-      save <|← whnfCore m cheapRec cheapProj
+    if let some m ← reduceProj idx s cheapProj then
+      save <|← whnfCore m cheapProj
     else
       save e
 
@@ -866,12 +863,12 @@ open Inner
 def Methods.withFuel : Nat → Methods
   | 0 =>
     { isDefEqCore := fun _ _ => throw .deepRecursion
-      whnfCore := fun _ _ _ => throw .deepRecursion
+      whnfCore := fun _ _ => throw .deepRecursion
       whnf := fun _ => throw .deepRecursion
       inferType := fun _ _ => throw .deepRecursion }
   | n + 1 =>
     { isDefEqCore := fun t s => isDefEqCore' t s (withFuel n)
-      whnfCore := fun e r p => whnfCore' e r p (withFuel n)
+      whnfCore := fun e p => whnfCore' e p (withFuel n)
       whnf := fun e => whnf' e (withFuel n)
       inferType := fun e i => inferType' e i (withFuel n) }
 

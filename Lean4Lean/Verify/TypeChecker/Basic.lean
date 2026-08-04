@@ -315,7 +315,7 @@ structure Methods.WF (m : Methods) where
   isDefEqCore : c.TrExprS e₁ e₁' → c.TrExprS e₂ e₂' →
     (m.isDefEqCore e₁ e₂).WF c s fun b _ => b → c.IsDefEqU e₁' e₂'
   whnfCore : c.TrExprS e e' →
-    (m.whnfCore e cheapRec cheapProj).WF c s fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
+    (m.whnfCore e cheapProj).WF c s fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
   whnf : c.TrExprS e e' →
     (m.whnf e).WF c s fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
   inferType : e.FVarsIn (· ∈ c.vlctx.fvars) →
@@ -880,7 +880,7 @@ theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn (· ∈ c.vlctx
   inferType.WF' h1 nofun
 
 theorem whnfCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
-    RecM.WF c s (whnfCore e cheapRec cheapProj) fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' :=
+    RecM.WF c s (whnfCore e cheapProj) fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' :=
   fun _ wf => wf.whnfCore he
 
 theorem isDelta_is_some : isDelta env e = some ci ↔
