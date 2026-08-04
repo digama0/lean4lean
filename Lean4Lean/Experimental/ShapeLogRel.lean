@@ -414,6 +414,8 @@ def ShapeFun.plift (lift : α → β × Option β) (x : List (α × α)) :
   (x.filterMap fun (a, b) => (lift a).2.map fun a => (a, (lift b).1),
    x.mapM fun (a, b) => (lift b).2.map fun b => ((lift a).1, b))
 
+-- Keep the result type visible through the bind chain: with the new `do` elaborator,
+-- constructor terms otherwise remain at `ShapeS (Shape m)` and destabilize the proofs below.
 def Shape.plift : ∀ {n m}, Shape n → Shape m × Option (Shape m)
   | 0, _, .sort r | _+1, _, .sort r => (.sort r, some (.sort r))
   | 0, _, .bot | _+1, _, .bot => (.bot, some .bot)
@@ -434,13 +436,13 @@ def Shape.plift : ∀ {n m}, Shape n → Shape m × Option (Shape m)
   | _+1, _+1, .indTy => (.indTy, some .indTy)
 
 omit [Params] in
-@[simp] private theorem List.mapM_some (f : α → β) (l : List α) :
+private theorem List.mapM_some (f : α → β) (l : List α) :
     l.mapM (fun x => some (f x)) = some (l.map f) := by
   induction l with
   | nil => rfl
   | cons a l ih => simp only [List.mapM_cons, ih]; rfl
 
-attribute [local simp] Option.bind_eq_some_iff
+attribute [local simp] List.mapM_some
 
 omit [Params] in
 theorem Shape.plift_eq_lift (le : n ≤ m) {s : Shape n} :
@@ -454,7 +456,6 @@ theorem Shape.plift_eq_lift (le : n ≤ m) {s : Shape n} :
       exact .rfl fun _ _ => rfl
   unfold plift; split <;> simp [lift] at le ⊢ <;>
     simp [plift_eq_lift le, go plift_eq_lift le]
-  all_goals rfl
 
 omit [Params] in
 theorem ShapeFun.plift_eq_lift (le : n ≤ m) {s : ShapeFun n} :
@@ -539,9 +540,9 @@ theorem Shape.plift_plift (le : n₁ ≤ n₂ ∨ n₃ ≤ n₂) {s : Shape n₁
       simp [Option.map_eq_bind, Option.bind_assoc, Function.comp_def, ih]
   cases s with simp [plift, ih, go, Function.comp_def, Option.bind_assoc]
   | forallE s f =>
-    cases (s.plift (m := n₂)).2 <;> simp
-    rename_i s'
-    cases (ShapeFun.plift (Shape.plift (m := n₂)) f).2 <;> simp
+    cases (s.plift (m := n₂)).2 with
+    | none => simp
+    | some => cases (ShapeFun.plift (Shape.plift (m := n₂)) f).2 <;> simp
   | ctor => rw [← List.mapM_mapM_option, Option.bind_assoc]
 
 omit [Params] in
@@ -650,6 +651,7 @@ protected theorem Shape.Compat.plift {x y : Shape n} :
 def ShapeFun.olift (lift : α → Option β) (x : List (α × α)) : Option (List (β × β)) :=
   x.mapM fun (a, b) => return (← lift a, ← lift b)
 
+-- As in `Shape.plift`, explicit binds preserve the recursive `Shape` result type.
 def Shape.olift : ∀ {n m}, Shape n → Option (Shape m)
   | 0, _, .sort r | _+1, _, .sort r => some (.sort r)
   | 0, _, .bot | _+1, _, .bot => some .bot
@@ -675,7 +677,6 @@ theorem Shape.olift_eq_lift (le : n ≤ m) {s : Shape n} :
     exact .rfl fun _ _ => rfl
   unfold olift; split <;> simp [lift] at le ⊢ <;>
     simp [olift_eq_lift le, go olift_eq_lift le]
-  all_goals rfl
 
 omit [Params] in
 theorem ShapeFun.olift_eq_lift (le : n ≤ m) {s : ShapeFun n} :

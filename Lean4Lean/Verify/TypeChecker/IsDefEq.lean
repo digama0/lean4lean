@@ -316,7 +316,7 @@ theorem cacheFailure.WF {c : VContext} {s : VState} :
 theorem tryUnfoldProjApp.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     (tryUnfoldProjApp e).WF c s fun oe _ =>
     ∀ e₁, oe = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := by
-  unfold tryUnfoldProjApp; extract_lets f F
+  unfold tryUnfoldProjApp; extract_lets f
   split <;> [exact .pure nofun; skip]
   refine (whnfCore.WF he).bind fun _ _ _ h => ?_
   refine .pure fun _ => ?_
@@ -438,8 +438,8 @@ theorem lazyDeltaReduction.loop.WF {c : VContext} {s : VState}
   unfold loop; extract_lets F1
   refine (isDefEqOffset.WF he₁ he₂).bind fun _ _ _ h => ?_; split
   · exact .pure fun hb => h (by simpa using hb)
-  suffices hF2 : ∀ {s}, (F1 ⟨⟩).WF c s fun r _ => r.WF c e₁' e₂' by
-    refine .readThe ?_; split <;> [skip; exact hF2]
+  suffices hF1 : ∀ {s}, (F1 ⟨⟩).WF c s fun r _ => r.WF c e₁' e₂' by
+    refine .readThe ?_; split <;> [skip; exact hF1]
     refine (reduceNat.WF he₁).bind fun _ _ _ h => ?_; split
     · have ⟨_, a1, a2⟩ := (h _ rfl).2
       refine (isDefEqCore.WF a1 he₂).bind fun _ _ _ h => .pure fun hb => ?_
@@ -448,7 +448,7 @@ theorem lazyDeltaReduction.loop.WF {c : VContext} {s : VState}
     · have ⟨_, a1, a2⟩ := (h _ rfl).2
       refine (isDefEqCore.WF he₁ a1).bind fun _ _ _ h => .pure fun hb => ?_
       exact (h hb).trans c.Ewf c.Δwf a2
-    exact hF2
+    exact hF1
   intro s; unfold F1; refine .getEnv ?_
   refine (M.WF.liftExcept reduceNative.WF).lift.bind fun _ _ _ h => ?_
   split <;> [cases h _ rfl; skip]
@@ -520,8 +520,8 @@ theorem isDefEqCore'.WF {c : VContext} {s : VState}
   have ⟨⟨e₁', c1, c4⟩, ⟨e₂', d1, d4⟩⟩ := h
   refine .mono (Q := fun b _ => b = true → c.IsDefEqU e₁' e₂') ?_ fun _ _ _ h hb =>
     c4.symm.trans c.Ewf c.Δwf (h (by simpa using hb)) |>.trans c.Ewf c.Δwf d4
-  extract_lets F2
-  suffices ∀ {s}, RecM.WF c s (F2 ⟨⟩) fun b _ => b = true → c.IsDefEqU e₁' e₂' by
+  extract_lets F3
+  suffices ∀ {s}, RecM.WF c s (F3 ⟨⟩) fun b _ => b = true → c.IsDefEqU e₁' e₂' by
     split
     · split <;> [rename_i h2; exact this]
       refine .pure fun _ => ?_
@@ -543,7 +543,7 @@ theorem isDefEqCore'.WF {c : VContext} {s : VState}
       simp at h2; subst h2; clear h
       exact .pure fun _ => c2.uniq c.Ewf (.refl c.Δwf) d2 (h ‹_›)
     · exact this
-  intro; unfold F2
+  intro; unfold F3
   refine (whnfCore.WF c1).bind fun _ _ _ ⟨_, e₁'', c5, c6⟩ => ?_
   refine (whnfCore.WF d1).bind fun _ _ _ ⟨_, e₂'', d5, d6⟩ => ?_
   split

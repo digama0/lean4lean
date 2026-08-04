@@ -33,13 +33,13 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   let full := (· matches Expr.fvar _ | .app .. | .letE .. | .proj ..)
   generalize hP : (fun e₁ (_ : VState) => _) = P
   have hid {s} : RecM.WF c s (pure e) P := hP ▸ .pure ⟨.rfl, he.trExpr c.Ewf c.Δwf⟩
-  suffices hG : full e → RecM.WF c s (F ⟨⟩) P by
+  suffices hF : full e → RecM.WF c s (F ⟨⟩) P by
     split
     any_goals exact hid
-    any_goals exact hG rfl
+    any_goals exact hF rfl
     · let .mdata he := he
       exact hP ▸ whnfCore'.WF he
-    · refine .getLCtx ?_; split <;> [exact hid; exact hG rfl]
+    · refine .getLCtx ?_; split <;> [exact hid; exact hF rfl]
   simp [F]; refine fun hfull => .get ?_; split
   · rename_i r eq; refine .stateWF fun wf => hP ▸ .pure ?_
     have ⟨_, h1, h2, h3⟩ := (wf.whnfCore_wf eq).2.2.2.2 he.fvarsIn
@@ -134,13 +134,13 @@ theorem whnf'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   unfold whnf'; extract_lets F
   generalize hP : (fun e₁ (_ : VState) => _) = P
   have hid {s} : RecM.WF c s (pure e) P := hP ▸ .pure ⟨.rfl, he.trExpr c.Ewf c.Δwf⟩
-  suffices hG : RecM.WF c s (F ()) P by
+  suffices hF : RecM.WF c s (F ()) P by
     split
     any_goals exact hid
-    any_goals exact hG
+    any_goals exact hF
     · let .mdata he := he
       exact hP ▸ whnf'.WF he
-    · refine .getLCtx ?_; split <;> [exact hid; exact hG]
+    · refine .getLCtx ?_; split <;> [exact hid; exact hF]
   simp [F]; refine .get ?_; split
   · rename_i r eq; refine .stateWF fun wf => hP ▸ .pure ?_
     have ⟨_, h1, h2, h3⟩ := (wf.whnf_wf eq).2.2.2.2 he.fvarsIn

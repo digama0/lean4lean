@@ -266,8 +266,12 @@ theorem isEquiv.WF :
   split <;> [exact .pure nofun; skip]
   split
   · rename_i h; refine .pure ?_
-    cases e₁ <;> cases e₂ <;> simp_all [Expr.isBVar, Expr.bvarIdx!]
-    rintro rfl; exact .rfl
+    simp only [Bool.and_eq_true] at h
+    rcases h with ⟨h1, h2⟩
+    unfold Expr.isBVar at h1 h2
+    split at h1 <;> cases h1
+    split at h2 <;> cases h2
+    simp [Expr.bvarIdx!]; rintro ⟨⟩; exact .rfl
   refine toNode.WF.bind fun i₁ _ _ a1 => find.WF.bind fun j₁ _ le₁ a2 => ?_
   refine toNode.WF.bind fun i₂ _ le₂ b1 => find.WF.bind fun j₂ m₀ le₃ b2 => ?_
   refine .stateWF fun wf => ?_
