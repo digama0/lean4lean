@@ -8686,6 +8686,148 @@ theorem checkPrimitiveDef.natBitwise.WF_typedCore
   · rw [if_neg hdeps]
     exact .throw
 
+/-- Generic typed checker theorem for the binary `Nat` primitives that
+recurse on their first argument (`Nat.shiftLeft`, `Nat.shiftRight`).  The
+zero equation and the successor left-hand side are uniform; only the
+successor right-hand side `sR` varies.  Its translation is supplied as a
+function of the shared evidence pack together with the translation of the
+literal `2` that both right-hand sides use. -/
+theorem checkNatShiftTyped.WF {c : VContext} {s : VState}
+    {P₁ P₂ : Prop} {ty value sR : Expr} {ty' value' sR' : VExpr}
+    {err : Exception}
+    (h₁ : P₁) (h₂ : P₂)
+    (hnat : c.venv.contains ``Nat)
+    (hvlctx : c.vlctx = [])
+    (hty : c.TrExprS ty ty')
+    (hvalue0 : TrExprS c.venv c.lparams [] value value')
+    (hvalueT0 : c.venv.HasType c.lparams.length [] value' ty')
+    (hsR : NatBinaryEvidence c value value' →
+      TrExprS c.venv c.lparams [(none, .vlam .nat), (none, .vlam .nat)]
+        q(Nat.succ (Nat.succ Nat.zero)) (.natLit 2) →
+      c.venv.HasType c.lparams.length [.nat, .nat] (.natLit 2) .nat →
+      TrExprS c.venv c.lparams [(none, .vlam .nat), (none, .vlam .nat)]
+        sR sR') :
+    M.WF c s (do
+      unless ← isDefEq ty q(Nat → Nat → Nat) do throw err
+      unless ← isDefEq (.lam0 q(Nat) <| mkApp2 value (.bvar 0) q(Nat.zero))
+        (.lam0 q(Nat) <| .bvar 0) do throw err
+      unless ← isDefEq
+        (.lam0 q(Nat) <| .lam0 q(Nat) <|
+          mkApp2 value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
+        (.lam0 q(Nat) <| .lam0 q(Nat) <| sR) do throw err
+      pure true) fun b _ => b →
+        P₁ ∧ P₂ ∧
+        c.venv.IsDefEqU c.lparams.length [] ty'
+          (.forallE .nat <| .forallE .nat .nat) ∧
+        c.venv.IsDefEqU c.lparams.length []
+          (.lam .nat <| .app (.app value' (.bvar 0)) .natZero)
+          (.lam .nat <| .bvar 0) ∧
+        c.venv.IsDefEqU c.lparams.length []
+          (.lam .nat <| .lam .nat <|
+            .app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1)))
+          (.lam .nat <| .lam .nat <| sR') := by
+  have hnat0 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams []
+  have hnat1 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams
+    [(none, .vlam .nat)]
+  have hnat2 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams
+    [(none, .vlam .nat), (none, .vlam .nat)]
+  have hinnerType : c.venv.IsType c.lparams.length [.nat]
+      (.forallE .nat .nat) := by
+    obtain ⟨u, hA⟩ := hnat1.2
+    obtain ⟨w, hB⟩ := hnat2.2
+    exact ⟨.imax u w, .forallEDF hA hB⟩
+  have hcanon : c.TrExprS q(Nat → Nat → Nat)
+      (.forallE .nat <| .forallE .nat .nat) := by
+    change TrExprS c.venv c.lparams c.vlctx _ _
+    rw [hvlctx]
+    exact .forallE hnat0.2 hinnerType hnat0.1
+      (.forallE hnat1.2 hnat2.2 hnat1.1 hnat2.1)
+  exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+    by_cases hb : b = true
+    · rw [if_pos hb]
+      have htyEq0 := htyEq hb
+      change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx ty'
+        (.forallE .nat <| .forallE .nat .nat) at htyEq0
+      rw [hvlctx] at htyEq0
+      have hvalueCanonT : c.venv.HasType c.lparams.length [] value'
+          (.forallE .nat <| .forallE .nat .nat) :=
+        hvalueT0.defeqU_r c.Ewf trivial htyEq0
+      have ev : NatBinaryEvidence c value value' :=
+        .mk' hnat hvalue0 hvalueCanonT
+      have hzS1 := TrExprS.natZero c.hasPrimitives hnat
+        (Us := c.lparams) (Δ := [(none, .vlam .nat)])
+      have hsS := TrExprS.natSucc c.hasPrimitives hnat
+        (Us := c.lparams) (Δ := [(none, .vlam .nat), (none, .vlam .nat)])
+      have hz₁ : c.TrExprS
+          (.lam0 q(Nat) <| mkApp2 value (.bvar 0) q(Nat.zero))
+          (.lam .nat <| .app (.app value' (.bvar 0)) .natZero) := by
+        change TrExprS c.venv c.lparams c.vlctx _ _
+        rw [hvlctx]
+        exact .lam hnat0.2 hnat0.1
+          (.app (.app ev.hv1T ev.hx1T) hzS1.2
+            (.app ev.hv1T ev.hx1T ev.hv1 ev.hx1S) hzS1.1)
+      have hz₂ : c.TrExprS (.lam0 q(Nat) <| .bvar 0)
+          (.lam .nat <| .bvar 0) := by
+        change TrExprS c.venv c.lparams c.vlctx _ _
+        rw [hvlctx]
+        exact .lam hnat0.2 hnat0.1 ev.hx1S
+      have hsyS : TrExprS c.venv c.lparams
+          [(none, .vlam .nat), (none, .vlam .nat)]
+          (mkApp q(Nat.succ) (.bvar 1))
+          (.app .natSucc (.bvar 1)) := .app hsS.2 ev.hy2T hsS.1 ev.hy2S
+      have hsyT : c.venv.HasType c.lparams.length [.nat, .nat]
+          (.app .natSucc (.bvar 1)) .nat := .app hsS.2 ev.hy2T
+      have hs₁ : c.TrExprS
+          (.lam0 q(Nat) <| .lam0 q(Nat) <|
+            mkApp2 value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
+          (.lam .nat <| .lam .nat <|
+            .app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1))) := by
+        change TrExprS c.venv c.lparams c.vlctx _ _
+        rw [hvlctx]
+        exact .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1
+          (.app (.app ev.hv2T ev.hx2T) hsyT
+            (.app ev.hv2T ev.hx2T ev.hv2 ev.hx2S) hsyS))
+      have hzeroS2 := TrExprS.natZero c.hasPrimitives hnat
+        (Us := c.lparams) (Δ := [(none, .vlam .nat), (none, .vlam .nat)])
+      have honeS : TrExprS c.venv c.lparams
+          [(none, .vlam .nat), (none, .vlam .nat)] q(Nat.succ Nat.zero)
+          (.natLit 1) := .app hsS.2 hzeroS2.2 hsS.1 hzeroS2.1
+      have honeT : c.venv.HasType c.lparams.length [.nat, .nat]
+          (.natLit 1) .nat := .app hsS.2 hzeroS2.2
+      have htwoS : TrExprS c.venv c.lparams
+          [(none, .vlam .nat), (none, .vlam .nat)]
+          q(Nat.succ (Nat.succ Nat.zero)) (.natLit 2) :=
+        .app hsS.2 honeT hsS.1 honeS
+      have htwoT : c.venv.HasType c.lparams.length [.nat, .nat]
+          (.natLit 2) .nat := .app hsS.2 honeT
+      have hs₂ : c.TrExprS (.lam0 q(Nat) <| .lam0 q(Nat) <| sR)
+          (.lam .nat <| .lam .nat <| sR') := by
+        change TrExprS c.venv c.lparams c.vlctx _ _
+        rw [hvlctx]
+        exact .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1
+          (hsR ev htwoS htwoT))
+      exact (isDefEq.WF hz₁ hz₂).bind fun z _ _ hzEq => by
+        by_cases hzb : z = true
+        · rw [if_pos hzb]
+          have hzEq0 := hzEq hzb
+          change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hzEq0
+          rw [hvlctx] at hzEq0
+          exact (isDefEq.WF hs₁ hs₂).bind fun p _ _ hsEq => by
+            by_cases hsb : p = true
+            · rw [if_pos hsb]
+              have hsEq0 := hsEq hsb
+              change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _
+                at hsEq0
+              rw [hvlctx] at hsEq0
+              exact .pure fun _ => ⟨h₁, h₂, htyEq0, hzEq0, hsEq0⟩
+            · rw [if_neg hsb]
+              exact .throw
+        · rw [if_neg hzb]
+          exact .throw
+    · rw [if_neg hb]
+      exact .throw
+
+
 theorem checkPrimitiveDef.natShiftLeft.WF_typed {c : VContext} {s : VState}
     (hname : v.name = ``Nat.shiftLeft)
     (hvlctx : c.vlctx = [])
@@ -8728,206 +8870,39 @@ theorem checkPrimitiveDef.natShiftLeft.WF_typed {c : VContext} {s : VState}
     have hvalueT0 := hvalueT
     change c.venv.HasType c.lparams.length c.vlctx.toCtx value' ty' at hvalueT0
     rw [hvlctx] at hvalueT0
-    let Δ1 : VLCtx := [(none, .vlam .nat)]
-    let Δ2 : VLCtx := [(none, .vlam .nat), (none, .vlam .nat)]
-    have hnat0 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams []
-    have hnat1 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams Δ1
-    have hnat2 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams Δ2
-    have hΔ1 : Δ1.WF c.venv c.lparams.length :=
-      ⟨trivial, nofun, hnat0.2⟩
-    have hΔ2 : Δ2.WF c.venv c.lparams.length :=
-      ⟨hΔ1, nofun, hnat1.2⟩
-    have hinnerType : c.venv.IsType c.lparams.length [.nat]
-        (.forallE .nat .nat) := by
-      obtain ⟨u, hA⟩ := hnat1.2
-      obtain ⟨w, hB⟩ := hnat2.2
-      exact ⟨.imax u w, .forallEDF hA hB⟩
-    have hcanon0 : TrExprS c.venv c.lparams [] q(Nat → Nat → Nat)
-        (.forallE .nat <| .forallE .nat .nat) := by
-      have hinnerS : TrExprS c.venv c.lparams Δ1 q(Nat → Nat)
-          (.forallE .nat .nat) :=
-        .forallE hnat1.2 hnat2.2 hnat1.1 hnat2.1
-      exact .forallE hnat0.2 hinnerType hnat0.1 hinnerS
-    have hcanon : c.TrExprS q(Nat → Nat → Nat)
-        (.forallE .nat <| .forallE .nat .nat) := by
-      change TrExprS c.venv c.lparams c.vlctx _ _
-      rw [hvlctx]
-      exact hcanon0
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
-      by_cases hb : b = true
-      · rw [if_pos hb]
-        have htyEq0 := htyEq hb
-        change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx ty'
-          (.forallE .nat <| .forallE .nat .nat) at htyEq0
-        rw [hvlctx] at htyEq0
-        have hvalueCanonT : c.venv.HasType c.lparams.length [] value'
-            (.forallE .nat <| .forallE .nat .nat) :=
-          hvalueT0.defeqU_r c.Ewf trivial htyEq0
-        have hv1 : TrExprS c.venv c.lparams Δ1 v.value value' :=
-          TrExprS.closed_weak c.Ewf hvalue0 (.skip (.vlam .nat) .refl)
-        have hv2 : TrExprS c.venv c.lparams Δ2 v.value value' :=
-          TrExprS.closed_weak c.Ewf hvalue0
-            (.skip (.vlam .nat) (.skip (.vlam .nat) .refl))
-        have hx1S : TrExprS c.venv c.lparams Δ1 (.bvar 0) (.bvar 0) :=
-          .bvar (A := .nat) (by simp [Δ1, VLCtx.find?, VLCtx.next,
-            VLocalDecl.value, VLocalDecl.type,
-            VExpr.liftN, VExpr.lift, VExpr.nat])
-        have hx1T : c.venv.HasType c.lparams.length [.nat]
-            (.bvar 0) .nat := by
-          simpa [VExpr.lift] using
-            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
-              (A := .nat) (i := 0) Lookup.zero)
-        have hx2S : TrExprS c.venv c.lparams Δ2 (.bvar 0) (.bvar 0) :=
-          .bvar (A := .nat) (by simp [Δ2, VLCtx.find?, VLCtx.next,
-            VLocalDecl.value, VLocalDecl.type,
-            VExpr.liftN, VExpr.lift, VExpr.nat])
-        have hy2S : TrExprS c.venv c.lparams Δ2 (.bvar 1) (.bvar 1) :=
-          .bvar (A := .nat) (by simp [Δ2, VLCtx.find?, VLCtx.next,
-            VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-            VExpr.liftN, VExpr.lift, VExpr.nat, liftVar])
-        have hx2T : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.bvar 0) .nat := by
-          simpa [VExpr.lift] using
-            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
-              (A := .nat) (i := 0) Lookup.zero)
-        have hy2T : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.bvar 1) .nat := by
-          simpa [VExpr.lift] using
-            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
-              (A := .nat) (i := 1) (Lookup.succ Lookup.zero))
-        have hv1T := hvalueCanonT.weak0 c.Ewf (Γ := [.nat])
-        have hv2T := hvalueCanonT.weak0 c.Ewf (Γ := [.nat, .nat])
-        have hzS1 := TrExprS.natZero c.hasPrimitives hnat
-          (Us := c.lparams) (Δ := Δ1)
-        have hsS := TrExprS.natSucc c.hasPrimitives hnat
-          (Us := c.lparams) (Δ := Δ2)
-        have hzBodyS : TrExprS c.venv c.lparams Δ1
-            (mkApp2 v.value (.bvar 0) q(Nat.zero))
-            (.app (.app value' (.bvar 0)) .natZero) :=
-          .app (.app hv1T hx1T) hzS1.2
-            (.app hv1T hx1T hv1 hx1S) hzS1.1
-        have hz₁0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| mkApp2 v.value (.bvar 0) q(Nat.zero))
-            (.lam .nat <| .app (.app value' (.bvar 0)) .natZero) :=
-          .lam hnat0.2 hnat0.1 hzBodyS
-        have hz₂0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| .bvar 0) (.lam .nat <| .bvar 0) :=
-          .lam hnat0.2 hnat0.1 hx1S
-        have hz₁ : c.TrExprS
-            (.lam0 q(Nat) <| mkApp2 v.value (.bvar 0) q(Nat.zero))
-            (.lam .nat <| .app (.app value' (.bvar 0)) .natZero) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hz₁0
-        have hz₂ : c.TrExprS (.lam0 q(Nat) <| .bvar 0)
-            (.lam .nat <| .bvar 0) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hz₂0
-        have hsyS : TrExprS c.venv c.lparams Δ2
-            (mkApp q(Nat.succ) (.bvar 1))
-            (.app .natSucc (.bvar 1)) := .app hsS.2 hy2T hsS.1 hy2S
-        have hsyT : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.app .natSucc (.bvar 1)) .nat := .app hsS.2 hy2T
-        have hleftBodyS : TrExprS c.venv c.lparams Δ2
-            (mkApp2 v.value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
-            (.app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1))) :=
-          .app (.app hv2T hx2T) hsyT
-            (.app hv2T hx2T hv2 hx2S) hsyS
-        have hzeroS2 := TrExprS.natZero c.hasPrimitives hnat
-          (Us := c.lparams) (Δ := Δ2)
-        have honeS : TrExprS c.venv c.lparams Δ2 q(Nat.succ Nat.zero)
-            (.natLit 1) := .app hsS.2 hzeroS2.2 hsS.1 hzeroS2.1
-        have honeT : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.natLit 1) .nat := .app hsS.2 hzeroS2.2
-        have htwoS : TrExprS c.venv c.lparams Δ2
-            q(Nat.succ (Nat.succ Nat.zero)) (.natLit 2) :=
-          .app hsS.2 honeT hsS.1 honeS
-        have htwoT : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.natLit 2) .nat := .app hsS.2 honeT
+    exact checkNatShiftTyped.WF hlevels hmulC hnat hvlctx hty
+      hvalue0 hvalueT0
+      (fun ev htwoS htwoT =>
         have hmulS := TrExprS.reflectedNatBinary c.Ewf
-          c.hasPrimitives.natMul hmulC c.lparams Δ2 hΔ2
-        have hmulTwoS : TrExprS c.venv c.lparams Δ2
+          c.hasPrimitives.natMul hmulC c.lparams _ ev.hΔ2
+        have hmulTwoS : TrExprS c.venv c.lparams
+            [(none, .vlam .nat), (none, .vlam .nat)]
             (mkApp q(Nat.mul) q(Nat.succ (Nat.succ Nat.zero)))
             (.app (.const ``Nat.mul []) (.natLit 2)) :=
           .app hmulS.2 htwoT hmulS.1 htwoS
         have hmulTwoT : c.venv.HasType c.lparams.length [.nat, .nat]
             (.app (.const ``Nat.mul []) (.natLit 2))
             (.forallE .nat .nat) := .app hmulS.2 htwoT
-        have hmulTwoXS : TrExprS c.venv c.lparams Δ2
+        have hmulTwoXS : TrExprS c.venv c.lparams
+            [(none, .vlam .nat), (none, .vlam .nat)]
             (mkApp2 q(Nat.mul) q(Nat.succ (Nat.succ Nat.zero)) (.bvar 0))
             (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0)) :=
-          .app hmulTwoT hx2T hmulTwoS hx2S
+          .app hmulTwoT ev.hx2T hmulTwoS ev.hx2S
         have hmulTwoXT : c.venv.HasType c.lparams.length [.nat, .nat]
             (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0)) .nat :=
-          .app hmulTwoT hx2T
-        have hvMulS : TrExprS c.venv c.lparams Δ2
+          .app hmulTwoT ev.hx2T
+        have hvMulS : TrExprS c.venv c.lparams
+            [(none, .vlam .nat), (none, .vlam .nat)]
             (mkApp v.value
               (mkApp2 q(Nat.mul) q(Nat.succ (Nat.succ Nat.zero)) (.bvar 0)))
             (.app value'
               (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0))) :=
-          .app hv2T hmulTwoXT hv2 hmulTwoXS
+          .app ev.hv2T hmulTwoXT ev.hv2 hmulTwoXS
         have hvMulT : c.venv.HasType c.lparams.length [.nat, .nat]
             (.app value'
               (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0)))
-            (.forallE .nat .nat) := .app hv2T hmulTwoXT
-        have hrightBodyS : TrExprS c.venv c.lparams Δ2
-            (mkApp2 v.value
-              (mkApp2 q(Nat.mul) q(Nat.succ (Nat.succ Nat.zero)) (.bvar 0))
-              (.bvar 1))
-            (.app (.app value'
-              (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0)))
-              (.bvar 1)) :=
-          .app hvMulT hy2T hvMulS hy2S
-        have hs₁0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 v.value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
-            (.lam .nat <| .lam .nat <|
-              .app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1))) :=
-          .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1 hleftBodyS)
-        have hs₂0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 v.value
-                (mkApp2 q(Nat.mul) q(Nat.succ (Nat.succ Nat.zero)) (.bvar 0))
-                (.bvar 1))
-            (.lam .nat <| .lam .nat <|
-              .app (.app value'
-                (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0)))
-                (.bvar 1)) :=
-          .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1 hrightBodyS)
-        have hs₁ : c.TrExprS
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 v.value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
-            (.lam .nat <| .lam .nat <|
-              .app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1))) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hs₁0
-        have hs₂ : c.TrExprS
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 v.value
-                (mkApp2 q(Nat.mul) q(Nat.succ (Nat.succ Nat.zero)) (.bvar 0))
-                (.bvar 1))
-            (.lam .nat <| .lam .nat <|
-              .app (.app value'
-                (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0)))
-                (.bvar 1)) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hs₂0
-        exact (isDefEq.WF hz₁ hz₂).bind fun z _ _ hzEq => by
-          by_cases hzb : z = true
-          · rw [if_pos hzb]
-            have hzEq0 := hzEq hzb
-            change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hzEq0
-            rw [hvlctx] at hzEq0
-            exact (isDefEq.WF hs₁ hs₂).bind fun q _ _ hsEq => by
-              by_cases hsb : q = true
-              · rw [if_pos hsb]
-                have hsEq0 := hsEq hsb
-                change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hsEq0
-                rw [hvlctx] at hsEq0
-                exact .pure fun _ =>
-                  ⟨hlevels, hmulC, htyEq0, hzEq0, hsEq0⟩
-              · rw [if_neg hsb]; exact .throw
-          · rw [if_neg hzb]; exact .throw
-      · rw [if_neg hb]; exact .throw
+            (.forallE .nat .nat) := .app ev.hv2T hmulTwoXT
+        .app hvMulT ev.hy2T hvMulS ev.hy2S)
   · exact .throw
 
 theorem checkPrimitiveDef.natShiftRight.WF_typed {c : VContext} {s : VState}
@@ -8971,132 +8946,22 @@ theorem checkPrimitiveDef.natShiftRight.WF_typed {c : VContext} {s : VState}
     have hvalueT0 := hvalueT
     change c.venv.HasType c.lparams.length c.vlctx.toCtx value' ty' at hvalueT0
     rw [hvlctx] at hvalueT0
-    let Δ1 : VLCtx := [(none, .vlam .nat)]
-    let Δ2 : VLCtx := [(none, .vlam .nat), (none, .vlam .nat)]
-    have hnat0 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams []
-    have hnat1 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams Δ1
-    have hnat2 := TrExprS.natType_of_contains c.hasPrimitives hnat c.lparams Δ2
-    have hΔ1 : Δ1.WF c.venv c.lparams.length :=
-      ⟨trivial, nofun, hnat0.2⟩
-    have hΔ2 : Δ2.WF c.venv c.lparams.length :=
-      ⟨hΔ1, nofun, hnat1.2⟩
-    have hinnerType : c.venv.IsType c.lparams.length [.nat]
-        (.forallE .nat .nat) := by
-      obtain ⟨u, hA⟩ := hnat1.2
-      obtain ⟨w, hB⟩ := hnat2.2
-      exact ⟨.imax u w, .forallEDF hA hB⟩
-    have hcanon0 : TrExprS c.venv c.lparams [] q(Nat → Nat → Nat)
-        (.forallE .nat <| .forallE .nat .nat) := by
-      have hinnerS : TrExprS c.venv c.lparams Δ1 q(Nat → Nat)
-          (.forallE .nat .nat) :=
-        .forallE hnat1.2 hnat2.2 hnat1.1 hnat2.1
-      exact .forallE hnat0.2 hinnerType hnat0.1 hinnerS
-    have hcanon : c.TrExprS q(Nat → Nat → Nat)
-        (.forallE .nat <| .forallE .nat .nat) := by
-      change TrExprS c.venv c.lparams c.vlctx _ _
-      rw [hvlctx]
-      exact hcanon0
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
-      by_cases hb : b = true
-      · rw [if_pos hb]
-        have htyEq0 := htyEq hb
-        change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx ty'
-          (.forallE .nat <| .forallE .nat .nat) at htyEq0
-        rw [hvlctx] at htyEq0
-        have hvalueCanonT : c.venv.HasType c.lparams.length [] value'
-            (.forallE .nat <| .forallE .nat .nat) :=
-          hvalueT0.defeqU_r c.Ewf trivial htyEq0
-        have hv1 : TrExprS c.venv c.lparams Δ1 v.value value' :=
-          TrExprS.closed_weak c.Ewf hvalue0 (.skip (.vlam .nat) .refl)
-        have hv2 : TrExprS c.venv c.lparams Δ2 v.value value' :=
-          TrExprS.closed_weak c.Ewf hvalue0
-            (.skip (.vlam .nat) (.skip (.vlam .nat) .refl))
-        have hx1S : TrExprS c.venv c.lparams Δ1 (.bvar 0) (.bvar 0) :=
-          .bvar (A := .nat) (by simp [Δ1, VLCtx.find?, VLCtx.next,
-            VLocalDecl.value, VLocalDecl.type,
-            VExpr.liftN, VExpr.lift, VExpr.nat])
-        have hx1T : c.venv.HasType c.lparams.length [.nat]
-            (.bvar 0) .nat := by
-          simpa [VExpr.lift] using
-            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
-              (A := .nat) (i := 0) Lookup.zero)
-        have hx2S : TrExprS c.venv c.lparams Δ2 (.bvar 0) (.bvar 0) :=
-          .bvar (A := .nat) (by simp [Δ2, VLCtx.find?, VLCtx.next,
-            VLocalDecl.value, VLocalDecl.type,
-            VExpr.liftN, VExpr.lift, VExpr.nat])
-        have hy2S : TrExprS c.venv c.lparams Δ2 (.bvar 1) (.bvar 1) :=
-          .bvar (A := .nat) (by simp [Δ2, VLCtx.find?, VLCtx.next,
-            VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-            VExpr.liftN, VExpr.lift, VExpr.nat, liftVar])
-        have hx2T : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.bvar 0) .nat := by
-          simpa [VExpr.lift] using
-            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
-              (A := .nat) (i := 0) Lookup.zero)
-        have hy2T : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.bvar 1) .nat := by
-          simpa [VExpr.lift] using
-            (VEnv.IsDefEq.bvar (env := c.venv) (uvars := c.lparams.length)
-              (A := .nat) (i := 1) (Lookup.succ Lookup.zero))
-        have hv1T := hvalueCanonT.weak0 c.Ewf (Γ := [.nat])
-        have hv2T := hvalueCanonT.weak0 c.Ewf (Γ := [.nat, .nat])
-        have hzS1 := TrExprS.natZero c.hasPrimitives hnat
-          (Us := c.lparams) (Δ := Δ1)
-        have hsS := TrExprS.natSucc c.hasPrimitives hnat
-          (Us := c.lparams) (Δ := Δ2)
-        have hzBodyS : TrExprS c.venv c.lparams Δ1
-            (mkApp2 v.value (.bvar 0) q(Nat.zero))
-            (.app (.app value' (.bvar 0)) .natZero) :=
-          .app (.app hv1T hx1T) hzS1.2
-            (.app hv1T hx1T hv1 hx1S) hzS1.1
-        have hz₁0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| mkApp2 v.value (.bvar 0) q(Nat.zero))
-            (.lam .nat <| .app (.app value' (.bvar 0)) .natZero) :=
-          .lam hnat0.2 hnat0.1 hzBodyS
-        have hz₂0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| .bvar 0) (.lam .nat <| .bvar 0) :=
-          .lam hnat0.2 hnat0.1 hx1S
-        have hz₁ : c.TrExprS
-            (.lam0 q(Nat) <| mkApp2 v.value (.bvar 0) q(Nat.zero))
-            (.lam .nat <| .app (.app value' (.bvar 0)) .natZero) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hz₁0
-        have hz₂ : c.TrExprS (.lam0 q(Nat) <| .bvar 0)
-            (.lam .nat <| .bvar 0) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hz₂0
-        have hsyS : TrExprS c.venv c.lparams Δ2
-            (mkApp q(Nat.succ) (.bvar 1))
-            (.app .natSucc (.bvar 1)) := .app hsS.2 hy2T hsS.1 hy2S
-        have hsyT : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.app .natSucc (.bvar 1)) .nat := .app hsS.2 hy2T
-        have hleftBodyS : TrExprS c.venv c.lparams Δ2
-            (mkApp2 v.value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
-            (.app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1))) :=
-          .app (.app hv2T hx2T) hsyT
-            (.app hv2T hx2T hv2 hx2S) hsyS
-        have hzeroS2 := TrExprS.natZero c.hasPrimitives hnat
-          (Us := c.lparams) (Δ := Δ2)
-        have honeS : TrExprS c.venv c.lparams Δ2 q(Nat.succ Nat.zero)
-            (.natLit 1) := .app hsS.2 hzeroS2.2 hsS.1 hzeroS2.1
-        have honeT : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.natLit 1) .nat := .app hsS.2 hzeroS2.2
-        have htwoS : TrExprS c.venv c.lparams Δ2
-            q(Nat.succ (Nat.succ Nat.zero)) (.natLit 2) :=
-          .app hsS.2 honeT hsS.1 honeS
-        have htwoT : c.venv.HasType c.lparams.length [.nat, .nat]
-            (.natLit 2) .nat := .app hsS.2 honeT
+    exact checkNatShiftTyped.WF hlevels hdivC hnat hvlctx hty
+      hvalue0 hvalueT0
+      (fun ev htwoS htwoT =>
         have hdivS := TrExprS.reflectedNatBinary c.Ewf
-          c.hasPrimitives.natDiv hdivC c.lparams Δ2 hΔ2
-        have hrecS : TrExprS c.venv c.lparams Δ2
+          c.hasPrimitives.natDiv hdivC c.lparams _ ev.hΔ2
+        have hrecS : TrExprS c.venv c.lparams
+            [(none, .vlam .nat), (none, .vlam .nat)]
             (mkApp2 v.value (.bvar 0) (.bvar 1))
             (.app (.app value' (.bvar 0)) (.bvar 1)) :=
-          .app (.app hv2T hx2T) hy2T
-            (.app hv2T hx2T hv2 hx2S) hy2S
+          .app (.app ev.hv2T ev.hx2T) ev.hy2T
+            (.app ev.hv2T ev.hx2T ev.hv2 ev.hx2S) ev.hy2S
         have hrecT : c.venv.HasType c.lparams.length [.nat, .nat]
             (.app (.app value' (.bvar 0)) (.bvar 1)) .nat :=
-          .app (.app hv2T hx2T) hy2T
-        have hdivRecS : TrExprS c.venv c.lparams Δ2
+          .app (.app ev.hv2T ev.hx2T) ev.hy2T
+        have hdivRecS : TrExprS c.venv c.lparams
+            [(none, .vlam .nat), (none, .vlam .nat)]
             (mkApp q(Nat.div) (mkApp2 v.value (.bvar 0) (.bvar 1)))
             (.app (.const ``Nat.div [])
               (.app (.app value' (.bvar 0)) (.bvar 1))) :=
@@ -9105,59 +8970,7 @@ theorem checkPrimitiveDef.natShiftRight.WF_typed {c : VContext} {s : VState}
             (.app (.const ``Nat.div [])
               (.app (.app value' (.bvar 0)) (.bvar 1)))
             (.forallE .nat .nat) := .app hdivS.2 hrecT
-        have hrightBodyS : TrExprS c.venv c.lparams Δ2
-            (mkApp2 q(Nat.div) (mkApp2 v.value (.bvar 0) (.bvar 1))
-              q(Nat.succ (Nat.succ Nat.zero)))
-            (.app (.app (.const ``Nat.div [])
-              (.app (.app value' (.bvar 0)) (.bvar 1))) (.natLit 2)) :=
-          .app hdivRecT htwoT hdivRecS htwoS
-        have hs₁0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 v.value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
-            (.lam .nat <| .lam .nat <|
-              .app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1))) :=
-          .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1 hleftBodyS)
-        have hs₂0 : TrExprS c.venv c.lparams []
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 q(Nat.div) (mkApp2 v.value (.bvar 0) (.bvar 1))
-                q(Nat.succ (Nat.succ Nat.zero)))
-            (.lam .nat <| .lam .nat <|
-              .app (.app (.const ``Nat.div [])
-                (.app (.app value' (.bvar 0)) (.bvar 1))) (.natLit 2)) :=
-          .lam hnat0.2 hnat0.1 (.lam hnat1.2 hnat1.1 hrightBodyS)
-        have hs₁ : c.TrExprS
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 v.value (.bvar 0) (mkApp q(Nat.succ) (.bvar 1)))
-            (.lam .nat <| .lam .nat <|
-              .app (.app value' (.bvar 0)) (.app .natSucc (.bvar 1))) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hs₁0
-        have hs₂ : c.TrExprS
-            (.lam0 q(Nat) <| .lam0 q(Nat) <|
-              mkApp2 q(Nat.div) (mkApp2 v.value (.bvar 0) (.bvar 1))
-                q(Nat.succ (Nat.succ Nat.zero)))
-            (.lam .nat <| .lam .nat <|
-              .app (.app (.const ``Nat.div [])
-                (.app (.app value' (.bvar 0)) (.bvar 1))) (.natLit 2)) := by
-          change TrExprS c.venv c.lparams c.vlctx _ _
-          rw [hvlctx]; exact hs₂0
-        exact (isDefEq.WF hz₁ hz₂).bind fun z _ _ hzEq => by
-          by_cases hzb : z = true
-          · rw [if_pos hzb]
-            have hzEq0 := hzEq hzb
-            change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hzEq0
-            rw [hvlctx] at hzEq0
-            exact (isDefEq.WF hs₁ hs₂).bind fun q _ _ hsEq => by
-              by_cases hsb : q = true
-              · rw [if_pos hsb]
-                have hsEq0 := hsEq hsb
-                change c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx _ _ at hsEq0
-                rw [hvlctx] at hsEq0
-                exact .pure fun _ =>
-                  ⟨hlevels, hdivC, htyEq0, hzEq0, hsEq0⟩
-              · rw [if_neg hsb]; exact .throw
-          · rw [if_neg hzb]; exact .throw
-      · rw [if_neg hb]; exact .throw
+        .app hdivRecT htwoT hdivRecS htwoS)
   · exact .throw
 
 set_option maxHeartbeats 800000 in
