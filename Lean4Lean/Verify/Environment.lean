@@ -163,100 +163,49 @@ theorem List.Forall₂.mutualHeader_names_nodup
   rw [← heq]
   exact hnodup
 
-theorem List.Forall₂.mutualHeader_toFinal
-    (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
-    List.Forall₂ (fun v v' =>
-      TrConstVal safety venv (.defnInfo v) v'.toVConstVal) vs vs' := by
-  induction H with
-  | nil => exact .nil
-  | cons h _ ih => exact .cons h.toFinal ih
-
 theorem List.Forall₂.mutualHeader_toOpaque
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
     List.Forall₂ (fun v v' =>
-      TrConstVal safety venv (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs' := by
-  induction H with
-  | nil => exact .nil
-  | cons h _ ih => exact .cons h.toOpaque ih
+      TrConstVal safety venv (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs' :=
+  H.imp fun _ _ h => h.toOpaque
 
 theorem List.Forall₂.mutualHeader_fresh
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
-    ∀ v ∈ vs, env.find? v.name = none := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
-    intro v hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · exact h.fresh
-    · exact ih v hv
+    ∀ v ∈ vs, env.find? v.name = none :=
+  H.forall_left fun _ _ h => h.fresh
 
 theorem List.Forall₂.mutualHeader_sameSafety
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
-    ∀ v ∈ vs, v.safety = safety := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
-    intro v hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · exact h.safety_eq
-    · exact ih v hv
+    ∀ v ∈ vs, v.safety = safety :=
+  H.forall_left fun _ _ h => h.safety_eq
 
 theorem List.Forall₂.mutualHeader_notPrimitive
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
-    ∀ v ∈ vs, ¬Lean.Kernel.Environment.primitives.contains v.name := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
-    intro v hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · exact h.notPrimitive
-    · exact ih v hv
+    ∀ v ∈ vs, ¬Lean.Kernel.Environment.primitives.contains v.name :=
+  H.forall_left fun _ _ h => h.notPrimitive
 
 theorem List.Forall₂.mutualHeader_target_notPrimitive
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
-    ∀ v' ∈ vs', ¬Lean.Kernel.Environment.primitives.contains v'.name := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
-    intro v' hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · simpa [h.name_eq] using h.notPrimitive
-    · exact ih v' hv
+    ∀ v' ∈ vs', ¬Lean.Kernel.Environment.primitives.contains v'.name :=
+  H.forall_right fun _ _ h => by simpa [h.name_eq] using h.notPrimitive
 
 theorem List.Forall₂.mutualHeader_types
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
-    ∀ v' ∈ vs', v'.toVConstant.WF venv := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
-    intro v' hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · exact h.type_wf
-    · exact ih v' hv
+    ∀ v' ∈ vs', v'.toVConstant.WF venv :=
+  H.forall_right fun _ _ h => h.type_wf
 
 theorem List.Forall₂.mutualHeader_target_fresh
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs')
     (htr : TrEnv safety env venv) :
-    ∀ v' ∈ vs', venv.constants v'.name = none := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
-    intro v' hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · cases hc : venv.constants v'.name with
-      | none => rfl
-      | some ci =>
-        have hs := (htr.find?_iff (name := v'.name)).2 ⟨ci, hc⟩
-        obtain ⟨ci', hfind, _⟩ := hs
-        rw [h.name_eq, h.fresh] at hfind
-        contradiction
-    · exact ih v' hv
+    ∀ v' ∈ vs', venv.constants v'.name = none :=
+  H.forall_right fun _ v' h => by
+    cases hc : venv.constants v'.name with
+    | none => rfl
+    | some ci =>
+      have hs := (htr.find?_iff (name := v'.name)).2 ⟨ci, hc⟩
+      obtain ⟨ci', hfind, _⟩ := hs
+      rw [h.name_eq, h.fresh] at hfind
+      contradiction
 
 theorem checkMutualHeaders.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
@@ -427,52 +376,36 @@ theorem List.Forall₂.mutualBody_toFinal
     (H : List.Forall₂
       (MutualBodyRel safety env base headers) vs vs') :
     List.Forall₂ (fun v v' =>
-      TrConstVal safety base (.defnInfo v) v'.toVConstVal) vs vs' := by
-  induction H with
-  | nil => exact .nil
-  | cons h _ ih =>
-    obtain ⟨header, hheader, hsame, _, _⟩ := h
-    exact .cons (hsame ▸ hheader.toFinal) ih
+      TrConstVal safety base (.defnInfo v) v'.toVConstVal) vs vs' :=
+  H.imp fun _ _ h => by
+    obtain ⟨_, hheader, hsame, _, _⟩ := h
+    exact hsame ▸ hheader.toFinal
 
 theorem List.Forall₂.mutualBody_bodies
     (H : List.Forall₂
       (MutualBodyRel safety env base headers) vs vs') :
     List.Forall₂ (fun v v' =>
-      TrExprS headers v.levelParams [] v.value v'.value) vs vs' := by
-  induction H with
-  | nil => exact .nil
-  | cons h _ ih =>
+      TrExprS headers v.levelParams [] v.value v'.value) vs vs' :=
+  H.imp fun _ _ h => by
     obtain ⟨_, _, _, hbody, _⟩ := h
-    exact .cons hbody ih
+    exact hbody
 
 theorem List.Forall₂.mutualBody_wfs
     (H : List.Forall₂
       (MutualBodyRel safety env base headers) vs vs') :
-    ∀ v' ∈ vs', v'.WF headers := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
+    ∀ v' ∈ vs', v'.WF headers :=
+  H.forall_right fun _ _ h => by
     obtain ⟨_, _, _, _, hwf⟩ := h
-    intro v' hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · exact hwf
-    · exact ih v' hv
+    exact hwf
 
 theorem List.Forall₂.mutualBody_types
     (H : List.Forall₂
       (MutualBodyRel safety env base headers) vs vs') :
-    ∀ v' ∈ vs', v'.toVConstant.WF base := by
-  induction H with
-  | nil => simp
-  | cons h _ ih =>
-    obtain ⟨header, hheader, hsame, _, _⟩ := h
-    intro v' hv
-    simp only [List.mem_cons] at hv
-    rcases hv with rfl | hv
-    · rw [hsame]
-      exact hheader.type_wf
-    · exact ih v' hv
+    ∀ v' ∈ vs', v'.toVConstant.WF base :=
+  H.forall_right fun _ _ h => by
+    obtain ⟨_, hheader, hsame, _, _⟩ := h
+    rw [hsame]
+    exact hheader.type_wf
 
 theorem List.Forall₂.trConst_names_eq
     {info : DefinitionVal → ConstantInfo}
@@ -495,10 +428,8 @@ theorem List.Forall₂.trConst_mono
       TrConstVal safety base (info v) v'.toVConstVal) vs vs')
     (hs : safety' ≤ safety) (hle : base ≤ env) :
     List.Forall₂ (fun v v' =>
-      TrConstVal safety' env (info v) v'.toVConstVal) vs vs' := by
-  induction H with
-  | nil => exact .nil
-  | cons h _ ih => exact .cons ⟨h.1.sf_mono hs |>.mono hle, h.2⟩ ih
+      TrConstVal safety' env (info v) v'.toVConstVal) vs vs' :=
+  H.imp fun _ _ h => ⟨h.1.sf_mono hs |>.mono hle, h.2⟩
 
 theorem List.Forall₂.trConst_target_fresh
     {info : DefinitionVal → ConstantInfo}
@@ -529,10 +460,8 @@ theorem List.Forall₂.mutualBodies_mono
       TrExprS env v.levelParams [] v.value v'.value) vs vs')
     (hle : env ≤ env') :
     List.Forall₂ (fun v v' =>
-      TrExprS env' v.levelParams [] v.value v'.value) vs vs' := by
-  induction H with
-  | nil => exact .nil
-  | cons h _ ih => exact .cons (h.mono hle) ih
+      TrExprS env' v.levelParams [] v.value v'.value) vs vs' :=
+  H.imp fun _ _ h => h.mono hle
 
 theorem checkBodyCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (decl : Declaration) (name : Name) (levelParams : List Name)
@@ -3152,7 +3081,6 @@ theorem addDefinition.WF_safe_inductiveName
     simp_all
   exact hrun.run wf |>.map fun _ h => False.elim h
 
-set_option maxRecDepth 4000 in
 theorem addDefinition.WF_safe
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : DefinitionVal) (hsafety : v.safety = .safe) :
@@ -3180,16 +3108,7 @@ theorem addDefinition.WF_safe
       simpa only [eq_comm] using hp₀
     rcases hp with h | h | h | h | h | h | h | h | h | h | h | h | h |
       h | h | h | h | h | h | h | h | h | h | h
-    · exact addDefinition.WF_safe_inductiveName wf v hsafety (.inl h)
-    · exact addDefinition.WF_safe_inductiveName wf v hsafety (.inr <| .inl h)
-    · exact addDefinition.WF_safe_inductiveName wf v hsafety
-        (.inr <| .inr <| .inl h)
-    · exact addDefinition.WF_safe_inductiveName wf v hsafety
-        (.inr <| .inr <| .inr <| .inl h)
-    · exact addDefinition.WF_safe_inductiveName wf v hsafety
-        (.inr <| .inr <| .inr <| .inr <| .inl h)
-    · exact addDefinition.WF_safe_inductiveName wf v hsafety
-        (.inr <| .inr <| .inr <| .inr <| .inr h)
+    iterate 6 exact addDefinition.WF_safe_inductiveName wf v hsafety (by simp [h])
     · exact addDefinition.WF_safe_natAdd wf v h hsafety
     · exact addDefinition.WF_safe_natPred wf v h hsafety
     · exact addDefinition.WF_safe_natSub wf v h hsafety
