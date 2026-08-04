@@ -261,21 +261,19 @@ theorem toNode.WF :
 
 theorem isEquiv.WF :
     M.WF env Us Δ m (isEquiv useHash e₁ e₂) fun b _ => b → IsDefEqE env Us Δ e₁ e₂ := by
-  unfold isEquiv; extract_lets F1 F2 F3
-  split <;> [exact .pure fun _ => ptrEqExpr_eq ‹_› ▸ .rfl; skip]
-  simp [F3]; split <;> [exact .pure nofun; skip]
-  simp [F2]; split
+  unfold isEquiv; split <;> [exact .pure fun _ => ptrEqExpr_eq ‹_› ▸ .rfl; skip]
+  split <;> [exact .pure nofun; split]
   · rename_i h; refine .pure ?_
-    unfold Expr.isBVar at h; split at h <;> cases h.1; split at h <;> cases h.2
+    simp only [Bool.and_eq_true, Expr.isBVar] at h
+    split at h <;> cases h.1; split at h <;> cases h.2
     simp [Expr.bvarIdx!]; rintro ⟨⟩; exact .rfl
-  unfold F1
   refine toNode.WF.bind fun i₁ _ _ a1 => find.WF.bind fun j₁ _ le₁ a2 => ?_
   refine toNode.WF.bind fun i₂ _ le₂ b1 => find.WF.bind fun j₂ m₀ le₃ b2 => ?_
   refine .stateWF fun wf => ?_
   replace a1 := le₁.trans le₂ |>.trans le₃ |>.toNodeMap a1
   replace a2 := le₂.trans le₃ |>.uf a2
   replace b1 := le₃.toNodeMap b1
-  extract_lets F4 F5
+  extract_lets F4
   split
   · rename_i h; simp at h; cases h; refine .pure fun _ => wf.defeq a1 b1 (a2.trans b2.symm)
   have {m b} (le₄ : m₀ ≤ m) (H : b = true → IsDefEqE env Us Δ e₁ e₂) :
@@ -288,7 +286,7 @@ theorem isEquiv.WF :
     have ⟨r₂, hr₂⟩ := wf.wf.1 <| b2.lt_size.1 <| wf.wf.2 ⟨_, b1⟩
     suffices IsDefEqE env Us Δ r₁ r₂ from have ⟨wf, h⟩ := merge.WF wf this hr₁ hr₂; ⟨wf, h, H⟩
     exact (wf.defeq a1 hr₁ a2).symm.trans <| .trans (H ‹_›) (wf.defeq b1 hr₂ b2)
-  simp; unfold F5; split
+  simp; split
   · apply this .rfl; simp; rintro rfl rfl; exact .rfl
   · apply this .rfl; simp; rintro rfl; exact .rfl
   · apply this .rfl; simp; rintro rfl; exact .rfl

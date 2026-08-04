@@ -917,7 +917,7 @@ theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e'
     · exact (List.mapM_eq_some.1 a2).length_eq.symm.trans <| a3.trans b2.symm
   split <;> [rename_i h5; exact .pure this]
   refine .pureBind <| .get ?_
-  split <;> [rename_i eq; refine .pureBind ?_]
+  split <;> [rename_i eq; skip]
   · refine .stateWF fun wf => .pure ?_
     obtain ⟨_, _, _, ⟨⟩, a1, rfl⟩ := wf.unfold_wf eq
     cases h3.symm.trans a1; exact this
