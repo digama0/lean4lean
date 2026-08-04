@@ -1424,8 +1424,11 @@ theorem VEnv.natDivTop_semantics
     exact htop.trans wf trivial hselect |>.trans wf trivial hzero
 
 /-- The two translated five-binder bodies and their dependent target
-contexts, extracted from the checked closed `Nat.div.go` equation. -/
-inductive VEnv.NatDivGoEquationTranslation (env : VEnv) : Prop where
+contexts, extracted from a checked closed recursive go equation.  The two
+body sources are parameters, so the division and remainder equations share
+the packaging. -/
+inductive VEnv.NatGoEquationTranslation
+    (env : VEnv) (lhsBody rhsBody : Expr) : Prop where
   | intro
       (yTyL hyTyL fuelTyL xTyL hTyL bodyL : VExpr)
       (yTyR hyTyR fuelTyR xTyR hTyR bodyR : VExpr)
@@ -1471,20 +1474,28 @@ inductive VEnv.NatDivGoEquationTranslation (env : VEnv) : Prop where
         [(none, .vlam hTyL), (none, .vlam xTyL),
           (none, .vlam fuelTyL), (none, .vlam hyTyL),
           (none, .vlam yTyL)]
-        (natDivGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-        bodyL)
+        lhsBody bodyL)
       (rightS : TrExprS env []
         [(none, .vlam hTyR), (none, .vlam xTyR),
           (none, .vlam fuelTyR), (none, .vlam hyTyR),
           (none, .vlam yTyR)]
-        (natDivGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-        bodyR)
+        rhsBody bodyR)
       (eq : env.IsDefEqU 0 []
         (.lam yTyL <| .lam hyTyL <| .lam fuelTyL <| .lam xTyL <|
           .lam hTyL bodyL)
         (.lam yTyR <| .lam hyTyR <| .lam fuelTyR <| .lam xTyR <|
           .lam hTyR bodyR)) :
-      VEnv.NatDivGoEquationTranslation env
+      NatGoEquationTranslation env lhsBody rhsBody
+
+abbrev VEnv.NatDivGoEquationTranslation (env : VEnv) : Prop :=
+  VEnv.NatGoEquationTranslation env
+    (natDivGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+    (natDivGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+
+abbrev VEnv.NatModGoEquationTranslation (env : VEnv) : Prop :=
+  VEnv.NatGoEquationTranslation env
+    (natModGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
+    (natModGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
 
 /-- Parse the checked closed recursive division equation into its two local
 translated bodies. -/
@@ -1526,69 +1537,6 @@ theorem VEnv.NatDivGoEquationTranslation.of_checked
                         hyTyRType hhyTyRType hfuelTyRType hxTyRType hhTyRType
                         hbodyL hbodyR heq
 
-
-/-- The two translated five-binder bodies and their dependent target
-contexts, extracted from the checked closed `Nat.div.go` equation. -/
-inductive VEnv.NatModGoEquationTranslation (env : VEnv) : Prop where
-  | intro
-      (yTyL hyTyL fuelTyL xTyL hTyL bodyL : VExpr)
-      (yTyR hyTyR fuelTyR xTyR hTyR bodyR : VExpr)
-      (yTyLS : TrExprS env [] [] q(Nat) yTyL)
-      (hyTyLS : TrExprS env [] [(none, .vlam yTyL)]
-        (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTyL)
-      (fuelTyLS : TrExprS env []
-        [(none, .vlam hyTyL), (none, .vlam yTyL)] q(Nat) fuelTyL)
-      (xTyLS : TrExprS env []
-        [(none, .vlam fuelTyL), (none, .vlam hyTyL),
-          (none, .vlam yTyL)] q(Nat) xTyL)
-      (hTyLS : TrExprS env []
-        [(none, .vlam xTyL), (none, .vlam fuelTyL),
-          (none, .vlam hyTyL), (none, .vlam yTyL)]
-        (mkApp2 q(@LE.le Nat _)
-          (mkApp q(Nat.succ) (.bvar 0))
-          (mkApp q(Nat.succ) (.bvar 1))) hTyL)
-      (yTyRS : TrExprS env [] [] q(Nat) yTyR)
-      (hyTyRS : TrExprS env [] [(none, .vlam yTyR)]
-        (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTyR)
-      (fuelTyRS : TrExprS env []
-        [(none, .vlam hyTyR), (none, .vlam yTyR)] q(Nat) fuelTyR)
-      (xTyRS : TrExprS env []
-        [(none, .vlam fuelTyR), (none, .vlam hyTyR),
-          (none, .vlam yTyR)] q(Nat) xTyR)
-      (hTyRS : TrExprS env []
-        [(none, .vlam xTyR), (none, .vlam fuelTyR),
-          (none, .vlam hyTyR), (none, .vlam yTyR)]
-        (mkApp2 q(@LE.le Nat _)
-          (mkApp q(Nat.succ) (.bvar 0))
-          (mkApp q(Nat.succ) (.bvar 1))) hTyR)
-      (yTyLType : env.IsType 0 [] yTyL)
-      (hyTyLType : env.IsType 0 [yTyL] hyTyL)
-      (fuelTyLType : env.IsType 0 [hyTyL, yTyL] fuelTyL)
-      (xTyLType : env.IsType 0 [fuelTyL, hyTyL, yTyL] xTyL)
-      (hTyLType : env.IsType 0 [xTyL, fuelTyL, hyTyL, yTyL] hTyL)
-      (yTyRType : env.IsType 0 [] yTyR)
-      (hyTyRType : env.IsType 0 [yTyR] hyTyR)
-      (fuelTyRType : env.IsType 0 [hyTyR, yTyR] fuelTyR)
-      (xTyRType : env.IsType 0 [fuelTyR, hyTyR, yTyR] xTyR)
-      (hTyRType : env.IsType 0 [xTyR, fuelTyR, hyTyR, yTyR] hTyR)
-      (leftS : TrExprS env []
-        [(none, .vlam hTyL), (none, .vlam xTyL),
-          (none, .vlam fuelTyL), (none, .vlam hyTyL),
-          (none, .vlam yTyL)]
-        (natModGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-        bodyL)
-      (rightS : TrExprS env []
-        [(none, .vlam hTyR), (none, .vlam xTyR),
-          (none, .vlam fuelTyR), (none, .vlam hyTyR),
-          (none, .vlam yTyR)]
-        (natModGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-        bodyR)
-      (eq : env.IsDefEqU 0 []
-        (.lam yTyL <| .lam hyTyL <| .lam fuelTyL <| .lam xTyL <|
-          .lam hTyL bodyL)
-        (.lam yTyR <| .lam hyTyR <| .lam fuelTyR <| .lam xTyR <|
-          .lam hTyR bodyR)) :
-      VEnv.NatModGoEquationTranslation env
 
 /-- Parse the checked closed recursive remainder equation into its two local
 translated bodies. -/
@@ -1704,15 +1652,17 @@ theorem VEnv.NatDivGoTypeTranslation.of_translation
               hyTyType hhyTyType hfuelTyType hxTyType hhTyType
               hresultTyType rfl
 
-/-- Recover the two proof-argument typings of a concrete canonical
-`Nat.div.go` call from its retained dependent function type. -/
+/-- Recover the two proof-argument typings of a concrete canonical go call
+from its retained dependent function type.  The call head is abstract, so
+both `Nat.div.go` and `Nat.modCore.go` calls are covered. -/
 theorem VEnv.NatDivGoTypeTranslation.call_proof_types
     {env : VEnv} (wf : env.WF)
-    (hctors : VEnv.HasNatBoolConstructors env)
-    {goTyV : VExpr} (cert : VEnv.NatDivGoTypeTranslation env goTyV)
-    (hgoT : env.HasType 0 [] (.const ``Nat.div.go []) goTyV)
+    {goTyV goFn : VExpr} (cert : VEnv.NatDivGoTypeTranslation env goTyV)
+    (hgoT : env.HasType 0 [] goFn goTyV)
     (y fuel x : Nat) {hy hfuel : VExpr}
-    (hcallT : env.HasType 0 [] (.natDivGo y fuel x hy hfuel) .nat) :
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app goFn (.natLit y)) hy)
+        (.natLit fuel)) (.natLit x)) hfuel) .nat) :
     ∃ yTy hyTy fuelTy xTy hTy resultTy : VExpr,
       TrExprS env [] [] q(Nat) yTy ∧
       TrExprS env [] [(none, .vlam yTy)]
@@ -1726,59 +1676,6 @@ theorem VEnv.NatDivGoTypeTranslation.call_proof_types
       yTyS hyTyS fuelTyS xTyS hTyS resultTyS
       yTyType hyTyType fuelTyType xTyType hTyType resultTyType shape =>
     subst goTyV
-    simp only [VExpr.natDivGo] at hcallT
-    obtain ⟨_, _, h₄Raw, hhRaw⟩ := hcallT.app_inv wf.ordered trivial
-    obtain ⟨_, _, h₃Raw, hxRaw⟩ := h₄Raw.app_inv wf.ordered trivial
-    obtain ⟨_, _, h₂Raw, hfuelRaw⟩ := h₃Raw.app_inv wf.ordered trivial
-    obtain ⟨_, _, h₁Raw, hhyRaw⟩ := h₂Raw.app_inv wf.ordered trivial
-    obtain ⟨_, _, hgoRaw, hyRaw⟩ := h₁Raw.app_inv wf.ordered trivial
-    have hgoTyEq := hgoRaw.uniqU wf trivial hgoT
-    obtain ⟨_, hyDomEq⟩ := (hgoTyEq.forallE_inv wf trivial).1
-    have hyT := hyRaw.defeqU_r wf trivial hyDomEq.toU
-    have h₁Canon := VEnv.HasType.app hgoT hyT
-    have h₁TyEq := h₁Raw.uniqU wf trivial h₁Canon
-    obtain ⟨_, hhyDomEq⟩ := (h₁TyEq.forallE_inv wf trivial).1
-    have hhyT := hhyRaw.defeqU_r wf trivial hhyDomEq.toU
-    have h₂Canon := VEnv.HasType.app h₁Canon hhyT
-    have h₂TyEq := h₂Raw.uniqU wf trivial h₂Canon
-    obtain ⟨_, hfuelDomEq⟩ := (h₂TyEq.forallE_inv wf trivial).1
-    have hfuelT := hfuelRaw.defeqU_r wf trivial hfuelDomEq.toU
-    have h₃Canon := VEnv.HasType.app h₂Canon hfuelT
-    have h₃TyEq := h₃Raw.uniqU wf trivial h₃Canon
-    obtain ⟨_, hxDomEq⟩ := (h₃TyEq.forallE_inv wf trivial).1
-    have hxT := hxRaw.defeqU_r wf trivial hxDomEq.toU
-    have h₄Canon := VEnv.HasType.app h₃Canon hxT
-    have h₄TyEq := h₄Raw.uniqU wf trivial h₄Canon
-    obtain ⟨_, hhDomEq⟩ := (h₄TyEq.forallE_inv wf trivial).1
-    have hhT := hhRaw.defeqU_r wf trivial hhDomEq.toU
-    exact ⟨yTy, hyTy, fuelTy, xTy, hTy, resultTy,
-      yTyS, hyTyS,
-      by simpa [VExpr.inst] using hhyT,
-      by simpa [VExpr.inst] using hhT⟩
-
-/-- Recover the two proof-argument typings of a concrete canonical
-`Nat.modCore.go` call from its retained dependent function type. -/
-theorem VEnv.NatDivGoTypeTranslation.call_mod_proof_types
-    {env : VEnv} (wf : env.WF)
-    (hctors : VEnv.HasNatBoolConstructors env)
-    {goTyV : VExpr} (cert : VEnv.NatDivGoTypeTranslation env goTyV)
-    (hgoT : env.HasType 0 [] (.const ``Nat.modCore.go []) goTyV)
-    (y fuel x : Nat) {hy hfuel : VExpr}
-    (hcallT : env.HasType 0 [] (.natModGo y fuel x hy hfuel) .nat) :
-    ∃ yTy hyTy fuelTy xTy hTy resultTy : VExpr,
-      TrExprS env [] [] q(Nat) yTy ∧
-      TrExprS env [] [(none, .vlam yTy)]
-        (mkApp2 q(@LE.le Nat _) q(Nat.succ Nat.zero) (.bvar 0)) hyTy ∧
-      env.HasType 0 [] hy (hyTy.inst (.natLit y)) ∧
-      env.HasType 0 [] hfuel
-        ((((hTy.inst (.natLit y) 3).inst hy 2).inst
-          (.natLit fuel) 1).inst (.natLit x)) := by
-  cases cert with
-  | intro yTy hyTy fuelTy xTy hTy resultTy
-      yTyS hyTyS fuelTyS xTyS hTyS resultTyS
-      yTyType hyTyType fuelTyType xTyType hTyType resultTyType shape =>
-    subst goTyV
-    simp only [VExpr.natModGo] at hcallT
     obtain ⟨_, _, h₄Raw, hhRaw⟩ := hcallT.app_inv wf.ordered trivial
     obtain ⟨_, _, h₃Raw, hxRaw⟩ := h₄Raw.app_inv wf.ordered trivial
     obtain ⟨_, _, h₂Raw, hfuelRaw⟩ := h₃Raw.app_inv wf.ordered trivial
@@ -1867,36 +1764,9 @@ theorem VEnv.instantiate_nat_target_lam
     (n : Nat) :
     env.HasType 0 [] (.natLit n) domL ∧
     env.HasType 0 [] (.natLit n) domR ∧
-    env.IsDefEqU 0 [] (bodyL.inst (.natLit n)) (bodyR.inst (.natLit n)) := by
-  have hnT := (hctors.natLitS n (Us := []) (Δ := [])).2
-  have hnL := hnT.defeqU_r wf trivial hdomL.symm
-  have hnR := hnT.defeqU_r wf trivial hdomR.symm
-  have heqU := heq
-  obtain ⟨_, heqD⟩ := heq
-  obtain ⟨⟨_, hdomLSort⟩, _, hbodyLT⟩ :=
-    heqD.hasType.1.lam_inv wf trivial
-  obtain ⟨_, _, hbodyRT⟩ := heqD.hasType.2.lam_inv wf trivial
-  have hdomEq := hdomL.trans wf trivial hdomR.symm
-  have hinst := VEnv.IsDefEqU.lam_instU₂ wf trivial heqU
-    hdomLSort hbodyLT hbodyRT hdomEq hnL
-  exact ⟨hnL, hnR, hinst⟩
-
-/-- Target-only instantiation for a dependent proof binder.  No source
-expression for the proof is required. -/
-theorem VEnv.instantiate_proof_target_lam
-    {env : VEnv} (wf : env.WF)
-    {domL domR bodyL bodyR proof : VExpr}
-    (heq : env.IsDefEqU 0 [] (.lam domL bodyL) (.lam domR bodyR))
-    (hproofL : env.HasType 0 [] proof domL)
-    (hproofR : env.HasType 0 [] proof domR) :
-    env.IsDefEqU 0 [] (bodyL.inst proof) (bodyR.inst proof) := by
-  have heqU := heq
-  obtain ⟨_, heqD⟩ := heq
-  obtain ⟨⟨_, hdomLSort⟩, _, hbodyLT⟩ :=
-    heqD.hasType.1.lam_inv wf trivial
-  obtain ⟨_, _, hbodyRT⟩ := heqD.hasType.2.lam_inv wf trivial
-  exact VEnv.IsDefEqU.lam_instU_hetero wf trivial heqU
-    hdomLSort hbodyLT hbodyRT hproofL hproofR
+    env.IsDefEqU 0 [] (bodyL.inst (.natLit n)) (bodyR.inst (.natLit n)) :=
+  VEnv.instantiate_lamU_step wf heq hdomL hdomR
+    (hctors.natLitS n (Us := []) (Δ := [])).2
 
 /-- Infer the right-domain typing of a proof argument from a checked lambda
 equality, then instantiate both sides. -/
@@ -1948,97 +1818,25 @@ theorem VEnv.IsDefEqU.inst_outer3
     (h : env.IsDefEqU 0 [C, B, A] e₁ e₂) :
     env.IsDefEqU 0 []
       (((e₁.inst a 2).inst b 1).inst c)
-      (((e₂.inst a 2).inst b 1).inst c) := by
-  have h₁ := h.instN wf.ordered
-    (.succ (.succ (.zero : Ctx.InstN [] a A 0 [A] []))) ha
-  have h₂ := h₁.instN wf.ordered
-    (.succ (.zero : Ctx.InstN [] b (B.inst a) 0 [B.inst a] [])) hb
-  exact h₂.instN wf.ordered
-    (.zero : Ctx.InstN [] c ((C.inst a 1).inst b) 0
-      [((C.inst a 1).inst b)] []) hc
+      (((e₂.inst a 2).inst b 1).inst c) :=
+  VEnv.IsDefEqU.inst_outer2 wf hb hc
+    (h.instN wf.ordered
+      (.succ (.succ (.zero : Ctx.InstN [] a A 0 [A] []))) ha)
 
-theorem VEnv.IsDefEqU.inst_outer4
-    {env : VEnv} (wf : env.WF)
-    {A B C D a b c d e₁ e₂ : VExpr}
-    (ha : env.HasType 0 [] a A)
-    (hb : env.HasType 0 [] b (B.inst a))
-    (hc : env.HasType 0 [] c ((C.inst a 1).inst b))
-    (hd : env.HasType 0 [] d
-      (((D.inst a 2).inst b 1).inst c))
-    (h : env.IsDefEqU 0 [D, C, B, A] e₁ e₂) :
-    env.IsDefEqU 0 []
-      ((((e₁.inst a 3).inst b 2).inst c 1).inst d)
-      ((((e₂.inst a 3).inst b 2).inst c 1).inst d) := by
-  have h₁ := h.instN wf.ordered
-    (.succ (.succ (.succ (.zero : Ctx.InstN [] a A 0 [A] [])))) ha
-  have h₂ := h₁.instN wf.ordered
-    (.succ (.succ (.zero : Ctx.InstN [] b (B.inst a) 0
-      [B.inst a] []))) hb
-  have h₃ := h₂.instN wf.ordered
-    (.succ (.zero : Ctx.InstN [] c ((C.inst a 1).inst b) 0
-      [((C.inst a 1).inst b)] [])) hc
-  exact h₃.instN wf.ordered
-    (.zero : Ctx.InstN [] d (((D.inst a 2).inst b 1).inst c) 0
-      [(((D.inst a 2).inst b 1).inst c)] []) hd
-
-theorem VEnv.HasType.inst_outer4_keep_head
-    {env : VEnv} (wf : env.WF)
-    {A B C D E a b c d e T : VExpr}
-    (ha : env.HasType 0 [] a A)
-    (hb : env.HasType 0 [] b (B.inst a))
-    (hc : env.HasType 0 [] c ((C.inst a 1).inst b))
-    (hd : env.HasType 0 [] d
-      (((D.inst a 2).inst b 1).inst c))
-    (h : env.HasType 0 [E, D, C, B, A] e T) :
-    env.HasType 0
-      [((((E.inst a 3).inst b 2).inst c 1).inst d)]
-      ((((e.inst a 4).inst b 3).inst c 2).inst d 1)
-      ((((T.inst a 4).inst b 3).inst c 2).inst d 1) := by
-  have h₁ := h.instN wf.ordered
-    (.succ (.succ (.succ (.succ
-      (.zero : Ctx.InstN [] a A 0 [A] []))))) ha
-  have h₂ := h₁.instN wf.ordered
-    (.succ (.succ (.succ
-      (.zero : Ctx.InstN [] b (B.inst a) 0 [B.inst a] [])))) hb
-  have h₃ := h₂.instN wf.ordered
-    (.succ (.succ
-      (.zero : Ctx.InstN [] c ((C.inst a 1).inst b) 0
-        [((C.inst a 1).inst b)] []))) hc
-  exact h₃.instN wf.ordered
-    (.succ (.zero : Ctx.InstN [] d
-      (((D.inst a 2).inst b 1).inst c) 0
-      [(((D.inst a 2).inst b 1).inst c)] [])) hd
-
-theorem VEnv.HasType.inst_outer4
-    {env : VEnv} (wf : env.WF)
-    {A B C D a b c d e T : VExpr}
-    (ha : env.HasType 0 [] a A)
-    (hb : env.HasType 0 [] b (B.inst a))
-    (hc : env.HasType 0 [] c ((C.inst a 1).inst b))
-    (hd : env.HasType 0 [] d
-      (((D.inst a 2).inst b 1).inst c))
-    (h : env.HasType 0 [D, C, B, A] e T) :
-    env.HasType 0 []
-      ((((e.inst a 3).inst b 2).inst c 1).inst d)
-      ((((T.inst a 3).inst b 2).inst c 1).inst d) := by
-  have h₁ := h.instN wf.ordered
-    (.succ (.succ (.succ (.zero : Ctx.InstN [] a A 0 [A] [])))) ha
-  have h₂ := h₁.instN wf.ordered
-    (.succ (.succ (.zero : Ctx.InstN [] b (B.inst a) 0
-      [B.inst a] []))) hb
-  have h₃ := h₂.instN wf.ordered
-    (.succ (.zero : Ctx.InstN [] c ((C.inst a 1).inst b) 0
-      [((C.inst a 1).inst b)] [])) hc
-  exact h₃.instN wf.ordered
-    (.zero : Ctx.InstN [] d (((D.inst a 2).inst b 1).inst c) 0
-      [(((D.inst a 2).inst b 1).inst c)] []) hd
-
-/-- Semantically instantiate all five binders of the retained recursive
-division equation.  The two proof arguments need only target-level typing. -/
-theorem VEnv.instantiate_natDivGo_target_binders
+/-- Semantically instantiate all five binders of a checked recursive go
+equation whose left body is the canonical local call of the `goName`
+constant.  The four ordinary binders are peeled by
+`VEnv.instantiate_lamU_step` (through `instantiate_nat_target_lam` and
+`instantiate_proof_target_lam_from_left`), and the trailing dependent
+fuel-proof binder is discharged by `VEnv.finish_bitwise_proof_equation`,
+which aligns the closed call typing with the equation's proof domain.  The
+result relates the closed call directly to the fully instantiated right
+body. -/
+theorem VEnv.instantiate_natGo_equation
     {env : VEnv} (wf : env.WF)
     (hctors : VEnv.HasNatBoolConstructors env)
-    {yTyL hyTyL fuelTyL xTyL hTyL bodyL : VExpr}
+    {goName : Name}
+    {yTyL hyTyL fuelTyL xTyL hTyL : VExpr}
     {yTyR hyTyR fuelTyR xTyR hTyR bodyR : VExpr}
     (yTyLS : TrExprS env [] [] q(Nat) yTyL)
     (fuelTyLS : TrExprS env []
@@ -2055,24 +1853,23 @@ theorem VEnv.instantiate_natDivGo_target_binders
     (yTyLType : env.IsType 0 [] yTyL)
     (hyTyLType : env.IsType 0 [yTyL] hyTyL)
     (fuelTyLType : env.IsType 0 [hyTyL, yTyL] fuelTyL)
-    (xTyLType : env.IsType 0 [fuelTyL, hyTyL, yTyL] xTyL)
     (yTyRType : env.IsType 0 [] yTyR)
     (hyTyRType : env.IsType 0 [yTyR] hyTyR)
     (fuelTyRType : env.IsType 0 [hyTyR, yTyR] fuelTyR)
-    (xTyRType : env.IsType 0 [fuelTyR, hyTyR, yTyR] xTyR)
     (heq : env.IsDefEqU 0 []
-      (.lam yTyL <| .lam hyTyL <| .lam fuelTyL <| .lam xTyL <|
-        .lam hTyL bodyL)
+      (.lam yTyL <| .lam hyTyL <| .lam fuelTyL <| .lam xTyL <| .lam hTyL
+        (.app (.app (.app (.app (.app (.const goName []) (.bvar 4))
+          (.bvar 3)) (.app .natSucc (.bvar 2))) (.bvar 1)) (.bvar 0)))
       (.lam yTyR <| .lam hyTyR <| .lam fuelTyR <| .lam xTyR <|
         .lam hTyR bodyR))
     (y fuel x : Nat) {hy hfuel : VExpr}
     (hhyL : env.HasType 0 [] hy (hyTyL.inst (.natLit y)))
-    (hhfuelL : env.HasType 0 [] hfuel
-      ((((hTyL.inst (.natLit y) 3).inst hy 2).inst (.natLit fuel) 1).inst
-        (.natLit x))) :
+    (hcallT : env.HasType 0 []
+      (.app (.app (.app (.app (.app (.const goName []) (.natLit y)) hy)
+        (.app .natSucc (.natLit fuel))) (.natLit x)) hfuel) .nat) :
     env.IsDefEqU 0 []
-      (((((bodyL.inst (.natLit y) 4).inst hy 3).inst
-        (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
+      (.app (.app (.app (.app (.app (.const goName []) (.natLit y)) hy)
+        (.app .natSucc (.natLit fuel))) (.natLit x)) hfuel)
       (((((bodyR.inst (.natLit y) 4).inst hy 3).inst
         (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel) := by
   have hyDomL := translated_nat_type_eq wf hctors (by trivial) yTyLS
@@ -2110,23 +1907,47 @@ theorem VEnv.instantiate_natDivGo_target_binders
   have hxDomR := VEnv.IsDefEqU.inst_outer3 wf hyRT hhyR hfuelRT hxDomRCtx
   obtain ⟨hxLT, hxRT, h₄⟩ := VEnv.instantiate_nat_target_lam
     wf hctors hxDomL hxDomR h₃ x
-  simp only [VExpr.inst] at h₄
-  obtain ⟨hhfuelR, h₅⟩ :=
-    VEnv.instantiate_proof_target_lam_from_left wf h₄ hhfuelL
-  simpa only [VExpr.inst] using h₅
+  have hhyClosed := (hhyL.closedN' wf.ordered.closed trivial).1
+  have h₄' : env.IsDefEqU 0 []
+      (.lam ((((hTyL.inst (.natLit y) 3).inst hy 2).inst
+        (.natLit fuel) 1).inst (.natLit x))
+        (.app (.app (.app (.app (.app (.const goName []) (.natLit y))
+          hy) (.app .natSucc (.natLit fuel))) (.natLit x)) (.bvar 0)))
+      (.lam ((((hTyR.inst (.natLit y) 3).inst hy 2).inst
+        (.natLit fuel) 1).inst (.natLit x))
+        ((((bodyR.inst (.natLit y) 4).inst hy 3).inst
+          (.natLit fuel) 2).inst (.natLit x) 1)) := by
+    simpa [VExpr.inst, VExpr.instVar,
+      hhyClosed.liftN_eq (Nat.zero_le _),
+      hhyClosed.instN_eq (Nat.zero_le _)] using h₄
+  obtain ⟨_, h₄D⟩ := id h₄'
+  obtain ⟨⟨u₅, hTyLSort⟩, _, hbodyLEq⟩ := h₄D.hasType.1.lam_inv wf trivial
+  have hΓ : OnCtx [(((hTyL.inst (.natLit y) 3).inst hy 2).inst
+      (.natLit fuel) 1).inst (.natLit x)] (env.IsType 0) :=
+    ⟨trivial, u₅, hTyLSort⟩
+  obtain ⟨prefixArgTy, prefixBodyTy, hprefixLocalT, hproofVarT⟩ :=
+    hbodyLEq.hasType.1.app_inv wf.ordered hΓ
+  obtain ⟨hpTy, hpBodyTy, hprefixCallT, hpT⟩ :=
+    hcallT.app_inv wf.ordered trivial
+  obtain ⟨hpTR, hinst⟩ := VEnv.finish_bitwise_proof_equation wf
+    ⟨u₅, hTyLSort⟩ hprefixLocalT hproofVarT hprefixCallT hpT
+    (.refl ⟨_, hprefixLocalT⟩) h₄'
+  exact hinst
 
-/-- The translated left recursive body is syntactically the expected local
-`Nat.div.go` call once unique constants and bound variables are normalized. -/
-theorem VEnv.natDivGoLhsBody_canonical
+/-- A translated local go call is syntactically the expected application
+chain once unique constants and bound variables are normalized.  The go
+constant is abstract, so the division and remainder equations share the
+normalization. -/
+theorem VEnv.natGoLhsBody_canonical
     {env : VEnv} (hctors : VEnv.HasNatBoolConstructors env)
-    {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
+    {goName : Name} {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
     (hbodyS : TrExprS env []
       [(none, .vlam hTy), (none, .vlam xTy),
         (none, .vlam fuelTy), (none, .vlam hyTy),
         (none, .vlam yTy)]
-      (natDivGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyV) :
-    bodyV = .app (.app (.app (.app (.app (.const ``Nat.div.go [])
+      (mkApp5 (.const goName []) (.bvar 4) (.bvar 3)
+        (mkApp q(Nat.succ) (.bvar 2)) (.bvar 1) (.bvar 0)) bodyV) :
+    bodyV = .app (.app (.app (.app (.app (.const goName [])
       (.bvar 4)) (.bvar 3)) (.app .natSucc (.bvar 2)))
       (.bvar 1)) (.bvar 0) := by
   let Δ : VLCtx :=
@@ -2134,7 +1955,7 @@ theorem VEnv.natDivGoLhsBody_canonical
       (none, .vlam fuelTy), (none, .vlam hyTy),
       (none, .vlam yTy)]
   change TrExprS env [] Δ _ bodyV at hbodyS
-  simp only [natDivGoLhsBody, mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
+  simp only [mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
   cases hbodyS with
   | app h₄T hhT h₄ hhS =>
     rename_i A₄ B₄ hhV
@@ -2187,16 +2008,20 @@ theorem VEnv.natDivGoLhsBody_canonical
                 subst hus
                 rfl
 
-/-- Expose the reflected dependent selector retained in the translated
-recursive division RHS. -/
-theorem VEnv.natDivGoRhsBody_shape
-    {env : VEnv} {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
+/-- Expose the reflected dependent selector retained in a translated
+recursive go RHS.  The two branch sources are abstract, so the division
+and remainder equations share the decomposition. -/
+theorem VEnv.natGoRhsBody_shape
+    {env : VEnv} {thenSrc elseSrc : Expr}
+    {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
     (hbodyS : TrExprS env []
       [(none, .vlam hTy), (none, .vlam xTy),
         (none, .vlam fuelTy), (none, .vlam hyTy),
         (none, .vlam yTy)]
-      (natDivGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyV) :
+      (mkApp5 Reflection.defn₁.natDITE
+        (natDivGoProp (.bvar 4) (.bvar 1))
+        (natDivGoBle (.bvar 4) (.bvar 1))
+        (natDivGoProof (.bvar 4) (.bvar 1)) thenSrc elseSrc) bodyV) :
     ∃ rditeV pV bleV HV tV eV,
       bodyV = .app (.app (.app (.app (.app rditeV pV) bleV) HV) tV) eV ∧
       TrExprS env []
@@ -2207,28 +2032,15 @@ theorem VEnv.natDivGoRhsBody_shape
         [(none, .vlam hTy), (none, .vlam xTy),
           (none, .vlam fuelTy), (none, .vlam hyTy),
           (none, .vlam yTy)]
-        (natDivGoProp (.bvar 4) (.bvar 1)) pV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
         (natDivGoBle (.bvar 4) (.bvar 1)) bleV ∧
       TrExprS env []
         [(none, .vlam hTy), (none, .vlam xTy),
           (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natDivGoProof (.bvar 4) (.bvar 1)) HV ∧
+          (none, .vlam yTy)] thenSrc tV ∧
       TrExprS env []
         [(none, .vlam hTy), (none, .vlam xTy),
           (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natDivGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natDivGoElse (.bvar 4) (.bvar 1)) eV := by
-  rw [natDivGoRhsBody_eq_parts] at hbodyS
+          (none, .vlam yTy)] elseSrc eV := by
   simp only [mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
   cases hbodyS with
   | app h₄T heT h₄ heS =>
@@ -2246,7 +2058,7 @@ theorem VEnv.natDivGoRhsBody_shape
           | app hditeT hpT hditeS hpS =>
             rename_i rditeV A₀ B₀ pV
             exact ⟨rditeV, pV, bleV, HV, tV, eV, rfl,
-              hditeS, hpS, hbleS, hHS, htS, heS⟩
+              hditeS, hbleS, htS, heS⟩
 
 /-- The Boolean condition inside the local recursive RHS is the canonical
 `Nat.ble` application to the retained `y` and `x` binders. -/
@@ -2291,21 +2103,54 @@ def natDivGoTargetInst (e : VExpr) (y : Nat)
   (((((e.inst (.natLit y) 4).inst hy 3).inst
     (.natLit fuel) 2).inst (.natLit x) 1).inst h)
 
-/-- Select the concrete branch of the retained recursive RHS after all five
-target binders have been semantically instantiated. -/
-theorem VEnv.select_natDivGo_rhs
+def natDivGoBranchInst (e : VExpr) (y : Nat)
+    (hy : VExpr) (fuel x : Nat) (h proof : VExpr) : VExpr :=
+  ((((((e.inst (.natLit y) 5).inst hy 4).inst
+    (.natLit fuel) 3).inst (.natLit x) 2).inst h 1).inst proof)
+
+/-- Beta-reduce a selected go branch: the five-binder instantiation of a
+lambda branch applied to a proof argument is definitionally the branch
+body under the six-argument instantiation. -/
+theorem VEnv.natGoBranch_beta
+    {env : VEnv} (wf : env.WF)
+    {propV bodyV hy hfuel proof R : VExpr} {y fuel x : Nat}
+    (happT : env.HasType 0 []
+      (.app (natDivGoTargetInst (.lam propV bodyV) y hy fuel x hfuel)
+        proof) R) :
+    env.IsDefEqU 0 []
+      (.app (natDivGoTargetInst (.lam propV bodyV) y hy fuel x hfuel)
+        proof)
+      (natDivGoBranchInst bodyV y hy fuel x hfuel proof) := by
+  simp [natDivGoTargetInst, natDivGoBranchInst, VExpr.inst]
+    at happT ⊢
+  obtain ⟨_, _, hlamT, hproofT⟩ :=
+    VEnv.HasType.app_inv wf.ordered trivial happT
+  obtain ⟨⟨u, hpropT⟩, bodyTy, hbodyT⟩ := hlamT.lam_inv wf trivial
+  have hlamTyEq := hlamT.uniqU wf trivial
+    (VEnv.HasType.lam hpropT hbodyT)
+  obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
+  exact ⟨_, .beta hbodyT (hproofT.defeqU_r wf trivial hdomEq.toU)⟩
+
+/-- Select the concrete branch of a retained recursive go RHS after all
+five target binders have been semantically instantiated.  The two branch
+sources are abstract, so the division and remainder equations share the
+selection argument. -/
+theorem VEnv.select_natGo_rhs
     {env : VEnv} (wf : env.WF)
     (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
     (hctors : VEnv.HasNatBoolConstructors env)
     (hbleC : env.contains ``Nat.ble)
     (cert : VEnv.NatLESelectorCertificate env)
+    {thenSrc elseSrc : Expr}
     {yTy hyTy fuelTy xTy hTy bodyV hy hfuel : VExpr}
     (hbodyS : TrExprS env []
       [(none, .vlam hTy), (none, .vlam xTy),
         (none, .vlam fuelTy), (none, .vlam hyTy),
         (none, .vlam yTy)]
-      (natDivGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyV)
+      (mkApp5 Reflection.defn₁.natDITE
+        (natDivGoProp (.bvar 4) (.bvar 1))
+        (natDivGoBle (.bvar 4) (.bvar 1))
+        (natDivGoProof (.bvar 4) (.bvar 1)) thenSrc elseSrc) bodyV)
     (y fuel x : Nat)
     (hhyT : env.HasType 0 [] hy A)
     (hhfuelT : env.HasType 0 [] hfuel B)
@@ -2315,13 +2160,11 @@ theorem VEnv.select_natDivGo_rhs
       TrExprS env []
         [(none, .vlam hTy), (none, .vlam xTy),
           (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natDivGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV ∧
+          (none, .vlam yTy)] thenSrc tV ∧
       TrExprS env []
         [(none, .vlam hTy), (none, .vlam xTy),
           (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natDivGoElse (.bvar 4) (.bvar 1)) eV ∧
+          (none, .vlam yTy)] elseSrc eV ∧
       if y ≤ x then
         ∃ proof, env.IsDefEqU 0 []
           (natDivGoTargetInst bodyV y hy fuel x hfuel)
@@ -2331,8 +2174,8 @@ theorem VEnv.select_natDivGo_rhs
           (natDivGoTargetInst bodyV y hy fuel x hfuel)
           (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof) := by
   obtain ⟨rditeV, pV, bleV, HV, tV, eV, rfl,
-    hrditeS, hpS, hbleS, hHS, htS, heS⟩ :=
-    VEnv.natDivGoRhsBody_shape hbodyS
+    hrditeS, hbleS, htS, heS⟩ :=
+    VEnv.natGoRhsBody_shape hbodyS
   let Δ : VLCtx :=
     [(none, .vlam hTy), (none, .vlam xTy),
       (none, .vlam fuelTy), (none, .vlam hyTy),
@@ -2445,74 +2288,110 @@ theorem VEnv.natDivGoElse_canonical
       subst hus
       exact ⟨propV, rfl⟩
 
-/-- The selected false recursive branch beta-reduces to zero after the five
-outer equation binders have been instantiated. -/
+/-- The selected false recursive branch beta-reduces to zero after the
+five outer equation binders have been instantiated. -/
 theorem VEnv.natDivGoElse_beta
     {env : VEnv} (wf : env.WF)
-    (hctors : VEnv.HasNatBoolConstructors env)
-    {yTy hyTy fuelTy xTy hTy eV hy hfuel proof R A B : VExpr}
+    {yTy hyTy fuelTy xTy hTy eV hy hfuel proof R : VExpr}
+    {y fuel x : Nat}
     (heS : TrExprS env []
       [(none, .vlam hTy), (none, .vlam xTy),
         (none, .vlam fuelTy), (none, .vlam hyTy),
         (none, .vlam yTy)]
       (natDivGoElse (.bvar 4) (.bvar 1)) eV)
-    (y fuel x : Nat)
-    (hhyT : env.HasType 0 [] hy A)
-    (hhfuelT : env.HasType 0 [] hfuel B)
     (happT : env.HasType 0 []
       (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof) R) :
     env.IsDefEqU 0 []
       (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof) .natZero := by
   obtain ⟨propV, rfl⟩ := VEnv.natDivGoElse_canonical heS
-  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-  have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-  have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
-  have hhyClosed := (hhyT.closedN' wf.ordered.closed trivial).1
-  have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
-  have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
-  have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
-  have hzeroT := (hctors.natZeroS (Us := []) (Δ := [])).2
-  have hzeroClosed := (hzeroT.closedN' wf.ordered.closed trivial).1
-  have happT' := happT
-  simp [natDivGoTargetInst, VExpr.inst, VExpr.instVar,
-    hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-    hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-    hfuelClosed.liftN_eq (Nat.zero_le _),
-    hfuelClosed.instN_eq (Nat.zero_le _),
-    hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-    hhfuelClosed.instN_eq (Nat.zero_le _),
-    hzeroClosed.instN_eq (Nat.zero_le _)] at happT'
-  obtain ⟨_, _, hlamT, hproofT⟩ :=
-    VEnv.HasType.app_inv wf.ordered trivial happT'
-  obtain ⟨hpropType, hbodyWF⟩ := hlamT.lam_inv wf trivial
-  obtain ⟨u, hpropT⟩ := hpropType
-  obtain ⟨bodyTy, hbodyT⟩ := hbodyWF
-  have hlamCanonT : env.HasType 0 []
-      (.lam
-        (((((propV.inst (.natLit y) 4).inst hy 3).inst
-          (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
-        .natZero)
-      (.forallE
-        (((((propV.inst (.natLit y) 4).inst hy 3).inst
-          (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
-        bodyTy) := .lam hpropT hbodyT
-  have hlamTyEq := hlamT.uniqU wf trivial hlamCanonT
-  obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
-  have hproofT' := hproofT.defeqU_r wf trivial hdomEq.toU
-  exact ⟨_, by
-    simpa [natDivGoTargetInst, VExpr.inst, VExpr.instVar,
-      hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-      hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-      hfuelClosed.liftN_eq (Nat.zero_le _),
-      hfuelClosed.instN_eq (Nat.zero_le _),
-      hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-      hhfuelClosed.instN_eq (Nat.zero_le _),
-      hzeroClosed.instN_eq (Nat.zero_le _)] using
-        (VEnv.IsDefEq.beta hbodyT hproofT')⟩
+  simpa [natDivGoBranchInst] using VEnv.natGoBranch_beta wf happT
+
+/-- The translated recursive call inside a retained true branch is
+syntactically the expected application chain, leaving only its generated
+fuel proof opaque.  Both the go constant and the fuel-proof source are
+abstract, so the division and remainder equations share the
+normalization. -/
+theorem VEnv.natGoCallBody_canonical
+    {env : VEnv} {goName : Name} {proofSrc : Expr}
+    {propV hTy xTy fuelTy hyTy yTy callV : VExpr}
+    (hcallS : TrExprS env []
+      [(none, .vlam propV), (none, .vlam hTy), (none, .vlam xTy),
+        (none, .vlam fuelTy), (none, .vlam hyTy), (none, .vlam yTy)]
+      (mkApp5 (.const goName []) (.bvar 5) (.bvar 4) (.bvar 3)
+        (mkApp2 q(Nat.sub) (.bvar 2) (.bvar 5)) proofSrc) callV) :
+    ∃ hfuelV,
+      callV = .app
+        (.app
+          (.app
+            (.app
+              (.app (.const goName []) (.bvar 5))
+              (.bvar 4))
+            (.bvar 3))
+          (.app (.app (.const ``Nat.sub []) (.bvar 2)) (.bvar 5)))
+        hfuelV := by
+  let Δ : VLCtx :=
+    [(none, .vlam propV), (none, .vlam hTy), (none, .vlam xTy),
+      (none, .vlam fuelTy), (none, .vlam hyTy), (none, .vlam yTy)]
+  change TrExprS env [] Δ _ callV at hcallS
+  simp only [mkApp5, mkApp4, mkApp3, mkApp2, mkApp, mkAppB] at hcallS
+  cases hcallS with
+  | app h₄T hhfuelT h₄ hhfuelS =>
+    rename_i A₄ B₄ hfuelV
+    cases h₄ with
+    | app h₃T hsubT h₃ hsubS =>
+      rename_i A₃ B₃ subV
+      cases h₃ with
+      | app h₂T hfuelT h₂ hfuelS =>
+        rename_i A₂ B₂ fuelV
+        cases h₂ with
+        | app h₁T hhyT h₁ hhyS =>
+          rename_i A₁ B₁ hyV
+          cases h₁ with
+          | app hgoT hyT hgoS hyS =>
+            rename_i goV A₀ B₀ yV
+            cases hsubS with
+            | app hsubInnerT hsubYT hsubInner hsubYS =>
+              rename_i subInnerV AS BS subYV
+              cases hsubInner with
+              | app hsubFnT hsubXT hsubFnS hsubXS =>
+                rename_i subFnV AS₀ BS₀ subXV
+                have hyEq : yV = .bvar 5 := translated_bvar_target_eq
+                  (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                    VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                    VExpr.lift, liftVar]) hyS
+                have hhyEq : hyV = .bvar 4 := translated_bvar_target_eq
+                  (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                    VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                    VExpr.lift, liftVar]) hhyS
+                have hfuelEq : fuelV = .bvar 3 := translated_bvar_target_eq
+                  (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                    VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                    VExpr.lift, liftVar]) hfuelS
+                have hsubXEq : subXV = .bvar 2 := translated_bvar_target_eq
+                  (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                    VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                    VExpr.lift, liftVar]) hsubXS
+                have hsubYEq : subYV = .bvar 5 := translated_bvar_target_eq
+                  (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
+                    VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
+                    VExpr.lift, liftVar]) hsubYS
+                subst yV
+                subst hyV
+                subst fuelV
+                subst subXV
+                subst subYV
+                cases hgoS with
+                | const _ hgoUs _ =>
+                  simp at hgoUs
+                  subst hgoUs
+                  cases hsubFnS with
+                  | const _ hsubUs _ =>
+                    simp at hsubUs
+                    subst hsubUs
+                    exact ⟨hfuelV, rfl⟩
 
 /-- Normalize the computational skeleton of the retained true recursive
-branch, leaving only its generated fuel proof opaque. -/
+division branch, leaving only its generated fuel proof opaque. -/
 theorem VEnv.natDivGoThen_canonical
     {env : VEnv} {yTy hyTy fuelTy xTy hTy tV : VExpr}
     (htS : TrExprS env []
@@ -2536,106 +2415,43 @@ theorem VEnv.natDivGoThen_canonical
   cases htS with
   | lam hpropType hpS hbodyS =>
     rename_i propV bodyV
-    let Δ : VLCtx :=
-      [(none, .vlam propV), (none, .vlam hTy), (none, .vlam xTy),
-        (none, .vlam fuelTy), (none, .vlam hyTy), (none, .vlam yTy)]
-    change TrExprS env [] Δ _ bodyV at hbodyS
-    simp only [natDivGoThenBody, mkApp6, mkApp5, mkApp4, mkApp3,
-      mkApp2, mkApp, mkAppB] at hbodyS
-    cases hbodyS with
+    have hbodyS' : TrExprS env []
+        [(none, .vlam propV), (none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy), (none, .vlam yTy)]
+        (mkApp q(Nat.succ)
+          (mkApp5 q(Nat.div.go) (.bvar 5) (.bvar 4) (.bvar 3)
+            (mkApp2 q(Nat.sub) (.bvar 2) (.bvar 5))
+            (mkApp6 q(@Nat.div_rec_fuel_lemma) (.bvar 2) (.bvar 5)
+              (.bvar 3) (.bvar 4) (.bvar 0) (.bvar 1)))) bodyV := by
+      simpa [natDivGoThenBody, Expr.liftLooseBVars_eq,
+        Expr.liftLooseBVars', mkApp6, mkApp5, mkApp4, mkApp3, mkApp2,
+        mkApp, mkAppB] using hbodyS
+    cases hbodyS' with
     | app hsuccT hcallT hsuccS hcallS =>
       rename_i succV A₆ B₆ callV
-      cases hcallS with
-      | app h₄T hhfuelT h₄ hhfuelS =>
-        rename_i A₄ B₄ hfuelV
-        cases h₄ with
-        | app h₃T hsubT h₃ hsubS =>
-          rename_i A₃ B₃ subV
-          cases h₃ with
-          | app h₂T hfuelT h₂ hfuelS =>
-            rename_i A₂ B₂ fuelV
-            cases h₂ with
-            | app h₁T hhyT h₁ hhyS =>
-              rename_i A₁ B₁ hyV
-              cases h₁ with
-              | app hgoT hyT hgoS hyS =>
-                rename_i goV A₀ B₀ yV
-                cases hsubS with
-                | app hsubInnerT hsubYT hsubInner hsubYS =>
-                  rename_i subInnerV AS BS subYV
-                  cases hsubInner with
-                  | app hsubFnT hsubXT hsubFnS hsubXS =>
-                    rename_i subFnV AS₀ BS₀ subXV
-                    have hyS' : TrExprS env [] Δ (.bvar 5) yV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hyS
-                    have hhyS' : TrExprS env [] Δ (.bvar 4) hyV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hhyS
-                    have hfuelS' : TrExprS env [] Δ (.bvar 3) fuelV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hfuelS
-                    have hsubXS' : TrExprS env [] Δ (.bvar 2) subXV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hsubXS
-                    have hsubYS' : TrExprS env [] Δ (.bvar 5) subYV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hsubYS
-                    have hyEq : yV = .bvar 5 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hyS'
-                    have hhyEq : hyV = .bvar 4 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hhyS'
-                    have hfuelEq : fuelV = .bvar 3 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hfuelS'
-                    have hsubXEq : subXV = .bvar 2 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hsubXS'
-                    have hsubYEq : subYV = .bvar 5 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hsubYS'
-                    subst yV
-                    subst hyV
-                    subst fuelV
-                    subst subXV
-                    subst subYV
-                    cases hsuccS with
-                    | const _ hsuccUs _ =>
-                      simp at hsuccUs
-                      subst hsuccUs
-                      cases hgoS with
-                      | const _ hgoUs _ =>
-                        simp at hgoUs
-                        subst hgoUs
-                        cases hsubFnS with
-                        | const _ hsubUs _ =>
-                          simp at hsubUs
-                          subst hsubUs
-                          exact ⟨propV, hfuelV, rfl⟩
+      obtain ⟨hfuelV, rfl⟩ := VEnv.natGoCallBody_canonical hcallS
+      cases hsuccS with
+      | const _ hsuccUs _ =>
+        simp at hsuccUs
+        subst hsuccUs
+        exact ⟨propV, hfuelV, rfl⟩
 
-def natDivGoBranchInst (e : VExpr) (y : Nat)
-    (hy : VExpr) (fuel x : Nat) (h proof : VExpr) : VExpr :=
-  ((((((e.inst (.natLit y) 5).inst hy 4).inst
-    (.natLit fuel) 3).inst (.natLit x) 2).inst h 1).inst proof)
-
-/-- Beta-reduce the selected true recursive branch and evaluate its retained
-`Nat.sub` argument, while preserving the generated recursive fuel proof. -/
+/-- Beta-reduce the selected true recursive branch and evaluate its
+retained `Nat.sub` argument, while preserving the generated recursive fuel
+proof. -/
 theorem VEnv.natDivGoThen_beta
     {env : VEnv} (wf : env.WF)
     (hsubR : env.ReflectsNatNatNat ``Nat.sub Nat.sub)
     (hctors : VEnv.HasNatBoolConstructors env)
     (hsubC : env.contains ``Nat.sub)
-    {yTy hyTy fuelTy xTy hTy tV hy hfuel proof R A B : VExpr}
+    {yTy hyTy fuelTy xTy hTy tV hy hfuel proof R A : VExpr}
+    {y fuel x : Nat}
     (htS : TrExprS env []
       [(none, .vlam hTy), (none, .vlam xTy),
         (none, .vlam fuelTy), (none, .vlam hyTy),
         (none, .vlam yTy)]
       (natDivGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV)
-    (y fuel x : Nat)
     (hhyT : env.HasType 0 [] hy A)
-    (hhfuelT : env.HasType 0 [] hfuel B)
     (happT : env.HasType 0 []
       (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof) R) :
     ∃ hfuel',
@@ -2644,57 +2460,7 @@ theorem VEnv.natDivGoThen_beta
         (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof)
         (.app .natSucc (.natDivGo y fuel (x - y) hy hfuel')) := by
   obtain ⟨propV, hfuelV, rfl⟩ := VEnv.natDivGoThen_canonical htS
-  let propI :=
-    (((((propV.inst (.natLit y) 4).inst hy 3).inst
-      (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
-  let hfuelLocal :=
-    (((((hfuelV.inst (.natLit y) 5).inst hy 4).inst
-      (.natLit fuel) 3).inst (.natLit x) 2).inst hfuel 1)
-  let hfuelI := hfuelLocal.inst proof
-  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-  have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-  have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
   have hhyClosed := (hhyT.closedN' wf.ordered.closed trivial).1
-  have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
-  have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
-  have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
-  have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
-  have hsuccClosed := (hsuccT.closedN' wf.ordered.closed trivial).1
-  have hsubT := (hsubR hsubC).1 0 []
-  have hsubClosed := (hsubT.closedN' wf.ordered.closed trivial).1
-  have happT' := happT
-  simp [propI, hfuelLocal, hfuelI, natDivGoTargetInst, natDivGoBranchInst,
-    VExpr.inst, VExpr.instVar,
-    hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-    hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-    hfuelClosed.liftN_eq (Nat.zero_le _),
-    hfuelClosed.instN_eq (Nat.zero_le _),
-    hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-    hhfuelClosed.instN_eq (Nat.zero_le _),
-    hsuccClosed.instN_eq (Nat.zero_le _),
-    hsubClosed.instN_eq (Nat.zero_le _)] at happT'
-  obtain ⟨_, _, hlamT, hproofT⟩ :=
-    VEnv.HasType.app_inv wf.ordered trivial happT'
-  obtain ⟨hpropType, hbodyWF⟩ := hlamT.lam_inv wf trivial
-  obtain ⟨u, hpropT⟩ := hpropType
-  obtain ⟨bodyTy, hbodyT⟩ := hbodyWF
-  have hlamCanonT : env.HasType 0 []
-      (.lam propI
-        (.app .natSucc
-          (.app
-            (.app
-              (.app
-                (.app
-                  (.app (.const ``Nat.div.go []) (.natLit y)) hy)
-                (.natLit fuel))
-              (.app (.app (.const ``Nat.sub []) (.natLit x)) (.natLit y)))
-            hfuelLocal)))
-      (.forallE propI bodyTy) := by
-    exact .lam hpropT hbodyT
-  have hlamTyEq := hlamT.uniqU wf trivial hlamCanonT
-  obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
-  have hproofT' := hproofT.defeqU_r wf trivial hdomEq.toU
   have hbeta : env.IsDefEqU 0 []
       (.app (natDivGoTargetInst
         (.lam propV
@@ -2715,20 +2481,11 @@ theorem VEnv.natDivGoThen_beta
                 (.app (.const ``Nat.div.go []) (.natLit y)) hy)
               (.natLit fuel))
             (.app (.app (.const ``Nat.sub []) (.natLit x)) (.natLit y)))
-          hfuelI)) := by
-    exact ⟨_, by
-      simpa [propI, hfuelLocal, hfuelI, natDivGoTargetInst,
-        natDivGoBranchInst,
-        VExpr.inst, VExpr.instVar,
-        hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-        hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-        hfuelClosed.liftN_eq (Nat.zero_le _),
-        hfuelClosed.instN_eq (Nat.zero_le _),
-        hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-        hhfuelClosed.instN_eq (Nat.zero_le _),
-        hsuccClosed.instN_eq (Nat.zero_le _),
-        hsubClosed.instN_eq (Nat.zero_le _)] using
-          (VEnv.IsDefEq.beta hbodyT hproofT')⟩
+          (natDivGoBranchInst hfuelV y hy fuel x hfuel proof))) := by
+    simpa [natDivGoBranchInst, VExpr.inst, VExpr.instVar,
+      hhyClosed.liftN_eq (Nat.zero_le _),
+      hhyClosed.instN_eq (Nat.zero_le _)] using
+      VEnv.natGoBranch_beta wf happT
   have hbodyResultT := (hbeta.of_l wf trivial happT).hasType.2
   obtain ⟨_, _, hsuccFnT, hcallT⟩ :=
     hbodyResultT.app_inv wf.ordered trivial
@@ -2739,127 +2496,15 @@ theorem VEnv.natDivGoThen_beta
   have hcallEq := hprefix₄Eq.app_same wf trivial hprefix₄T hhfuelIT
   have hsuccEq := hcallEq.app_arg wf trivial hsuccFnT hcallT
   have hrecRawT := (hcallEq.of_l wf trivial hcallT).hasType.2
+  have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
   have hsuccTyEq := hsuccFnT.uniqU wf trivial hsuccT
   obtain ⟨_, hsuccDomEq⟩ := (hsuccTyEq.forallE_inv wf trivial).1
   have hrecT := hrecRawT.defeqU_r wf trivial hsuccDomEq.toU
-  exact ⟨hfuelI, hrecT, hbeta.trans wf trivial hsuccEq⟩
+  exact ⟨natDivGoBranchInst hfuelV y hy fuel x hfuel proof, hrecT,
+    hbeta.trans wf trivial hsuccEq⟩
 
-/-- Transport the final fuel proof of a canonical closed `Nat.div.go` call
-to the corresponding final binder of the checked left equation. -/
-theorem VEnv.align_natDivGo_final_proof
-    {env : VEnv} (wf : env.WF)
-    (hctors : VEnv.HasNatBoolConstructors env)
-    {yTyL hyTyL fuelTyL xTyL hTyL bodyL hy hfuel : VExpr}
-    (yTyLS : TrExprS env [] [] q(Nat) yTyL)
-    (fuelTyLS : TrExprS env []
-      [(none, .vlam hyTyL), (none, .vlam yTyL)] q(Nat) fuelTyL)
-    (xTyLS : TrExprS env []
-      [(none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)] q(Nat) xTyL)
-    (yTyLType : env.IsType 0 [] yTyL)
-    (hyTyLType : env.IsType 0 [yTyL] hyTyL)
-    (fuelTyLType : env.IsType 0 [hyTyL, yTyL] fuelTyL)
-    (xTyLType : env.IsType 0 [fuelTyL, hyTyL, yTyL] xTyL)
-    (hTyLType : env.IsType 0 [xTyL, fuelTyL, hyTyL, yTyL] hTyL)
-    (leftS : TrExprS env []
-      [(none, .vlam hTyL), (none, .vlam xTyL),
-        (none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)]
-      (natDivGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyL)
-    (y fuel x : Nat)
-    (hhyL : env.HasType 0 [] hy (hyTyL.inst (.natLit y)))
-    (hcallT : env.HasType 0 [] (.natDivGo y (fuel + 1) x hy hfuel) .nat) :
-    env.HasType 0 [] hfuel
-      ((((hTyL.inst (.natLit y) 3).inst hy 2).inst
-        (.natLit fuel) 1).inst (.natLit x)) := by
-  have hyDomL := translated_nat_type_eq wf hctors (by trivial) yTyLS
-  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-  have hyL := hyT.defeqU_r wf trivial hyDomL.symm
-  have hΔL₂ : VLCtx.WF env 0
-      [(none, .vlam hyTyL), (none, .vlam yTyL)] :=
-    ⟨⟨trivial, nofun, yTyLType⟩, nofun, hyTyLType⟩
-  have hfuelDomCtx := translated_nat_type_eq wf hctors hΔL₂ fuelTyLS
-  have hfuelDom := VEnv.IsDefEqU.inst_outer2 wf hyL hhyL hfuelDomCtx
-  have hfuelT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-  have hfuelL := hfuelT.defeqU_r wf trivial hfuelDom.symm
-  have hΔL₃ : VLCtx.WF env 0
-      [(none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)] :=
-    ⟨hΔL₂, nofun, fuelTyLType⟩
-  have hxDomCtx := translated_nat_type_eq wf hctors hΔL₃ xTyLS
-  have hxDom := VEnv.IsDefEqU.inst_outer3 wf hyL hhyL hfuelL hxDomCtx
-  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-  have hxL := hxT.defeqU_r wf trivial hxDom.symm
-  have hΔL₅ : VLCtx.WF env 0
-      [(none, .vlam hTyL), (none, .vlam xTyL),
-        (none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)] :=
-    ⟨⟨hΔL₃, nofun, xTyLType⟩, nofun, hTyLType⟩
-  have hbodyEq := VEnv.natDivGoLhsBody_canonical hctors leftS
-  subst bodyL
-  obtain ⟨_, hbodyWF⟩ := leftS.wf wf.ordered
-    (Us := []) hΔL₅
-  have hbodyFinalT := VEnv.HasType.inst_outer4_keep_head wf
-    hyL hhyL hfuelL hxL hbodyWF.hasType.1
-  let hFinal :=
-    ((((hTyL.inst (.natLit y) 3).inst hy 2).inst
-      (.natLit fuel) 1).inst (.natLit x))
-  obtain ⟨u, hTyLHas⟩ := hTyLType
-  have hFinalHas := VEnv.HasType.inst_outer4 wf
-    hyL hhyL hfuelL hxL hTyLHas
-  have hFinalType : env.IsType 0 [] hFinal := by
-    exact ⟨u, by simpa [hFinal, VExpr.inst] using hFinalHas⟩
-  have hΓ : OnCtx [hFinal] (env.IsType 0) := ⟨trivial, hFinalType⟩
-  have hyClosed : (VExpr.natLit y).ClosedN :=
-    (hyT.closedN' wf.ordered.closed trivial).1
-  have hhyClosed : hy.ClosedN :=
-    (hhyL.closedN' wf.ordered.closed trivial).1
-  have hfuelClosed : (VExpr.natLit fuel).ClosedN :=
-    (hfuelT.closedN' wf.ordered.closed trivial).1
-  have hxClosed : (VExpr.natLit x).ClosedN :=
-    (hxT.closedN' wf.ordered.closed trivial).1
-  have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
-  have hsuccClosed : VExpr.natSucc.ClosedN :=
-    (hsuccT.closedN' wf.ordered.closed trivial).1
-  have hbodyFinalT' := hbodyFinalT
-  simp [VExpr.inst, VExpr.instVar,
-    hyClosed.liftN_eq, hyClosed.instN_eq,
-    hhyClosed.liftN_eq, hhyClosed.instN_eq,
-    hfuelClosed.liftN_eq, hfuelClosed.instN_eq,
-    hxClosed.liftN_eq, hxClosed.instN_eq,
-    hsuccClosed.instN_eq] at hbodyFinalT'
-  obtain ⟨argTyLocal, _, hprefixLocalT, hvarLocalT⟩ :=
-    VEnv.HasType.app_inv wf.ordered hΓ hbodyFinalT'
-  have hcallT' := hcallT
-  simp only [VExpr.natDivGo] at hcallT'
-  obtain ⟨argTyClosed, _, hprefixClosedT, hhfuelRaw⟩ :=
-    hcallT'.app_inv wf.ordered trivial
-  have hprefixClosed :
-      (VExpr.app (.app (.app (.app (.const ``Nat.div.go []) (.natLit y)) hy)
-        (.natLit (fuel + 1))) (.natLit x)).ClosedN :=
-    (hprefixClosedT.closedN' wf.ordered.closed trivial).1
-  have hprefixWeakT := hprefixClosedT.weak0 (Γ := [hFinal]) wf
-  have hprefixTyEq := hprefixLocalT.uniqU wf hΓ hprefixWeakT
-  obtain ⟨_, hargDomainEq⟩ := (hprefixTyEq.forallE_inv wf hΓ).1
-  have hFinalClosed : hFinal.ClosedN := by
-    obtain ⟨_, hFinalSort⟩ := hFinalType
-    exact (hFinalSort.closedN' wf.ordered.closed trivial).1
-  have hvarCanon : env.HasType 0 [hFinal] (.bvar 0) hFinal := by
-    have hb : env.HasType 0 [hFinal] (.bvar 0) hFinal.lift := .bvar .zero
-    simpa [hFinalClosed.lift_eq] using hb
-  have hvarTyEq := hvarLocalT.uniqU wf hΓ hvarCanon
-  have hctxEq := hvarTyEq.symm.trans wf hΓ hargDomainEq.toU
-  have hargClosed : argTyClosed.ClosedN :=
-    (hhfuelRaw.closedN' wf.ordered.closed trivial).2.2
-  have hFinalEq : env.IsDefEqU 0 [] hFinal argTyClosed := by
-    apply (VEnv.IsDefEqU.weakN_iff wf hΓ
-      (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [hFinal])).1
-    simpa [hFinalClosed.liftN_eq, hargClosed.liftN_eq] using hctxEq
-  exact hhfuelRaw.defeqU_r wf trivial hFinalEq.symm
-
-/-- The checked recursive division equation has the exact operational shape
-required by `ReflectsNatNatNat.of_divCore_equations`. -/
+/-- The checked recursive division equation has the exact operational
+shape required by `ReflectsNatNatNat.of_divCore_equations`. -/
 theorem VEnv.natDivGo_semantics
     {env : VEnv} (wf : env.WF)
     (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
@@ -2894,375 +2539,44 @@ theorem VEnv.natDivGo_semantics
     intro y fuel x hy hfuel hcallT
     obtain ⟨yTy, hyTy, fuelTy, xTy, hTy, resultTy,
       yTyS, hyTyS, hhyCanon, hhfuelCanon⟩ :=
-      typeCert.call_proof_types wf hctors hgoT
+      typeCert.call_proof_types wf hgoT
         y (fuel + 1) x hcallT
     have hhyL := VEnv.align_natDivGo_first_proof wf hctors
       yTyLS hyTyLS yTyS hyTyS y hhyCanon
-    have hhfuelL := VEnv.align_natDivGo_final_proof wf hctors
-      yTyLS fuelTyLS xTyLS yTyLType hyTyLType fuelTyLType
-      xTyLType hTyLType leftS y fuel x hhyL hcallT
-    have hinstEq := VEnv.instantiate_natDivGo_target_binders wf hctors
-      yTyLS fuelTyLS xTyLS yTyRS fuelTyRS xTyRS
-      yTyLType hyTyLType fuelTyLType xTyLType
-      yTyRType hyTyRType fuelTyRType xTyRType
-      heq y fuel x hhyL hhfuelL
-    have hleftShape := VEnv.natDivGoLhsBody_canonical hctors leftS
+    have hleftShape := VEnv.natGoLhsBody_canonical hctors
+      (by simpa [natDivGoLhsBody] using leftS)
     subst bodyL
-    have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-    have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-    have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-    have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
-    have hhyClosed := (hhyL.closedN' wf.ordered.closed trivial).1
-    have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
-    have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
-    have hhfuelClosed := (hhfuelL.closedN' wf.ordered.closed trivial).1
-    have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
-    have hsuccClosed := (hsuccT.closedN' wf.ordered.closed trivial).1
     have hEq : env.IsDefEqU 0 []
         (.natDivGo y (fuel + 1) x hy hfuel)
         (natDivGoTargetInst bodyR y hy fuel x hfuel) := by
       simpa [natDivGoTargetInst, VExpr.natDivGo, VExpr.natLit,
-        VExpr.inst, VExpr.instVar, Nat.add_comm,
-        hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-        hhyClosed.liftN_eq (Nat.zero_le _),
-        hhyClosed.instN_eq (Nat.zero_le _),
-        hfuelClosed.liftN_eq (Nat.zero_le _),
-        hfuelClosed.instN_eq (Nat.zero_le _),
-        hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-        hhfuelClosed.instN_eq (Nat.zero_le _),
-        hsuccClosed.instN_eq (Nat.zero_le _)] using hinstEq
+        Nat.add_comm] using
+        VEnv.instantiate_natGo_equation wf hctors
+          yTyLS fuelTyLS xTyLS yTyRS fuelTyRS xTyRS
+          yTyLType hyTyLType fuelTyLType yTyRType hyTyRType fuelTyRType
+          heq y fuel x hhyL
+          (by simpa [VExpr.natDivGo, VExpr.natLit, Nat.add_comm]
+            using hcallT)
     have hrhsT := (hEq.of_l wf trivial hcallT).hasType.2
+    rw [natDivGoRhsBody_eq_parts] at rightS
     obtain ⟨tV, eV, htS, heS, hselect⟩ :=
-      VEnv.select_natDivGo_rhs wf hbleR hctors hbleC selector rightS
-        y fuel x hhyL hhfuelL hrhsT
+      VEnv.select_natGo_rhs wf hbleR hctors hbleC selector rightS
+        y fuel x hhyL hhfuelCanon hrhsT
     split
     · rename_i hyx
       rw [if_pos hyx] at hselect
       obtain ⟨proof, hselect⟩ := hselect
       have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
       obtain ⟨hfuel', hrecT, hbranch⟩ := VEnv.natDivGoThen_beta
-        wf hsubR hctors hsubC htS y fuel x hhyL hhfuelL hbranchT
+        wf hsubR hctors hsubC htS hhyL hbranchT
       exact ⟨hy, hfuel', hrecT,
         hEq.trans wf trivial hselect |>.trans wf trivial hbranch⟩
     · rename_i hyx
       rw [if_neg hyx] at hselect
       obtain ⟨proof, hselect⟩ := hselect
       have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
-      have hbranch := VEnv.natDivGoElse_beta
-        wf hctors heS y fuel x hhyL hhfuelL hbranchT
+      have hbranch := VEnv.natDivGoElse_beta wf heS hbranchT
       exact hEq.trans wf trivial hselect |>.trans wf trivial hbranch
-
-/-- The translated left recursive body is syntactically the expected local
-`Nat.div.go` call once unique constants and bound variables are normalized. -/
-theorem VEnv.natModGoLhsBody_canonical
-    {env : VEnv} (hctors : VEnv.HasNatBoolConstructors env)
-    {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
-    (hbodyS : TrExprS env []
-      [(none, .vlam hTy), (none, .vlam xTy),
-        (none, .vlam fuelTy), (none, .vlam hyTy),
-        (none, .vlam yTy)]
-      (natModGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyV) :
-    bodyV = .app (.app (.app (.app (.app (.const ``Nat.modCore.go [])
-      (.bvar 4)) (.bvar 3)) (.app .natSucc (.bvar 2)))
-      (.bvar 1)) (.bvar 0) := by
-  let Δ : VLCtx :=
-    [(none, .vlam hTy), (none, .vlam xTy),
-      (none, .vlam fuelTy), (none, .vlam hyTy),
-      (none, .vlam yTy)]
-  change TrExprS env [] Δ _ bodyV at hbodyS
-  simp only [natModGoLhsBody, mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
-  cases hbodyS with
-  | app h₄T hhT h₄ hhS =>
-    rename_i A₄ B₄ hhV
-    cases h₄ with
-    | app h₃T hxT h₃ hxS =>
-      rename_i A₃ B₃ hxV
-      cases h₃ with
-      | app h₂T hfuelT h₂ hfuelS =>
-        rename_i A₂ B₂ hfuelV
-        cases h₂ with
-        | app h₁T hhyT h₁ hhyS =>
-          rename_i A₁ B₁ hhyV
-          cases h₁ with
-          | app hgoT hyT hgoS hyS =>
-            rename_i goV A₀ B₀ hyV
-            cases hfuelS with
-            | app hsuccT hfuelArgT hsuccS hfuelArgS =>
-              rename_i succV AS BS fuelArgV
-              have hyEq : hyV = .bvar 4 := translated_bvar_target_eq
-                (by simp [Δ, VLCtx.find?, VLCtx.next,
-                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-                  VExpr.liftN, VExpr.lift, liftVar]) hyS
-              have hhyEq : hhyV = .bvar 3 := translated_bvar_target_eq
-                (by simp [Δ, VLCtx.find?, VLCtx.next,
-                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-                  VExpr.liftN, VExpr.lift, liftVar]) hhyS
-              have hfuelEq : fuelArgV = .bvar 2 := translated_bvar_target_eq
-                (by simp [Δ, VLCtx.find?, VLCtx.next,
-                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-                  VExpr.liftN, VExpr.lift, liftVar]) hfuelArgS
-              have hxEq : hxV = .bvar 1 := translated_bvar_target_eq
-                (by simp [Δ, VLCtx.find?, VLCtx.next,
-                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-                  VExpr.liftN, VExpr.lift, liftVar]) hxS
-              have hhEq : hhV = .bvar 0 := translated_bvar_target_eq
-                (by simp [Δ, VLCtx.find?, VLCtx.next,
-                  VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-                  VExpr.liftN, VExpr.lift, liftVar]) hhS
-              subst hyV
-              subst hhyV
-              subst fuelArgV
-              subst hxV
-              subst hhV
-              have hsuccCanon := (hctors.natSuccS (Us := [])
-                (Δ := Δ)).1
-              cases hsuccS.unique (by trivial) hsuccCanon
-              cases hgoS with
-              | const _ hus _ =>
-                simp at hus
-                subst hus
-                rfl
-
-/-- Expose the reflected dependent selector retained in the translated
-recursive division RHS. -/
-theorem VEnv.natModGoRhsBody_shape
-    {env : VEnv} {yTy hyTy fuelTy xTy hTy bodyV : VExpr}
-    (hbodyS : TrExprS env []
-      [(none, .vlam hTy), (none, .vlam xTy),
-        (none, .vlam fuelTy), (none, .vlam hyTy),
-        (none, .vlam yTy)]
-      (natModGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyV) :
-    ∃ rditeV pV bleV HV tV eV,
-      bodyV = .app (.app (.app (.app (.app rditeV pV) bleV) HV) tV) eV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)] Reflection.defn₁.natDITE rditeV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natModGoProp (.bvar 4) (.bvar 1)) pV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natModGoBle (.bvar 4) (.bvar 1)) bleV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natModGoProof (.bvar 4) (.bvar 1)) HV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natModGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natModGoElse (.bvar 4) (.bvar 1)) eV := by
-  rw [natModGoRhsBody_eq_parts] at hbodyS
-  simp only [mkApp5, mkApp4, mkApp, mkAppB] at hbodyS
-  cases hbodyS with
-  | app h₄T heT h₄ heS =>
-    rename_i A₄ B₄ eV
-    cases h₄ with
-    | app h₃T htT h₃ htS =>
-      rename_i A₃ B₃ tV
-      cases h₃ with
-      | app h₂T hHT h₂ hHS =>
-        rename_i A₂ B₂ HV
-        cases h₂ with
-        | app h₁T hbleT h₁ hbleS =>
-          rename_i A₁ B₁ bleV
-          cases h₁ with
-          | app hditeT hpT hditeS hpS =>
-            rename_i rditeV A₀ B₀ pV
-            exact ⟨rditeV, pV, bleV, HV, tV, eV, rfl,
-              hditeS, hpS, hbleS, hHS, htS, heS⟩
-
-/-- The Boolean condition inside the local recursive RHS is the canonical
-`Nat.ble` application to the retained `y` and `x` binders. -/
-theorem VEnv.natModGoBle_canonical
-    {env : VEnv} {yTy hyTy fuelTy xTy hTy bleV : VExpr}
-    (hbleS : TrExprS env []
-      [(none, .vlam hTy), (none, .vlam xTy),
-        (none, .vlam fuelTy), (none, .vlam hyTy),
-        (none, .vlam yTy)]
-      (natModGoBle (.bvar 4) (.bvar 1)) bleV) :
-    bleV = .app (.app (.const ``Nat.ble []) (.bvar 4)) (.bvar 1) := by
-  let Δ : VLCtx :=
-    [(none, .vlam hTy), (none, .vlam xTy),
-      (none, .vlam fuelTy), (none, .vlam hyTy),
-      (none, .vlam yTy)]
-  change TrExprS env [] Δ _ bleV at hbleS
-  simp only [natModGoBle, mkApp2, mkApp, mkAppB] at hbleS
-  cases hbleS with
-  | app hinnerT hxT hinner hxS =>
-    rename_i innerV A₁ B₁ xV
-    cases hinner with
-    | app hfnT hyT hfnS hyS =>
-      rename_i fnV A₀ B₀ yV
-      have hyEq : yV = .bvar 4 := translated_bvar_target_eq
-        (by simp [Δ, VLCtx.find?, VLCtx.next,
-          VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-          VExpr.liftN, VExpr.lift, liftVar]) hyS
-      have hxEq : xV = .bvar 1 := translated_bvar_target_eq
-        (by simp [Δ, VLCtx.find?, VLCtx.next,
-          VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-          VExpr.liftN, VExpr.lift, liftVar]) hxS
-      subst yV
-      subst xV
-      cases hfnS with
-      | const _ hus _ =>
-        simp at hus
-        subst hus
-        rfl
-
-def natModGoTargetInst (e : VExpr) (y : Nat)
-    (hy : VExpr) (fuel x : Nat) (h : VExpr) : VExpr :=
-  (((((e.inst (.natLit y) 4).inst hy 3).inst
-    (.natLit fuel) 2).inst (.natLit x) 1).inst h)
-
-/-- Select the concrete branch of the retained recursive RHS after all five
-target binders have been semantically instantiated. -/
-theorem VEnv.select_natModGo_rhs
-    {env : VEnv} (wf : env.WF)
-    (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
-    (hctors : VEnv.HasNatBoolConstructors env)
-    (hbleC : env.contains ``Nat.ble)
-    (cert : VEnv.NatLESelectorCertificate env)
-    {yTy hyTy fuelTy xTy hTy bodyV hy hfuel : VExpr}
-    (hbodyS : TrExprS env []
-      [(none, .vlam hTy), (none, .vlam xTy),
-        (none, .vlam fuelTy), (none, .vlam hyTy),
-        (none, .vlam yTy)]
-      (natModGoRhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyV)
-    (y fuel x : Nat)
-    (hhyT : env.HasType 0 [] hy A)
-    (hhfuelT : env.HasType 0 [] hfuel B)
-    (hrhsT : env.HasType 0 []
-      (natModGoTargetInst bodyV y hy fuel x hfuel) .nat) :
-    ∃ tV eV,
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natModGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV ∧
-      TrExprS env []
-        [(none, .vlam hTy), (none, .vlam xTy),
-          (none, .vlam fuelTy), (none, .vlam hyTy),
-          (none, .vlam yTy)]
-        (natModGoElse (.bvar 4) (.bvar 1)) eV ∧
-      if y ≤ x then
-        ∃ proof, env.IsDefEqU 0 []
-          (natModGoTargetInst bodyV y hy fuel x hfuel)
-          (.app (natModGoTargetInst tV y hy fuel x hfuel) proof)
-      else
-        ∃ proof, env.IsDefEqU 0 []
-          (natModGoTargetInst bodyV y hy fuel x hfuel)
-          (.app (natModGoTargetInst eV y hy fuel x hfuel) proof) := by
-  obtain ⟨rditeV, pV, bleV, HV, tV, eV, rfl,
-    hrditeS, hpS, hbleS, hHS, htS, heS⟩ :=
-    VEnv.natModGoRhsBody_shape hbodyS
-  let Δ : VLCtx :=
-    [(none, .vlam hTy), (none, .vlam xTy),
-      (none, .vlam fuelTy), (none, .vlam hyTy),
-      (none, .vlam yTy)]
-  have hΔLift : VLCtx.BVLift [] Δ 5 0 5 0 :=
-    .skip _ (.skip _ (.skip _ (.skip _ (.skip _ .refl))))
-  have hrditeSourceClosed :
-      Reflection.defn₁.natDITE.looseBVarRange' = 0 := by native_decide
-  have hrditeEq : rditeV = cert.rdite :=
-    TrExprS.unique_closed_weak wf cert.rditeUnique hrditeSourceClosed
-      cert.rditeS hrditeS hΔLift
-  subst rditeV
-  have hbleEq := VEnv.natModGoBle_canonical hbleS
-  subst bleV
-  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-  have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-  have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
-  have hhyClosed := (hhyT.closedN' wf.ordered.closed trivial).1
-  have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
-  have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
-  have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
-  have hrditeClosed := translated_closed wf cert.rditeS
-  let pI := natModGoTargetInst pV y hy fuel x hfuel
-  let HI := natModGoTargetInst HV y hy fuel x hfuel
-  let tI := natModGoTargetInst tV y hy fuel x hfuel
-  let eI := natModGoTargetInst eV y hy fuel x hfuel
-  let bleI : VExpr :=
-    .app (.app (.const ``Nat.ble []) (.natLit y)) (.natLit x)
-  have hcallT : env.HasType 0 []
-      (.app (.app (.app (.app (.app cert.rdite pI) bleI) HI) tI) eI)
-      .nat := by
-    simpa [pI, HI, tI, eI, bleI, natModGoTargetInst, VExpr.inst,
-      VExpr.instVar, hyClosed.liftN_eq (Nat.zero_le _),
-      hyClosed.instN_eq (Nat.zero_le _),
-      hhyClosed.liftN_eq (Nat.zero_le _),
-      hhyClosed.instN_eq (Nat.zero_le _),
-      hfuelClosed.liftN_eq (Nat.zero_le _),
-      hfuelClosed.instN_eq (Nat.zero_le _),
-      hxClosed.liftN_eq (Nat.zero_le _),
-      hxClosed.instN_eq (Nat.zero_le _),
-      hhfuelClosed.instN_eq (Nat.zero_le _),
-      hrditeClosed.instN_eq (Nat.zero_le _)] using hrhsT
-  have ⟨hbleFnT, _⟩ := hbleR hbleC
-  obtain ⟨ci, hci, _, hlen⟩ := (hbleFnT 0 []).const_inv wf trivial
-  have hfnS : TrExprS env [] [] q(Nat.ble) (.const ``Nat.ble []) :=
-    .const hci rfl hlen
-  have hyS := (hctors.natLitS y (Us := []) (Δ := [])).1
-  have hxS := (hctors.natLitS x (Us := []) (Δ := [])).1
-  have hinnerS : TrExprS env [] []
-      (mkApp q(Nat.ble) (.lit (.natVal y)))
-      (.app (.const ``Nat.ble []) (.natLit y)) :=
-    .app (hbleFnT 0 []) hyT hfnS hyS
-  have hbleGlobalS : TrExprS env [] []
-      (mkApp2 q(Nat.ble) (.lit (.natVal y)) (.lit (.natVal x))) bleI := by
-    exact .app (.app (hbleFnT 0 []) hyT) hxT hinnerS hxS
-  refine ⟨tV, eV, htS, heS, ?_⟩
-  split
-  · rename_i hyx
-    have hble : Nat.ble y x = true := Nat.ble_eq_true_of_le hyx
-    obtain ⟨proof, hselect⟩ := cert.selectDITETrue wf hbleR hctors hbleC
-      hbleGlobalS hble hcallT
-    exact ⟨proof, by
-      simpa [pI, HI, tI, eI, bleI, natModGoTargetInst, VExpr.inst,
-        VExpr.instVar, hyClosed.liftN_eq (Nat.zero_le _),
-        hyClosed.instN_eq (Nat.zero_le _),
-        hhyClosed.liftN_eq (Nat.zero_le _),
-        hhyClosed.instN_eq (Nat.zero_le _),
-        hfuelClosed.liftN_eq (Nat.zero_le _),
-        hfuelClosed.instN_eq (Nat.zero_le _),
-        hxClosed.liftN_eq (Nat.zero_le _),
-        hxClosed.instN_eq (Nat.zero_le _),
-        hhfuelClosed.instN_eq (Nat.zero_le _),
-        hrditeClosed.instN_eq (Nat.zero_le _)] using hselect⟩
-  · rename_i hyx
-    have hble : Nat.ble y x = false := by
-      cases h : Nat.ble y x with
-      | false => rfl
-      | true => exact False.elim (hyx (Nat.ble_eq.mp h))
-    obtain ⟨proof, hselect⟩ := cert.selectDITEFalse wf hbleR hctors hbleC
-      hbleGlobalS hble hcallT
-    exact ⟨proof, by
-      simpa [pI, HI, tI, eI, bleI, natModGoTargetInst, VExpr.inst,
-        VExpr.instVar, hyClosed.liftN_eq (Nat.zero_le _),
-        hyClosed.instN_eq (Nat.zero_le _),
-        hhyClosed.liftN_eq (Nat.zero_le _),
-        hhyClosed.instN_eq (Nat.zero_le _),
-        hfuelClosed.liftN_eq (Nat.zero_le _),
-        hfuelClosed.instN_eq (Nat.zero_le _),
-        hxClosed.liftN_eq (Nat.zero_le _),
-        hxClosed.instN_eq (Nat.zero_le _),
-        hhfuelClosed.instN_eq (Nat.zero_le _),
-        hrditeClosed.instN_eq (Nat.zero_le _)] using hselect⟩
 
 theorem VEnv.natModGoElse_canonical
     {env : VEnv} {yTy hyTy fuelTy xTy hTy eV : VExpr}
@@ -3285,70 +2599,28 @@ theorem VEnv.natModGoElse_canonical
       rcases hfind with ⟨rfl, rfl⟩
       exact ⟨propV, rfl⟩
 
-/-- The selected false recursive branch beta-reduces to zero after the five
-outer equation binders have been instantiated. -/
+/-- The selected false recursive branch beta-reduces to the dividend after
+the five outer equation binders have been instantiated. -/
 theorem VEnv.natModGoElse_beta
     {env : VEnv} (wf : env.WF)
-    (hctors : VEnv.HasNatBoolConstructors env)
-    {yTy hyTy fuelTy xTy hTy eV hy hfuel proof R A B : VExpr}
+    {yTy hyTy fuelTy xTy hTy eV hy hfuel proof R : VExpr}
+    {y fuel x : Nat}
     (heS : TrExprS env []
       [(none, .vlam hTy), (none, .vlam xTy),
         (none, .vlam fuelTy), (none, .vlam hyTy),
         (none, .vlam yTy)]
       (natModGoElse (.bvar 4) (.bvar 1)) eV)
-    (y fuel x : Nat)
-    (hhyT : env.HasType 0 [] hy A)
-    (hhfuelT : env.HasType 0 [] hfuel B)
     (happT : env.HasType 0 []
-      (.app (natModGoTargetInst eV y hy fuel x hfuel) proof) R) :
+      (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof) R) :
     env.IsDefEqU 0 []
-      (.app (natModGoTargetInst eV y hy fuel x hfuel) proof) (.natLit x) := by
+      (.app (natDivGoTargetInst eV y hy fuel x hfuel) proof)
+      (.natLit x) := by
   obtain ⟨propV, rfl⟩ := VEnv.natModGoElse_canonical heS
-  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-  have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-  have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
-  have hhyClosed := (hhyT.closedN' wf.ordered.closed trivial).1
-  have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
-  have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
-  have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
-  have happT' := happT
-  simp [natModGoTargetInst, VExpr.inst, VExpr.instVar,
-    hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-    hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-    hfuelClosed.liftN_eq (Nat.zero_le _),
-    hfuelClosed.instN_eq (Nat.zero_le _),
-    hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-    hhfuelClosed.instN_eq (Nat.zero_le _)] at happT'
-  obtain ⟨_, _, hlamT, hproofT⟩ :=
-    VEnv.HasType.app_inv wf.ordered trivial happT'
-  obtain ⟨hpropType, hbodyWF⟩ := hlamT.lam_inv wf trivial
-  obtain ⟨u, hpropT⟩ := hpropType
-  obtain ⟨bodyTy, hbodyT⟩ := hbodyWF
-  have hlamCanonT : env.HasType 0 []
-      (.lam
-        (((((propV.inst (.natLit y) 4).inst hy 3).inst
-          (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
-        (.natLit x))
-      (.forallE
-        (((((propV.inst (.natLit y) 4).inst hy 3).inst
-          (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
-        bodyTy) := .lam hpropT hbodyT
-  have hlamTyEq := hlamT.uniqU wf trivial hlamCanonT
-  obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
-  have hproofT' := hproofT.defeqU_r wf trivial hdomEq.toU
-  exact ⟨_, by
-    simpa [natModGoTargetInst, VExpr.inst, VExpr.instVar,
-      hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-      hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-      hfuelClosed.liftN_eq (Nat.zero_le _),
-      hfuelClosed.instN_eq (Nat.zero_le _),
-      hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-      hhfuelClosed.instN_eq (Nat.zero_le _)] using
-        (VEnv.IsDefEq.beta hbodyT hproofT')⟩
+  simpa [natDivGoBranchInst, VExpr.inst, VExpr.instVar] using
+    VEnv.natGoBranch_beta wf happT
 
 /-- Normalize the computational skeleton of the retained true recursive
-branch, leaving only its generated fuel proof opaque. -/
+remainder branch, leaving only its generated fuel proof opaque. -/
 theorem VEnv.natModGoThen_canonical
     {env : VEnv} {yTy hyTy fuelTy xTy hTy tV : VExpr}
     (htS : TrExprS env []
@@ -3371,156 +2643,45 @@ theorem VEnv.natModGoThen_canonical
   cases htS with
   | lam hpropType hpS hbodyS =>
     rename_i propV bodyV
-    let Δ : VLCtx :=
-      [(none, .vlam propV), (none, .vlam hTy), (none, .vlam xTy),
-        (none, .vlam fuelTy), (none, .vlam hyTy), (none, .vlam yTy)]
-    change TrExprS env [] Δ _ bodyV at hbodyS
-    simp only [natModGoThenBody, mkApp6, mkApp5, mkApp4, mkApp3,
-      mkApp2, mkApp, mkAppB] at hbodyS
-    cases hbodyS with
-    | app h₄T hhfuelT h₄ hhfuelS =>
-        rename_i A₄ B₄ hfuelV
-        cases h₄ with
-        | app h₃T hsubT h₃ hsubS =>
-          rename_i A₃ B₃ subV
-          cases h₃ with
-          | app h₂T hfuelT h₂ hfuelS =>
-            rename_i A₂ B₂ fuelV
-            cases h₂ with
-            | app h₁T hhyT h₁ hhyS =>
-              rename_i A₁ B₁ hyV
-              cases h₁ with
-              | app hgoT hyT hgoS hyS =>
-                rename_i goV A₀ B₀ yV
-                cases hsubS with
-                | app hsubInnerT hsubYT hsubInner hsubYS =>
-                  rename_i subInnerV AS BS subYV
-                  cases hsubInner with
-                  | app hsubFnT hsubXT hsubFnS hsubXS =>
-                    rename_i subFnV AS₀ BS₀ subXV
-                    have hyS' : TrExprS env [] Δ (.bvar 5) yV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hyS
-                    have hhyS' : TrExprS env [] Δ (.bvar 4) hyV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hhyS
-                    have hfuelS' : TrExprS env [] Δ (.bvar 3) fuelV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hfuelS
-                    have hsubXS' : TrExprS env [] Δ (.bvar 2) subXV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hsubXS
-                    have hsubYS' : TrExprS env [] Δ (.bvar 5) subYV := by
-                      simpa [Lean.Expr.liftLooseBVars', liftVar] using hsubYS
-                    have hyEq : yV = .bvar 5 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hyS'
-                    have hhyEq : hyV = .bvar 4 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hhyS'
-                    have hfuelEq : fuelV = .bvar 3 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hfuelS'
-                    have hsubXEq : subXV = .bvar 2 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hsubXS'
-                    have hsubYEq : subYV = .bvar 5 := translated_bvar_target_eq
-                      (by simp [Δ, VLCtx.find?, VLCtx.next, VLocalDecl.value,
-                        VLocalDecl.type, VLocalDecl.depth, VExpr.liftN,
-                        VExpr.lift, liftVar]) hsubYS'
-                    subst yV
-                    subst hyV
-                    subst fuelV
-                    subst subXV
-                    subst subYV
-                    cases hgoS with
-                    | const _ hgoUs _ =>
-                      simp at hgoUs
-                      subst hgoUs
-                      cases hsubFnS with
-                      | const _ hsubUs _ =>
-                        simp at hsubUs
-                        subst hsubUs
-                        exact ⟨propV, hfuelV, rfl⟩
+    have hbodyS' : TrExprS env []
+        [(none, .vlam propV), (none, .vlam hTy), (none, .vlam xTy),
+          (none, .vlam fuelTy), (none, .vlam hyTy), (none, .vlam yTy)]
+        (mkApp5 q(Nat.modCore.go) (.bvar 5) (.bvar 4) (.bvar 3)
+          (mkApp2 q(Nat.sub) (.bvar 2) (.bvar 5))
+          (mkApp6 q(@Nat.div_rec_fuel_lemma) (.bvar 2) (.bvar 5)
+            (.bvar 3) (.bvar 4) (.bvar 0) (.bvar 1))) bodyV := by
+      simpa [natModGoThenBody, Expr.liftLooseBVars_eq,
+        Expr.liftLooseBVars', mkApp6, mkApp5, mkApp4, mkApp3, mkApp2,
+        mkApp, mkAppB] using hbodyS
+    obtain ⟨hfuelV, rfl⟩ := VEnv.natGoCallBody_canonical hbodyS'
+    exact ⟨propV, hfuelV, rfl⟩
 
-def natModGoBranchInst (e : VExpr) (y : Nat)
-    (hy : VExpr) (fuel x : Nat) (h proof : VExpr) : VExpr :=
-  ((((((e.inst (.natLit y) 5).inst hy 4).inst
-    (.natLit fuel) 3).inst (.natLit x) 2).inst h 1).inst proof)
-
-/-- Beta-reduce the selected true recursive branch and evaluate its retained
-`Nat.sub` argument, while preserving the generated recursive fuel proof. -/
+/-- Beta-reduce the selected true recursive branch and evaluate its
+retained `Nat.sub` argument, while preserving the generated recursive fuel
+proof. -/
 theorem VEnv.natModGoThen_beta
     {env : VEnv} (wf : env.WF)
     (hsubR : env.ReflectsNatNatNat ``Nat.sub Nat.sub)
-    (hctors : VEnv.HasNatBoolConstructors env)
     (hsubC : env.contains ``Nat.sub)
-    {yTy hyTy fuelTy xTy hTy tV hy hfuel proof A B : VExpr}
+    {yTy hyTy fuelTy xTy hTy tV hy hfuel proof A : VExpr}
+    {y fuel x : Nat}
     (htS : TrExprS env []
       [(none, .vlam hTy), (none, .vlam xTy),
         (none, .vlam fuelTy), (none, .vlam hyTy),
         (none, .vlam yTy)]
       (natModGoThen (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0)) tV)
-    (y fuel x : Nat)
     (hhyT : env.HasType 0 [] hy A)
-    (hhfuelT : env.HasType 0 [] hfuel B)
     (happT : env.HasType 0 []
-      (.app (natModGoTargetInst tV y hy fuel x hfuel) proof) .nat) :
+      (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof) .nat) :
     ∃ hfuel',
       env.HasType 0 [] (.natModGo y fuel (x - y) hy hfuel') .nat ∧
       env.IsDefEqU 0 []
-        (.app (natModGoTargetInst tV y hy fuel x hfuel) proof)
+        (.app (natDivGoTargetInst tV y hy fuel x hfuel) proof)
         (.natModGo y fuel (x - y) hy hfuel') := by
   obtain ⟨propV, hfuelV, rfl⟩ := VEnv.natModGoThen_canonical htS
-  let propI :=
-    (((((propV.inst (.natLit y) 4).inst hy 3).inst
-      (.natLit fuel) 2).inst (.natLit x) 1).inst hfuel)
-  let hfuelLocal :=
-    (((((hfuelV.inst (.natLit y) 5).inst hy 4).inst
-      (.natLit fuel) 3).inst (.natLit x) 2).inst hfuel 1)
-  let hfuelI := hfuelLocal.inst proof
-  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-  have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-  have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
   have hhyClosed := (hhyT.closedN' wf.ordered.closed trivial).1
-  have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
-  have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
-  have hhfuelClosed := (hhfuelT.closedN' wf.ordered.closed trivial).1
-  have hsubT := (hsubR hsubC).1 0 []
-  have hsubClosed := (hsubT.closedN' wf.ordered.closed trivial).1
-  have happT' := happT
-  simp [propI, hfuelLocal, hfuelI, natModGoTargetInst, natModGoBranchInst,
-    VExpr.inst, VExpr.instVar,
-    hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-    hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-    hfuelClosed.liftN_eq (Nat.zero_le _),
-    hfuelClosed.instN_eq (Nat.zero_le _),
-    hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-    hhfuelClosed.instN_eq (Nat.zero_le _),
-    hsubClosed.instN_eq (Nat.zero_le _)] at happT'
-  obtain ⟨_, _, hlamT, hproofT⟩ :=
-    VEnv.HasType.app_inv wf.ordered trivial happT'
-  obtain ⟨hpropType, hbodyWF⟩ := hlamT.lam_inv wf trivial
-  obtain ⟨u, hpropT⟩ := hpropType
-  obtain ⟨bodyTy, hbodyT⟩ := hbodyWF
-  have hlamCanonT : env.HasType 0 []
-      (.lam propI
-        (.app
-          (.app
-            (.app
-              (.app
-                (.app (.const ``Nat.modCore.go []) (.natLit y)) hy)
-              (.natLit fuel))
-            (.app (.app (.const ``Nat.sub []) (.natLit x)) (.natLit y)))
-          hfuelLocal))
-      (.forallE propI bodyTy) := by
-    exact .lam hpropT hbodyT
-  have hlamTyEq := hlamT.uniqU wf trivial hlamCanonT
-  obtain ⟨_, hdomEq⟩ := (hlamTyEq.forallE_inv wf trivial).1
-  have hproofT' := hproofT.defeqU_r wf trivial hdomEq.toU
   have hbeta : env.IsDefEqU 0 []
-      (.app (natModGoTargetInst
+      (.app (natDivGoTargetInst
         (.lam propV
           (.app
             (.app
@@ -3530,26 +2691,18 @@ theorem VEnv.natModGoThen_beta
                 (.bvar 3))
               (.app (.app (.const ``Nat.sub []) (.bvar 2)) (.bvar 5)))
             hfuelV)) y hy fuel x hfuel) proof)
+      (.app
         (.app
           (.app
             (.app
-              (.app
-                (.app (.const ``Nat.modCore.go []) (.natLit y)) hy)
-              (.natLit fuel))
-            (.app (.app (.const ``Nat.sub []) (.natLit x)) (.natLit y)))
-          hfuelI) := by
-    exact ⟨_, by
-      simpa [propI, hfuelLocal, hfuelI, natModGoTargetInst,
-        natModGoBranchInst,
-        VExpr.inst, VExpr.instVar,
-        hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-        hhyClosed.liftN_eq (Nat.zero_le _), hhyClosed.instN_eq (Nat.zero_le _),
-        hfuelClosed.liftN_eq (Nat.zero_le _),
-        hfuelClosed.instN_eq (Nat.zero_le _),
-        hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-        hhfuelClosed.instN_eq (Nat.zero_le _),
-        hsubClosed.instN_eq (Nat.zero_le _)] using
-          (VEnv.IsDefEq.beta hbodyT hproofT')⟩
+              (.app (.const ``Nat.modCore.go []) (.natLit y)) hy)
+            (.natLit fuel))
+          (.app (.app (.const ``Nat.sub []) (.natLit x)) (.natLit y)))
+        (natDivGoBranchInst hfuelV y hy fuel x hfuel proof)) := by
+    simpa [natDivGoBranchInst, VExpr.inst, VExpr.instVar,
+      hhyClosed.liftN_eq (Nat.zero_le _),
+      hhyClosed.instN_eq (Nat.zero_le _)] using
+      VEnv.natGoBranch_beta wf happT
   have hbodyResultT := (hbeta.of_l wf trivial happT).hasType.2
   obtain ⟨_, _, hprefix₄T, hhfuelIT⟩ :=
     hbodyResultT.app_inv wf.ordered trivial
@@ -3558,124 +2711,11 @@ theorem VEnv.natModGoThen_beta
   have hprefix₄Eq := hsubEq.app_arg wf trivial hprefix₃T hsubArgT
   have hcallEq := hprefix₄Eq.app_same wf trivial hprefix₄T hhfuelIT
   have hrecT := (hcallEq.of_l wf trivial hbodyResultT).hasType.2
-  exact ⟨hfuelI, hrecT, hbeta.trans wf trivial hcallEq⟩
+  exact ⟨natDivGoBranchInst hfuelV y hy fuel x hfuel proof, hrecT,
+    hbeta.trans wf trivial hcallEq⟩
 
-/-- Transport the final fuel proof of a canonical closed `Nat.div.go` call
-to the corresponding final binder of the checked left equation. -/
-theorem VEnv.align_natModGo_final_proof
-    {env : VEnv} (wf : env.WF)
-    (hctors : VEnv.HasNatBoolConstructors env)
-    {yTyL hyTyL fuelTyL xTyL hTyL bodyL hy hfuel : VExpr}
-    (yTyLS : TrExprS env [] [] q(Nat) yTyL)
-    (fuelTyLS : TrExprS env []
-      [(none, .vlam hyTyL), (none, .vlam yTyL)] q(Nat) fuelTyL)
-    (xTyLS : TrExprS env []
-      [(none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)] q(Nat) xTyL)
-    (yTyLType : env.IsType 0 [] yTyL)
-    (hyTyLType : env.IsType 0 [yTyL] hyTyL)
-    (fuelTyLType : env.IsType 0 [hyTyL, yTyL] fuelTyL)
-    (xTyLType : env.IsType 0 [fuelTyL, hyTyL, yTyL] xTyL)
-    (hTyLType : env.IsType 0 [xTyL, fuelTyL, hyTyL, yTyL] hTyL)
-    (leftS : TrExprS env []
-      [(none, .vlam hTyL), (none, .vlam xTyL),
-        (none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)]
-      (natModGoLhsBody (.bvar 4) (.bvar 3) (.bvar 2) (.bvar 1) (.bvar 0))
-      bodyL)
-    (y fuel x : Nat)
-    (hhyL : env.HasType 0 [] hy (hyTyL.inst (.natLit y)))
-    (hcallT : env.HasType 0 [] (.natModGo y (fuel + 1) x hy hfuel) .nat) :
-    env.HasType 0 [] hfuel
-      ((((hTyL.inst (.natLit y) 3).inst hy 2).inst
-        (.natLit fuel) 1).inst (.natLit x)) := by
-  have hyDomL := translated_nat_type_eq wf hctors (by trivial) yTyLS
-  have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-  have hyL := hyT.defeqU_r wf trivial hyDomL.symm
-  have hΔL₂ : VLCtx.WF env 0
-      [(none, .vlam hyTyL), (none, .vlam yTyL)] :=
-    ⟨⟨trivial, nofun, yTyLType⟩, nofun, hyTyLType⟩
-  have hfuelDomCtx := translated_nat_type_eq wf hctors hΔL₂ fuelTyLS
-  have hfuelDom := VEnv.IsDefEqU.inst_outer2 wf hyL hhyL hfuelDomCtx
-  have hfuelT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-  have hfuelL := hfuelT.defeqU_r wf trivial hfuelDom.symm
-  have hΔL₃ : VLCtx.WF env 0
-      [(none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)] :=
-    ⟨hΔL₂, nofun, fuelTyLType⟩
-  have hxDomCtx := translated_nat_type_eq wf hctors hΔL₃ xTyLS
-  have hxDom := VEnv.IsDefEqU.inst_outer3 wf hyL hhyL hfuelL hxDomCtx
-  have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-  have hxL := hxT.defeqU_r wf trivial hxDom.symm
-  have hΔL₅ : VLCtx.WF env 0
-      [(none, .vlam hTyL), (none, .vlam xTyL),
-        (none, .vlam fuelTyL), (none, .vlam hyTyL),
-        (none, .vlam yTyL)] :=
-    ⟨⟨hΔL₃, nofun, xTyLType⟩, nofun, hTyLType⟩
-  have hbodyEq := VEnv.natModGoLhsBody_canonical hctors leftS
-  subst bodyL
-  obtain ⟨_, hbodyWF⟩ := leftS.wf wf.ordered
-    (Us := []) hΔL₅
-  have hbodyFinalT := VEnv.HasType.inst_outer4_keep_head wf
-    hyL hhyL hfuelL hxL hbodyWF.hasType.1
-  let hFinal :=
-    ((((hTyL.inst (.natLit y) 3).inst hy 2).inst
-      (.natLit fuel) 1).inst (.natLit x))
-  obtain ⟨u, hTyLHas⟩ := hTyLType
-  have hFinalHas := VEnv.HasType.inst_outer4 wf
-    hyL hhyL hfuelL hxL hTyLHas
-  have hFinalType : env.IsType 0 [] hFinal := by
-    exact ⟨u, by simpa [hFinal, VExpr.inst] using hFinalHas⟩
-  have hΓ : OnCtx [hFinal] (env.IsType 0) := ⟨trivial, hFinalType⟩
-  have hyClosed : (VExpr.natLit y).ClosedN :=
-    (hyT.closedN' wf.ordered.closed trivial).1
-  have hhyClosed : hy.ClosedN :=
-    (hhyL.closedN' wf.ordered.closed trivial).1
-  have hfuelClosed : (VExpr.natLit fuel).ClosedN :=
-    (hfuelT.closedN' wf.ordered.closed trivial).1
-  have hxClosed : (VExpr.natLit x).ClosedN :=
-    (hxT.closedN' wf.ordered.closed trivial).1
-  have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
-  have hsuccClosed : VExpr.natSucc.ClosedN :=
-    (hsuccT.closedN' wf.ordered.closed trivial).1
-  have hbodyFinalT' := hbodyFinalT
-  simp [VExpr.inst, VExpr.instVar,
-    hyClosed.liftN_eq, hyClosed.instN_eq,
-    hhyClosed.liftN_eq, hhyClosed.instN_eq,
-    hfuelClosed.liftN_eq, hfuelClosed.instN_eq,
-    hxClosed.liftN_eq, hxClosed.instN_eq,
-    hsuccClosed.instN_eq] at hbodyFinalT'
-  obtain ⟨argTyLocal, _, hprefixLocalT, hvarLocalT⟩ :=
-    VEnv.HasType.app_inv wf.ordered hΓ hbodyFinalT'
-  have hcallT' := hcallT
-  simp only [VExpr.natModGo] at hcallT'
-  obtain ⟨argTyClosed, _, hprefixClosedT, hhfuelRaw⟩ :=
-    hcallT'.app_inv wf.ordered trivial
-  have hprefixClosed :
-      (VExpr.app (.app (.app (.app (.const ``Nat.modCore.go []) (.natLit y)) hy)
-        (.natLit (fuel + 1))) (.natLit x)).ClosedN :=
-    (hprefixClosedT.closedN' wf.ordered.closed trivial).1
-  have hprefixWeakT := hprefixClosedT.weak0 (Γ := [hFinal]) wf
-  have hprefixTyEq := hprefixLocalT.uniqU wf hΓ hprefixWeakT
-  obtain ⟨_, hargDomainEq⟩ := (hprefixTyEq.forallE_inv wf hΓ).1
-  have hFinalClosed : hFinal.ClosedN := by
-    obtain ⟨_, hFinalSort⟩ := hFinalType
-    exact (hFinalSort.closedN' wf.ordered.closed trivial).1
-  have hvarCanon : env.HasType 0 [hFinal] (.bvar 0) hFinal := by
-    have hb : env.HasType 0 [hFinal] (.bvar 0) hFinal.lift := .bvar .zero
-    simpa [hFinalClosed.lift_eq] using hb
-  have hvarTyEq := hvarLocalT.uniqU wf hΓ hvarCanon
-  have hctxEq := hvarTyEq.symm.trans wf hΓ hargDomainEq.toU
-  have hargClosed : argTyClosed.ClosedN :=
-    (hhfuelRaw.closedN' wf.ordered.closed trivial).2.2
-  have hFinalEq : env.IsDefEqU 0 [] hFinal argTyClosed := by
-    apply (VEnv.IsDefEqU.weakN_iff wf hΓ
-      (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [hFinal])).1
-    simpa [hFinalClosed.liftN_eq, hargClosed.liftN_eq] using hctxEq
-  exact hhfuelRaw.defeqU_r wf trivial hFinalEq.symm
-
-/-- The checked recursive division equation has the exact operational shape
-required by `ReflectsNatNatNat.of_divCore_equations`. -/
+/-- The checked recursive remainder equation has the exact operational
+shape required by `ReflectsNatNatNat.of_modCore_equations`. -/
 theorem VEnv.natModGo_semantics
     {env : VEnv} (wf : env.WF)
     (hbleR : env.ReflectsNatNatBool ``Nat.ble Nat.ble)
@@ -3710,62 +2750,43 @@ theorem VEnv.natModGo_semantics
     intro y fuel x hy hfuel hcallT
     obtain ⟨yTy, hyTy, fuelTy, xTy, hTy, resultTy,
       yTyS, hyTyS, hhyCanon, hhfuelCanon⟩ :=
-      typeCert.call_mod_proof_types wf hctors hgoT
+      typeCert.call_proof_types wf hgoT
         y (fuel + 1) x hcallT
     have hhyL := VEnv.align_natDivGo_first_proof wf hctors
       yTyLS hyTyLS yTyS hyTyS y hhyCanon
-    have hhfuelL := VEnv.align_natModGo_final_proof wf hctors
-      yTyLS fuelTyLS xTyLS yTyLType hyTyLType fuelTyLType
-      xTyLType hTyLType leftS y fuel x hhyL hcallT
-    have hinstEq := VEnv.instantiate_natDivGo_target_binders wf hctors
-      yTyLS fuelTyLS xTyLS yTyRS fuelTyRS xTyRS
-      yTyLType hyTyLType fuelTyLType xTyLType
-      yTyRType hyTyRType fuelTyRType xTyRType
-      heq y fuel x hhyL hhfuelL
-    have hleftShape := VEnv.natModGoLhsBody_canonical hctors leftS
+    have hleftShape := VEnv.natGoLhsBody_canonical hctors
+      (by simpa [natModGoLhsBody] using leftS)
     subst bodyL
-    have hyT := (hctors.natLitS y (Us := []) (Δ := [])).2
-    have hfuelNatT := (hctors.natLitS fuel (Us := []) (Δ := [])).2
-    have hxT := (hctors.natLitS x (Us := []) (Δ := [])).2
-    have hyClosed := (hyT.closedN' wf.ordered.closed trivial).1
-    have hhyClosed := (hhyL.closedN' wf.ordered.closed trivial).1
-    have hfuelClosed := (hfuelNatT.closedN' wf.ordered.closed trivial).1
-    have hxClosed := (hxT.closedN' wf.ordered.closed trivial).1
-    have hhfuelClosed := (hhfuelL.closedN' wf.ordered.closed trivial).1
-    have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
-    have hsuccClosed := (hsuccT.closedN' wf.ordered.closed trivial).1
     have hEq : env.IsDefEqU 0 []
         (.natModGo y (fuel + 1) x hy hfuel)
-        (natModGoTargetInst bodyR y hy fuel x hfuel) := by
-      simpa [natModGoTargetInst, VExpr.natModGo, VExpr.natLit,
-        VExpr.inst, VExpr.instVar, Nat.add_comm,
-        hyClosed.liftN_eq (Nat.zero_le _), hyClosed.instN_eq (Nat.zero_le _),
-        hhyClosed.liftN_eq (Nat.zero_le _),
-        hhyClosed.instN_eq (Nat.zero_le _),
-        hfuelClosed.liftN_eq (Nat.zero_le _),
-        hfuelClosed.instN_eq (Nat.zero_le _),
-        hxClosed.liftN_eq (Nat.zero_le _), hxClosed.instN_eq (Nat.zero_le _),
-        hhfuelClosed.instN_eq (Nat.zero_le _),
-        hsuccClosed.instN_eq (Nat.zero_le _)] using hinstEq
+        (natDivGoTargetInst bodyR y hy fuel x hfuel) := by
+      simpa [natDivGoTargetInst, VExpr.natModGo, VExpr.natLit,
+        Nat.add_comm] using
+        VEnv.instantiate_natGo_equation wf hctors
+          yTyLS fuelTyLS xTyLS yTyRS fuelTyRS xTyRS
+          yTyLType hyTyLType fuelTyLType yTyRType hyTyRType fuelTyRType
+          heq y fuel x hhyL
+          (by simpa [VExpr.natModGo, VExpr.natLit, Nat.add_comm]
+            using hcallT)
     have hrhsT := (hEq.of_l wf trivial hcallT).hasType.2
+    rw [natModGoRhsBody_eq_parts] at rightS
     obtain ⟨tV, eV, htS, heS, hselect⟩ :=
-      VEnv.select_natModGo_rhs wf hbleR hctors hbleC selector rightS
-        y fuel x hhyL hhfuelL hrhsT
+      VEnv.select_natGo_rhs wf hbleR hctors hbleC selector rightS
+        y fuel x hhyL hhfuelCanon hrhsT
     split
     · rename_i hyx
       rw [if_pos hyx] at hselect
       obtain ⟨proof, hselect⟩ := hselect
       have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
       obtain ⟨hfuel', hrecT, hbranch⟩ := VEnv.natModGoThen_beta
-        wf hsubR hctors hsubC htS y fuel x hhyL hhfuelL hbranchT
+        wf hsubR hsubC htS hhyL hbranchT
       exact ⟨hy, hfuel', hrecT,
         hEq.trans wf trivial hselect |>.trans wf trivial hbranch⟩
     · rename_i hyx
       rw [if_neg hyx] at hselect
       obtain ⟨proof, hselect⟩ := hselect
       have hbranchT := (hselect.of_l wf trivial hrhsT).hasType.2
-      have hbranch := VEnv.natModGoElse_beta
-        wf hctors heS y fuel x hhyL hhfuelL hbranchT
+      have hbranch := VEnv.natModGoElse_beta wf heS hbranchT
       exact hEq.trans wf trivial hselect |>.trans wf trivial hbranch
 
 
