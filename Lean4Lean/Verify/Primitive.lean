@@ -7939,6 +7939,37 @@ theorem checkPrimitiveDef.stringOfList.WF_typed
   exact (checkStringOfListPrimitive.WF_typed hsafety hvlctx hty).bind
     fun _ _ _ h => .pure fun _ => h
 
+/-- Verify the common checker tail for a binary Nat primitive specified by a
+type equation, a zero equation, and a successor equation. -/
+theorem checkNatBinaryEquations.WF {c : VContext} {s : VState}
+    {P : Prop}
+    {ty canon zeroL zeroR succL succR : Expr}
+    {ty' canon' zeroL' zeroR' succL' succR' : VExpr} {err : Exception}
+    (hparams : P)
+    (hty : c.TrExprS ty ty') (hcanon : c.TrExprS canon canon')
+    (hzeroL : c.TrExprS zeroL zeroL') (hzeroR : c.TrExprS zeroR zeroR')
+    (hsuccL : c.TrExprS succL succL') (hsuccR : c.TrExprS succR succR') :
+    M.WF c s (do
+      unless ← isDefEq ty canon do throw err
+      unless ← isDefEq zeroL zeroR do throw err
+      unless ← isDefEq succL succR do throw err
+      pure true) fun b _ => b →
+        P ∧ c.IsDefEqU ty' canon' ∧
+          c.IsDefEqU zeroL' zeroR' ∧ c.IsDefEqU succL' succR' := by
+  exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
+    split
+    · have htyEq := htyEq (by assumption)
+      exact (isDefEq.WF hzeroL hzeroR).bind fun b _ _ hzeroEq => by
+        split
+        · have hzeroEq := hzeroEq (by assumption)
+          exact (isDefEq.WF hsuccL hsuccR).bind fun b _ _ hsuccEq => by
+            split
+            · exact .pure fun _ =>
+                ⟨hparams, htyEq, hzeroEq, hsuccEq (by assumption)⟩
+            · exact .throw
+        · exact .throw
+    · exact .throw
+
 theorem checkPrimitiveDef.natAdd.WF {c : VContext} {s : VState}
     (hname : v.name = ``Nat.add) (hty : c.TrExprS v.type ty')
     (hcanon : c.TrExprS q(Nat → Nat → Nat)
@@ -7965,19 +7996,7 @@ theorem checkPrimitiveDef.natAdd.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
-      split
-      · have htyEq := htyEq (by assumption)
-        exact (isDefEq.WF hz₁ hz₂).bind fun b _ _ hzEq => by
-          split
-          · have hzEq := hzEq (by assumption)
-            exact (isDefEq.WF hs₁ hs₂).bind fun b _ _ hsEq => by
-              split
-              · exact .pure fun _ =>
-                  ⟨hlparams, htyEq, hzEq, hsEq (by assumption)⟩
-              · exact .throw
-          · exact .throw
-      · exact .throw
+    exact checkNatBinaryEquations.WF hlparams hty hcanon hz₁ hz₂ hs₁ hs₂
   · exact .throw
 
 /-- A staged form of the `Nat.add` checker theorem.  The equation
@@ -8496,18 +8515,7 @@ theorem checkPrimitiveDef.natSub.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
-      split
-      · have htyEq := htyEq (by assumption)
-        exact (isDefEq.WF hz₁ hz₂).bind fun b _ _ hzEq => by
-          split
-          · have hzEq := hzEq (by assumption)
-            exact (isDefEq.WF hs₁ hs₂).bind fun b _ _ hsEq => by
-              split
-              · exact .pure fun _ => ⟨hlparams, htyEq, hzEq, hsEq (by assumption)⟩
-              · exact .throw
-          · exact .throw
-      · exact .throw
+    exact checkNatBinaryEquations.WF hlparams hty hcanon hz₁ hz₂ hs₁ hs₂
   · exact .throw
 
 theorem checkPrimitiveDef.natSub.WF_typed {c : VContext} {s : VState}
@@ -8777,18 +8785,7 @@ theorem checkPrimitiveDef.natMul.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
-      split
-      · have htyEq := htyEq (by assumption)
-        exact (isDefEq.WF hz₁ hz₂).bind fun b _ _ hzEq => by
-          split
-          · have hzEq := hzEq (by assumption)
-            exact (isDefEq.WF hs₁ hs₂).bind fun b _ _ hsEq => by
-              split
-              · exact .pure fun _ => ⟨hlparams, htyEq, hzEq, hsEq (by assumption)⟩
-              · exact .throw
-          · exact .throw
-      · exact .throw
+    exact checkNatBinaryEquations.WF hlparams hty hcanon hz₁ hz₂ hs₁ hs₂
   · exact .throw
 
 theorem checkPrimitiveDef.natMul.WF_typed {c : VContext} {s : VState}
@@ -9067,18 +9064,7 @@ theorem checkPrimitiveDef.natPow.WF {c : VContext} {s : VState}
     have hlparams : v.levelParams = [] := by
       simp at hdeps
       simpa using hdeps.2
-    exact (isDefEq.WF hty hcanon).bind fun b _ _ htyEq => by
-      split
-      · have htyEq := htyEq (by assumption)
-        exact (isDefEq.WF hz₁ hz₂).bind fun b _ _ hzEq => by
-          split
-          · have hzEq := hzEq (by assumption)
-            exact (isDefEq.WF hs₁ hs₂).bind fun b _ _ hsEq => by
-              split
-              · exact .pure fun _ => ⟨hlparams, htyEq, hzEq, hsEq (by assumption)⟩
-              · exact .throw
-          · exact .throw
-      · exact .throw
+    exact checkNatBinaryEquations.WF hlparams hty hcanon hz₁ hz₂ hs₁ hs₂
   · exact .throw
 
 theorem checkPrimitiveDef.natPow.WF_typed {c : VContext} {s : VState}
