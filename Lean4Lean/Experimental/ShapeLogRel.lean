@@ -1518,7 +1518,8 @@ theorem ih_fun {f f' : WShapeFun n} :
     have ⟨_, g1, g2, dg⟩ := app_core ih f' d; have ⟨g3, g4, g2⟩ := f'.mem_val' g2
     have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc d)
     refine d1 ▸ e1 ▸ ⟨d.2, e.2⟩
-  · intro f₃; conv => enter [1,x,y,1]; simp only [WShapeFun.mem_def, ShapeFun.mem_join]
+  · intro f₃; conv =>
+      enter [1,x,y,1]; (conv => apply propext WShapeFun.mem_def); simp only [ShapeFun.mem_join]
     refine ⟨fun H => ?_, fun ⟨H1, H2⟩ => ?_⟩
     · refine ⟨fun x y hf => ?_, fun x y hf' => ?_⟩
       · have ⟨_, hf'⟩ := f'.bot_mem
@@ -1526,7 +1527,7 @@ theorem ih_fun {f f' : WShapeFun n} :
         have ⟨_, g1, g2, dg⟩ := app_core ih f' x; have ⟨g3, g4, g2⟩ := f'.mem_val' g2
         have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc x)
         have ⟨c₁, c₂, c1, c2, c3⟩ := H ⟨_, Shape.join_bot ▸ x.2⟩ ⟨_, Shape.join_bot ▸ e1 ▸ e.2⟩
-          (ShapeFun.mem_join.2 ⟨_, hf, ⟨_, hf', Compat.bot_r, rfl⟩⟩)
+          ⟨_, hf, _, hf', Compat.bot_r, rfl⟩
         simp only [bot, Shape.join_bot] at c2 c3
         exact ⟨_, _, c1, c2, .trans ((cf _ hf .rfl).trans (e1 ▸ (show _ ≤ e.1 from ((e2 _).1 .rfl).1) :)) c3⟩
       · have ⟨_, hf⟩ := f.bot_mem
@@ -1534,15 +1535,10 @@ theorem ih_fun {f f' : WShapeFun n} :
         have ⟨_, g1, g2, dg⟩ := app_core ih f' x; have ⟨g3, g4, g2⟩ := f'.mem_val' g2
         have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc x)
         have ⟨c₁, c₂, c1, c2, c3⟩ := H ⟨_, Shape.bot_join ▸ x.2⟩ ⟨_, Shape.bot_join ▸ e1 ▸ e.2⟩
-          (ShapeFun.mem_join.2 ⟨_, hf, ⟨_, hf', Compat.bot_l, rfl⟩⟩)
+          ⟨_, hf, _, hf', Compat.bot_l, rfl⟩
         simp only [bot, Shape.bot_join] at c2 c3
         exact ⟨_, _, c1, c2, .trans ((dg _ hf' .rfl).trans (e1 ▸ (show _ ≤ e.1 from ((e2 _).1 .rfl).2) :)) c3⟩
-    · rintro ⟨a, hx⟩ ⟨b, hy⟩ hab
-      have ⟨x, a3, y, b3, xy, hab⟩ := ShapeFun.mem_join.1 hab
-      dsimp only at hab
-      have ha : a = Shape.join x.1 y.1 := congrArg Prod.fst hab
-      have hb : b = Shape.join (f.1.app (Shape.join x.1 y.1))
-          (f'.1.app (Shape.join x.1 y.1)) := congrArg Prod.snd hab
+    · rintro ⟨_, hx⟩ ⟨_, hy⟩ ⟨x, a3, y, b3, xy, ⟨⟩⟩
       have ⟨a1, a2, a3⟩ := f.mem_val' a3; have ⟨b1, b2, b3⟩ := f'.mem_val' b3
       have ⟨e, e1, e2⟩ := of_compat ih (x := ⟨_, a1⟩) (x' := ⟨_, b1⟩) xy
       have ⟨f₁, f1, f2, cf⟩ := app_core ih f e; have ⟨f3, f4, f2⟩ := f.mem_val' f2
@@ -1550,14 +1546,8 @@ theorem ih_fun {f f' : WShapeFun n} :
       have ⟨i, i1, i2, hi⟩ := app_core ih f₃ e; have ⟨i3, i4, i2⟩ := f₃.mem_val' i2
       have ⟨j, j1, j2⟩ := of_compat ih (x := ⟨_, f4⟩) (x' := ⟨_, g4⟩) (compat_app_l ih hc e)
       have ⟨l1, l2⟩ := (e2 _).1 .rfl
-      have hae : (⟨a, hx⟩ : WShape n) = e := Subtype.ext (ha.trans e1.symm)
-      have hb' : b = Shape.join (f.1.app e.1) (f'.1.app e.1) := by simpa only [e1] using hb
-      have hbj : (⟨b, hy⟩ : WShape n) = j := Subtype.ext (hb'.trans j1.symm)
-      have hie : (⟨i, i3⟩ : WShape n) ≤ e := by
-        exact WShape.LE.def.2 i1
-      refine ⟨_, _, i2, hae.symm ▸ hie, ?_⟩
-      rw [hbj]
-      simp only [WShape.LE.def]
+      refine ⟨_, _, i2, (e1 ▸ i1 :), ?_⟩
+      simp only [WShape.LE.def, ← e1, ← j1]
       refine (j2 ⟨_, i4⟩).2 ⟨?_, ?_⟩
       · have ⟨m, m', m1, m2, m3⟩ := H1 _ _ f2; exact m3.trans (hi _ m1 (m2.trans f1))
       · have ⟨m, m', m1, m2, m3⟩ := H2 _ _ g2; exact m3.trans (hi _ m1 (m2.trans g1))

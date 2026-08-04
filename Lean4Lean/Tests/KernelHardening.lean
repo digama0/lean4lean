@@ -47,15 +47,24 @@ private def imaxDataDecl : Declaration :=
       type := .forallE `b (.const ``Bool []) (.const `L4LKIPData []) .default }]
   }] false
 
-private def nestedAuxConstDecl : Declaration :=
+/-- The auxiliary name the kernel generates for a nested `List` occurrence. -/
+private def auxListName : Name := (`_nested ++ `List).appendIndexAfter 1
+
+/-- lean4#14616.  `mk` nests `List L4LKNReal`, so eliminating it makes the kernel generate
+`_nested.List_1`; `bad` then names that auxiliary.  This is the form that *discriminates*:
+without the check the declaration is accepted, and `restoreNested` rewrites the stored type of
+`bad` to `List L4LKNReal → L4LKNReal`, which the kernel never checked.  A declaration naming an
+auxiliary that never exists is instead rejected as an unknown constant either way. -/
+private def nestedAuxRealDecl : Declaration :=
   .inductDecl [] 0 [{
-    name := `L4LKNAux
-    type := .sort .zero
-    ctors := [{
-      name := `L4LKNAux.mk
-      type := .forallE `x
-        (.app (.const `_nested.L4LHost_1 [.zero]) (.const ``True []))
-        (.const `L4LKNAux []) .default }]
+    name := `L4LKNReal
+    type := .sort 1
+    ctors := [
+      { name := `L4LKNReal.mk
+        type := .forallE `xs (.app (.const ``List [.zero]) (.const `L4LKNReal []))
+          (.const `L4LKNReal []) .default },
+      { name := `L4LKNReal.bad
+        type := .forallE `y (.const auxListName []) (.const `L4LKNReal []) .default }]
   }] false
 
 private def nestedAuxProjDecl : Declaration :=
@@ -81,11 +90,41 @@ private def nestedBadDecl (bad : Expr) (name : Name) : Declaration :=
           (ind (.bvar 1)) .default) .default }]
   }] false
 
+/-- lean4#14613: projecting the field back out of a `Sort (imax 1 0)` proof would break proof
+irrelevance, so `inferProj` must reject it. -/
+private def imaxLeakDecl : Declaration :=
+  .defnDecl {
+    name := `L4LKIPLeak
+    levelParams := []
+    type := .forallE `proof (.const `L4LKIPData []) (.const ``Bool []) .default
+    value := .lam `proof (.const `L4LKIPData []) (.proj `L4LKIPData 0 (.bvar 0)) .default
+    hints := .abbrev, safety := .safe }
+
+structure L4LKC where b : Bool
+inductive L4LKW : Type where | mk (p : Bool)
+inductive L4LKL (α : Type) (b : Bool) : Type where | mk
+
+/-- lean4#14576/#14577: the parametric arguments of a nested occurrence are dropped from the
+auxiliary declaration, so they escape checking unless they are checked against the environment
+that results from the declaration. Here `w.1.1` is ill typed. -/
+private def nestedIllTypedParams : Declaration :=
+  let w : Expr := .bvar 0
+  let Ew : Expr := .app (.const `L4LKE []) w
+  let b : Expr := .proj ``L4LKC 0 (.proj ``L4LKC 0 w)
+  let l : Expr := mkApp2 (.const ``L4LKL []) Ew b
+  .inductDecl [] 1 [{
+    name := `L4LKE
+    type := .forallE `w (.const ``L4LKW []) (.sort 1) .default
+    ctors := [{
+      name := `L4LKE.mk
+      type := .forallE `w (.const ``L4LKW [])
+        (.forallE `l l (.app (.const `L4LKE []) (.bvar 1)) .default) .default }]
+  }] false
+
 private partial def deepNat : Nat → Expr
   | 0 => .const ``Nat.zero []
   | n + 1 => .app (.const ``Nat.succ []) (deepNat n)
 
-structure ProjA where a : Nat
 structure ProjB where b : Nat
 
 run_meta do
@@ -115,12 +154,23 @@ run_meta do
     | throwError "imax-Prop recursor was not generated"
   unless recInfo.levelParams.isEmpty do
     throwError "imax-Prop inductive received a large-elimination universe"
+  -- ... but its field must not be projectable back out, or proof irrelevance equates
+  -- `mk false` and `mk true`.
+  expectError "projection out of an `imax`-`Prop` proof" "invalid projection" <|
+    Lean4Lean.addDecl env' imaxLeakDecl
 
-  -- lean4#14616: both expression forms that can name `_nested` auxiliaries are reserved.
-  expectError "inductive naming a nested auxiliary constant" "reserved prefix '_nested'" <|
-    Lean4Lean.addDecl env nestedAuxConstDecl
-  expectError "inductive naming a nested auxiliary projection" "reserved prefix '_nested'" <|
+  -- lean4#14616: a constructor naming a `_nested` auxiliary the kernel really generated.
+  expectError "constructor naming a generated nested auxiliary" "reserved prefix '_nested'" <|
+    Lean4Lean.addDecl env nestedAuxRealDecl
+  -- The `Expr.proj` form of the same scan.  Note this one names an auxiliary that never exists,
+  -- so it pins the branch rather than the hole: without the check it is still rejected, as an
+  -- unknown constant.
+  expectError "constructor naming a nested auxiliary in a projection" "reserved prefix '_nested'" <|
     Lean4Lean.addDecl env nestedAuxProjDecl
+
+  -- lean4#14576/#14577: parametric arguments dropped from the auxiliary declaration.
+  expectError "nested inductive with ill-typed dropped parameters" "invalid projection" <|
+    Lean4Lean.addDecl env nestedIllTypedParams
 
   -- lean4#14607: validate original nested constructor types before elimination can hide them.
   expectError "nested inductive containing a free variable" "free variables" <|
@@ -128,21 +178,18 @@ run_meta do
   expectError "nested inductive containing a metavariable" "metavariables" <|
     Lean4Lean.addDecl env <| nestedBadDecl (.mvar { name := `l4lBadMVar }) `L4LNestedMVar
 
-  -- lean4#14631/#14632: projections compare and reduce using both structure name and index.
+  -- lean4#14632: projection indices are `Nat` throughout lean4lean, so an index past `2^32`
+  -- is stuck rather than truncated.  The structure *name* is deliberately not compared here;
+  -- see the projection entry in `divergences.md`.
   let b : Expr := .app (.const ``ProjB.mk []) (mkRawNatLit 7)
   let good : Expr := .proj ``ProjB 0 b
-  let wrong : Expr := .proj ``ProjA 0 b
   let huge : Expr := .proj ``ProjB 4294967296 b
   let goodWhnf ← runM <| TypeChecker.M.run env (x := TypeChecker.whnf good)
   unless goodWhnf == mkRawNatLit 7 do throwError "valid projection did not reduce"
-  let wrongWhnf ← runM <| TypeChecker.M.run env (x := TypeChecker.whnf wrong)
-  unless wrongWhnf == wrong do throwError "projection with the wrong structure name reduced"
   let hugeWhnf ← runM <| TypeChecker.M.run env (x := TypeChecker.whnf huge)
   unless hugeWhnf == huge do throwError "large projection index was truncated during reduction"
   let same ← runM <| TypeChecker.M.run env (x := TypeChecker.isDefEq good good)
   unless same do throwError "identical projections were not definitionally equal"
-  let different ← runM <| TypeChecker.M.run env (x := TypeChecker.isDefEq good wrong)
-  if different then throwError "projections with different structure names were definitionally equal"
   expectError "out-of-range large projection" "invalid projection" <|
     TypeChecker.M.run env (x := TypeChecker.checkType huge)
 

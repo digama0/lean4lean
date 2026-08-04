@@ -19,7 +19,7 @@ inductive Subpattern (p : Pattern) : Pattern → Prop where
   | appR : Subpattern p a → Subpattern p (.app f a)
   | varL : Subpattern p f → Subpattern p (.var f)
 
-def Subpattern.varN (h : Subpattern p f) : ∀ {n}, Subpattern p (.varN f n)
+theorem Subpattern.varN (h : Subpattern p f) : ∀ {n}, Subpattern p (.varN f n)
   | 0 => h
   | _+1 => .varL (.varN h)
 

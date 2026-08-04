@@ -73,19 +73,17 @@ theorem beq_refl (s : Substring.Raw) : s == s := by
   termination_by n.byteIdx - i.byteIdx
   refine ⟨?_, loop⟩
   obtain h | h := Nat.le_or_le s.repair.startPos.byteIdx s.repair.stopPos.byteIdx
-  · simp only [Nat.add_sub_cancel' h]
-    have hv : s.repair.stopPos.IsValid s.repair.str := by
-      simp [Substring.Raw.repair]; split <;> simp [*]
-    exact decide_eq_true <| by
-      simpa only [← String.byteIdx_rawEndPos, ← String.Pos.Raw.le_iff] using hv.le_rawEndPos
+  · simp only [Nat.add_sub_cancel' h, decide_eq_true_eq]
+    apply String.Pos.Raw.IsValid.le_rawEndPos
+    simp [Substring.Raw.repair]; split <;> simp [*]
   · simp [Nat.sub_eq_zero_of_le h]
     apply String.Pos.Raw.IsValid.le_rawEndPos
     simp [Substring.Raw.repair]; split <;> simp [*]
 
 open private substrEq.loop from Init.Data.String.Basic in
 theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
-  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq,
-    String.byteIdx_rawEndPos]
+  simp +contextual [(· == ·), Substring.Raw.beq, String.Pos.Raw.substrEq]
+  simp [Substring.Raw.bsize]
   let rec loop {s s' b b' i n} :
       substrEq.loop s s' ⟨b + i⟩ ⟨b' + i⟩ ⟨b + n⟩ ↔
       substrEq.loop s' s ⟨b' + i⟩ ⟨b + i⟩ ⟨b' + n⟩ := by
@@ -96,32 +94,19 @@ theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
     exact Bool.eq_iff_iff.2 loop
   termination_by b + n - (b + i)
   intro h1 h2 h3
-  replace h1 := of_decide_eq_true h1
-  replace h2 := of_decide_eq_true h2
-  replace h3 := of_decide_eq_true h3
   have loop := @loop (i := 0); simp at loop
-  intro h
-  refine ⟨decide_eq_true h1.symm, ⟨decide_eq_true ?_, decide_eq_true ?_⟩, ?_⟩
-  · simpa [h1] using h3
-  · simpa [h1] using h2
-  · simpa [h1, loop] using h
+  simp [loop]
 
 open private substrEq.loop from Init.Data.String.Basic in
 theorem beq_trans {s t : Substring.Raw} : s == t → t == u → s == u := by
-  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq,
-    String.byteIdx_rawEndPos]
+  simp +contextual [(· == ·), Substring.Raw.beq, String.Pos.Raw.substrEq]
+  simp [Substring.Raw.bsize]
   let ⟨s, ⟨b⟩, e⟩ := s.repair
   let ⟨s2, ⟨b2⟩, e2⟩ := t.repair
   let ⟨s3, ⟨b3⟩, e3⟩ := u.repair
   intro h1 h2 h3 h4 h5 h6 h7 h8
-  replace h1 := of_decide_eq_true h1
-  replace h2 := of_decide_eq_true h2
-  replace h3 := of_decide_eq_true h3
-  replace h5 := of_decide_eq_true h5
-  replace h6 := of_decide_eq_true h6
-  replace h7 := of_decide_eq_true h7
-  constructor; · exact decide_eq_true (h1.trans h5)
-  simp at h4
+  constructor; · omega
+  simp [h5] at h4
   let rec loop {s₁ s₂ s₃ b₁ b₂ b₃ i n} :
       (h : substrEq.loop s₁ s₂ ⟨b₁ + i⟩ ⟨b₂ + i⟩ ⟨b₁ + n⟩) →
       (substrEq.loop s₁ s₃ ⟨b₁ + i⟩ ⟨b₃ + i⟩ ⟨b₁ + n⟩ ↔
@@ -133,10 +118,7 @@ theorem beq_trans {s t : Substring.Raw} : s == t → t == u → s == u := by
     refine Bool.eq_iff_iff.2 (loop h2)
   termination_by n - i
   have loop := @loop (i := 0) (h := h4); simp at loop
-  refine ⟨decide_eq_true ?_, ?_⟩
-  · simpa [h1, h5] using h7
-  · rw [loop]
-    simpa [h1, h5] using h8
+  simpa [loop] using h8
 
 instance : EquivBEq Substring.Raw where
   symm := beq_symm
@@ -268,6 +250,9 @@ private def flagAt (fv ev lv lp : Bool) : Nat → Bool
   | 3 => lp
   | _ => false
 
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
+
 private theorem mkData_flags (H : br ≤ 2 ^ 20 - 1) :
     (mkData h br d fv ev lv lp).hasFVar = fv ∧
     (mkData h br d fv ev lv lp).hasExprMVar = ev ∧
@@ -350,29 +335,18 @@ private theorem mkAppData_flag (i : Nat) (hi : i < 4) :
       (fData.hasExprMVar || aData.hasExprMVar)
       (fData.hasLevelMVar || aData.hasLevelMVar)
       (fData.hasLevelParam || aData.hasLevelParam) i := by
-  have fF := Data.hasFVar_eq_getLsbD fData
-  have aF := Data.hasFVar_eq_getLsbD aData
-  have fE := Data.hasExprMVar_eq_getLsbD fData
-  have aE := Data.hasExprMVar_eq_getLsbD aData
-  have fM := Data.hasLevelMVar_eq_getLsbD fData
-  have aM := Data.hasLevelMVar_eq_getLsbD aData
-  have fP := Data.hasLevelParam_eq_getLsbD fData
-  have aP := Data.hasLevelParam_eq_getLsbD aData
   have hm : max fData.looseBVarRange aData.looseBVarRange ≤
       (Nat.pow 2 20 - 1).toUInt32 := by
     dsimp +instances [instMaxUInt32, maxOfLe]
     split <;> exact Data.looseBVarRange_le
-  rw [mkAppData_eq]
-  unfold mkAppData'
-  unfold Expr.Data at *
-  simp only [if_pos hm, id_eq]
+  rw [mkAppData_eq, mkAppData', if_pos hm]
   generalize (mixHash fData aData).toUInt32 = hash
   have : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
   rcases this with rfl | rfl | rfl | rfl
-  · simpa [flagAt, fF, aF]
-  · simpa [flagAt, fE, aE]
-  · simpa [flagAt, fM, aM]
-  · simpa [flagAt, fP, aP]
+  · simp [flagAt, Data.hasFVar_eq_getLsbD]
+  · simp [flagAt, Data.hasExprMVar_eq_getLsbD]
+  · simp [flagAt, Data.hasLevelMVar_eq_getLsbD]
+  · simp [flagAt, Data.hasLevelParam_eq_getLsbD]
 
 private theorem mkAppData_hasFVar :
     (mkAppData fData aData).hasFVar = (fData.hasFVar || aData.hasFVar) := by
@@ -585,6 +559,9 @@ attribute [simp] mkConst mkBVar mkSort mkFVar mkMVar mkMData mkProj mkApp mkLamb
   updateApp! updateFVar! updateConst! updateSort! updateMData! updateProj!
   updateForall! updateForallE! updateLambda! updateLambdaE! updateLetE! updateLet!
 
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
+
 theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
     (mkData h br d fv ev lv lp).looseBVarRange.toNat = br := by
   rw [mkData_eq, mkData', if_pos H]; dsimp only [Data.looseBVarRange, -Nat.reducePow]
@@ -619,10 +596,7 @@ theorem mkAppData_looseBVarRange :
     (mkAppData fData aData).looseBVarRange = max fData.looseBVarRange aData.looseBVarRange := by
   have hm : max fData.looseBVarRange aData.looseBVarRange ≤ (Nat.pow 2 20 - 1).toUInt32 := by
     dsimp +instances [instMaxUInt32, maxOfLe]; split <;> exact Data.looseBVarRange_le
-  rw [mkAppData_eq]
-  unfold mkAppData'
-  unfold Expr.Data at *
-  simp only [if_pos hm, id_eq]
+  rw [mkAppData_eq, mkAppData', if_pos hm]
   simp [Data.looseBVarRange] at hm
   dsimp only [Data.looseBVarRange, -Nat.reducePow]
   generalize (max .. : UInt32) = m at *

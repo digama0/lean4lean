@@ -112,6 +112,9 @@ attribute [simp] mkLevelSucc mkLevelMax mkLevelIMax updateSucc! updateMax! updat
     unfold getOffsetAux getOffset'; split <;> simp
     rw [go]; simp [Nat.add_right_comm, Nat.add_assoc]
 
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
+
 theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := by
   rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
   have : d.toUInt64.toUInt32.toNat = d := by simp; omega
@@ -242,19 +245,19 @@ namespace Normalize
 
 attribute [local instance] Lean.Level.Normalize.instOrdName_lean4Lean
 
-local instance : _root_.Std.TransCmp (α := Name) compare := inferInstanceAs (_root_.Std.TransCmp Name.cmp)
-local instance : _root_.Std.LawfulBEqCmp (α := List Name) compare :=
-  inferInstanceAs (_root_.Std.LawfulBEqCmp (List.compareLex Name.cmp))
+local instance : Std.TransCmp (α := Name) compare := inferInstanceAs (Std.TransCmp Name.cmp)
+local instance : Std.LawfulBEqCmp (α := List Name) compare :=
+  inferInstanceAs (Std.LawfulBEqCmp (List.compareLex Name.cmp))
 
 instance : LawfulBEq VarNode where
   rfl {a} := by cases a <;> simp! +instances [instBEqVarNode]
   eq_of_beq {a b} := by cases a <;> cases b <;> simp! +instances [instBEqVarNode]
 
 @[reducible] local instance : Membership (List Name) NormLevel :=
-  inferInstanceAs (Membership _ (_root_.Std.TreeMap _ _ compare))
+  inferInstanceAs (Membership _ (Std.TreeMap _ _ compare))
 
 @[reducible] local instance : GetElem? NormLevel (List Name) Node (fun m a => a ∈ m) :=
-  inferInstanceAs (GetElem? (_root_.Std.TreeMap _ _ compare) ..)
+  inferInstanceAs (GetElem? (Std.TreeMap _ _ compare) ..)
 
 section
 variable (ls : List Name) (ρ : List Nat) in
@@ -324,24 +327,24 @@ def NormLevel.eval (l : NormLevel) : Nat :=
 
 theorem NormLevel.eval_le : eval ls ρ l ≤ n ↔
     ∀ a b, l.get? a = some b → evalPath ls ρ a (b.eval ls ρ) ≤ n := by
-  simp [eval, _root_.Std.TreeMap.foldl_eq_foldl_toList, ← List.foldr_reverse]
-  simp only [← _root_.Std.TreeMap.mem_toList_iff_getElem?_eq_some, ← l.toList.mem_reverse]
+  simp [eval, Std.TreeMap.foldl_eq_foldl_toList, ← List.foldr_reverse]
+  simp only [← Std.TreeMap.mem_toList_iff_getElem?_eq_some, ← l.toList.mem_reverse]
   induction l.toList.reverse with simp | cons a l; let (a, b) := a
   simp [or_imp, forall_and, Nat.max_le, and_comm, *]
 
 end
 
 theorem NormLevel.addVar_contains (H : acc.contains x) : (addVar v k path acc).contains x := by
-  simp_all [addVar, _root_.Std.TreeMap.mem_modify]
+  simp_all [addVar, Std.TreeMap.mem_modify]
 
 theorem NormLevel.addNode_contains (H : acc.contains x) : (addNode v k path acc).contains x := by
-  simp [addNode, _root_.Std.TreeMap.mem_alter] at *; split <;> simp [*]
+  simp [addNode, Std.TreeMap.mem_alter] at *; split <;> simp [*]
 
 theorem NormLevel.addNode_contains_self : (addNode v k path acc).contains path := by
   simp [addNode]; split <;> simp
 
 theorem NormLevel.addConst_contains (H : acc.contains x) : (addConst k path acc).contains x := by
-  simp [addConst] at *; split <;> simp [H, _root_.Std.TreeMap.mem_modify]
+  simp [addConst] at *; split <;> simp [H, Std.TreeMap.mem_modify]
 
 theorem normalizeAux_contains (H : acc.contains x) : (normalizeAux u path k acc).contains x := by
   unfold normalizeAux; split
@@ -372,7 +375,7 @@ theorem imax_imax : Lean.Nat.imax a (Lean.Nat.imax b c) =
   simp [Lean.Nat.imax]; by_cases h : c = 0 <;> simp [*, Nat.max_eq_max]
   rw [Nat.max_left_comm c, Nat.max_self]
 
-theorem mem_orderedInsert [BEq α] [LawfulBEq α] [_root_.Std.LawfulBEqCmp (α := α) cmp] :
+theorem mem_orderedInsert [BEq α] [LawfulBEq α] [Std.LawfulBEqCmp (α := α) cmp] :
     b ∈ (orderedInsert cmp a ls).getD ls ↔ b = a ∨ b ∈ ls := by
   induction ls <;> simp [orderedInsert]; split <;> simp_all [or_left_comm]
 
@@ -411,8 +414,8 @@ theorem NormLevel.addConst_eval
       rw [this, Nat.max_eq_left]; simp [evalPath]; split <;> [rename_i h; simp]
       let ⟨h1, h2⟩ := allNZ_cons.1 h; exact Nat.le_trans h1 (evalPath_le.1 le h2)
   · refine ext_le fun x => ?_
-    rw [← _root_.Std.TreeMap.isSome_getElem?_eq_contains, Option.isSome_iff_exists] at H; let ⟨v, H⟩ := H
-    simp [eval_le, Nat.max_le, _root_.Std.TreeMap.getElem?_modify, evalPath_le, Node.eval_le, H]
+    rw [← Std.TreeMap.isSome_getElem?_eq_contains, Option.isSome_iff_exists] at H; let ⟨v, H⟩ := H
+    simp [eval_le, Nat.max_le, Std.TreeMap.getElem?_modify, evalPath_le, Node.eval_le, H]
     refine ⟨fun h1 => ?_, fun ⟨h1, h2⟩ a b => ?_⟩
     · have := h1 path; simp [Nat.max_le] at this
       refine ⟨fun a b h3 h4 => ?_, fun h => (this h).1.1⟩
@@ -433,7 +436,7 @@ theorem VarNode.addVar_le : (∀ vn ∈ VarNode.addVar v k l, vn.eval ls ρ ≤ 
 theorem NormLevel.addNode_eval : (addNode v k path acc).eval ls ρ =
     max' (acc.eval ls ρ) (evalPath ls ρ path (evalParam ls ρ v + k)) := by
   refine ext_le fun x => ?_
-  simp [addNode, eval_le, _root_.Std.TreeMap.getElem?_alter, evalPath_le, Node.eval_le, Nat.max_le]
+  simp [addNode, eval_le, Std.TreeMap.getElem?_alter, evalPath_le, Node.eval_le, Nat.max_le]
   refine ⟨fun H => ⟨fun a b h nz => ?_, fun nz => ?_⟩, fun ⟨H1, H2⟩ a b h nz => ?_⟩
   · have := H a; split at this
     · subst a; simp_all [VarNode.addVar_le]
@@ -450,8 +453,8 @@ theorem NormLevel.addNode_eval : (addNode v k path acc).eval ls ρ =
 theorem NormLevel.addVar_eval (H : acc.contains path) : (addVar v k path acc).eval ls ρ =
     max' (acc.eval ls ρ) (evalPath ls ρ path (evalParam ls ρ v + k)) := by
   refine ext_le fun x => ?_
-  rw [← _root_.Std.TreeMap.isSome_getElem?_eq_contains, Option.isSome_iff_exists] at H; let ⟨v, H⟩ := H
-  simp [addVar, eval_le, Nat.max_le, _root_.Std.TreeMap.getElem?_modify, evalPath_le, Node.eval_le, H]
+  rw [← Std.TreeMap.isSome_getElem?_eq_contains, Option.isSome_iff_exists] at H; let ⟨v, H⟩ := H
+  simp [addVar, eval_le, Nat.max_le, Std.TreeMap.getElem?_modify, evalPath_le, Node.eval_le, H]
   refine ⟨fun H => ⟨fun a b h nz => ?_, fun nz => ?_⟩, fun ⟨H1, H2⟩ a b h nz => ?_⟩
   · have := H a; split at this
     · subst a; simp_all [VarNode.addVar_le]
@@ -554,19 +557,19 @@ theorem Node.eval_congr {a b : Node} (H : a == b) : a.eval ls ρ = b.eval ls ρ 
   simp +instances [instBEqNode] at H; simp [H, eval]
 
 theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.eval ls ρ := by
-  simp +instances only [instBEqNormLevel, _root_.Std.TreeMap.all_eq_all_toList,
+  simp +instances only [instBEqNormLevel, Std.TreeMap.all_eq_all_toList,
     Bool.and_eq_true, List.all_eq_true] at H
   suffices ∀ {a b : NormLevel}, (∀ x ∈ a.toList, b.get? x.1 == some x.2) →
       a.eval ls ρ ≤ b.eval ls ρ from Nat.le_antisymm (this H.1) (this H.2)
   clear a b H; intro a b H
-  simp only [eval, _root_.Std.TreeMap.foldl_eq_foldl_toList]
+  simp only [eval, Std.TreeMap.foldl_eq_foldl_toList]
   rw [← a.toList.reverse_reverse] at H ⊢; generalize a.toList.reverse = a at H ⊢
-  simp only [List.mem_reverse, _root_.Std.TreeMap.get?_eq_getElem?, List.foldl_reverse] at H ⊢
+  simp only [List.mem_reverse, Std.TreeMap.get?_eq_getElem?, List.foldl_reverse] at H ⊢
   induction a with | nil => exact Nat.zero_le _ | cons p l ih; let (x, y) := p
   simp only [List.mem_cons, or_imp, forall_and, forall_eq, List.foldr_cons] at H ⊢
   refine Nat.max_le.2 ⟨ih H.2, ?_⟩
   let ⟨y', h1, h2⟩ := Option.beq_some_iff.1 H.1
-  have H := _root_.Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 h1
+  have H := Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 h1
   rw [← b.toList.reverse_reverse] at H ⊢; generalize b.toList.reverse = b at H ⊢
   simp only [List.mem_reverse, List.foldl_reverse] at H ⊢
   induction b with | nil => cases H | cons p l ih; let (x, y) := p
