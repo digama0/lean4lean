@@ -1701,60 +1701,64 @@ theorem VEnv.HasPrimitives.addPrimitiveDefEq {env env' : VEnv}
         (by rwa [same ``String.ofList hneString] at H)
       ⟨hu, fun U Γ => (hty U Γ).mono le, hnil.mono le, hcons.mono le⟩ }
 
+/-- Shared scaffolding for the `add*Def` conservation theorems: extending by
+a primitive definition yields the constant's typing, its defeq to the
+definition body, and the `Nat` constructor typings in the extended
+environment. -/
+theorem VEnv.HasPrimitives.defKit {env env' : VEnv} {v : VDefVal}
+    (h : env.HasPrimitives) {n : Name} {ty : VExpr}
+    (hnat : env.contains ``Nat)
+    (hname : v.name = n)
+    (hadd : env.addConst n v.toVConstant = some env')
+    (hwf : (env'.addDefEq v.toDefEq).WF)
+    (hu : v.uvars = 0)
+    (hty : env.IsDefEqU 0 [] v.type ty)
+    (hnext :
+      env ≤ env'.addDefEq v.toDefEq →
+      (∀ U Γ, (env'.addDefEq v.toDefEq).HasType U Γ (.const n []) ty) →
+      (env'.addDefEq v.toDefEq).IsDefEqU 0 [] (.const n []) v.value →
+      (∀ Γ, (env'.addDefEq v.toDefEq).HasType 0 Γ .natZero .nat) →
+      (∀ Γ, (env'.addDefEq v.toDefEq).HasType 0 Γ .natSucc
+        (.forallE .nat .nat)) →
+      (env'.addDefEq v.toDefEq).HasPrimitives) :
+    (env'.addDefEq v.toDefEq).HasPrimitives := by
+  let env'' := env'.addDefEq v.toDefEq
+  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
+  have hf (U Γ) : env''.HasType U Γ (.const n []) ty :=
+    VEnv.HasType.const_of_type_defeq hwf (by
+      change env'.constants n = some v.toVConstant
+      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
+  have hcf := VDefVal.const_defeq_value hwf hu
+  rw [hname] at hcf
+  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
+    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
+  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
+    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
+  exact hnext le hf hcf hzero hsucc
+
 theorem VEnv.HasPrimitives.addNatPred {env env' : VEnv}
     (h : env.HasPrimitives)
     (hadd : env.addConst ``Nat.pred ci = some env')
     (href : (env'.addDefEq df).ReflectsNatNat ``Nat.pred Nat.pred) :
     (env'.addDefEq df).HasPrimitives := by
-  let env'' := env'.addDefEq df
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have same (p : Name) (hne : ``Nat.pred ≠ p) :
-      env''.constants p = env.constants p := by
-    change env'.constants p = env.constants p
-    exact VEnv.addConst_constants_of_ne hadd hne
-  have oldContains {p : Name} (hne : ``Nat.pred ≠ p)
-      (H : env''.contains p) : env.contains p := by
-    let ⟨pci, hpci⟩ := H
-    exact ⟨pci, by rwa [same p hne] at hpci⟩
-  have newContains {p : Name} (H : env.contains p) : env''.contains p :=
-    let ⟨_, hpci⟩ := H; ⟨_, le.constants hpci⟩
-  refine {
-    bool := fun H =>
-      let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
-      ⟨newContains hfalse, newContains htrue⟩
-    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
-    boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
-    boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
-    nat := fun H =>
-      let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
-      ⟨newContains hzero, newContains hsucc⟩
-    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
-    natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
-    natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
-    natPred := href
-    natAdd := h.natAdd.addConst hadd (by decide) |>.addDefEq
-    natSub := h.natSub.addConst hadd (by decide) |>.addDefEq
-    natMul := h.natMul.addConst hadd (by decide) |>.addDefEq
-    natPow := h.natPow.addConst hadd (by decide) |>.addDefEq
-    natGcd := h.natGcd.addConst hadd (by decide) |>.addDefEq
-    natMod := h.natMod.addConst hadd (by decide) |>.addDefEq
-    natDiv := h.natDiv.addConst hadd (by decide) |>.addDefEq
-    natBEq := h.natBEq.addConst hadd (by decide) |>.addDefEq
-    natBLE := h.natBLE.addConst hadd (by decide) |>.addDefEq
-    natBitwise := h.natBitwise.addConst hadd (by decide) |>.addDefEq
-    natLAnd := h.natLAnd.addConst hadd (by decide) |>.addDefEq
-    natLOr := h.natLOr.addConst hadd (by decide) |>.addDefEq
-    natXor := h.natXor.addConst hadd (by decide) |>.addDefEq
-    natShiftLeft := h.natShiftLeft.addConst hadd (by decide) |>.addDefEq
-    natShiftRight := h.natShiftRight.addConst hadd (by decide) |>.addDefEq
-    charOfNat := fun H =>
-      let ⟨hu, hty⟩ := h.charOfNat
-        (by rwa [same ``Char.ofNat (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono le⟩
-    stringOfList := fun H =>
-      let ⟨hu, hty, hnil, hcons⟩ := h.stringOfList
-        (by rwa [same ``String.ofList (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono le, hnil.mono le, hcons.mono le⟩ }
+  exact h.addPrimitiveDefEq hadd (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide) (by decide)
+    href
+    ((h.natAdd.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natSub.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natMul.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natPow.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natGcd.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natMod.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natDiv.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBEq.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBLE.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBitwise.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natLAnd.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natLOr.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natXor.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := df))
 
 theorem VEnv.HasPrimitives.addNatPredDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (hnat : env.contains ``Nat)
@@ -1768,76 +1772,34 @@ theorem VEnv.HasPrimitives.addNatPredDef {env env' : VEnv} {v : VDefVal}
       (.lam .nat <| .app v.value (.app .natSucc (.bvar 0)))
       (.lam .nat <| .bvar 0)) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.pred []) (.forallE .nat .nat) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.pred = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
   have href := VEnv.ReflectsNatNat.of_pred_equations hwf hzero hsucc hf hcf
     (hz.mono le) (hs.mono le)
   exact h.addNatPred hadd href
-
 theorem VEnv.HasPrimitives.addNatAdd {env env' : VEnv}
     (h : env.HasPrimitives)
     (hadd : env.addConst ``Nat.add ci = some env')
     (href : (env'.addDefEq df).ReflectsNatNatNat ``Nat.add Nat.add) :
     (env'.addDefEq df).HasPrimitives := by
-  let env'' := env'.addDefEq df
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have same (p : Name) (hne : ``Nat.add ≠ p) :
-      env''.constants p = env.constants p := by
-    change env'.constants p = env.constants p
-    exact VEnv.addConst_constants_of_ne hadd hne
-  have oldContains {p : Name} (hne : ``Nat.add ≠ p)
-      (H : env''.contains p) : env.contains p := by
-    let ⟨pci, hpci⟩ := H
-    exact ⟨pci, by rwa [same p hne] at hpci⟩
-  have newContains {p : Name} (H : env.contains p) : env''.contains p :=
-    let ⟨_, hpci⟩ := H; ⟨_, le.constants hpci⟩
-  refine {
-    bool := fun H =>
-      let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
-      ⟨newContains hfalse, newContains htrue⟩
-    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
-    boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
-    boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
-    nat := fun H =>
-      let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
-      ⟨newContains hzero, newContains hsucc⟩
-    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
-    natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
-    natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
-    natPred := h.natPred.addConst hadd (by decide) |>.addDefEq
-    natAdd := href
-    natSub := h.natSub.addConst hadd (by decide) |>.addDefEq
-    natMul := h.natMul.addConst hadd (by decide) |>.addDefEq
-    natPow := h.natPow.addConst hadd (by decide) |>.addDefEq
-    natGcd := h.natGcd.addConst hadd (by decide) |>.addDefEq
-    natMod := h.natMod.addConst hadd (by decide) |>.addDefEq
-    natDiv := h.natDiv.addConst hadd (by decide) |>.addDefEq
-    natBEq := h.natBEq.addConst hadd (by decide) |>.addDefEq
-    natBLE := h.natBLE.addConst hadd (by decide) |>.addDefEq
-    natBitwise := h.natBitwise.addConst hadd (by decide) |>.addDefEq
-    natLAnd := h.natLAnd.addConst hadd (by decide) |>.addDefEq
-    natLOr := h.natLOr.addConst hadd (by decide) |>.addDefEq
-    natXor := h.natXor.addConst hadd (by decide) |>.addDefEq
-    natShiftLeft := h.natShiftLeft.addConst hadd (by decide) |>.addDefEq
-    natShiftRight := h.natShiftRight.addConst hadd (by decide) |>.addDefEq
-    charOfNat := fun H =>
-      let ⟨hu, hty⟩ := h.charOfNat
-        (by rwa [same ``Char.ofNat (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono le⟩
-    stringOfList := fun H =>
-      let ⟨hu, hty, hnil, hcons⟩ := h.stringOfList
-        (by rwa [same ``String.ofList (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono le, hnil.mono le, hcons.mono le⟩ }
+  exact h.addPrimitiveDefEq hadd (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide) (by decide)
+    ((h.natPred.addConst hadd (by decide)).addDefEq (df := df))
+    href
+    ((h.natSub.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natMul.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natPow.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natGcd.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natMod.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natDiv.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBEq.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBLE.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBitwise.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natLAnd.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natLOr.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natXor.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := df))
 
 theorem VEnv.HasPrimitives.addNatAddDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (hnat : env.contains ``Nat)
@@ -1856,77 +1818,34 @@ theorem VEnv.HasPrimitives.addNatAddDef {env env' : VEnv} {v : VDefVal}
       (.lam .nat <| .lam .nat <|
         .app .natSucc (.app (.app v.value (.bvar 1)) (.bvar 0)))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.add [])
-      (.forallE .nat <| .forallE .nat .nat) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.add = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
   have href := VEnv.ReflectsNatNatNat.of_add_equations hwf hzero hsucc hf hcf
     (hz.mono le) (hs.mono le)
   exact h.addNatAdd hadd href
-
 theorem VEnv.HasPrimitives.addNatSub {env env' : VEnv}
     (h : env.HasPrimitives)
     (hadd : env.addConst ``Nat.sub ci = some env')
     (href : (env'.addDefEq df).ReflectsNatNatNat ``Nat.sub Nat.sub) :
     (env'.addDefEq df).HasPrimitives := by
-  let env'' := env'.addDefEq df
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have same (p : Name) (hne : ``Nat.sub ≠ p) :
-      env''.constants p = env.constants p := by
-    change env'.constants p = env.constants p
-    exact VEnv.addConst_constants_of_ne hadd hne
-  have oldContains {p : Name} (hne : ``Nat.sub ≠ p)
-      (H : env''.contains p) : env.contains p := by
-    let ⟨pci, hpci⟩ := H
-    exact ⟨pci, by rwa [same p hne] at hpci⟩
-  have newContains {p : Name} (H : env.contains p) : env''.contains p :=
-    let ⟨_, hpci⟩ := H; ⟨_, le.constants hpci⟩
-  refine {
-    bool := fun H =>
-      let ⟨hfalse, htrue⟩ := h.bool (oldContains (by decide) H)
-      ⟨newContains hfalse, newContains htrue⟩
-    boolType := fun H => h.boolType (by rwa [same ``Bool (by decide)] at H)
-    boolFalse := fun H => h.boolFalse (by rwa [same ``Bool.false (by decide)] at H)
-    boolTrue := fun H => h.boolTrue (by rwa [same ``Bool.true (by decide)] at H)
-    nat := fun H =>
-      let ⟨hzero, hsucc⟩ := h.nat (oldContains (by decide) H)
-      ⟨newContains hzero, newContains hsucc⟩
-    natType := fun H => h.natType (by rwa [same ``Nat (by decide)] at H)
-    natZero := fun H => h.natZero (by rwa [same ``Nat.zero (by decide)] at H)
-    natSucc := fun H => h.natSucc (by rwa [same ``Nat.succ (by decide)] at H)
-    natPred := h.natPred.addConst hadd (by decide) |>.addDefEq
-    natAdd := h.natAdd.addConst hadd (by decide) |>.addDefEq
-    natSub := href
-    natMul := h.natMul.addConst hadd (by decide) |>.addDefEq
-    natPow := h.natPow.addConst hadd (by decide) |>.addDefEq
-    natGcd := h.natGcd.addConst hadd (by decide) |>.addDefEq
-    natMod := h.natMod.addConst hadd (by decide) |>.addDefEq
-    natDiv := h.natDiv.addConst hadd (by decide) |>.addDefEq
-    natBEq := h.natBEq.addConst hadd (by decide) |>.addDefEq
-    natBLE := h.natBLE.addConst hadd (by decide) |>.addDefEq
-    natBitwise := h.natBitwise.addConst hadd (by decide) |>.addDefEq
-    natLAnd := h.natLAnd.addConst hadd (by decide) |>.addDefEq
-    natLOr := h.natLOr.addConst hadd (by decide) |>.addDefEq
-    natXor := h.natXor.addConst hadd (by decide) |>.addDefEq
-    natShiftLeft := h.natShiftLeft.addConst hadd (by decide) |>.addDefEq
-    natShiftRight := h.natShiftRight.addConst hadd (by decide) |>.addDefEq
-    charOfNat := fun H =>
-      let ⟨hu, hty⟩ := h.charOfNat
-        (by rwa [same ``Char.ofNat (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono le⟩
-    stringOfList := fun H =>
-      let ⟨hu, hty, hnil, hcons⟩ := h.stringOfList
-        (by rwa [same ``String.ofList (by decide)] at H)
-      ⟨hu, fun U Γ => (hty U Γ).mono le, hnil.mono le, hcons.mono le⟩ }
+  exact h.addPrimitiveDefEq hadd (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide) (by decide)
+    ((h.natPred.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natAdd.addConst hadd (by decide)).addDefEq (df := df))
+    href
+    ((h.natMul.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natPow.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natGcd.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natMod.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natDiv.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBEq.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBLE.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natBitwise.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natLAnd.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natLOr.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natXor.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := df))
+    ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := df))
 
 theorem VEnv.HasPrimitives.addNatSubDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (henv : env.WF) (hpredC : env.contains ``Nat.pred)
@@ -1945,33 +1864,21 @@ theorem VEnv.HasPrimitives.addNatSubDef {env env' : VEnv} {v : VDefVal}
       (.lam .nat <| .lam .nat <|
         .app (.const ``Nat.pred []) (.app (.app v.value (.bvar 1)) (.bvar 0)))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.sub [])
-      (.forallE .nat <| .forallE .nat .nat) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.sub = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
   have hnat : env.contains ``Nat := by
     have hfun := (h.natPred hpredC).1 0 []
     have ⟨_, H⟩ := hfun.isType henv trivial
     let ⟨⟨_, H⟩, _⟩ := H.forallE_inv henv
     let ⟨_, H, _⟩ := H.const_inv henv trivial
     exact ⟨_, H⟩
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hpred : env''.ReflectsNatNat ``Nat.pred Nat.pred :=
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
+  have hpred : (env'.addDefEq v.toDefEq).ReflectsNatNat ``Nat.pred Nat.pred :=
     (h.natPred.addConst hadd (by decide)).addDefEq (df := v.toDefEq)
-  have hpredC' : env''.contains ``Nat.pred :=
+  have hpredC' : (env'.addDefEq v.toDefEq).contains ``Nat.pred :=
     let ⟨_, hp⟩ := hpredC; ⟨_, le.constants hp⟩
   have href := VEnv.ReflectsNatNatNat.of_sub_equations hwf hzero hsucc
     hpred hpredC' hf hcf (hz.mono le) (hs.mono le)
   exact h.addNatSub hadd href
-
 theorem VEnv.HasPrimitives.addNatMulDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (henv : env.WF) (haddC : env.contains ``Nat.add)
     (hname : v.name = ``Nat.mul)
@@ -1990,23 +1897,12 @@ theorem VEnv.HasPrimitives.addNatMulDef {env env' : VEnv} {v : VDefVal}
         .app (.app (.const ``Nat.add [])
           (.app (.app v.value (.bvar 1)) (.bvar 0))) (.bvar 1))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.mul [])
-      (.forallE .nat <| .forallE .nat .nat) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.mul = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
   have hnat := h.natAdd.nat_of_contains henv haddC
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hadd' : env''.ReflectsNatNatNat ``Nat.add Nat.add :=
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
+  have hadd' : (env'.addDefEq v.toDefEq).ReflectsNatNatNat ``Nat.add Nat.add :=
     (h.natAdd.addConst hadd (by decide)).addDefEq (df := v.toDefEq)
-  have haddC' : env''.contains ``Nat.add :=
+  have haddC' : (env'.addDefEq v.toDefEq).contains ``Nat.add :=
     let ⟨_, ha⟩ := haddC; ⟨_, le.constants ha⟩
   have href := VEnv.ReflectsNatNatNat.of_mul_equations hwf hzero hsucc
     hadd' haddC' hf hcf (hz.mono le) (hs.mono le)
@@ -2027,7 +1923,6 @@ theorem VEnv.HasPrimitives.addNatMulDef {env env' : VEnv} {v : VDefVal}
     ((h.natXor.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
-
 theorem VEnv.HasPrimitives.addNatPowDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (henv : env.WF) (hmulC : env.contains ``Nat.mul)
     (hname : v.name = ``Nat.pow)
@@ -2046,23 +1941,12 @@ theorem VEnv.HasPrimitives.addNatPowDef {env env' : VEnv} {v : VDefVal}
         .app (.app (.const ``Nat.mul [])
           (.app (.app v.value (.bvar 1)) (.bvar 0))) (.bvar 1))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.pow [])
-      (.forallE .nat <| .forallE .nat .nat) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.pow = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
   have hnat := h.natMul.nat_of_contains henv hmulC
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hmul' : env''.ReflectsNatNatNat ``Nat.mul Nat.mul :=
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
+  have hmul' : (env'.addDefEq v.toDefEq).ReflectsNatNatNat ``Nat.mul Nat.mul :=
     (h.natMul.addConst hadd (by decide)).addDefEq (df := v.toDefEq)
-  have hmulC' : env''.contains ``Nat.mul :=
+  have hmulC' : (env'.addDefEq v.toDefEq).contains ``Nat.mul :=
     let ⟨_, hm⟩ := hmulC; ⟨_, le.constants hm⟩
   have href := VEnv.ReflectsNatNatNat.of_pow_equations hwf hzero hsucc
     hmul' hmulC' hf hcf (hz.mono le) (hs.mono le)
@@ -2083,7 +1967,6 @@ theorem VEnv.HasPrimitives.addNatPowDef {env env' : VEnv} {v : VDefVal}
     ((h.natXor.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
-
 theorem VEnv.HasPrimitives.addNatGcd {env env' : VEnv}
     (h : env.HasPrimitives)
     (hadd : env.addConst ``Nat.gcd ci = some env')
@@ -2173,20 +2056,9 @@ theorem VEnv.HasPrimitives.addNatBEqDef {env env' : VEnv} {v : VDefVal}
         .app (.app v.value (.app .natSucc (.bvar 1))) (.app .natSucc (.bvar 0)))
       (.lam .nat <| .lam .nat <| .app (.app v.value (.bvar 1)) (.bvar 0))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.beq [])
-      (.forallE .nat <| .forallE .nat .bool) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.beq = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hboolLit (b) (Γ) : env''.HasType 0 Γ (.boolLit b) .bool :=
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
+  have hboolLit (b) (Γ) : (env'.addDefEq v.toDefEq).HasType 0 Γ (.boolLit b) .bool :=
     (TrExprS.boolLit h hbool b (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
   have href := VEnv.ReflectsNatNatBool.of_rec_equations hwf hzero hsucc hboolLit
     hf hcf (h00.mono le) (h0s.mono le) (hs0.mono le) (hss.mono le)
@@ -2209,7 +2081,6 @@ theorem VEnv.HasPrimitives.addNatBEqDef {env env' : VEnv} {v : VDefVal}
     ((h.natXor.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
-
 theorem VEnv.HasPrimitives.addNatBLEDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (hnat : env.contains ``Nat) (hbool : env.contains ``Bool)
     (hname : v.name = ``Nat.ble)
@@ -2230,20 +2101,9 @@ theorem VEnv.HasPrimitives.addNatBLEDef {env env' : VEnv} {v : VDefVal}
         .app (.app v.value (.app .natSucc (.bvar 1))) (.app .natSucc (.bvar 0)))
       (.lam .nat <| .lam .nat <| .app (.app v.value (.bvar 1)) (.bvar 0))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.ble [])
-      (.forallE .nat <| .forallE .nat .bool) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.ble = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hboolLit (b) (Γ) : env''.HasType 0 Γ (.boolLit b) .bool :=
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
+  have hboolLit (b) (Γ) : (env'.addDefEq v.toDefEq).HasType 0 Γ (.boolLit b) .bool :=
     (TrExprS.boolLit h hbool b (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
   have href := VEnv.ReflectsNatNatBool.of_rec_equations hwf hzero hsucc hboolLit
     hf hcf (h00.mono le) (h0s.mono le) (hs0.mono le) (hss.mono le)
@@ -2266,7 +2126,6 @@ theorem VEnv.HasPrimitives.addNatBLEDef {env env' : VEnv} {v : VDefVal}
     ((h.natXor.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
-
 theorem VEnv.HasPrimitives.addNatShiftLeftDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (henv : env.WF) (hmulC : env.contains ``Nat.mul)
     (hname : v.name = ``Nat.shiftLeft)
@@ -2284,23 +2143,12 @@ theorem VEnv.HasPrimitives.addNatShiftLeftDef {env env' : VEnv} {v : VDefVal}
         .app (.app v.value
           (.app (.app (.const ``Nat.mul []) (.natLit 2)) (.bvar 0))) (.bvar 1))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.shiftLeft [])
-      (.forallE .nat <| .forallE .nat .nat) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.shiftLeft = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
   have hnat := h.natMul.nat_of_contains henv hmulC
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hmul' : env''.ReflectsNatNatNat ``Nat.mul Nat.mul :=
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
+  have hmul' : (env'.addDefEq v.toDefEq).ReflectsNatNatNat ``Nat.mul Nat.mul :=
     (h.natMul.addConst hadd (by decide)).addDefEq (df := v.toDefEq)
-  have hmulC' : env''.contains ``Nat.mul :=
+  have hmulC' : (env'.addDefEq v.toDefEq).contains ``Nat.mul :=
     let ⟨_, hm⟩ := hmulC; ⟨_, le.constants hm⟩
   have href := VEnv.ReflectsNatNatNat.of_shiftLeft_equations hwf hzero hsucc
     hmul' hmulC' hf hcf (hz.mono le) (hs.mono le)
@@ -2321,7 +2169,6 @@ theorem VEnv.HasPrimitives.addNatShiftLeftDef {env env' : VEnv} {v : VDefVal}
     ((h.natLOr.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natXor.addConst hadd (by decide)).addDefEq (df := v.toDefEq)) href
     ((h.natShiftRight.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
-
 theorem VEnv.HasPrimitives.addNatShiftRightDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives) (henv : env.WF) (hdivC : env.contains ``Nat.div)
     (hname : v.name = ``Nat.shiftRight)
@@ -2339,23 +2186,12 @@ theorem VEnv.HasPrimitives.addNatShiftRightDef {env env' : VEnv} {v : VDefVal}
         .app (.app (.const ``Nat.div [])
           (.app (.app v.value (.bvar 0)) (.bvar 1))) (.natLit 2))) :
     (env'.addDefEq v.toDefEq).HasPrimitives := by
-  let env'' := env'.addDefEq v.toDefEq
-  have le : env ≤ env'' := (VEnv.addConst_le hadd).trans VEnv.addDefEq_le
-  have hf (U Γ) : env''.HasType U Γ (.const ``Nat.shiftRight [])
-      (.forallE .nat <| .forallE .nat .nat) :=
-    VEnv.HasType.const_of_type_defeq hwf (by
-      change env'.constants ``Nat.shiftRight = some v.toVConstant
-      exact VEnv.addConst_self hadd) hu (hty.mono le) U Γ
-  have hcf := VDefVal.const_defeq_value hwf hu
-  rw [hname] at hcf
   have hnat := h.natDiv.nat_of_contains henv hdivC
-  have hzero (Γ) : env''.HasType 0 Γ .natZero .nat :=
-    (TrExprS.natZero h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hsucc (Γ) : env''.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
-    (TrExprS.natSucc h hnat (Us := []) (Δ := [])).2.mono le |>.weak0 hwf
-  have hdiv' : env''.ReflectsNatNatNat ``Nat.div Nat.div :=
+  refine h.defKit hnat hname hadd hwf hu hty ?_
+  intro le hf hcf hzero hsucc
+  have hdiv' : (env'.addDefEq v.toDefEq).ReflectsNatNatNat ``Nat.div Nat.div :=
     (h.natDiv.addConst hadd (by decide)).addDefEq (df := v.toDefEq)
-  have hdivC' : env''.contains ``Nat.div :=
+  have hdivC' : (env'.addDefEq v.toDefEq).contains ``Nat.div :=
     let ⟨_, hd⟩ := hdivC; ⟨_, le.constants hd⟩
   have href := VEnv.ReflectsNatNatNat.of_shiftRight_equations hwf hzero hsucc
     hdiv' hdivC' hf hcf (hz.mono le) (hs.mono le)
@@ -2376,7 +2212,6 @@ theorem VEnv.HasPrimitives.addNatShiftRightDef {env env' : VEnv} {v : VDefVal}
     ((h.natLOr.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natXor.addConst hadd (by decide)).addDefEq (df := v.toDefEq))
     ((h.natShiftLeft.addConst hadd (by decide)).addDefEq (df := v.toDefEq)) href
-
 theorem VEnv.HasPrimitives.addNatBitwiseDef {env env' : VEnv} {v : VDefVal}
     (h : env.HasPrimitives)
     (hadd : env.addConst ``Nat.bitwise v.toVConstant = some env')
