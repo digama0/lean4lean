@@ -694,36 +694,31 @@ theorem addTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : T
   exact .thm htr' (by rwa [← old.map_wf.find?'_eq_find?]) (hbody.mono hle)
     (hprop.mono hle) hadd old
 
-/-- Extract the header facts retained by `TrEnv'` from a successful opaque check.
-The current relation does not represent soundness of the opaque-body checker. Since the
-implementation has no separate free-variable pass for the body, this proof extracts the
-successful checked prefix directly rather than applying `TypeChecker.M.WF`. -/
-theorem checkOpaqueHeader.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+/-- Verify the complete opaque-declaration check. `TrEnv'.opaque` retains only the checked
+header because an opaque body contributes no definitional equality, but the body translation
+and typing facts remain available here if that relation is strengthened in the future. -/
+theorem checkOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : OpaqueVal) :
-    (TypeChecker.M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := {}) (do
+    ((do
       checkConstantVal env v.toConstantVal
+      Environment.checkNoMVarNoFVar env v.name v.value
       let valueType ← TypeChecker.checkType v.value
       if !(← TypeChecker.isDefEq valueType v.type) then
-        throw <| Exception.declTypeMismatch env (.opaqueDecl v) valueType)).WF fun _ =>
+        throw <| Exception.declTypeMismatch env (.opaqueDecl v) valueType) : TypeChecker.M Unit).WF
+      (.mk' wf .safe v.levelParams) {} fun _ _ =>
       ∃ ci' : VConstVal,
         v.levelParams.length = ci'.uvars ∧
         TrExprS (ves.venv .safe) v.levelParams [] v.type ci'.type ∧
         v.name = ci'.name ∧
         ci'.toVConstant.WF (ves.venv .safe) ∧ env.find? v.name = none ∧
-        Environment.primitives.contains v.name = false := by
-  intro _ hrun
-  simp only [TypeChecker.M.run, StateT.run', Functor.map, Except.map] at hrun
-  simp only [bind, ReaderT.bind, StateT.bind, Except.bind] at hrun
-  generalize hhead : checkConstantVal env v.toConstantVal false
-    { env := env, lctx := {}, lparams := v.levelParams } ({} : TypeChecker.State) = r at hrun
-  cases r with
-  | error e => simp at hrun
-  | ok p =>
-    rcases p with ⟨u, state⟩
-    have hw := checkConstantValCore.WF (safety := .safe) wf (.opaqueInfo v) false
-    obtain ⟨_, _, _, _, h⟩ := hw TypeChecker.VState.WF.empty u state hhead
-    simpa [ConstantInfo.name, ConstantInfo.levelParams, ConstantInfo.type,
-      ConstantInfo.toConstantVal] using h
+        Environment.primitives.contains v.name = false ∧
+        ∃ value', TrExprS (ves.venv .safe) v.levelParams [] v.value value' ∧
+          (ves.venv .safe).HasType v.levelParams.length [] value' ci'.type := by
+  refine (checkConstantValCore.WF (safety := .safe) wf (.opaqueInfo v) false).bind
+    fun _ state _ ⟨ci', hu, ht, hname, hci, hfresh, hnonprim⟩ => ?_
+  exact (checkBody.WF wf (.opaqueDecl v) v.name v.levelParams v.type v.value
+    ci'.type ht state).mono fun _ _ _ ⟨value', hvalue, hvalueType⟩ =>
+      ⟨ci', hu, ht, hname, hci, hfresh, hnonprim rfl, value', hvalue, hvalueType⟩
 
 theorem addOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : OpaqueVal) :
     (addOpaque env v).WF fun env' =>
@@ -732,8 +727,8 @@ theorem addOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : Op
   have hsafety : (ConstantInfo.opaqueInfo v).safety = checkSafety := by
     cases v.isUnsafe <;> rfl
   unfold addOpaque
-  refine (checkOpaqueHeader.WF wf v).bind fun _ h => ?_
-  obtain ⟨ci', hu, ht, hname, hci, hfresh, hnonprim⟩ := h
+  refine (checkOpaque.WF wf v).run wf |>.bind fun _ h => ?_
+  obtain ⟨ci', hu, ht, hname, hci, hfresh, hnonprim, _⟩ := h
   have hle : checkSafety ≤ .safe := DefinitionSafety.le_safe
   have hmono := wf.mono hle
   have htr : TrConstVal checkSafety (ves.venv checkSafety) (.opaqueInfo v) ci' :=
