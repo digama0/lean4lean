@@ -451,6 +451,202 @@ theorem VEnv.ReflectsNatNat.of_pred_equations (henv : VEnv.WF env)
     simp [VExpr.inst, VExpr.natSucc, hfClosed.instN_eq] at hs'
     exact hcfSucc.trans henv trivial hs'
 
+private theorem VEnv.natLit_hasType {env : VEnv}
+    (hzeroT : ∀ Γ, env.HasType 0 Γ .natZero .nat)
+    (hsuccT : ∀ Γ, env.HasType 0 Γ .natSucc (.forallE .nat .nat))
+    (n : Nat) (Γ : List VExpr) : env.HasType 0 Γ (.natLit n) .nat := by
+  induction n with
+  | zero => exact hzeroT Γ
+  | succ n ih => exact .app (hsuccT Γ) ih
+
+/-- Generic recurrence lemma for binary `Nat` primitives whose successor
+equation applies a unary operation `u` to the recursive call (`Nat.add` via
+`Nat.succ`, `Nat.sub` via `Nat.pred`): `f a 0 ≡ a` and `f a (b+1) ≡ u (f a b)`
+reflect `F` whenever `u` evaluates literals by `U` and `F` satisfies the
+corresponding recurrence. -/
+theorem VEnv.ReflectsNatNatNat.of_unary_step_equations (henv : VEnv.WF env)
+    {n : Name} {F : Nat → Nat → Nat} {u : VExpr} (U : Nat → Nat)
+    (hzeroT : ∀ Γ, env.HasType 0 Γ .natZero .nat)
+    (hsuccT : ∀ Γ, env.HasType 0 Γ .natSucc (.forallE .nat .nat))
+    (huT : ∀ Γ, env.HasType 0 Γ u (.forallE .nat .nat))
+    (huClosed : u.ClosedN)
+    (huEval : ∀ k, env.IsDefEqU 0 [] (.app u (.natLit k)) (.natLit (U k)))
+    (hF0 : ∀ a, F a 0 = a)
+    (hFs : ∀ a b, F a (b + 1) = U (F a b))
+    (hf : ∀ k Γ, env.HasType k Γ (.const n [])
+      (.forallE .nat <| .forallE .nat .nat))
+    (hcf : env.IsDefEqU 0 [] (.const n []) f)
+    (hz : env.IsDefEqU 0 []
+      (.lam .nat <| .app (.app f (.bvar 0)) .natZero)
+      (.lam .nat <| .bvar 0))
+    (hs : env.IsDefEqU 0 []
+      (.lam .nat <| .lam .nat <|
+        .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
+      (.lam .nat <| .lam .nat <|
+        .app u (.app (.app f (.bvar 1)) (.bvar 0)))) :
+    env.ReflectsNatNatNat n F := by
+  intro _
+  refine ⟨hf, fun a b => ?_⟩
+  have ⟨_, hNatSort⟩ := (hzeroT []).isType henv trivial
+  have hctx₁ : OnCtx [.nat] (env.IsType 0) := ⟨trivial, ⟨_, hNatSort⟩⟩
+  have hctx₂ : OnCtx [.nat, .nat] (env.IsType 0) :=
+    ⟨hctx₁, ⟨_, hNatSort.weak0 henv⟩⟩
+  have hlit := VEnv.natLit_hasType hzeroT hsuccT
+  have hfv (Γ) (hΓ : OnCtx Γ (env.IsType 0)) :
+      env.HasType 0 Γ f (.forallE .nat <| .forallE .nat .nat) :=
+    (hf 0 Γ).defeqU_l henv hΓ (hcf.weak0 henv)
+  have hfClosed : f.ClosedN := by
+    let ⟨_, hcf⟩ := hcf
+    exact (hcf.closedN' henv.ordered.closed trivial).2.1
+  have hcfApp (a b) : env.IsDefEqU 0 []
+      (.app (.app (.const n []) (.natLit a)) (.natLit b))
+      (.app (.app f (.natLit a)) (.natLit b)) := by
+    have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit a [])
+    exact h₁.app_same henv trivial (.app (hf 0 []) (hlit a [])) (hlit b [])
+  induction b with
+  | zero =>
+    rw [hF0]
+    have hbody₁ : env.HasType 0 [.nat]
+        (.app (.app f (.bvar 0)) .natZero) .nat :=
+      .app (.app (hfv _ hctx₁) (.bvar .zero)) (hzeroT _)
+    have hbody₂ : env.HasType 0 [.nat] (.bvar 0) .nat := .bvar .zero
+    have hz' := hz.lam_inst henv trivial hNatSort hbody₁ hbody₂ (hlit a [])
+    simp [VExpr.inst, hfClosed.instN_eq] at hz'
+    simpa [VExpr.inst, VExpr.natLit] using
+      (hcfApp a 0).trans henv trivial hz'
+  | succ b ih =>
+    rw [hFs]
+    have hbvar0 : env.HasType 0 [.nat, .nat] (.bvar 0) .nat := .bvar .zero
+    have hbvar1 : env.HasType 0 [.nat, .nat] (.bvar 1) .nat :=
+      .bvar (.succ .zero)
+    have hleft : env.HasType 0 [.nat, .nat]
+        (.app (.app f (.bvar 1)) (.app .natSucc (.bvar 0))) .nat :=
+      .app (.app (hfv _ hctx₂) hbvar1) (.app (hsuccT _) hbvar0)
+    have hright : env.HasType 0 [.nat, .nat]
+        (.app u (.app (.app f (.bvar 1)) (.bvar 0))) .nat :=
+      .app (huT _) (.app (.app (hfv _ hctx₂) hbvar1) hbvar0)
+    have hinner₁ : env.HasType 0 [.nat]
+        (.lam .nat <| .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
+        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hleft
+    have hinner₂ : env.HasType 0 [.nat]
+        (.lam .nat <| .app u (.app (.app f (.bvar 1)) (.bvar 0)))
+        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hright
+    have houter := hs.lam_inst henv trivial hNatSort hinner₁ hinner₂
+      (hlit a [])
+    have hstep := houter.lam_inst henv trivial hNatSort
+      (by simpa [VExpr.inst] using hleft.instN henv (.succ .zero) (hlit a []))
+      (by simpa [VExpr.inst] using hright.instN henv (.succ .zero) (hlit a []))
+      (hlit b [])
+    simp [VExpr.inst, VExpr.natSucc, VExpr.inst_lift, hfClosed.instN_eq,
+      huClosed.instN_eq] at hstep
+    have hback := (hcfApp a b).symm.app_arg henv trivial (huT [])
+      (.app (.app (hfv [] trivial) (hlit a [])) (hlit b []))
+    have hcongr := ih.app_arg henv trivial (huT [])
+      (.app (.app (hf 0 []) (hlit a [])) (hlit b []))
+    exact (hcfApp a (b+1)).trans henv trivial <| hstep.trans henv trivial <|
+      hback.trans henv trivial <| hcongr.trans henv trivial (huEval (F a b))
+
+/-- Generic recurrence lemma for binary `Nat` primitives whose successor
+equation applies a reflected binary operation `g` to the recursive call and
+the first argument (`Nat.mul` via `Nat.add`, `Nat.pow` via `Nat.mul`):
+`f a 0 ≡ z` and `f a (b+1) ≡ g (f a b) a` reflect `F` whenever `g` reflects
+`G` and `F` satisfies the corresponding recurrence. -/
+theorem VEnv.ReflectsNatNatNat.of_binop_step_equations (henv : VEnv.WF env)
+    {n : Name} {F : Nat → Nat → Nat} {g : Name} {G : Nat → Nat → Nat}
+    (z : Nat)
+    (hzeroT : ∀ Γ, env.HasType 0 Γ .natZero .nat)
+    (hsuccT : ∀ Γ, env.HasType 0 Γ .natSucc (.forallE .nat .nat))
+    (hg : env.ReflectsNatNatNat g G) (hgC : env.contains g)
+    (hF0 : ∀ a, F a 0 = z)
+    (hFs : ∀ a b, F a (b + 1) = G (F a b) a)
+    (hf : ∀ k Γ, env.HasType k Γ (.const n [])
+      (.forallE .nat <| .forallE .nat .nat))
+    (hcf : env.IsDefEqU 0 [] (.const n []) f)
+    (hz : env.IsDefEqU 0 []
+      (.lam .nat <| .app (.app f (.bvar 0)) .natZero)
+      (.lam .nat <| .natLit z))
+    (hs : env.IsDefEqU 0 []
+      (.lam .nat <| .lam .nat <|
+        .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
+      (.lam .nat <| .lam .nat <|
+        .app (.app (.const g [])
+          (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1))) :
+    env.ReflectsNatNatNat n F := by
+  intro _
+  refine ⟨hf, fun a b => ?_⟩
+  let ⟨hgT, hgEval⟩ := hg hgC
+  have ⟨_, hNatSort⟩ := (hzeroT []).isType henv trivial
+  have hctx₁ : OnCtx [.nat] (env.IsType 0) := ⟨trivial, ⟨_, hNatSort⟩⟩
+  have hctx₂ : OnCtx [.nat, .nat] (env.IsType 0) :=
+    ⟨hctx₁, ⟨_, hNatSort.weak0 henv⟩⟩
+  have hlit := VEnv.natLit_hasType hzeroT hsuccT
+  have hfv (Γ) (hΓ : OnCtx Γ (env.IsType 0)) :
+      env.HasType 0 Γ f (.forallE .nat <| .forallE .nat .nat) :=
+    (hf 0 Γ).defeqU_l henv hΓ (hcf.weak0 henv)
+  have hfClosed : f.ClosedN := by
+    let ⟨_, hcf⟩ := hcf
+    exact (hcf.closedN' henv.ordered.closed trivial).2.1
+  have hcfApp (a b) : env.IsDefEqU 0 []
+      (.app (.app (.const n []) (.natLit a)) (.natLit b))
+      (.app (.app f (.natLit a)) (.natLit b)) := by
+    have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit a [])
+    exact h₁.app_same henv trivial (.app (hf 0 []) (hlit a [])) (hlit b [])
+  induction b with
+  | zero =>
+    rw [hF0]
+    have hbody₁ : env.HasType 0 [.nat]
+        (.app (.app f (.bvar 0)) .natZero) .nat :=
+      .app (.app (hfv _ hctx₁) (.bvar .zero)) (hzeroT _)
+    have hz' := hz.lam_inst henv trivial hNatSort hbody₁ (hlit z _)
+      (hlit a [])
+    simp [VExpr.inst, hfClosed.instN_eq] at hz'
+    exact (hcfApp a 0).trans henv trivial hz'
+  | succ b ih =>
+    rw [hFs]
+    have hbvar0 : env.HasType 0 [.nat, .nat] (.bvar 0) .nat := .bvar .zero
+    have hbvar1 : env.HasType 0 [.nat, .nat] (.bvar 1) .nat :=
+      .bvar (.succ .zero)
+    have hfbody : env.HasType 0 [.nat, .nat]
+        (.app (.app f (.bvar 1)) (.bvar 0)) .nat :=
+      .app (.app (hfv _ hctx₂) hbvar1) hbvar0
+    have hleft : env.HasType 0 [.nat, .nat]
+        (.app (.app f (.bvar 1)) (.app .natSucc (.bvar 0))) .nat :=
+      .app (.app (hfv _ hctx₂) hbvar1) (.app (hsuccT _) hbvar0)
+    have hright : env.HasType 0 [.nat, .nat]
+        (.app (.app (.const g [])
+          (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1)) .nat :=
+      .app (.app (hgT 0 _) hfbody) hbvar1
+    have hinner₁ : env.HasType 0 [.nat]
+        (.lam .nat <| .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
+        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hleft
+    have hinner₂ : env.HasType 0 [.nat]
+        (.lam .nat <| .app (.app (.const g [])
+          (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1))
+        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hright
+    have houter := hs.lam_inst henv trivial hNatSort hinner₁ hinner₂
+      (hlit a [])
+    have hstep := houter.lam_inst henv trivial hNatSort
+      (by simpa [VExpr.inst] using hleft.instN henv (.succ .zero) (hlit a []))
+      (by simpa [VExpr.inst] using hright.instN henv (.succ .zero) (hlit a []))
+      (hlit b [])
+    simp [VExpr.inst, VExpr.natSucc, VExpr.inst_lift, hfClosed.instN_eq]
+      at hstep
+    have hback₁ := (hcfApp a b).symm.app_arg henv trivial (hgT 0 [])
+      (.app (.app (hfv [] trivial) (hlit a [])) (hlit b []))
+    have hback := hback₁.app_same henv trivial
+      (.app (hgT 0 []) (.app (.app (hfv [] trivial) (hlit a []))
+        (hlit b [])))
+      (hlit a [])
+    have hcongr₁ := ih.app_arg henv trivial (hgT 0 [])
+      (.app (.app (hf 0 []) (hlit a [])) (hlit b []))
+    have hcongr := hcongr₁.app_same henv trivial
+      (.app (hgT 0 []) (.app (.app (hf 0 []) (hlit a [])) (hlit b [])))
+      (hlit a [])
+    exact (hcfApp a (b+1)).trans henv trivial <| hstep.trans henv trivial <|
+      hback.trans henv trivial <|
+      hcongr.trans henv trivial (hgEval (F a b) a)
+
+
 theorem VEnv.ReflectsNatNatNat.of_add_equations (henv : VEnv.WF env)
     (hzeroT : ∀ Γ, env.HasType 0 Γ .natZero .nat)
     (hsuccT : ∀ Γ, env.HasType 0 Γ .natSucc (.forallE .nat .nat))
@@ -466,67 +662,11 @@ theorem VEnv.ReflectsNatNatNat.of_add_equations (henv : VEnv.WF env)
       (.lam .nat <| .lam .nat <|
         .app .natSucc (.app (.app f (.bvar 1)) (.bvar 0)))) :
     env.ReflectsNatNatNat ``Nat.add Nat.add := by
-  intro _
-  refine ⟨hf, fun a b => ?_⟩
-  have ⟨_, hNatSort⟩ := (hzeroT []).isType henv trivial
-  have hctx₁ : OnCtx [.nat] (env.IsType 0) :=
-    ⟨trivial, ⟨_, hNatSort⟩⟩
-  have hctx₂ : OnCtx [.nat, .nat] (env.IsType 0) :=
-    ⟨hctx₁, ⟨_, hNatSort.weak0 henv⟩⟩
-  have hlit (n) (Γ) : env.HasType 0 Γ (.natLit n) .nat := by
-    induction n with
-    | zero => exact hzeroT Γ
-    | succ n ih => exact .app (hsuccT Γ) ih
-  have hfv (Γ) (hΓ : OnCtx Γ (env.IsType 0)) :
-      env.HasType 0 Γ f (.forallE .nat <| .forallE .nat .nat) :=
-    (hf 0 Γ).defeqU_l henv hΓ (hcf.weak0 henv)
-  have hfClosed : f.ClosedN := by
-    let ⟨_, hcf⟩ := hcf
-    exact (hcf.closedN' henv.ordered.closed trivial).2.1
-  have hcfApp (a b) : env.IsDefEqU 0 []
-      (.app (.app (.const ``Nat.add []) (.natLit a)) (.natLit b))
-      (.app (.app f (.natLit a)) (.natLit b)) := by
-    have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit a [])
-    exact h₁.app_same henv trivial (.app (hf 0 []) (hlit a [])) (hlit b [])
-  induction b with
-  | zero =>
-    have hbody₁ : env.HasType 0 [.nat]
-        (.app (.app f (.bvar 0)) .natZero) .nat :=
-      .app (.app (hfv _ hctx₁) (.bvar .zero)) (hzeroT _)
-    have hbody₂ : env.HasType 0 [.nat] (.bvar 0) .nat := .bvar .zero
-    have hz' :=
-      hz.lam_inst henv trivial hNatSort hbody₁ hbody₂ (hlit a [])
-    simp [VExpr.inst, hfClosed.instN_eq] at hz'
-    simpa [VExpr.inst, VExpr.natLit] using (hcfApp a 0).trans henv trivial hz'
-  | succ b ih =>
-    have hbvar0 : env.HasType 0 [.nat, .nat] (.bvar 0) .nat := .bvar .zero
-    have hbvar1 : env.HasType 0 [.nat, .nat] (.bvar 1) .nat := .bvar (.succ .zero)
-    have hleft : env.HasType 0 [.nat, .nat]
-        (.app (.app f (.bvar 1)) (.app .natSucc (.bvar 0))) .nat :=
-      .app (.app (hfv _ hctx₂) hbvar1) (.app (hsuccT _) hbvar0)
-    have hright : env.HasType 0 [.nat, .nat]
-        (.app .natSucc (.app (.app f (.bvar 1)) (.bvar 0))) .nat :=
-      .app (hsuccT _) (.app (.app (hfv _ hctx₂) hbvar1) hbvar0)
-    have hinner₁ : env.HasType 0 [.nat]
-        (.lam .nat <|
-          .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hleft
-    have hinner₂ : env.HasType 0 [.nat]
-        (.lam .nat <|
-          .app .natSucc (.app (.app f (.bvar 1)) (.bvar 0)))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hright
-    have houter := hs.lam_inst henv trivial hNatSort hinner₁ hinner₂ (hlit a [])
-    have hstep := houter.lam_inst henv trivial hNatSort
-      (by simpa [VExpr.inst] using hleft.instN henv (.succ .zero) (hlit a []))
-      (by simpa [VExpr.inst] using hright.instN henv (.succ .zero) (hlit a []))
-      (hlit b [])
-    simp [VExpr.inst, VExpr.natSucc, VExpr.inst_lift, hfClosed.instN_eq] at hstep
-    have hcongr := ih.app_arg henv trivial (hsuccT [])
-      (.app (.app (hf 0 []) (hlit a [])) (hlit b []))
-    have hback := (hcfApp a b).symm.app_arg henv trivial (hsuccT [])
-      (.app (.app (hfv [] trivial) (hlit a [])) (hlit b []))
-    exact (hcfApp a (b+1)).trans henv trivial <|
-      hstep.trans henv trivial <| hback.trans henv trivial hcongr
+  refine VEnv.ReflectsNatNatNat.of_unary_step_equations henv Nat.succ
+    hzeroT hsuccT hsuccT trivial ?_ (fun _ => rfl) (fun _ _ => rfl)
+    hf hcf hz hs
+  intro k
+  exact ⟨_, VEnv.natLit_hasType hzeroT hsuccT (k + 1) []⟩
 
 theorem VEnv.ReflectsNatNatNat.of_sub_equations (henv : VEnv.WF env)
     (hzeroT : ∀ Γ, env.HasType 0 Γ .natZero .nat)
@@ -545,65 +685,10 @@ theorem VEnv.ReflectsNatNatNat.of_sub_equations (henv : VEnv.WF env)
       (.lam .nat <| .lam .nat <|
         .app (.const ``Nat.pred []) (.app (.app f (.bvar 1)) (.bvar 0)))) :
     env.ReflectsNatNatNat ``Nat.sub Nat.sub := by
-  intro _
-  refine ⟨hf, fun a b => ?_⟩
   let ⟨hpredT, hpredEval⟩ := hpred hpredC
-  have ⟨_, hNatSort⟩ := (hzeroT []).isType henv trivial
-  have hctx₁ : OnCtx [.nat] (env.IsType 0) := ⟨trivial, ⟨_, hNatSort⟩⟩
-  have hctx₂ : OnCtx [.nat, .nat] (env.IsType 0) :=
-    ⟨hctx₁, ⟨_, hNatSort.weak0 henv⟩⟩
-  have hlit (n) (Γ) : env.HasType 0 Γ (.natLit n) .nat := by
-    induction n with
-    | zero => exact hzeroT Γ
-    | succ n ih => exact .app (hsuccT Γ) ih
-  have hfv (Γ) (hΓ : OnCtx Γ (env.IsType 0)) :
-      env.HasType 0 Γ f (.forallE .nat <| .forallE .nat .nat) :=
-    (hf 0 Γ).defeqU_l henv hΓ (hcf.weak0 henv)
-  have hfClosed : f.ClosedN := by
-    let ⟨_, hcf⟩ := hcf
-    exact (hcf.closedN' henv.ordered.closed trivial).2.1
-  have hcfApp (a b) : env.IsDefEqU 0 []
-      (.app (.app (.const ``Nat.sub []) (.natLit a)) (.natLit b))
-      (.app (.app f (.natLit a)) (.natLit b)) := by
-    have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit a [])
-    exact h₁.app_same henv trivial (.app (hf 0 []) (hlit a [])) (hlit b [])
-  induction b with
-  | zero =>
-    have hbody₁ : env.HasType 0 [.nat]
-        (.app (.app f (.bvar 0)) .natZero) .nat :=
-      .app (.app (hfv _ hctx₁) (.bvar .zero)) (hzeroT _)
-    have hbody₂ : env.HasType 0 [.nat] (.bvar 0) .nat := .bvar .zero
-    have hz' := hz.lam_inst henv trivial hNatSort hbody₁ hbody₂ (hlit a [])
-    simp [VExpr.inst, hfClosed.instN_eq] at hz'
-    simpa [VExpr.natLit] using (hcfApp a 0).trans henv trivial hz'
-  | succ b ih =>
-    have hbvar0 : env.HasType 0 [.nat, .nat] (.bvar 0) .nat := .bvar .zero
-    have hbvar1 : env.HasType 0 [.nat, .nat] (.bvar 1) .nat := .bvar (.succ .zero)
-    have hleft : env.HasType 0 [.nat, .nat]
-        (.app (.app f (.bvar 1)) (.app .natSucc (.bvar 0))) .nat :=
-      .app (.app (hfv _ hctx₂) hbvar1) (.app (hsuccT _) hbvar0)
-    have hright : env.HasType 0 [.nat, .nat]
-        (.app (.const ``Nat.pred []) (.app (.app f (.bvar 1)) (.bvar 0))) .nat :=
-      .app (hpredT 0 _) (.app (.app (hfv _ hctx₂) hbvar1) hbvar0)
-    have hinner₁ : env.HasType 0 [.nat]
-        (.lam .nat <| .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hleft
-    have hinner₂ : env.HasType 0 [.nat]
-        (.lam .nat <| .app (.const ``Nat.pred [])
-          (.app (.app f (.bvar 1)) (.bvar 0)))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hright
-    have houter := hs.lam_inst henv trivial hNatSort hinner₁ hinner₂ (hlit a [])
-    have hstep := houter.lam_inst henv trivial hNatSort
-      (by simpa [VExpr.inst] using hleft.instN henv (.succ .zero) (hlit a []))
-      (by simpa [VExpr.inst] using hright.instN henv (.succ .zero) (hlit a []))
-      (hlit b [])
-    simp [VExpr.inst, VExpr.natSucc, VExpr.inst_lift, hfClosed.instN_eq] at hstep
-    have hback := (hcfApp a b).symm.app_arg henv trivial (hpredT 0 [])
-      (.app (.app (hfv [] trivial) (hlit a [])) (hlit b []))
-    have hcongr := ih.app_arg henv trivial (hpredT 0 [])
-      (.app (.app (hf 0 []) (hlit a [])) (hlit b []))
-    exact (hcfApp a (b+1)).trans henv trivial <| hstep.trans henv trivial <|
-      hback.trans henv trivial <| hcongr.trans henv trivial (hpredEval (a - b))
+  exact VEnv.ReflectsNatNatNat.of_unary_step_equations henv Nat.pred
+    hzeroT hsuccT (hpredT 0) trivial hpredEval
+    (fun _ => rfl) (fun _ _ => rfl) hf hcf hz hs
 
 theorem VEnv.ReflectsNatNatNat.of_mul_equations (henv : VEnv.WF env)
     (hzeroT : ∀ Γ, env.HasType 0 Γ .natZero .nat)
@@ -623,74 +708,9 @@ theorem VEnv.ReflectsNatNatNat.of_mul_equations (henv : VEnv.WF env)
         .app (.app (.const ``Nat.add [])
           (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1))) :
     env.ReflectsNatNatNat ``Nat.mul Nat.mul := by
-  intro _
-  refine ⟨hf, fun a b => ?_⟩
-  let ⟨haddT, haddEval⟩ := hadd haddC
-  have ⟨_, hNatSort⟩ := (hzeroT []).isType henv trivial
-  have hctx₁ : OnCtx [.nat] (env.IsType 0) := ⟨trivial, ⟨_, hNatSort⟩⟩
-  have hctx₂ : OnCtx [.nat, .nat] (env.IsType 0) :=
-    ⟨hctx₁, ⟨_, hNatSort.weak0 henv⟩⟩
-  have hlit (n) (Γ) : env.HasType 0 Γ (.natLit n) .nat := by
-    induction n with
-    | zero => exact hzeroT Γ
-    | succ n ih => exact .app (hsuccT Γ) ih
-  have hfv (Γ) (hΓ : OnCtx Γ (env.IsType 0)) :
-      env.HasType 0 Γ f (.forallE .nat <| .forallE .nat .nat) :=
-    (hf 0 Γ).defeqU_l henv hΓ (hcf.weak0 henv)
-  have hfClosed : f.ClosedN := by
-    let ⟨_, hcf⟩ := hcf
-    exact (hcf.closedN' henv.ordered.closed trivial).2.1
-  have hcfApp (a b) : env.IsDefEqU 0 []
-      (.app (.app (.const ``Nat.mul []) (.natLit a)) (.natLit b))
-      (.app (.app f (.natLit a)) (.natLit b)) := by
-    have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit a [])
-    exact h₁.app_same henv trivial (.app (hf 0 []) (hlit a [])) (hlit b [])
-  induction b with
-  | zero =>
-    have hbody₁ : env.HasType 0 [.nat]
-        (.app (.app f (.bvar 0)) .natZero) .nat :=
-      .app (.app (hfv _ hctx₁) (.bvar .zero)) (hzeroT _)
-    have hz' := hz.lam_inst henv trivial hNatSort hbody₁ (hzeroT _) (hlit a [])
-    simp [VExpr.inst, hfClosed.instN_eq] at hz'
-    exact (hcfApp a 0).trans henv trivial hz'
-  | succ b ih =>
-    have hbvar0 : env.HasType 0 [.nat, .nat] (.bvar 0) .nat := .bvar .zero
-    have hbvar1 : env.HasType 0 [.nat, .nat] (.bvar 1) .nat := .bvar (.succ .zero)
-    have hfbody : env.HasType 0 [.nat, .nat]
-        (.app (.app f (.bvar 1)) (.bvar 0)) .nat :=
-      .app (.app (hfv _ hctx₂) hbvar1) hbvar0
-    have hleft : env.HasType 0 [.nat, .nat]
-        (.app (.app f (.bvar 1)) (.app .natSucc (.bvar 0))) .nat :=
-      .app (.app (hfv _ hctx₂) hbvar1) (.app (hsuccT _) hbvar0)
-    have hright : env.HasType 0 [.nat, .nat]
-        (.app (.app (.const ``Nat.add [])
-          (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1)) .nat :=
-      .app (.app (haddT 0 _) hfbody) hbvar1
-    have hinner₁ : env.HasType 0 [.nat]
-        (.lam .nat <| .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hleft
-    have hinner₂ : env.HasType 0 [.nat]
-        (.lam .nat <| .app (.app (.const ``Nat.add [])
-          (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hright
-    have houter := hs.lam_inst henv trivial hNatSort hinner₁ hinner₂ (hlit a [])
-    have hstep := houter.lam_inst henv trivial hNatSort
-      (by simpa [VExpr.inst] using hleft.instN henv (.succ .zero) (hlit a []))
-      (by simpa [VExpr.inst] using hright.instN henv (.succ .zero) (hlit a []))
-      (hlit b [])
-    simp [VExpr.inst, VExpr.natSucc, VExpr.inst_lift, hfClosed.instN_eq] at hstep
-    have hback₁ := (hcfApp a b).symm.app_arg henv trivial (haddT 0 [])
-      (.app (.app (hfv [] trivial) (hlit a [])) (hlit b []))
-    have hback := hback₁.app_same henv trivial
-      (.app (haddT 0 []) (.app (.app (hfv [] trivial) (hlit a [])) (hlit b [])))
-      (hlit a [])
-    have hcongr₁ := ih.app_arg henv trivial (haddT 0 [])
-      (.app (.app (hf 0 []) (hlit a [])) (hlit b []))
-    have hcongr := hcongr₁.app_same henv trivial
-      (.app (haddT 0 []) (.app (.app (hf 0 []) (hlit a [])) (hlit b [])))
-      (hlit a [])
-    exact (hcfApp a (b+1)).trans henv trivial <| hstep.trans henv trivial <|
-      hback.trans henv trivial <| hcongr.trans henv trivial (haddEval (a * b) a)
+  exact VEnv.ReflectsNatNatNat.of_binop_step_equations henv 0
+    hzeroT hsuccT hadd haddC (fun _ => rfl) (fun _ _ => rfl)
+    hf hcf hz hs
 
 theorem VEnv.ReflectsNatNatNat.of_pow_equations (henv : VEnv.WF env)
     (hzeroT : ∀ Γ, env.HasType 0 Γ .natZero .nat)
@@ -710,76 +730,9 @@ theorem VEnv.ReflectsNatNatNat.of_pow_equations (henv : VEnv.WF env)
         .app (.app (.const ``Nat.mul [])
           (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1))) :
     env.ReflectsNatNatNat ``Nat.pow Nat.pow := by
-  intro _
-  refine ⟨hf, fun a b => ?_⟩
-  let ⟨hmulT, hmulEval⟩ := hmul hmulC
-  have ⟨_, hNatSort⟩ := (hzeroT []).isType henv trivial
-  have hctx₁ : OnCtx [.nat] (env.IsType 0) := ⟨trivial, ⟨_, hNatSort⟩⟩
-  have hctx₂ : OnCtx [.nat, .nat] (env.IsType 0) :=
-    ⟨hctx₁, ⟨_, hNatSort.weak0 henv⟩⟩
-  have hlit (n) (Γ) : env.HasType 0 Γ (.natLit n) .nat := by
-    induction n with
-    | zero => exact hzeroT Γ
-    | succ n ih => exact .app (hsuccT Γ) ih
-  have hfv (Γ) (hΓ : OnCtx Γ (env.IsType 0)) :
-      env.HasType 0 Γ f (.forallE .nat <| .forallE .nat .nat) :=
-    (hf 0 Γ).defeqU_l henv hΓ (hcf.weak0 henv)
-  have hfClosed : f.ClosedN := by
-    let ⟨_, hcf⟩ := hcf
-    exact (hcf.closedN' henv.ordered.closed trivial).2.1
-  have hcfApp (a b) : env.IsDefEqU 0 []
-      (.app (.app (.const ``Nat.pow []) (.natLit a)) (.natLit b))
-      (.app (.app f (.natLit a)) (.natLit b)) := by
-    have h₁ := hcf.app_same henv trivial (hf 0 []) (hlit a [])
-    exact h₁.app_same henv trivial (.app (hf 0 []) (hlit a [])) (hlit b [])
-  induction b with
-  | zero =>
-    have hbody₁ : env.HasType 0 [.nat]
-        (.app (.app f (.bvar 0)) .natZero) .nat :=
-      .app (.app (hfv _ hctx₁) (.bvar .zero)) (hzeroT _)
-    have honeT : env.HasType 0 [.nat] (.app .natSucc .natZero) .nat :=
-      .app (hsuccT [.nat]) (hzeroT [.nat])
-    have hz' := hz.lam_inst henv trivial hNatSort hbody₁ honeT (hlit a [])
-    simp [VExpr.inst, hfClosed.instN_eq] at hz'
-    exact (hcfApp a 0).trans henv trivial hz'
-  | succ b ih =>
-    have hbvar0 : env.HasType 0 [.nat, .nat] (.bvar 0) .nat := .bvar .zero
-    have hbvar1 : env.HasType 0 [.nat, .nat] (.bvar 1) .nat := .bvar (.succ .zero)
-    have hfbody : env.HasType 0 [.nat, .nat]
-        (.app (.app f (.bvar 1)) (.bvar 0)) .nat :=
-      .app (.app (hfv _ hctx₂) hbvar1) hbvar0
-    have hleft : env.HasType 0 [.nat, .nat]
-        (.app (.app f (.bvar 1)) (.app .natSucc (.bvar 0))) .nat :=
-      .app (.app (hfv _ hctx₂) hbvar1) (.app (hsuccT _) hbvar0)
-    have hright : env.HasType 0 [.nat, .nat]
-        (.app (.app (.const ``Nat.mul [])
-          (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1)) .nat :=
-      .app (.app (hmulT 0 _) hfbody) hbvar1
-    have hinner₁ : env.HasType 0 [.nat]
-        (.lam .nat <| .app (.app f (.bvar 1)) (.app .natSucc (.bvar 0)))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hleft
-    have hinner₂ : env.HasType 0 [.nat]
-        (.lam .nat <| .app (.app (.const ``Nat.mul [])
-          (.app (.app f (.bvar 1)) (.bvar 0))) (.bvar 1))
-        (.forallE .nat .nat) := .lam (hNatSort.weak0 henv) hright
-    have houter := hs.lam_inst henv trivial hNatSort hinner₁ hinner₂ (hlit a [])
-    have hstep := houter.lam_inst henv trivial hNatSort
-      (by simpa [VExpr.inst] using hleft.instN henv (.succ .zero) (hlit a []))
-      (by simpa [VExpr.inst] using hright.instN henv (.succ .zero) (hlit a []))
-      (hlit b [])
-    simp [VExpr.inst, VExpr.natSucc, VExpr.inst_lift, hfClosed.instN_eq] at hstep
-    have hback₁ := (hcfApp a b).symm.app_arg henv trivial (hmulT 0 [])
-      (.app (.app (hfv [] trivial) (hlit a [])) (hlit b []))
-    have hback := hback₁.app_same henv trivial
-      (.app (hmulT 0 []) (.app (.app (hfv [] trivial) (hlit a [])) (hlit b [])))
-      (hlit a [])
-    have hcongr₁ := ih.app_arg henv trivial (hmulT 0 [])
-      (.app (.app (hf 0 []) (hlit a [])) (hlit b []))
-    have hcongr := hcongr₁.app_same henv trivial
-      (.app (hmulT 0 []) (.app (.app (hf 0 []) (hlit a [])) (hlit b [])))
-      (hlit a [])
-    exact (hcfApp a (b+1)).trans henv trivial <| hstep.trans henv trivial <|
-      hback.trans henv trivial <| hcongr.trans henv trivial (hmulEval (a ^ b) a)
+  exact VEnv.ReflectsNatNatNat.of_binop_step_equations henv 1
+    hzeroT hsuccT hmul hmulC (fun _ => rfl) (fun _ _ => rfl)
+    hf hcf hz hs
 
 /-- The four constructor equations checked for `Nat.beq` and `Nat.ble`
 determine a Boolean-valued operation on naturals. -/
