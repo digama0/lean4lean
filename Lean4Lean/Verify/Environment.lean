@@ -1,5 +1,4 @@
-import Lean4Lean.Verify.TypeChecker
-import Lean4Lean.Environment
+import Lean4Lean.Verify.Environment.Checker
 
 namespace Lean4Lean
 
