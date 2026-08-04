@@ -7,8 +7,16 @@ namespace Std.TreeMap
 variable {α : Type u} {β : Type v} {cmp : α → α → Ordering} {t : TreeMap α β cmp}
 
 /-- https://github.com/leanprover/lean4/issues/12798 -/
-axiom all_eq_all_toList {p : α → β → Bool} :
-    t.all p = t.toList.all fun a => p a.1 a.2
+theorem all_eq_all_toList {p : α → β → Bool} :
+    t.all p = t.toList.all fun a => p a.1 a.2 := by
+  change t.inner.inner.all p =
+    (Std.DTreeMap.Internal.Impl.Const.toList t.inner.inner).all fun a => p a.1 a.2
+  rw [Std.DTreeMap.Internal.Impl.all_eq_all_toListModel,
+    Std.DTreeMap.Internal.Impl.Const.toList_eq_toListModel_map]
+  generalize t.inner.inner.toListModel = l
+  induction l with
+  | nil => rfl
+  | cons x l ih => cases x; simp [ih]
 
 end Std.TreeMap
 
