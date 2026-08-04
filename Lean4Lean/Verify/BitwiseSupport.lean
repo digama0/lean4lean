@@ -100,102 +100,34 @@ theorem Condition.natEqDecideFn.call_eq {env : VEnv} (wf : env.WF)
         have happ := hbeta₁.app_same wf hΔ.toCtx hprefixT hyT'
         exact houtEq.trans wf hΔ.toCtx (happ.trans wf hΔ.toCtx hbeta₂).symm
 
-/-- Instantiate definitionally equal lambdas when the same argument is known
-to inhabit both (possibly only definitionally equal) binder domains. -/
-theorem VEnv.IsDefEqU.lam_instU_hetero (henv : VEnv.WF env)
-    (hΓ : OnCtx Γ (env.IsType U))
-    (h : env.IsDefEqU U Γ (.lam A₁ e₁) (.lam A₂ e₂))
-    (hA₁ : env.HasType U Γ A₁ (.sort u₁))
-    (hbody₁ : env.HasType U (A₁ :: Γ) e₁ B₁)
-    (hbody₂ : env.HasType U (A₂ :: Γ) e₂ B₂)
-    (ha₁ : env.HasType U Γ a A₁)
-    (ha₂ : env.HasType U Γ a A₂) :
-    env.IsDefEqU U Γ (e₁.inst a) (e₂.inst a) := by
-  have happ := h.app_same henv hΓ (.lam hA₁ hbody₁) ha₁
-  have hbeta₁ : env.IsDefEqU U Γ (.app (.lam A₁ e₁) a) (e₁.inst a) :=
-    ⟨_, .beta hbody₁ ha₁⟩
-  have hbeta₂ : env.IsDefEqU U Γ (.app (.lam A₂ e₂) a) (e₂.inst a) :=
-    ⟨_, .beta hbody₂ ha₂⟩
-  exact hbeta₁.symm.trans henv hΓ happ |>.trans henv hΓ hbeta₂
+/- `VEnv.IsDefEqU.lam_instU_hetero` and `VEnv.finish_bitwise_proof_equation`
+now live in `Lean4Lean.Verify.Primitive`, where the gcd semantics share
+them; they remain visible here (and to every consumer of this file) under
+their original short names. -/
 
-/-- Finish a certified equation whose left side is a call prefix applied to
-the equation's dependent proof binder.  The certificate call may expose a
-different but definitionally equal proof domain; this lemma aligns the two
-domains, instantiates both lambdas with the certificate proof, and connects
-the local call prefix back to the closed certificate prefix. -/
-theorem VEnv.finish_bitwise_proof_equation {env : VEnv} (wf : env.WF)
-    {proofTyL proofTyR bodyR prefixLocal prefixCall hpV
-      prefixArgTy prefixBodyTy hpTy hpBodyTy : VExpr}
-    (hproofTyL : env.IsType 0 [] proofTyL)
-    (hprefixLocalT : env.HasType 0 [proofTyL] prefixLocal
-      (.forallE prefixArgTy prefixBodyTy))
-    (hproofVarT : env.HasType 0 [proofTyL] (.bvar 0) prefixArgTy)
-    (hprefixCallT : env.HasType 0 [] prefixCall
-      (.forallE hpTy hpBodyTy))
-    (hpT : env.HasType 0 [] hpV hpTy)
-    (hprefixEq : env.IsDefEqU 0 [proofTyL] prefixLocal prefixCall)
-    (hlamEq : env.IsDefEqU 0 []
-      (.lam proofTyL (.app prefixLocal (.bvar 0)))
-      (.lam proofTyR bodyR)) :
-    env.HasType 0 [] hpV proofTyR ∧
-      env.IsDefEqU 0 [] (.app prefixCall hpV) (bodyR.inst hpV) := by
-  have hΓ : OnCtx [proofTyL] (env.IsType 0) := ⟨trivial, hproofTyL⟩
-  obtain ⟨_, hproofTyLSort⟩ := hproofTyL
-  have hproofTyLClosed :=
-    (hproofTyLSort.closedN' wf.ordered.closed trivial).1
-  have hproofVarCanon : env.HasType 0 [proofTyL] (.bvar 0) proofTyL := by
-    have hb : env.HasType 0 [proofTyL] (.bvar 0) proofTyL.lift := .bvar .zero
-    rw [hproofTyLClosed.lift_eq] at hb
-    exact hb
-  have hproofArgEq := hproofVarT.uniqU wf hΓ hproofVarCanon
-  have hprefixCallLocalT :=
-    (hprefixEq.of_l wf hΓ hprefixLocalT).hasType.2
-  have hprefixCallWeakT := hprefixCallT.weak0 (Γ := [proofTyL]) wf
-  have hforallEq := hprefixCallLocalT.uniqU wf hΓ hprefixCallWeakT
-  obtain ⟨_, hdomainEq⟩ := (hforallEq.forallE_inv wf hΓ).1
-  have hpProofTyEqCtx := hdomainEq.symm.toU.trans wf hΓ hproofArgEq
-  have hpTyClosed := (hpT.closedN' wf.ordered.closed trivial).2.2
-  have hproofTyLift : proofTyL.liftN 1 = proofTyL :=
-    hproofTyLClosed.liftN_eq (Nat.zero_le _)
-  have hpProofTyEq : env.IsDefEqU 0 [] hpTy proofTyL := by
-    apply (VEnv.IsDefEqU.weakN_iff wf hΓ
-      (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [proofTyL])).1
-    rw [hproofTyLift]
-    simpa [hpTyClosed.liftN_eq (Nat.zero_le _)] using hpProofTyEqCtx
-  have hpTL := hpT.defeqU_r wf trivial hpProofTyEq
-  have hlamEqU := hlamEq
-  obtain ⟨_, hlamEqD⟩ := hlamEq
-  obtain ⟨hproofTyRType, _, hbodyREq⟩ :=
-    hlamEqD.hasType.2.lam_inv wf trivial
-  obtain ⟨_, hproofTyRSort⟩ := hproofTyRType
-  have hbodyRT := hbodyREq.hasType.1
-  have hbodyLT := VEnv.HasType.app hprefixLocalT hproofVarT
-  have hleftLamT := VEnv.HasType.lam hproofTyLSort hbodyLT
-  have happ := hlamEqU.app_same wf trivial hleftLamT hpTL
-  have happRightT :=
-    (happ.of_l wf trivial (VEnv.HasType.app hleftLamT hpTL)).hasType.2
-  obtain ⟨_, _, hrightLamT, hpTR⟩ :=
-    happRightT.app_inv wf.ordered trivial
-  have hrightLamCanonT := VEnv.HasType.lam hproofTyRSort hbodyRT
-  have hrightForallEq := hrightLamT.uniqU wf trivial hrightLamCanonT
-  obtain ⟨_, hrightDomainEq⟩ :=
-    (hrightForallEq.forallE_inv wf trivial).1
-  have hpTR' := hpTR.defeqU_r wf trivial hrightDomainEq.toU
-  have hinstEq := VEnv.IsDefEqU.lam_instU_hetero wf trivial hlamEqU
-    hproofTyLSort hbodyLT hbodyRT hpTL hpTR'
-  have hproofVarLocal := hproofVarT
-  have hprefixAppEqCtx := hprefixEq.app_same wf hΓ
-    hprefixLocalT hproofVarLocal
-  have hprefixAppEq := hprefixAppEqCtx.instN wf.ordered
-    (.zero : Ctx.InstN [] hpV proofTyL 0 [proofTyL] []) hpTL
-  have hprefixCallClosed :=
-    (hprefixCallT.closedN' wf.ordered.closed trivial).1
-  have hprefixAppEqS := hprefixAppEq
-  simp [VExpr.inst, VExpr.instVar,
-    hprefixCallClosed.instN_eq] at hprefixAppEqS
-  have hinstEqS := hinstEq
-  simp [VExpr.inst, VExpr.instVar] at hinstEqS
-  exact ⟨hpTR', hprefixAppEqS.symm.trans wf trivial hinstEqS⟩
+/-- Peel one binder from a checked closed lambda equation at an argument
+inhabiting a common definitional type of the two binder domains.  Iterating
+this step instantiates a checked binder telescope of any length: the
+bitwise equations below use three and four ordinary binders, and a
+five-binder telescope is one further application.  A trailing dependent
+proof binder is discharged afterwards by
+`VEnv.finish_bitwise_proof_equation`. -/
+theorem VEnv.instantiate_lamU_step {env : VEnv} (wf : env.WF)
+    {AL AR eL eR T x : VExpr}
+    (heq : env.IsDefEqU 0 [] (.lam AL eL) (.lam AR eR))
+    (hAL : env.IsDefEqU 0 [] AL T)
+    (hAR : env.IsDefEqU 0 [] AR T)
+    (hxT : env.HasType 0 [] x T) :
+    env.HasType 0 [] x AL ∧ env.HasType 0 [] x AR ∧
+      env.IsDefEqU 0 [] (eL.inst x) (eR.inst x) := by
+  have heqD := heq
+  obtain ⟨_, heqD⟩ := heqD
+  obtain ⟨⟨_, hALSort⟩, _, hbodyLT⟩ := heqD.hasType.1.lam_inv wf trivial
+  obtain ⟨_, _, hbodyRT⟩ := heqD.hasType.2.lam_inv wf trivial
+  have hxL := hxT.defeqU_r wf trivial hAL.symm
+  have hxR := hxT.defeqU_r wf trivial hAR.symm
+  exact ⟨hxL, hxR, VEnv.IsDefEqU.lam_instU₂ wf trivial heq hALSort
+    hbodyLT hbodyRT (hAL.trans wf trivial hAR.symm) hxL⟩
 
 /-- The semantic result of instantiating the common `(Bool → Bool → Bool) →
 Nat → Nat →` prefix of a checked bitwise equation.  The translated source
@@ -287,26 +219,8 @@ theorem VEnv.instantiate_bitwise_lam3_equation {env : VEnv}
                 (.refl wf (U := 0) (Δ := []) (by trivial)) hboolBinS
               have hfunEqR := hfunSR.uniq wf
                 (.refl wf (U := 0) (Δ := []) (by trivial)) hboolBinS
-              have hopL := hop.defeqU_r wf trivial hfunEqL.symm
-              have hopR := hop.defeqU_r wf trivial hfunEqR.symm
-              have hlBody : TrExprS env [] [(none, .vlam funTyL)]
-                  (.lam0 q(Nat) <| .lam0 q(Nat) leftBody)
-                  (.lam natTyL₁ <| .lam natTyL₂ bodyL) :=
-                .lam hnatTyL₁ hnatSL₁ (.lam hnatTyL₂ hnatSL₂ hl₃)
-              have hrBody : TrExprS env [] [(none, .vlam funTyR)]
-                  (.lam0 q(Nat) <| .lam0 q(Nat) rightBody)
-                  (.lam natTyR₁ <| .lam natTyR₂ bodyR) :=
-                .lam hnatTyR₁ hnatSR₁ (.lam hnatTyR₂ hnatSR₂ hr₃)
-              obtain ⟨_, hbodyLT⟩ := hlBody.wf wf.ordered
-                (Us := []) (Δ := [(none, .vlam funTyL)])
-                ⟨trivial, nofun, hfunTyL⟩
-              obtain ⟨_, hbodyRT⟩ := hrBody.wf wf.ordered
-                (Us := []) (Δ := [(none, .vlam funTyR)])
-                ⟨trivial, nofun, hfunTyR⟩
-              let ⟨_, hfunSortL⟩ := hfunTyL
-              have hfunEqLR := hfunEqL.trans wf trivial hfunEqR.symm
-              have houter := VEnv.IsDefEqU.lam_instU₂ wf trivial heq
-                hfunSortL hbodyLT hbodyRT hfunEqLR hopL
+              obtain ⟨hopL, hopR, houter⟩ :=
+                VEnv.instantiate_lamU_step wf heq hfunEqL hfunEqR hop
               simp only [VExpr.inst] at houter
               have hzT :=
                 (hctors.natZeroS (Us := []) (Δ := [])).2
@@ -333,21 +247,10 @@ theorem VEnv.instantiate_bitwise_lam3_equation {env : VEnv}
                 simpa [VExpr.nat, VExpr.inst] using hnatEqL
               have hnatEqR' : env.IsDefEqU 0 [] (natTyR₁.inst op) .nat := by
                 simpa [VExpr.nat, VExpr.inst] using hnatEqR
-              have houterU := houter
-              obtain ⟨_, houterD⟩ := houter
-              have hleftOuterT := houterD.hasType.1
-              have hrightOuterT := houterD.hasType.2
-              obtain ⟨⟨_, hnatOuterSortL⟩, _, hinnerLT⟩ :=
-                hleftOuterT.lam_inv wf trivial
-              obtain ⟨_, _, hinnerRT⟩ :=
-                hrightOuterT.lam_inv wf trivial
               have haT :=
                 (hctors.natLitS a (Us := []) (Δ := [])).2
-              have haL := haT.defeqU_r wf trivial hnatEqL'.symm
-              have haR := haT.defeqU_r wf trivial hnatEqR'.symm
-              have hnatEqLR := hnatEqL'.trans wf trivial hnatEqR'.symm
-              have hmiddle := VEnv.IsDefEqU.lam_instU₂ wf trivial houterU
-                hnatOuterSortL hinnerLT hinnerRT hnatEqLR haL
+              obtain ⟨haL, haR, hmiddle⟩ :=
+                VEnv.instantiate_lamU_step wf houter hnatEqL' hnatEqR' haT
               simp only [VExpr.inst] at hmiddle
               have hctxL₂ : VLCtx.IsDefEq env 0
                   [(none, .vlam natTyL₁), (none, .vlam funTyL)]
@@ -379,22 +282,10 @@ theorem VEnv.instantiate_bitwise_lam3_equation {env : VEnv}
               have hnatEqR₂' : env.IsDefEqU 0 []
                   ((natTyR₂.inst op 1).inst (.natLit a)) .nat := by
                 simpa [VExpr.nat, VExpr.inst] using hnatEqR₂
-              have hmiddleU := hmiddle
-              obtain ⟨_, hmiddleD⟩ := hmiddle
-              have hleftMiddleT := hmiddleD.hasType.1
-              have hrightMiddleT := hmiddleD.hasType.2
-              obtain ⟨⟨_, hnatMiddleSortL⟩, _, hfinalLT⟩ :=
-                hleftMiddleT.lam_inv wf trivial
-              obtain ⟨_, _, hfinalRT⟩ :=
-                hrightMiddleT.lam_inv wf trivial
               have hbT :=
                 (hctors.natLitS b (Us := []) (Δ := [])).2
-              have hbL := hbT.defeqU_r wf trivial hnatEqL₂'.symm
-              have hbR := hbT.defeqU_r wf trivial hnatEqR₂'.symm
-              have hnatEq₂LR :=
-                hnatEqL₂'.trans wf trivial hnatEqR₂'.symm
-              have hfinal := VEnv.IsDefEqU.lam_instU₂ wf trivial hmiddleU
-                hnatMiddleSortL hfinalLT hfinalRT hnatEq₂LR hbL
+              obtain ⟨hbL, hbR, hfinal⟩ :=
+                VEnv.instantiate_lamU_step wf hmiddle hnatEqL₂' hnatEqR₂' hbT
               exact .intro funTyL natTyL₁ natTyL₂ bodyL
                 funTyR natTyR₁ natTyR₂ bodyR
                 hfunTyL hnatTyL₁ hnatTyL₂ hfunTyR hnatTyR₁ hnatTyR₂
@@ -659,17 +550,8 @@ theorem VEnv.instantiate_bitwise_lam4_equation {env : VEnv}
           simpa [VExpr.nat, VExpr.inst] using hnatEqR
         have hbT :=
           (hctors.natLitS b (Us := []) (Δ := [])).2
-        have hbL := hbT.defeqU_r wf trivial hnatEqL'.symm
-        have hbR := hbT.defeqU_r wf trivial hnatEqR'.symm
-        have hmiddleU := hmiddle
-        obtain ⟨_, hmiddleD⟩ := hmiddle
-        obtain ⟨⟨_, hnatSortL⟩, _, hbodyLT⟩ :=
-          hmiddleD.hasType.1.lam_inv wf trivial
-        obtain ⟨_, _, hbodyRT⟩ :=
-          hmiddleD.hasType.2.lam_inv wf trivial
-        have hnatEqLR := hnatEqL'.trans wf trivial hnatEqR'.symm
-        have hfinal := VEnv.IsDefEqU.lam_instU₂ wf trivial hmiddleU
-          hnatSortL hbodyLT hbodyRT hnatEqLR hbL
+        obtain ⟨hbL, hbR, hfinal⟩ :=
+          VEnv.instantiate_lamU_step wf hmiddle hnatEqL' hnatEqR' hbT
         exact .intro funTyL natTyL₁ natTyL₂ natTyL₃ bodyLFinal
           funTyR natTyR₁ natTyR₂ natTyR₃ bodyRFinal
           hfunTyL hnatTyL₁ hnatTyL₂ hnatTyL₃

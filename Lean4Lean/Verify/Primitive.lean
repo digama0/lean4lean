@@ -367,6 +367,105 @@ theorem VEnv.IsDefEqU.lam_instU₂ (henv : VEnv.WF env)
     ⟨_, .beta hbody₂ ha₂⟩
   exact hbeta₁.symm.trans henv hΓ happ |>.trans henv hΓ hbeta₂
 
+/-- Instantiate definitionally equal lambdas when the same argument is known
+to inhabit both (possibly only definitionally equal) binder domains. -/
+theorem VEnv.IsDefEqU.lam_instU_hetero (henv : VEnv.WF env)
+    (hΓ : OnCtx Γ (env.IsType U))
+    (h : env.IsDefEqU U Γ (.lam A₁ e₁) (.lam A₂ e₂))
+    (hA₁ : env.HasType U Γ A₁ (.sort u₁))
+    (hbody₁ : env.HasType U (A₁ :: Γ) e₁ B₁)
+    (hbody₂ : env.HasType U (A₂ :: Γ) e₂ B₂)
+    (ha₁ : env.HasType U Γ a A₁)
+    (ha₂ : env.HasType U Γ a A₂) :
+    env.IsDefEqU U Γ (e₁.inst a) (e₂.inst a) := by
+  have happ := h.app_same henv hΓ (.lam hA₁ hbody₁) ha₁
+  have hbeta₁ : env.IsDefEqU U Γ (.app (.lam A₁ e₁) a) (e₁.inst a) :=
+    ⟨_, .beta hbody₁ ha₁⟩
+  have hbeta₂ : env.IsDefEqU U Γ (.app (.lam A₂ e₂) a) (e₂.inst a) :=
+    ⟨_, .beta hbody₂ ha₂⟩
+  exact hbeta₁.symm.trans henv hΓ happ |>.trans henv hΓ hbeta₂
+
+/-- Finish a certified equation whose left side is a call prefix applied to
+the equation's dependent proof binder.  The certificate call may expose a
+different but definitionally equal proof domain; this lemma aligns the two
+domains, instantiates both lambdas with the certificate proof, and connects
+the local call prefix back to the closed certificate prefix.  Nothing here
+is specific to the shape of the preceding binder telescope; the bitwise and
+gcd equations both discharge their trailing proof binders through it. -/
+theorem VEnv.finish_bitwise_proof_equation {env : VEnv} (wf : env.WF)
+    {proofTyL proofTyR bodyR prefixLocal prefixCall hpV
+      prefixArgTy prefixBodyTy hpTy hpBodyTy : VExpr}
+    (hproofTyL : env.IsType 0 [] proofTyL)
+    (hprefixLocalT : env.HasType 0 [proofTyL] prefixLocal
+      (.forallE prefixArgTy prefixBodyTy))
+    (hproofVarT : env.HasType 0 [proofTyL] (.bvar 0) prefixArgTy)
+    (hprefixCallT : env.HasType 0 [] prefixCall
+      (.forallE hpTy hpBodyTy))
+    (hpT : env.HasType 0 [] hpV hpTy)
+    (hprefixEq : env.IsDefEqU 0 [proofTyL] prefixLocal prefixCall)
+    (hlamEq : env.IsDefEqU 0 []
+      (.lam proofTyL (.app prefixLocal (.bvar 0)))
+      (.lam proofTyR bodyR)) :
+    env.HasType 0 [] hpV proofTyR ∧
+      env.IsDefEqU 0 [] (.app prefixCall hpV) (bodyR.inst hpV) := by
+  have hΓ : OnCtx [proofTyL] (env.IsType 0) := ⟨trivial, hproofTyL⟩
+  obtain ⟨_, hproofTyLSort⟩ := hproofTyL
+  have hproofTyLClosed :=
+    (hproofTyLSort.closedN' wf.ordered.closed trivial).1
+  have hproofVarCanon : env.HasType 0 [proofTyL] (.bvar 0) proofTyL := by
+    have hb : env.HasType 0 [proofTyL] (.bvar 0) proofTyL.lift := .bvar .zero
+    rw [hproofTyLClosed.lift_eq] at hb
+    exact hb
+  have hproofArgEq := hproofVarT.uniqU wf hΓ hproofVarCanon
+  have hprefixCallLocalT :=
+    (hprefixEq.of_l wf hΓ hprefixLocalT).hasType.2
+  have hprefixCallWeakT := hprefixCallT.weak0 (Γ := [proofTyL]) wf
+  have hforallEq := hprefixCallLocalT.uniqU wf hΓ hprefixCallWeakT
+  obtain ⟨_, hdomainEq⟩ := (hforallEq.forallE_inv wf hΓ).1
+  have hpProofTyEqCtx := hdomainEq.symm.toU.trans wf hΓ hproofArgEq
+  have hpTyClosed := (hpT.closedN' wf.ordered.closed trivial).2.2
+  have hproofTyLift : proofTyL.liftN 1 = proofTyL :=
+    hproofTyLClosed.liftN_eq (Nat.zero_le _)
+  have hpProofTyEq : env.IsDefEqU 0 [] hpTy proofTyL := by
+    apply (VEnv.IsDefEqU.weakN_iff wf hΓ
+      (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [proofTyL])).1
+    rw [hproofTyLift]
+    simpa [hpTyClosed.liftN_eq (Nat.zero_le _)] using hpProofTyEqCtx
+  have hpTL := hpT.defeqU_r wf trivial hpProofTyEq
+  have hlamEqU := hlamEq
+  obtain ⟨_, hlamEqD⟩ := hlamEq
+  obtain ⟨hproofTyRType, _, hbodyREq⟩ :=
+    hlamEqD.hasType.2.lam_inv wf trivial
+  obtain ⟨_, hproofTyRSort⟩ := hproofTyRType
+  have hbodyRT := hbodyREq.hasType.1
+  have hbodyLT := VEnv.HasType.app hprefixLocalT hproofVarT
+  have hleftLamT := VEnv.HasType.lam hproofTyLSort hbodyLT
+  have happ := hlamEqU.app_same wf trivial hleftLamT hpTL
+  have happRightT :=
+    (happ.of_l wf trivial (VEnv.HasType.app hleftLamT hpTL)).hasType.2
+  obtain ⟨_, _, hrightLamT, hpTR⟩ :=
+    happRightT.app_inv wf.ordered trivial
+  have hrightLamCanonT := VEnv.HasType.lam hproofTyRSort hbodyRT
+  have hrightForallEq := hrightLamT.uniqU wf trivial hrightLamCanonT
+  obtain ⟨_, hrightDomainEq⟩ :=
+    (hrightForallEq.forallE_inv wf trivial).1
+  have hpTR' := hpTR.defeqU_r wf trivial hrightDomainEq.toU
+  have hinstEq := VEnv.IsDefEqU.lam_instU_hetero wf trivial hlamEqU
+    hproofTyLSort hbodyLT hbodyRT hpTL hpTR'
+  have hproofVarLocal := hproofVarT
+  have hprefixAppEqCtx := hprefixEq.app_same wf hΓ
+    hprefixLocalT hproofVarLocal
+  have hprefixAppEq := hprefixAppEqCtx.instN wf.ordered
+    (.zero : Ctx.InstN [] hpV proofTyL 0 [proofTyL] []) hpTL
+  have hprefixCallClosed :=
+    (hprefixCallT.closedN' wf.ordered.closed trivial).1
+  have hprefixAppEqS := hprefixAppEq
+  simp [VExpr.inst, VExpr.instVar,
+    hprefixCallClosed.instN_eq] at hprefixAppEqS
+  have hinstEqS := hinstEq
+  simp [VExpr.inst, VExpr.instVar] at hinstEqS
+  exact ⟨hpTR', hprefixAppEqS.symm.trans wf trivial hinstEqS⟩
+
 /-- Instantiate both sides of a checked source lambda equation while retaining
 translations of the instantiated source bodies. -/
 theorem VEnv.instantiate_lam_equation {env : VEnv}
@@ -3833,6 +3932,132 @@ theorem VEnv.eager_natLit_of_aux_equations {env : VEnv}
       ⟨u, hNatSort⟩ hnatTy₁ hnatT hiteT' htrueT hcondTrue htrueEq
     exact ⟨eager, heagerS, heagerEq.trans wf trivial hselected⟩
 
+/- `Nat` literal constructors are closed, so lifting and instantiation leave
+them unchanged.  Bundling the closedness reasoning here keeps the gcd
+semantics proofs free of per-literal lifting bookkeeping. -/
+private theorem Expr.natLitToConstructor_lift {n s d : Nat} :
+    (Expr.natLitToConstructor n).liftLooseBVars' s d =
+      .natLitToConstructor n :=
+  Expr.liftLooseBVars_eq_self
+    (Nat.le_trans (Closed.natLitToConstructor (k := 0)).looseBVarRange_le
+      (Nat.zero_le s))
+
+private theorem Expr.natLitToConstructor_inst {n : Nat} {a : Expr}
+    {d : Nat} :
+    (Expr.natLitToConstructor n).instantiate1' a d =
+      .natLitToConstructor n :=
+  Expr.instantiate1'_eq_self
+    (Nat.le_trans (Closed.natLitToConstructor (k := 0)).looseBVarRange_le
+      (Nat.zero_le d))
+
+private theorem Expr.instantiate1'_closed {e a : Expr} {d : Nat}
+    (h : e.looseBVarRange' = 0) : e.instantiate1' a d = e :=
+  Expr.instantiate1'_eq_self (h ▸ Nat.zero_le d)
+
+/-- Weaken a closed translation into a context extended by one lambda
+binder. -/
+private theorem TrExprS.weak0_vlam {env : VEnv} (wf : env.WF)
+    {e : Expr} {v A : VExpr}
+    (h : TrExprS env [] [] e v) (hv : v.ClosedN) :
+    TrExprS env [] [(none, .vlam A)] e v := by
+  have hw := h.weakBV wf.ordered
+    (.skip (.vlam A) (.refl : VLCtx.BVLift [] [] 0 0 0 0))
+  simp only [Nat.zero_add, VLocalDecl.depth] at hw
+  have hlift : e.liftLooseBVars' 0 1 = e :=
+    Expr.liftLooseBVars_eq_self h.closed.looseBVarRange_le
+  rw [hlift] at hw
+  simpa [hv.lift_eq] using hw
+
+/-- Renormalize a translated gcd state: both component translations are
+replaced by canonical translations connected through definitional equality.
+This is where gcd's argument swap and the `Nat.mod` renormalization of the
+swapped state enter, via `haEq`/`hbEq`. -/
+private theorem NatGcdFixCertificate.stateExpr_canon {env : VEnv}
+    (wf : env.WF) {r : NatGcdFixCertificate} {ea eb ea' eb' : Expr}
+    {stateV A aCanon bCanon aV' bV' : VExpr}
+    (hstate : TrExprS env [] [] (r.stateExpr ea eb) stateV)
+    (hstateT : env.HasType 0 [] stateV A)
+    (haCanon : TrExprS env [] [] ea aCanon)
+    (hbCanon : TrExprS env [] [] eb bCanon)
+    (haEq : env.IsDefEqU 0 [] aCanon aV')
+    (hbEq : env.IsDefEqU 0 [] bCanon bV')
+    (haS' : TrExprS env [] [] ea' aV')
+    (hbS' : TrExprS env [] [] eb' bV') :
+    ∃ stateV', TrExprS env [] [] (r.stateExpr ea' eb') stateV' ∧
+      env.IsDefEqU 0 [] stateV stateV' ∧
+      env.HasType 0 [] stateV' A := by
+  cases hstate with
+  | app hmkAT hbT hmkA hbS =>
+    cases hmkA with
+    | app hmkT haT hmk haS =>
+      have haEqC := (haS.uniq wf
+        (.refl wf (U := 0) (Δ := []) (by trivial)) haCanon).trans wf
+        trivial haEq
+      have hbEqC := (hbS.uniq wf
+        (.refl wf (U := 0) (Δ := []) (by trivial)) hbCanon).trans wf
+        trivial hbEq
+      have hmkAEq := haEqC.app_arg wf trivial hmkT haT
+      have hstateEq := hmkAEq.app_both wf trivial hbEqC hmkAT hbT
+      have haV'T := (haEqC.of_l wf trivial haT).hasType.2
+      have hbV'T := (hbEqC.of_l wf trivial hbT).hasType.2
+      have hmkA'T := (hmkAEq.of_l wf trivial hmkAT).hasType.2
+      exact ⟨_, .app hmkA'T hbV'T (.app hmkT haV'T hmk haS') hbS',
+        hstateEq, (hstateEq.of_l wf trivial hstateT).hasType.2⟩
+
+/-- Canonicalize a semantic gcd call: rebuild the closed call prefix from
+canonical source translations, and relate the call to the canonical prefix
+applied to its dependent proof argument. -/
+private theorem VEnv.gcdGo_call_canon {env : VEnv} (wf : env.WF)
+    (hctors : VEnv.HasNatConstructors env)
+    {r : NatGcdFixCertificate}
+    {goV fuelV stateV hpV fuelLit stateCanon A : VExpr}
+    {fuelSrc stateSrc : Expr}
+    (hgo : TrExprS env [] [] r.core.goFn goV)
+    (hfuelSrcS : TrExprS env [] [] fuelSrc fuelLit)
+    (hstateSrcS : TrExprS env [] [] stateSrc stateCanon)
+    (hfuelEq : env.IsDefEqU 0 [] fuelV fuelLit)
+    (hstateEq : env.IsDefEqU 0 [] stateV stateCanon)
+    (heT : env.HasType 0 []
+      (.app (.app (.app (.app (.app goV .natZero) .natZero) fuelV)
+        stateV) hpV) A) :
+    ∃ hpTy hpBodyTy,
+      TrExprS env [] []
+        (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
+          fuelSrc stateSrc)
+        (.app (.app (.app (.app goV .natZero) .natZero) fuelLit)
+          stateCanon) ∧
+      env.HasType 0 [] hpV hpTy ∧
+      env.HasType 0 []
+        (.app (.app (.app (.app goV .natZero) .natZero) fuelLit)
+          stateCanon) (.forallE hpTy hpBodyTy) ∧
+      env.IsDefEqU 0 []
+        (.app (.app (.app (.app (.app goV .natZero) .natZero) fuelV)
+          stateV) hpV)
+        (.app (.app (.app (.app (.app goV .natZero) .natZero) fuelLit)
+          stateCanon) hpV) := by
+  obtain ⟨hpA, hpB, hprefixT, hpT⟩ := heT.app_inv wf.ordered trivial
+  obtain ⟨stateA, stateB, hfuelPrefixT, hstateT⟩ :=
+    hprefixT.app_inv wf.ordered trivial
+  obtain ⟨fuelA, fuelB, hgoZerosT, hfuelT⟩ :=
+    hfuelPrefixT.app_inv wf.ordered trivial
+  obtain ⟨z2A, z2B, hgoZ1T, hz2T⟩ := hgoZerosT.app_inv wf.ordered trivial
+  obtain ⟨z1A, z1B, hgoT, hz1T⟩ := hgoZ1T.app_inv wf.ordered trivial
+  have hzS := (hctors.natZeroS (Us := []) (Δ := [])).1
+  have hlitFuelT := (hfuelEq.of_l wf trivial hfuelT).hasType.2
+  have hfuelPrefixEq := hfuelEq.app_arg wf trivial hgoZerosT hfuelT
+  have hcanonFuelPrefixT :=
+    (hfuelPrefixEq.of_l wf trivial hfuelPrefixT).hasType.2
+  have hstateCanonT := (hstateEq.of_l wf trivial hstateT).hasType.2
+  have hcanonPrefixEq := hfuelPrefixEq.app_both wf trivial hstateEq
+    hfuelPrefixT hstateT
+  have hcanonPrefixT := (hcanonPrefixEq.of_l wf trivial hprefixT).hasType.2
+  refine ⟨hpA, hpB, ?_, hpT, hcanonPrefixT,
+    hcanonPrefixEq.app_same wf trivial hprefixT hpT⟩
+  exact .app hcanonFuelPrefixT hstateCanonT
+    (.app hgoZerosT hlitFuelT
+      (.app hgoZ1T hz2T (.app hgoT hz1T hgo hzS) hzS) hfuelSrcS)
+    hstateSrcS
+
 /-- Semantic relation represented by the translated recursive calls retained
 in a gcd fixpoint certificate. -/
 def VEnv.GcdGoCall (env : VEnv) (r : NatGcdFixCertificate)
@@ -3917,10 +4142,7 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
             | app hgoT hz1T hgo hz1 =>
               rename_i hpA hpB hpV stateA stateB stateV fuelA fuelB fuelV
                 z2A z2B z2V goV goA goB z1V
-              have hgoLe : r.core.goFn.looseBVarRange' ≤ 1 :=
-                hgoClosed ▸ Nat.zero_le 1
-              rw [Expr.instantiate1'_eq_self hgoLe,
-                Expr.instantiate1_eq_self hgoClosed] at hgo
+              simp only [Expr.instantiate1'_closed hgoClosed] at hgo
               have hzCanon :=
                 (hctors.natZeroS (Us := []) (Δ := [])).1
               have hz1' : TrExprS env [] [] q(Nat.zero) z1V := by
@@ -3929,20 +4151,11 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
                 simpa using hz2
               cases hz1'.unique (by trivial) hzCanon
               cases hz2'.unique (by trivial) hzCanon
-              have haLift : (Expr.natLitToConstructor a).liftLooseBVars' 0 1 =
-                  Expr.natLitToConstructor a :=
-                Expr.liftLooseBVars_eq_self
-                  (Closed.natLitToConstructor
-                    (n := a) (k := 0)).looseBVarRange_le
-              have haInst : (Expr.natLitToConstructor a).instantiate1'
-                  (Expr.natLitToConstructor b) = Expr.natLitToConstructor a :=
-                Expr.instantiate1_eq_self
-                  (Closed.natLitToConstructor
-                    (n := a) (k := 0)).looseBVarRange_zero
               have hstate : TrExprS env [] []
                   (r.stateExpr (.natLitToConstructor a)
                     (.natLitToConstructor b)) stateV := by
-                simpa [Literal.toConstructor, haLift, haInst, Expr.instantiate1',
+                simpa [Literal.toConstructor, Expr.natLitToConstructor_lift,
+                  Expr.natLitToConstructor_inst, Expr.instantiate1',
                   Expr.looseBVarRange', NatGcdFixCertificate.stateExpr] using state
               obtain ⟨eager, heagerS, heagerEq⟩ := heager (a+1)
               have hsuccS :=
@@ -3963,7 +4176,8 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
               have hfuel : TrExprS env [] []
                   (mkApp q(WellFounded.Nat.eager)
                     (mkApp q(Nat.succ) (.natLitToConstructor a))) fuelV := by
-                simpa [Literal.toConstructor, haLift, haInst, Expr.instantiate1',
+                simpa [Literal.toConstructor, Expr.natLitToConstructor_lift,
+                  Expr.natLitToConstructor_inst, Expr.instantiate1',
                   Expr.looseBVarRange'] using fuel
               have hfuelEq := hfuel.uniq wf
                 (.refl wf (U := 0) (Δ := []) (by trivial)) hfuelCanon
@@ -3973,8 +4187,6 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
               · refine ⟨goV, fuelV, stateV, _, hpV, hgo, hstate, hp,
                   hfuelEval, rfl⟩
               · have hgcdClosed := hgcd.closed.looseBVarRange_zero
-                have hgcdLe : gcd.looseBVarRange' ≤ 1 :=
-                  hgcdClosed ▸ Nat.zero_le 1
                 have hcall : TrExprS env [] []
                     (mkApp2 gcd (.natLitToConstructor a)
                       (.natLitToConstructor b))
@@ -3986,10 +4198,10 @@ theorem NatGcdFixCertificate.top_semantics {env : VEnv}
                 have hl₂' : TrExprS env [] []
                     (mkApp2 gcd (.natLitToConstructor a)
                       (.natLitToConstructor b)) l₂ := by
-                  simpa [Literal.toConstructor, haLift, haInst,
-                    Expr.instantiate1', Expr.looseBVarRange',
-                    Expr.instantiate1'_eq_self hgcdLe,
-                    Expr.instantiate1_eq_self hgcdClosed] using hl₂
+                  simpa [Literal.toConstructor, Expr.natLitToConstructor_lift,
+                    Expr.natLitToConstructor_inst, Expr.instantiate1',
+                    Expr.looseBVarRange',
+                    Expr.instantiate1'_closed hgcdClosed] using hl₂
                 have hcallEq := hcall.uniq wf
                   (.refl wf (U := 0) (Δ := []) (by trivial)) hl₂'
                 exact hcallEq.trans wf trivial heq₂
@@ -4018,11 +4230,9 @@ theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF)
     hfuelEq, rfl⟩
   have hfT := (lit fuel).2
   have hbT := (lit b).2
-  have hfLitS := (lit fuel).1
-  have hbLitS := (lit b).1
-  cases hfLitS with
+  cases (lit fuel).1 with
   | lit _ hfS =>
-   cases hbLitS with
+   cases (lit b).1 with
    | lit _ hbS =>
     unfold NatGcdFixCertificate.expectedZeroLhs at hl
     unfold NatGcdFixCertificate.expectedZeroRhs at hr
@@ -4034,7 +4244,6 @@ theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF)
     | lam hptyL hptySL hbodyL =>
       cases hr₂ with
       | lam hptyR hptySR hbodyR =>
-        have hbodyLS := hbodyL
         cases hbodyL with
         | app hprefixCertT hbvarT hprefixCert hbvar =>
           cases hbvar with
@@ -4044,201 +4253,43 @@ theorem NatGcdFixCertificate.zero_semantics {env : VEnv} (wf : env.WF)
             rename_i proofTyL bodyL proofTyR bodyR prefixCert certA certB
             obtain ⟨_, heSelfD⟩ := heSelf
             have heT := heSelfD.hasType.1
-            obtain ⟨hpA, hpB, hprefixT, hpT⟩ :=
-              heT.app_inv wf.ordered trivial
-            obtain ⟨stateA, stateB, hfuelPrefixT, hstateT⟩ :=
-              hprefixT.app_inv wf.ordered trivial
-            obtain ⟨fuelA, fuelB, hgoZerosT, hfuelT⟩ :=
-              hfuelPrefixT.app_inv wf.ordered trivial
-            have hnatFuelT := (hfuelEq.of_l wf trivial hfuelT).hasType.2
-            have hcanonFuelPrefixT := VEnv.HasType.app hgoZerosT hnatFuelT
-            have hfuelPrefixEq := hfuelEq.app_arg wf trivial hgoZerosT hfuelT
-            have hcanonFuelPrefixT' :=
-              (hfuelPrefixEq.of_l wf trivial hfuelPrefixT).hasType.2
-            have hprefixRootT := VEnv.HasType.app hcanonFuelPrefixT' hstateT
-            obtain ⟨z2A, z2B, hgoZ1T, hz2T⟩ :=
-              hgoZerosT.app_inv wf.ordered trivial
-            obtain ⟨z1A, z1B, hgoT, hz1T⟩ :=
-              hgoZ1T.app_inv wf.ordered trivial
-            have hzS := (hctors.natZeroS (Us := []) (Δ := [])).1
-            have hgoZ1S : TrExprS env [] []
-                (mkApp r.core.goFn q(Nat.zero)) (.app goV .natZero) :=
-              .app hgoT hz1T hgo hzS
-            have hgoZerosS : TrExprS env [] []
-                (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                (.app (.app goV .natZero) .natZero) :=
-              .app hgoZ1T hz2T hgoZ1S hzS
-            have hsuccS :=
-              (hctors.natSuccS (Us := []) (Δ := [])).1
-            have hsuccT :=
-              (hctors.natSuccS (Us := []) (Δ := [])).2
+            have hsuccS := (hctors.natSuccS (Us := []) (Δ := [])).1
+            have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
             have hsfS : TrExprS env [] []
                 (mkApp q(Nat.succ) (.natLitToConstructor fuel))
                 (.natLit (fuel+1)) := .app hsuccT hfT hsuccS hfS
-            have hgoFuelS : TrExprS env [] []
-                (mkApp (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                  (mkApp q(Nat.succ) (.natLitToConstructor fuel)))
-                (.app (.app (.app goV .natZero) .natZero) (.natLit (fuel+1))) :=
-              .app hgoZerosT hnatFuelT hgoZerosS hsfS
-            have hprefixRootS : TrExprS env [] []
-                (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                  (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                  (r.stateExpr (.natLitToConstructor 0)
-                    (.natLitToConstructor b)))
-                (.app (.app (.app (.app goV .natZero) .natZero)
-                  (.natLit (fuel+1))) stateV) :=
-              .app hcanonFuelPrefixT' hstateT hgoFuelS hstate
-            have hprefixClosed :=
-              (hprefixRootT.closedN' wf.ordered.closed trivial).1
-            have hprefixWeak : TrExprS env [] [(none, .vlam bodyL)]
-                (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                  (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                  (r.stateExpr (.natLitToConstructor 0)
-                    (.natLitToConstructor b)))
-                (.app (.app (.app (.app goV .natZero) .natZero)
-                  (.natLit (fuel+1))) stateV) := by
-              have hw := hprefixRootS.weakBV wf.ordered
-                (.skip (.vlam bodyL) (.refl : VLCtx.BVLift [] [] 0 0 0 0))
-              simp only [Nat.zero_add, VLocalDecl.depth] at hw
-              have hsourceLift :
-                  (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                    (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                    (r.stateExpr (.natLitToConstructor 0)
-                      (.natLitToConstructor b))).liftLooseBVars' 0 1 =
-                    mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                      (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                      (r.stateExpr (.natLitToConstructor 0)
-                        (.natLitToConstructor b)) :=
-                Expr.liftLooseBVars_eq_self
-                  hprefixRootS.closed.looseBVarRange_le
-              rw [hsourceLift] at hw
-              simpa [hprefixClosed.lift_eq] using hw
+            have hstateEq : env.IsDefEqU 0 [] stateV stateV :=
+              .refl (hstate.wf wf.ordered (Us := []) (Δ := []) trivial)
+            obtain ⟨hpA, hpB, hprefixS, hpT, hprefixCallT, hcallEq⟩ :=
+              VEnv.gcdGo_call_canon wf hctors hgo hsfS hstate hfuelEq
+                hstateEq heT
+            have hprefixWeak := TrExprS.weak0_vlam wf (A := bodyL)
+              hprefixS (hprefixCallT.closedN' wf.ordered.closed trivial).1
             have hprefixCert' : TrExprS env [] [(none, .vlam bodyL)]
                 (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
                   (mkApp q(Nat.succ) (.natLitToConstructor fuel))
                   (r.stateExpr (.natLitToConstructor 0)
                     (.natLitToConstructor b))) prefixCert := by
               have hgoClosed := hgo.closed.looseBVarRange_zero
-              have hgoLe2 : r.core.goFn.looseBVarRange' ≤ 2 :=
-                hgoClosed ▸ Nat.zero_le 2
-              have hgoLe1 : r.core.goFn.looseBVarRange' ≤ 1 :=
-                hgoClosed ▸ Nat.zero_le 1
-              have hfLift : (Expr.natLitToConstructor fuel).liftLooseBVars'
-                  0 2 = Expr.natLitToConstructor fuel :=
-                Expr.liftLooseBVars_eq_self
-                  (Closed.natLitToConstructor
-                    (n := fuel) (k := 0)).looseBVarRange_le
-              have hfInst : (Expr.natLitToConstructor fuel).instantiate1'
-                  (Expr.natLitToConstructor b) 1 =
-                  Expr.natLitToConstructor fuel :=
-                Expr.instantiate1'_eq_self (by
-                  have h := (Closed.natLitToConstructor
-                    (n := fuel) (k := 0)).looseBVarRange_le
-                  omega)
-              have hbLift : (Expr.natLitToConstructor b).liftLooseBVars'
-                  0 1 = Expr.natLitToConstructor b :=
-                Expr.liftLooseBVars_eq_self
-                  (Closed.natLitToConstructor
-                    (n := b) (k := 0)).looseBVarRange_le
-              simpa [pure, Literal.toConstructor, hfLift, hfInst, hbLift,
-                Expr.looseBVarRange',
-                Expr.instantiate1'_eq_self hgoLe2,
-                Expr.instantiate1'_eq_self hgoLe1,
-                Expr.instantiate1_eq_self hgoClosed,
+              simpa [pure, Literal.toConstructor,
+                Expr.natLitToConstructor_lift, Expr.natLitToConstructor_inst,
+                Expr.instantiate1'_closed hgoClosed, Expr.looseBVarRange',
                 NatGcdFixCertificate.stateExpr] using hprefixCert
-            have hctx : OnCtx [bodyL] (env.IsType 0) := ⟨trivial, hptyL⟩
-            have hprefixEq := TrExprS.uniq (Us := [])
-              (Δ₁ := [(none, .vlam bodyL)])
-              (Δ₂ := [(none, .vlam bodyL)]) wf
+            have hprefixEq := TrExprS.uniq (Us := []) wf
               (.refl wf (U := 0) (Δ := [(none, .vlam bodyL)])
                 ⟨trivial, nofun, hptyL⟩) hprefixCert' hprefixWeak
-            have hprefixRightT :=
-              (hprefixEq.of_l wf hctx hprefixCertT).hasType.2
-            have hcanonicalPrefixEq := hfuelPrefixEq.app_same wf trivial
-              hfuelPrefixT hstateT
-            have hcanonicalPrefixT :=
-              (hcanonicalPrefixEq.of_l wf trivial hprefixT).hasType.2
-            have hprefixRootWeakT := hcanonicalPrefixT.weak0
-              (Γ := [bodyL]) wf
-            have hforallEq := hprefixRightT.uniqU wf hctx hprefixRootWeakT
-            obtain ⟨_, hdomainEq⟩ := (hforallEq.forallE_inv wf hctx).1
-            obtain ⟨uTy, hbodySort⟩ := hptyL
-            have hbodyClosed :=
-              (hbodySort.closedN' wf.ordered.closed trivial).1
-            have hbvarCanon : env.HasType 0 [bodyL] (.bvar 0) bodyL := by
-              simpa [hbodyClosed.lift_eq] using
-                (show env.HasType 0 [bodyL] (.bvar 0) bodyL.lift from .bvar .zero)
-            have hbvarTyEq := hbvarT.uniqU wf hctx hbvarCanon
-            have hpTypeEqCtx : env.IsDefEqU 0 [bodyL] hpA bodyL :=
-              hdomainEq.symm.toU.trans wf hctx hbvarTyEq
-            have hpAClosed : hpA.ClosedN :=
-              (hpT.closedN' wf.ordered.closed trivial).2.2
-            have hpTypeEq : env.IsDefEqU 0 [] hpA bodyL := by
-              apply (VEnv.IsDefEqU.weakN_iff wf hctx
-                (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [bodyL])).1
-              simpa [hpAClosed.lift_eq, hbodyClosed.lift_eq] using hpTypeEqCtx
-            have hpTL := hpT.defeqU_r wf trivial hpTypeEq
-            have hproofTyEq := hptySL.uniq wf
-              (.refl wf (U := 0) (Δ := []) (by trivial)) hptySR
-            obtain ⟨BL, hbodyLT⟩ := hbodyLS.wf wf.ordered
-              (Us := []) (Δ := [(none, .vlam bodyL)])
-              ⟨trivial, nofun, ⟨uTy, hbodySort⟩⟩
-            obtain ⟨BR, hbodyRT⟩ := hbodyR.wf wf.ordered
-              (Us := []) (Δ := [(none, .vlam proofTyR)])
-              ⟨trivial, nofun, hptyR⟩
-            have hinst := VEnv.IsDefEqU.lam_instU₂ wf trivial heq₂ hbodySort
-              hbodyLT hbodyRT hproofTyEq hpTL
-            have hprefixAppEqCtx := hprefixEq.app_same wf hctx
-              hprefixCertT hbvarT
-            have hprefixAppEq := hprefixAppEqCtx.instN wf.ordered
-              (.zero : Ctx.InstN [] hpV bodyL 0 [bodyL] []) hpTL
-            have hcanonicalCallEq := hcanonicalPrefixEq.app_same wf trivial
-              hprefixT hpT
-            have hleftEq : env.IsDefEqU 0 []
-                (.app (.app (.app (.app (.app goV .natZero) .natZero)
-                  fuelV) stateV) hpV)
-                ((prefixCert.app (.bvar 0)).inst hpV) := by
-              have hclosedPrefix :
-                  (VExpr.app (VExpr.app (VExpr.app
-                    (VExpr.app goV .natZero) .natZero)
-                    (.natLit (fuel+1))) stateV).ClosedN := hprefixClosed
-              have hprefixAppEq' : env.IsDefEqU 0 []
-                  ((prefixCert.app (.bvar 0)).inst hpV)
-                  (.app (.app (.app (.app (.app goV .natZero) .natZero)
-                    (.natLit (fuel+1))) stateV) hpV) := by
-                have hi := hprefixAppEq
-                have hgoVClosed : goV.ClosedN :=
-                  (hgoT.closedN' wf.ordered.closed trivial).1
-                have hzVClosed : VExpr.natZero.ClosedN :=
-                  (hz1T.closedN' wf.ordered.closed trivial).1
-                have hfVClosed : (VExpr.natLit (fuel+1)).ClosedN :=
-                  (hnatFuelT.closedN' wf.ordered.closed trivial).1
-                have hstateVClosed : stateV.ClosedN :=
-                  (hstateT.closedN' wf.ordered.closed trivial).1
-                simpa [VLocalDecl.value, VExpr.inst, VExpr.instVar,
-                  hgoVClosed.instN_eq, hzVClosed.instN_eq,
-                  hfVClosed.instN_eq, hstateVClosed.instN_eq] using hi
-              exact hcanonicalCallEq.trans wf trivial hprefixAppEq'.symm
-            have hpTR := hpTL.defeqU_r wf trivial hproofTyEq
+            obtain ⟨hpTR, hinst⟩ := VEnv.finish_bitwise_proof_equation wf
+              hptyL hprefixCertT hbvarT hprefixCallT hpT hprefixEq heq₂
             have hrightInstS := TrExprS.inst (Us := []) (Δ := [])
               wf.ordered hpTR hbodyR hpS
             have hrightS : TrExprS env [] []
                 (.natLitToConstructor b) (bodyR.inst hpV) := by
-              have hbLift : (Expr.natLitToConstructor b).liftLooseBVars'
-                  0 1 = Expr.natLitToConstructor b :=
-                Expr.liftLooseBVars_eq_self
-                  (Closed.natLitToConstructor
-                    (n := b) (k := 0)).looseBVarRange_le
-              have hbInst : (Expr.natLitToConstructor b).instantiate1'
-                  hpE = Expr.natLitToConstructor b :=
-                Expr.instantiate1_eq_self
-                  (Closed.natLitToConstructor
-                    (n := b) (k := 0)).looseBVarRange_zero
-              simpa [Literal.toConstructor, hbLift, hbInst,
-                Expr.instantiate1', Expr.looseBVarRange'] using hrightInstS
+              simpa [Literal.toConstructor, Expr.natLitToConstructor_lift,
+                Expr.natLitToConstructor_inst, Expr.instantiate1',
+                Expr.looseBVarRange'] using hrightInstS
             have hrightEq := hrightS.uniq wf
               (.refl wf (U := 0) (Δ := []) (by trivial)) hbS
-            exact hleftEq.trans wf trivial hinst |>.trans wf trivial hrightEq
+            exact hcallEq.trans wf trivial hinst |>.trans wf trivial hrightEq
 
 /-- A certified successor equation turns a well-typed semantic gcd call
 into the Euclidean recursive call at one less unit of fuel. -/
@@ -4269,486 +4320,159 @@ theorem NatGcdFixCertificate.succ_semantics {env : VEnv} (wf : env.WF)
   have hfT := (lit fuel).2
   have haT := (lit a).2
   have hbT := (lit b).2
-  have hfLitS := (lit fuel).1
-  have haLitS := (lit a).1
-  have hbLitS := (lit b).1
-  cases hfLitS with
+  cases (lit fuel).1 with
   | lit _ hfS =>
-   cases haLitS with
+   cases (lit a).1 with
    | lit _ haS =>
-    cases hbLitS with
+    cases (lit b).1 with
     | lit _ hbS =>
-      unfold NatGcdFixCertificate.expectedSuccLhs at hl
-      unfold NatGcdFixCertificate.expectedSuccRhs at hr
-      obtain ⟨l₁, r₁, hl₁, hr₁, heq₁⟩ := VEnv.instantiate_lam_equation wf
-        (ty := q(Nat)) (by trivial) hl hr heq hnatS hfS hfT (by trivial)
-      obtain ⟨l₂, r₂, hl₂, hr₂, heq₂⟩ := VEnv.instantiate_lam_equation wf
-        (ty := q(Nat)) (by trivial) hl₁ hr₁ heq₁ hnatS haS haT (by trivial)
-      obtain ⟨l₃, r₃, hl₃, hr₃, heq₃⟩ := VEnv.instantiate_lam_equation wf
-        (ty := q(Nat)) (by trivial) hl₂ hr₂ heq₂ hnatS hbS hbT (by trivial)
-      cases hl₃ with
-      | lam hptyL hptySL hbodyL =>
+     cases (lit (a+1)).1 with
+     | lit _ hsaCtorS =>
+      cases (lit (b % (a+1))).1 with
+      | lit _ hremS =>
+       unfold NatGcdFixCertificate.expectedSuccLhs at hl
+       unfold NatGcdFixCertificate.expectedSuccRhs at hr
+       obtain ⟨l₁, r₁, hl₁, hr₁, heq₁⟩ := VEnv.instantiate_lam_equation wf
+         (ty := q(Nat)) (by trivial) hl hr heq hnatS hfS hfT (by trivial)
+       obtain ⟨l₂, r₂, hl₂, hr₂, heq₂⟩ := VEnv.instantiate_lam_equation wf
+         (ty := q(Nat)) (by trivial) hl₁ hr₁ heq₁ hnatS haS haT (by trivial)
+       obtain ⟨l₃, r₃, hl₃, hr₃, heq₃⟩ := VEnv.instantiate_lam_equation wf
+         (ty := q(Nat)) (by trivial) hl₂ hr₂ heq₂ hnatS hbS hbT (by trivial)
+       cases hl₃ with
+       | lam hptyL hptySL hbodyL =>
         cases hr₃ with
         | lam hptyR hptySR hbodyR =>
-          have hbodyLS := hbodyL
-          cases hbodyL with
-          | app hprefixCertT hbvarT hprefixCert hbvar =>
-            cases hbvar with
-            | bvar hb =>
-              simp [VLCtx.find?, VLCtx.next] at hb
-              rcases hb with ⟨rfl, rfl⟩
-              rename_i bodyL proofTyR bodyR prefixCert certA certB
-              obtain ⟨_, heSelfD⟩ := heSelf
-              have heT := heSelfD.hasType.1
-              obtain ⟨hpA, hpB, hprefixT, hpT⟩ :=
-                heT.app_inv wf.ordered trivial
-              obtain ⟨stateA, stateB, hfuelPrefixT, hstateT⟩ :=
-                hprefixT.app_inv wf.ordered trivial
-              obtain ⟨fuelA, fuelB, hgoZerosT, hfuelT⟩ :=
-                hfuelPrefixT.app_inv wf.ordered trivial
-              have hnatFuelT := (hfuelEq.of_l wf trivial hfuelT).hasType.2
-              have hcanonFuelPrefixT := VEnv.HasType.app hgoZerosT hnatFuelT
-              have hfuelPrefixEq := hfuelEq.app_arg wf trivial hgoZerosT hfuelT
-              have hcanonFuelPrefixT' :=
-                (hfuelPrefixEq.of_l wf trivial hfuelPrefixT).hasType.2
-              have hprefixRootT := VEnv.HasType.app hcanonFuelPrefixT' hstateT
-              obtain ⟨z2A, z2B, hgoZ1T, hz2T⟩ :=
-                hgoZerosT.app_inv wf.ordered trivial
-              obtain ⟨z1A, z1B, hgoT, hz1T⟩ :=
-                hgoZ1T.app_inv wf.ordered trivial
-              have hzS := (hctors.natZeroS
-                (Us := []) (Δ := [])).1
-              have hgoZ1S : TrExprS env [] []
-                  (mkApp r.core.goFn q(Nat.zero)) (.app goV .natZero) :=
-                .app hgoT hz1T hgo hzS
-              have hgoZerosS : TrExprS env [] []
-                  (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                  (.app (.app goV .natZero) .natZero) :=
-                .app hgoZ1T hz2T hgoZ1S hzS
-              have hsuccS := (hctors.natSuccS
-                (Us := []) (Δ := [])).1
-              have hsuccT := (hctors.natSuccS
-                (Us := []) (Δ := [])).2
-              have hsfS : TrExprS env [] []
+         cases hbodyL with
+         | app hprefixCertT hbvarT hprefixCert hbvar =>
+          cases hbvar with
+          | bvar hb =>
+            simp [VLCtx.find?, VLCtx.next] at hb
+            rcases hb with ⟨rfl, rfl⟩
+            rename_i bodyL proofTyR bodyR prefixCert certA certB
+            obtain ⟨_, heSelfD⟩ := heSelf
+            have heT := heSelfD.hasType.1
+            have hsuccS := (hctors.natSuccS (Us := []) (Δ := [])).1
+            have hsuccT := (hctors.natSuccS (Us := []) (Δ := [])).2
+            have hsfS : TrExprS env [] []
+                (mkApp q(Nat.succ) (.natLitToConstructor fuel))
+                (.natLit (fuel+1)) := .app hsuccT hfT hsuccS hfS
+            have hsaS : TrExprS env [] []
+                (mkApp q(Nat.succ) (.natLitToConstructor a))
+                (.natLit (a+1)) := .app hsuccT haT hsuccS haS
+            -- Renormalize the incoming (swapped) state at `(a+1, b)`.
+            obtain ⟨_, hstateT₀⟩ := hstate.wf wf.ordered
+              (Us := []) (Δ := []) trivial
+            have hsaRefl : env.IsDefEqU 0 []
+                (.natLit (a+1)) (.natLit (a+1)) := .refl ⟨_, (lit (a+1)).2⟩
+            have hbRefl : env.IsDefEqU 0 []
+                (.natLit b) (.natLit b) := .refl ⟨_, hbT⟩
+            obtain ⟨stateCanon, hstateSucc, hstateEq, -⟩ :=
+              NatGcdFixCertificate.stateExpr_canon wf hstate hstateT₀
+                hsaCtorS hbS hsaRefl hbRefl hsaS hbS
+            obtain ⟨hpA, hpB, hprefixS, hpT, hprefixCallT, hcallEq⟩ :=
+              VEnv.gcdGo_call_canon wf hctors hgo hsfS hstateSucc
+                hfuelEq hstateEq heT
+            have hprefixWeak := TrExprS.weak0_vlam wf (A := bodyL)
+              hprefixS (hprefixCallT.closedN' wf.ordered.closed trivial).1
+            have hprefixCert' : TrExprS env [] [(none, .vlam bodyL)]
+                (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
                   (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                  (.natLit (fuel+1)) := .app hsuccT hfT hsuccS hfS
-              have hsaS : TrExprS env [] []
-                  (mkApp q(Nat.succ) (.natLitToConstructor a))
-                  (.natLit (a+1)) := .app hsuccT haT hsuccS haS
-              obtain ⟨stateCanon, hstateSucc, hstateEq, hstateCanonT⟩ :
-                  ∃ stateCanon,
-                    TrExprS env [] []
-                      (r.stateExpr
-                        (mkApp q(Nat.succ) (.natLitToConstructor a))
-                        (.natLitToConstructor b)) stateCanon ∧
-                    env.IsDefEqU 0 [] stateV stateCanon ∧
-                    env.HasType 0 [] stateCanon stateA := by
-                have hstateShape := hstate
-                cases hstateShape with
-                | app hstateAT hbStateT hstateA hbState =>
-                  cases hstateA with
-                  | app hmkT haStateT hmk haState =>
-                    rename_i bA bB bV stateFn aA aB aV
-                    have hsaLitS := (lit (a+1)).1
-                    cases hsaLitS with
-                    | lit _ hsaCtorS =>
-                      have haEq := haState.uniq wf
-                        (.refl wf (U := 0) (Δ := []) (by trivial)) hsaCtorS
-                      have hbEq := hbState.uniq wf
-                        (.refl wf (U := 0) (Δ := []) (by trivial)) hbS
-                      have haCanonT :=
-                        (haEq.of_l wf trivial haStateT).hasType.2
-                      have hmkAEq := haEq.app_arg wf trivial hmkT haStateT
-                      have hmkACanonT :=
-                        (hmkAEq.of_l wf trivial hstateAT).hasType.2
-                      have hbCanonT :=
-                        (hbEq.of_l wf trivial hbStateT).hasType.2
-                      let stateCanon := VExpr.app
-                        (VExpr.app stateFn (.natLit (a+1))) (.natLit b)
-                      have hstateLitCanon : TrExprS env [] []
-                          (r.stateExpr (.natLitToConstructor (a+1))
-                            (.natLitToConstructor b)) stateCanon :=
-                        .app hmkACanonT hbCanonT
-                          (.app hmkT haCanonT hmk hsaCtorS) hbS
-                      have hstateSucc : TrExprS env [] []
-                          (r.stateExpr
-                            (mkApp q(Nat.succ) (.natLitToConstructor a))
-                            (.natLitToConstructor b)) stateCanon :=
-                        .app hmkACanonT hbCanonT
-                          (.app hmkT haCanonT hmk hsaS) hbS
-                      have hstateEq := hstate.uniq wf
-                        (.refl wf (U := 0) (Δ := []) (by trivial))
-                        hstateLitCanon
-                      have hstateCanonT :=
-                        (hstateEq.of_l wf trivial hstateT).hasType.2
-                      exact ⟨stateCanon, hstateSucc, hstateEq,
-                        hstateCanonT⟩
-              have hgoFuelS : TrExprS env [] []
-                  (mkApp (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                    (mkApp q(Nat.succ) (.natLitToConstructor fuel)))
-                  (.app (.app (.app goV .natZero) .natZero)
-                    (.natLit (fuel+1))) :=
-                .app hgoZerosT hnatFuelT hgoZerosS hsfS
-              have hprefixRootS : TrExprS env [] []
-                  (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                    (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                    (r.stateExpr
-                      (mkApp q(Nat.succ) (.natLitToConstructor a))
-                      (.natLitToConstructor b)))
-                  (.app (.app (.app (.app goV .natZero) .natZero)
-                    (.natLit (fuel+1))) stateCanon) :=
-                .app hcanonFuelPrefixT' hstateCanonT hgoFuelS hstateSucc
-              have hprefixRootCanonT :=
-                VEnv.HasType.app hcanonFuelPrefixT' hstateCanonT
-              have hprefixClosed :=
-                (hprefixRootCanonT.closedN' wf.ordered.closed trivial).1
-              have hprefixWeak : TrExprS env [] [(none, .vlam bodyL)]
-                  (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                    (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                    (r.stateExpr
-                      (mkApp q(Nat.succ) (.natLitToConstructor a))
-                      (.natLitToConstructor b)))
-                  (.app (.app (.app (.app goV .natZero) .natZero)
-                    (.natLit (fuel+1))) stateCanon) := by
-                have hw := hprefixRootS.weakBV wf.ordered
-                  (.skip (.vlam bodyL)
-                    (.refl : VLCtx.BVLift [] [] 0 0 0 0))
-                simp only [Nat.zero_add, VLocalDecl.depth] at hw
-                have hsourceLift :
-                    (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                      (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                      (r.stateExpr
-                        (mkApp q(Nat.succ) (.natLitToConstructor a))
-                        (.natLitToConstructor b))).liftLooseBVars' 0 1 =
-                      mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                        (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                        (r.stateExpr
-                          (mkApp q(Nat.succ) (.natLitToConstructor a))
-                          (.natLitToConstructor b)) :=
-                  Expr.liftLooseBVars_eq_self
-                    hprefixRootS.closed.looseBVarRange_le
-                rw [hsourceLift] at hw
-                simpa [hprefixClosed.lift_eq] using hw
-              have hprefixCert' : TrExprS env [] [(none, .vlam bodyL)]
-                  (mkApp2 (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                    (mkApp q(Nat.succ) (.natLitToConstructor fuel))
-                    (r.stateExpr
-                      (mkApp q(Nat.succ) (.natLitToConstructor a))
-                      (.natLitToConstructor b))) prefixCert := by
-                have hgoClosed := hgo.closed.looseBVarRange_zero
-                have hgoLe3 : r.core.goFn.looseBVarRange' ≤ 3 :=
-                  hgoClosed ▸ Nat.zero_le 3
-                have hgoLe2 : r.core.goFn.looseBVarRange' ≤ 2 :=
-                  hgoClosed ▸ Nat.zero_le 2
-                have hgoLe1 : r.core.goFn.looseBVarRange' ≤ 1 :=
-                  hgoClosed ▸ Nat.zero_le 1
-                have hfLift3 : (Expr.natLitToConstructor fuel).liftLooseBVars'
-                    0 3 = Expr.natLitToConstructor fuel :=
-                  Expr.liftLooseBVars_eq_self
-                    (Closed.natLitToConstructor
-                      (n := fuel) (k := 0)).looseBVarRange_le
-                have hfInst2 : (Expr.natLitToConstructor fuel).instantiate1'
-                    (Expr.natLitToConstructor a) 2 =
-                    Expr.natLitToConstructor fuel :=
-                  Expr.instantiate1'_eq_self (by
-                    have h := (Closed.natLitToConstructor
-                      (n := fuel) (k := 0)).looseBVarRange_le
-                    omega)
-                have hfInst1 : (Expr.natLitToConstructor fuel).instantiate1'
-                    (Expr.natLitToConstructor b) 1 =
-                    Expr.natLitToConstructor fuel :=
-                  Expr.instantiate1'_eq_self (by
-                    have h := (Closed.natLitToConstructor
-                      (n := fuel) (k := 0)).looseBVarRange_le
-                    omega)
-                have haLift2 : (Expr.natLitToConstructor a).liftLooseBVars'
-                    0 2 = Expr.natLitToConstructor a :=
-                  Expr.liftLooseBVars_eq_self
-                    (Closed.natLitToConstructor
-                      (n := a) (k := 0)).looseBVarRange_le
-                have haInst1 : (Expr.natLitToConstructor a).instantiate1'
-                    (Expr.natLitToConstructor b) 1 =
-                    Expr.natLitToConstructor a :=
-                  Expr.instantiate1'_eq_self (by
-                    have h := (Closed.natLitToConstructor
-                      (n := a) (k := 0)).looseBVarRange_le
-                    omega)
-                have hbLift1 : (Expr.natLitToConstructor b).liftLooseBVars'
-                    0 1 = Expr.natLitToConstructor b :=
-                  Expr.liftLooseBVars_eq_self
-                    (Closed.natLitToConstructor
-                      (n := b) (k := 0)).looseBVarRange_le
-                simp [pure, Literal.toConstructor, hfLift3, hfInst2, hfInst1,
-                  haLift2, haInst1, hbLift1,
-                  Expr.instantiate1'_eq_self hgoLe3,
-                  Expr.instantiate1'_eq_self hgoLe2,
-                  Expr.instantiate1'_eq_self hgoLe1,
-                  NatGcdFixCertificate.stateExpr] at hprefixCert ⊢
-                exact hprefixCert
-              have hctx : OnCtx [bodyL] (env.IsType 0) := ⟨trivial, hptyL⟩
-              have hprefixEq := TrExprS.uniq (Us := [])
-                (Δ₁ := [(none, .vlam bodyL)])
-                (Δ₂ := [(none, .vlam bodyL)]) wf
-                (.refl wf (U := 0) (Δ := [(none, .vlam bodyL)])
-                  ⟨trivial, nofun, hptyL⟩) hprefixCert' hprefixWeak
-              have hprefixRightT :=
-                (hprefixEq.of_l wf hctx hprefixCertT).hasType.2
-              have hcanonicalPrefixEq := hfuelPrefixEq.app_both wf trivial
-                hstateEq hfuelPrefixT hstateT
-              have hcanonicalPrefixT :=
-                (hcanonicalPrefixEq.of_l wf trivial hprefixT).hasType.2
-              have hprefixRootWeakT := hcanonicalPrefixT.weak0
-                (Γ := [bodyL]) wf
-              have hforallEq := hprefixRightT.uniqU wf hctx hprefixRootWeakT
-              obtain ⟨_, hdomainEq⟩ := (hforallEq.forallE_inv wf hctx).1
-              obtain ⟨uTy, hbodySort⟩ := hptyL
-              have hbodyClosed :=
-                (hbodySort.closedN' wf.ordered.closed trivial).1
-              have hbvarCanon : env.HasType 0 [bodyL] (.bvar 0) bodyL := by
-                simpa [hbodyClosed.lift_eq] using
-                  (show env.HasType 0 [bodyL] (.bvar 0) bodyL.lift from
-                    .bvar .zero)
-              have hbvarTyEq := hbvarT.uniqU wf hctx hbvarCanon
-              have hpTypeEqCtx : env.IsDefEqU 0 [bodyL] hpA bodyL :=
-                hdomainEq.symm.toU.trans wf hctx hbvarTyEq
-              have hpAClosed : hpA.ClosedN :=
-                (hpT.closedN' wf.ordered.closed trivial).2.2
-              have hpTypeEq : env.IsDefEqU 0 [] hpA bodyL := by
-                apply (VEnv.IsDefEqU.weakN_iff wf hctx
-                  (Ctx.LiftN.one : Ctx.LiftN 1 0 [] [bodyL])).1
-                simpa [hpAClosed.lift_eq, hbodyClosed.lift_eq] using
-                  hpTypeEqCtx
-              have hpTL := hpT.defeqU_r wf trivial hpTypeEq
-              have hproofTyEq := hptySL.uniq wf
-                (.refl wf (U := 0) (Δ := []) (by trivial)) hptySR
-              obtain ⟨BL, hbodyLT⟩ := hbodyLS.wf wf.ordered
-                (Us := []) (Δ := [(none, .vlam bodyL)])
-                ⟨trivial, nofun, ⟨uTy, hbodySort⟩⟩
-              obtain ⟨BR, hbodyRT⟩ := hbodyR.wf wf.ordered
-                (Us := []) (Δ := [(none, .vlam proofTyR)])
-                ⟨trivial, nofun, hptyR⟩
-              have hinst := VEnv.IsDefEqU.lam_instU₂ wf trivial heq₃
-                hbodySort hbodyLT hbodyRT hproofTyEq hpTL
-              have hprefixAppEqCtx := hprefixEq.app_same wf hctx
-                hprefixCertT hbvarT
-              have hprefixAppEq := hprefixAppEqCtx.instN wf.ordered
-                (.zero : Ctx.InstN [] hpV bodyL 0 [bodyL] []) hpTL
-              have hcanonicalCallEq := hcanonicalPrefixEq.app_same wf trivial
-                hprefixT hpT
-              have hleftEq : env.IsDefEqU 0 []
-                  (.app (.app (.app (.app (.app goV .natZero) .natZero)
-                    fuelV) stateV) hpV)
-                  ((prefixCert.app (.bvar 0)).inst hpV) := by
-                have hprefixAppEq' : env.IsDefEqU 0 []
-                    ((prefixCert.app (.bvar 0)).inst hpV)
-                    (.app (.app (.app (.app (.app goV .natZero) .natZero)
-                      (.natLit (fuel+1))) stateCanon) hpV) := by
-                  have hgoVClosed : goV.ClosedN :=
-                    (hgoT.closedN' wf.ordered.closed trivial).1
-                  have hzVClosed : VExpr.natZero.ClosedN :=
-                    (hz1T.closedN' wf.ordered.closed trivial).1
-                  have hfVClosed : (VExpr.natLit (fuel+1)).ClosedN :=
-                    (hnatFuelT.closedN' wf.ordered.closed trivial).1
-                  have hstateVClosed : stateCanon.ClosedN :=
-                    (hstateCanonT.closedN' wf.ordered.closed trivial).1
-                  simpa [VLocalDecl.value, VExpr.inst, VExpr.instVar,
-                    hgoVClosed.instN_eq, hzVClosed.instN_eq,
-                    hfVClosed.instN_eq, hstateVClosed.instN_eq] using
-                    hprefixAppEq
-                exact hcanonicalCallEq.trans wf trivial hprefixAppEq'.symm
-              have hpTR := hpTL.defeqU_r wf trivial hproofTyEq
-              have hrightInstS := TrExprS.inst (Us := []) (Δ := [])
-                wf.ordered hpTR hbodyR hpS
-              have hleftToRight := hleftEq.trans wf trivial hinst
-              let proofSpec :=
-                (((r.succProof.instantiate1' (.natLitToConstructor fuel) 3)
-                    |>.instantiate1' (.natLitToConstructor a) 2)
-                    |>.instantiate1' (.natLitToConstructor b) 1)
-                    |>.instantiate1' hpE
-              have hrightS : TrExprS env [] []
-                  (mkAppN (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
-                    #[.natLitToConstructor fuel,
-                      r.stateExpr
-                        (mkApp2 q(Nat.mod) (.natLitToConstructor b)
-                          (mkApp q(Nat.succ) (.natLitToConstructor a)))
-                        (mkApp q(Nat.succ) (.natLitToConstructor a)),
-                      proofSpec])
-                  (bodyR.inst hpV) := by
-                have hgoClosed := hgo.closed.looseBVarRange_zero
-                have hgoLe3 : r.core.goFn.looseBVarRange' ≤ 3 :=
-                  hgoClosed ▸ Nat.zero_le 3
-                have hgoLe2 : r.core.goFn.looseBVarRange' ≤ 2 :=
-                  hgoClosed ▸ Nat.zero_le 2
-                have hgoLe1 : r.core.goFn.looseBVarRange' ≤ 1 :=
-                  hgoClosed ▸ Nat.zero_le 1
-                have hfLift3 : (Expr.natLitToConstructor fuel).liftLooseBVars'
-                    0 3 = Expr.natLitToConstructor fuel :=
-                  Expr.liftLooseBVars_eq_self
-                    (Closed.natLitToConstructor
-                      (n := fuel) (k := 0)).looseBVarRange_le
-                have hfInst2 : (Expr.natLitToConstructor fuel).instantiate1'
-                    (Expr.natLitToConstructor a) 2 =
-                    Expr.natLitToConstructor fuel :=
-                  Expr.instantiate1'_eq_self (by
-                    have h := (Closed.natLitToConstructor
-                      (n := fuel) (k := 0)).looseBVarRange_le
-                    omega)
-                have hfInst1 : (Expr.natLitToConstructor fuel).instantiate1'
-                    (Expr.natLitToConstructor b) 1 =
-                    Expr.natLitToConstructor fuel :=
-                  Expr.instantiate1'_eq_self (by
-                    have h := (Closed.natLitToConstructor
-                      (n := fuel) (k := 0)).looseBVarRange_le
-                    omega)
-                have hfInst0 : (Expr.natLitToConstructor fuel).instantiate1'
-                    hpE = Expr.natLitToConstructor fuel :=
-                  Expr.instantiate1_eq_self
-                    (Closed.natLitToConstructor
-                      (n := fuel) (k := 0)).looseBVarRange_zero
-                have haLift2 : (Expr.natLitToConstructor a).liftLooseBVars'
-                    0 2 = Expr.natLitToConstructor a :=
-                  Expr.liftLooseBVars_eq_self
-                    (Closed.natLitToConstructor
-                      (n := a) (k := 0)).looseBVarRange_le
-                have haInst1 : (Expr.natLitToConstructor a).instantiate1'
-                    (Expr.natLitToConstructor b) 1 =
-                    Expr.natLitToConstructor a :=
-                  Expr.instantiate1'_eq_self (by
-                    have h := (Closed.natLitToConstructor
-                      (n := a) (k := 0)).looseBVarRange_le
-                    omega)
-                have haInst0 : (Expr.natLitToConstructor a).instantiate1'
-                    hpE = Expr.natLitToConstructor a :=
-                  Expr.instantiate1_eq_self
-                    (Closed.natLitToConstructor
-                      (n := a) (k := 0)).looseBVarRange_zero
-                have hbLift1 : (Expr.natLitToConstructor b).liftLooseBVars'
-                    0 1 = Expr.natLitToConstructor b :=
-                  Expr.liftLooseBVars_eq_self
-                    (Closed.natLitToConstructor
-                      (n := b) (k := 0)).looseBVarRange_le
-                have hbInst0 : (Expr.natLitToConstructor b).instantiate1'
-                    hpE = Expr.natLitToConstructor b :=
-                  Expr.instantiate1_eq_self
-                    (Closed.natLitToConstructor
-                      (n := b) (k := 0)).looseBVarRange_zero
-                simpa [mkAppN, proofSpec, Literal.toConstructor,
-                  NatGcdFixCertificate.stateExpr, Expr.instantiate1',
-                  hfLift3, hfInst2,
-                  hfInst1, hfInst0, haLift2, haInst1, haInst0,
-                  hbLift1, hbInst0,
-                  Expr.instantiate1'_eq_self hgoLe3,
-                  Expr.instantiate1'_eq_self hgoLe2,
-                  Expr.instantiate1'_eq_self hgoLe1,
-                  Expr.instantiate1_eq_self hgoClosed] using hrightInstS
-              generalize heRight : bodyR.inst hpV = rightV at hrightS hleftToRight ⊢
-              cases hrightS with
-              | app hrightPrefixT hproofSpecT hrightPrefix hproofSpecS =>
-                cases hrightPrefix with
-                | app hrightFuelT hrightStateT hrightFuel hrightState =>
-                  cases hrightFuel with
-                  | app hrightZerosT hrightFuelArgT hrightZeros hrightFuelArg =>
-                    simp at hproofSpecS hrightState hrightFuelArg
-                    cases hrightZeros with
-                    | app hrightGoZ1T hrightZ2T hrightGoZ1 hrightZ2 =>
-                      cases hrightGoZ1 with
-                      | app hrightGoT hrightZ1T hrightGo hrightZ1 =>
-                        rename_i proofArgA proofArgB proofV
-                          stateArgA stateArgB stateR
-                          fuelArgA fuelArgB fuelR
-                          z2ArgA z2ArgB z2V
-                          goR z1ArgA z1ArgB z1V
-                        cases hrightZ1.unique (by trivial) hzS
-                        cases hrightZ2.unique (by trivial) hzS
-                        have hrightFuelEq := hrightFuelArg.uniq wf
-                          (.refl wf (U := 0) (Δ := []) (by trivial)) hfS
-                        have ⟨hmodT, hmodEval⟩ := hmod hmodC
-                        obtain ⟨modCi, hmodCi, _, hmodLen⟩ :=
-                          (hmodT 0 []).const_inv wf trivial
-                        have hmodS : TrExprS env [] [] q(Nat.mod)
-                            (.const ``Nat.mod []) :=
-                          .const hmodCi rfl hmodLen
-                        have hsaT := VEnv.HasType.app hsuccT haT
-                        have hmodBS : TrExprS env [] []
-                            (mkApp q(Nat.mod) (.natLitToConstructor b))
-                            (.app (.const ``Nat.mod []) (.natLit b)) :=
-                          .app (hmodT 0 []) hbT hmodS hbS
-                        have hmodCallS : TrExprS env [] []
-                            (mkApp2 q(Nat.mod) (.natLitToConstructor b)
-                              (mkApp q(Nat.succ) (.natLitToConstructor a)))
-                            (.app (.app (.const ``Nat.mod []) (.natLit b))
-                              (.natLit (a+1))) :=
-                          .app (VEnv.HasType.app (hmodT 0 []) hbT) hsaT
-                            hmodBS hsaS
-                        obtain ⟨stateNext, hstateNextS, hstateNextEq,
-                            hstateNextT⟩ :
-                            ∃ stateNext,
-                              TrExprS env [] []
-                                (r.stateExpr
-                                  (.natLitToConstructor (b % (a+1)))
-                                  (.natLitToConstructor (a+1))) stateNext ∧
-                              env.IsDefEqU 0 [] stateR stateNext ∧
-                              env.HasType 0 [] stateNext stateArgA := by
-                          have hstateShape := hrightState
-                          cases hstateShape with
-                          | app hstateAT hbStateT hstateA hbState =>
-                            cases hstateA with
-                            | app hmkT hmodStateT hmk hmodState =>
-                              rename_i saA saB saV stateFn modA modB modV
-                              have hmodTrEq := hmodState.uniq wf
-                                (.refl wf (U := 0) (Δ := []) (by trivial))
-                                hmodCallS
-                              have hmodValueEq := hmodTrEq.trans wf trivial
-                                (hmodEval b (a+1))
-                              have hsaEq := hbState.uniq wf
-                                (.refl wf (U := 0) (Δ := []) (by trivial))
-                                hsaS
-                              have hstateFnEq := hmodValueEq.app_arg wf trivial
-                                hmkT hmodStateT
-                              have hstateValueEq := hstateFnEq.app_both wf trivial
-                                hsaEq hstateAT hbStateT
-                              have hremT :=
-                                (hmodValueEq.of_l wf trivial hmodStateT).hasType.2
-                              have hstateFnRemT :=
-                                (hstateFnEq.of_l wf trivial hstateAT).hasType.2
-                              have hsaCanonT :=
-                                (hsaEq.of_l wf trivial hbStateT).hasType.2
-                              have hremLitS := (lit (b % (a+1))).1
-                              have hsaLitS := (lit (a+1)).1
-                              cases hremLitS with
-                              | lit _ hremS =>
-                               cases hsaLitS with
-                               | lit _ hsaCtorS =>
-                                let stateNext := VExpr.app
-                                  (VExpr.app stateFn (.natLit (b % (a+1))))
-                                  (.natLit (a+1))
-                                have hstateNextS : TrExprS env [] []
-                                    (r.stateExpr
-                                      (.natLitToConstructor (b % (a+1)))
-                                      (.natLitToConstructor (a+1))) stateNext :=
-                                  .app hstateFnRemT hsaCanonT
-                                    (.app hmkT hremT hmk hremS) hsaCtorS
-                                have hstateNextT :=
-                                  (hstateValueEq.of_l wf trivial
-                                    hrightStateT).hasType.2
-                                exact ⟨stateNext, hstateNextS,
-                                  hstateValueEq, hstateNextT⟩
-                        have hrightFuelPrefixEq := hrightFuelEq.app_arg wf
-                          trivial hrightZerosT hrightFuelArgT
-                        have hrightStatePrefixEq :=
-                          hrightFuelPrefixEq.app_both wf trivial hstateNextEq
-                            hrightFuelT hrightStateT
-                        have hrightCallEq := hrightStatePrefixEq.app_same wf
-                          trivial hrightPrefixT hproofSpecT
-                        let e' := VExpr.app (VExpr.app (VExpr.app
-                          (VExpr.app (VExpr.app goR .natZero) .natZero)
-                            (.natLit fuel)) stateNext) proofV
-                        have hfuelSelf := hrightFuelEq.symm.trans wf trivial
-                          hrightFuelEq
-                        refine ⟨e', ?_, hleftToRight.trans wf trivial
-                          hrightCallEq⟩
-                        exact ⟨goR, .natLit fuel, stateNext, proofSpec, proofV,
-                          hrightGo, hstateNextS, hproofSpecS, hfuelSelf, rfl⟩
+                  (r.stateExpr
+                    (mkApp q(Nat.succ) (.natLitToConstructor a))
+                    (.natLitToConstructor b))) prefixCert := by
+              have hgoClosed := hgo.closed.looseBVarRange_zero
+              simpa [pure, Literal.toConstructor,
+                Expr.natLitToConstructor_lift, Expr.natLitToConstructor_inst,
+                Expr.instantiate1'_closed hgoClosed, Expr.looseBVarRange',
+                NatGcdFixCertificate.stateExpr] using hprefixCert
+            have hprefixEq := TrExprS.uniq (Us := []) wf
+              (.refl wf (U := 0) (Δ := [(none, .vlam bodyL)])
+                ⟨trivial, nofun, hptyL⟩) hprefixCert' hprefixWeak
+            obtain ⟨hpTR, hinst⟩ := VEnv.finish_bitwise_proof_equation wf
+              hptyL hprefixCertT hbvarT hprefixCallT hpT hprefixEq heq₃
+            have hleftToRight := hcallEq.trans wf trivial hinst
+            -- Translate the instantiated right-hand side canonically.
+            have hrightInstS := TrExprS.inst (Us := []) (Δ := [])
+              wf.ordered hpTR hbodyR hpS
+            let proofSpec :=
+              (((r.succProof.instantiate1' (.natLitToConstructor fuel) 3)
+                  |>.instantiate1' (.natLitToConstructor a) 2)
+                  |>.instantiate1' (.natLitToConstructor b) 1)
+                  |>.instantiate1' hpE
+            have hrightS : TrExprS env [] []
+                (mkAppN (mkApp2 r.core.goFn q(Nat.zero) q(Nat.zero))
+                  #[.natLitToConstructor fuel,
+                    r.stateExpr
+                      (mkApp2 q(Nat.mod) (.natLitToConstructor b)
+                        (mkApp q(Nat.succ) (.natLitToConstructor a)))
+                      (mkApp q(Nat.succ) (.natLitToConstructor a)),
+                    proofSpec])
+                (bodyR.inst hpV) := by
+              have hgoClosed := hgo.closed.looseBVarRange_zero
+              simpa [mkAppN, proofSpec, Literal.toConstructor,
+                NatGcdFixCertificate.stateExpr, Expr.instantiate1',
+                Expr.natLitToConstructor_lift, Expr.natLitToConstructor_inst,
+                Expr.instantiate1'_closed hgoClosed] using hrightInstS
+            generalize heRight : bodyR.inst hpV = rightV
+              at hrightS hleftToRight
+            cases hrightS with
+            | app hrightPrefixT hproofSpecT hrightPrefix hproofSpecS =>
+             cases hrightPrefix with
+             | app hrightFuelT hrightStateT hrightFuel hrightState =>
+              cases hrightFuel with
+              | app hrightZerosT hrightFuelArgT hrightZeros hrightFuelArg =>
+               simp at hproofSpecS hrightState hrightFuelArg
+               cases hrightZeros with
+               | app hrightGoZ1T hrightZ2T hrightGoZ1 hrightZ2 =>
+                cases hrightGoZ1 with
+                | app hrightGoT hrightZ1T hrightGo hrightZ1 =>
+                  rename_i proofArgA proofArgB proofV
+                    stateArgA stateArgB stateR
+                    fuelArgA fuelArgB fuelR
+                    z2ArgA z2ArgB z2V
+                    goR z1ArgA z1ArgB z1V
+                  have hzS := (hctors.natZeroS (Us := []) (Δ := [])).1
+                  cases hrightZ1.unique (by trivial) hzS
+                  cases hrightZ2.unique (by trivial) hzS
+                  have hrightFuelEq := hrightFuelArg.uniq wf
+                    (.refl wf (U := 0) (Δ := []) (by trivial)) hfS
+                  -- Evaluate `Nat.mod` on the swapped state.
+                  have ⟨hmodT, hmodEval⟩ := hmod hmodC
+                  obtain ⟨modCi, hmodCi, _, hmodLen⟩ :=
+                    (hmodT 0 []).const_inv wf trivial
+                  have hmodS : TrExprS env [] [] q(Nat.mod)
+                      (.const ``Nat.mod []) :=
+                    .const hmodCi rfl hmodLen
+                  have hsaT := VEnv.HasType.app hsuccT haT
+                  have hmodBS : TrExprS env [] []
+                      (mkApp q(Nat.mod) (.natLitToConstructor b))
+                      (.app (.const ``Nat.mod []) (.natLit b)) :=
+                    .app (hmodT 0 []) hbT hmodS hbS
+                  have hmodCallS : TrExprS env [] []
+                      (mkApp2 q(Nat.mod) (.natLitToConstructor b)
+                        (mkApp q(Nat.succ) (.natLitToConstructor a)))
+                      (.app (.app (.const ``Nat.mod []) (.natLit b))
+                        (.natLit (a+1))) :=
+                    .app (VEnv.HasType.app (hmodT 0 []) hbT) hsaT
+                      hmodBS hsaS
+                  obtain ⟨stateNext, hstateNextS, hstateNextEq, -⟩ :=
+                    NatGcdFixCertificate.stateExpr_canon wf hrightState
+                      hrightStateT hmodCallS hsaS (hmodEval b (a+1))
+                      hsaRefl hremS hsaCtorS
+                  have hrightFuelPrefixEq := hrightFuelEq.app_arg wf
+                    trivial hrightZerosT hrightFuelArgT
+                  have hrightStatePrefixEq :=
+                    hrightFuelPrefixEq.app_both wf trivial hstateNextEq
+                      hrightFuelT hrightStateT
+                  have hrightCallEq := hrightStatePrefixEq.app_same wf
+                    trivial hrightPrefixT hproofSpecT
+                  have hfuelSelf := hrightFuelEq.symm.trans wf trivial
+                    hrightFuelEq
+                  refine ⟨.app (.app (.app (.app (.app goR .natZero)
+                    .natZero) (.natLit fuel)) stateNext) proofV, ?_,
+                    hleftToRight.trans wf trivial hrightCallEq⟩
+                  exact ⟨goR, .natLit fuel, stateNext, proofSpec, proofV,
+                    hrightGo, hstateNextS, hproofSpecS, hfuelSelf, rfl⟩
 
 theorem checkNatWellFoundedCertificate.WF {c : VContext} {s : VState}
     {r : NatWellFoundedCoreResult} :
