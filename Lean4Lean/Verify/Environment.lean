@@ -167,45 +167,47 @@ theorem List.Forall₂.mutualHeader_toOpaque
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
     List.Forall₂ (fun v v' =>
       TrConstVal safety venv (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs' :=
-  H.imp fun _ _ h => h.toOpaque
+  List.Forall₂.imp (fun _ _ h => h.toOpaque) H
 
 theorem List.Forall₂.mutualHeader_fresh
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
     ∀ v ∈ vs, env.find? v.name = none :=
-  H.forall_left fun _ _ h => h.fresh
+  List.Forall₂.forall_left (fun _ _ h => h.fresh) H
 
 theorem List.Forall₂.mutualHeader_sameSafety
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
     ∀ v ∈ vs, v.safety = safety :=
-  H.forall_left fun _ _ h => h.safety_eq
+  List.Forall₂.forall_left (fun _ _ h => h.safety_eq) H
 
 theorem List.Forall₂.mutualHeader_notPrimitive
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
     ∀ v ∈ vs, ¬Lean.Kernel.Environment.primitives.contains v.name :=
-  H.forall_left fun _ _ h => h.notPrimitive
+  List.Forall₂.forall_left (fun _ _ h => h.notPrimitive) H
 
 theorem List.Forall₂.mutualHeader_target_notPrimitive
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
     ∀ v' ∈ vs', ¬Lean.Kernel.Environment.primitives.contains v'.name :=
-  H.forall_right fun _ _ h => by simpa [h.name_eq] using h.notPrimitive
+  List.Forall₂.forall_right (fun _ _ h => by simpa [h.name_eq] using h.notPrimitive) H
 
 theorem List.Forall₂.mutualHeader_types
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs') :
     ∀ v' ∈ vs', v'.toVConstant.WF venv :=
-  H.forall_right fun _ _ h => h.type_wf
+  List.Forall₂.forall_right (fun _ _ h => h.type_wf) H
 
 theorem List.Forall₂.mutualHeader_target_fresh
     (H : List.Forall₂ (MutualHeaderRel safety env venv) vs vs')
     (htr : TrEnv safety env venv) :
     ∀ v' ∈ vs', venv.constants v'.name = none :=
-  H.forall_right fun _ v' h => by
-    cases hc : venv.constants v'.name with
-    | none => rfl
-    | some ci =>
-      have hs := (htr.find?_iff (name := v'.name)).2 ⟨ci, hc⟩
-      obtain ⟨ci', hfind, _⟩ := hs
-      rw [h.name_eq, h.fresh] at hfind
-      contradiction
+  List.Forall₂.forall_right
+    (fun _ v' h => by
+      cases hc : venv.constants v'.name with
+      | none => rfl
+      | some ci =>
+        have hs := (htr.find?_iff (name := v'.name)).2 ⟨ci, hc⟩
+        obtain ⟨ci', hfind, _⟩ := hs
+        rw [h.name_eq, h.fresh] at hfind
+        contradiction
+    ) H
 
 theorem checkMutualHeaders.WF
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
@@ -377,35 +379,43 @@ theorem List.Forall₂.mutualBody_toFinal
       (MutualBodyRel safety env base headers) vs vs') :
     List.Forall₂ (fun v v' =>
       TrConstVal safety base (.defnInfo v) v'.toVConstVal) vs vs' :=
-  H.imp fun _ _ h => by
-    obtain ⟨_, hheader, hsame, _, _⟩ := h
-    exact hsame ▸ hheader.toFinal
+  List.Forall₂.imp
+    (fun _ _ h => by
+      obtain ⟨_, hheader, hsame, _, _⟩ := h
+      exact hsame ▸ hheader.toFinal
+    ) H
 
 theorem List.Forall₂.mutualBody_bodies
     (H : List.Forall₂
       (MutualBodyRel safety env base headers) vs vs') :
     List.Forall₂ (fun v v' =>
       TrExprS headers v.levelParams [] v.value v'.value) vs vs' :=
-  H.imp fun _ _ h => by
-    obtain ⟨_, _, _, hbody, _⟩ := h
-    exact hbody
+  List.Forall₂.imp
+    (fun _ _ h => by
+      obtain ⟨_, _, _, hbody, _⟩ := h
+      exact hbody
+    ) H
 
 theorem List.Forall₂.mutualBody_wfs
     (H : List.Forall₂
       (MutualBodyRel safety env base headers) vs vs') :
     ∀ v' ∈ vs', v'.WF headers :=
-  H.forall_right fun _ _ h => by
-    obtain ⟨_, _, _, _, hwf⟩ := h
-    exact hwf
+  List.Forall₂.forall_right
+    (fun _ _ h => by
+      obtain ⟨_, _, _, _, hwf⟩ := h
+      exact hwf
+    ) H
 
 theorem List.Forall₂.mutualBody_types
     (H : List.Forall₂
       (MutualBodyRel safety env base headers) vs vs') :
     ∀ v' ∈ vs', v'.toVConstant.WF base :=
-  H.forall_right fun _ _ h => by
-    obtain ⟨_, hheader, hsame, _, _⟩ := h
-    rw [hsame]
-    exact hheader.type_wf
+  List.Forall₂.forall_right
+    (fun _ _ h => by
+      obtain ⟨_, hheader, hsame, _, _⟩ := h
+      rw [hsame]
+      exact hheader.type_wf
+    ) H
 
 theorem List.Forall₂.trConst_names_eq
     {info : DefinitionVal → ConstantInfo}
@@ -429,7 +439,7 @@ theorem List.Forall₂.trConst_mono
     (hs : safety' ≤ safety) (hle : base ≤ env) :
     List.Forall₂ (fun v v' =>
       TrConstVal safety' env (info v) v'.toVConstVal) vs vs' :=
-  H.imp fun _ _ h => ⟨h.1.sf_mono hs |>.mono hle, h.2⟩
+  List.Forall₂.imp (fun _ _ h => ⟨h.1.sf_mono hs |>.mono hle, h.2⟩) H
 
 theorem List.Forall₂.trConst_target_fresh
     {info : DefinitionVal → ConstantInfo}
@@ -461,7 +471,7 @@ theorem List.Forall₂.mutualBodies_mono
     (hle : env ≤ env') :
     List.Forall₂ (fun v v' =>
       TrExprS env' v.levelParams [] v.value v'.value) vs vs' :=
-  H.imp fun _ _ h => h.mono hle
+  List.Forall₂.imp (fun _ _ h => h.mono hle) H
 
 theorem checkBodyCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (decl : Declaration) (name : Name) (levelParams : List Name)
