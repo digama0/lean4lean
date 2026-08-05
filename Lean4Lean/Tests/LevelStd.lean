@@ -1,4 +1,4 @@
-import Lean4Lean.Verify.Level.Std
+import Lean4Lean.Verify.LevelStd
 
 open Lean
 
@@ -54,25 +54,37 @@ private def mvarVal (v : Nat × Nat × Nat × Nat) : LMVarId → Nat
   | ⟨`n⟩ => v.2.2.2
   | _ => 0
 
--- Finite regression coverage for the semantic assumption on opaque `Level.normalize`.
+-- Finite regression coverage for `Level.Semantics.eval_normalize`.
 #guard samples.all fun u => valuations.all fun v =>
-  Level.Semantics.eval (paramVal v) (mvarVal v) u.normalize ==
-    Level.Semantics.eval (paramVal v) (mvarVal v) u
+  Level.eval (paramVal v) (mvarVal v) u.normalize ==
+    Level.eval (paramVal v) (mvarVal v) u
+
+-- Finite regression coverage for `Level.normalize_eq`: exhaustive over the 7320 levels of depth
+-- at most 2 over `atoms`, plus 28920 depth-3 levels built from a sample of them.
+private def deeperSamples : Array Level :=
+  let sample := (levels 2).zipIdx.filterMap fun (u, i) => if i % 61 == 0 then some u else none
+  sample.map .succ ++ sample.flatMap fun a =>
+    (levels 1).flatMap fun b => #[.max a b, .imax a b, .max b a, .imax b a]
+
+#guard (levels 2).all fun u => u.normalize == Level.Total.normalize u
+#guard deeperSamples.all fun u => u.normalize == Level.Total.normalize u
 
 /--
-info: 'Lean.Level.Semantics.isEquiv_wf' depends on axioms: [propext,
+info: 'Lean.Level.isEquiv_wf' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
  Quot.sound,
  Level.instLawfulBEqLevel,
- Level.Semantics.eval_normalize]
+ Level.normalize_eq]
 -/
-#guard_msgs in
-#print axioms Level.Semantics.isEquiv_wf
+#guard_msgs in #print axioms Level.isEquiv_wf
 
 /--
-info: 'Lean.Level.Semantics.geq_wf' depends on axioms: [propext,
+info: 'Lean.Level.geq_wf' depends on axioms: [propext,
+ sorryAx,
+ Classical.choice,
  Quot.sound,
  Level.instLawfulBEqLevel,
- Level.Semantics.eval_normalize]
+ Level.normalize_eq]
 -/
-#guard_msgs in
-#print axioms Level.Semantics.geq_wf
+#guard_msgs in #print axioms Level.geq_wf

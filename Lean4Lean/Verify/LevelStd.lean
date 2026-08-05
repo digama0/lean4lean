@@ -4,15 +4,17 @@ import Lean4Lean.Verify.Axioms
 
 open private go in Lean.Level.geq
 
-namespace Lean.Level.Semantics
+namespace Lean.Level
 
 open Lean4Lean
 
 /-!
 Semantic soundness of the universe-level operations in Lean's standard library.
-The semantic behavior of `normalize` remains an explicit assumption because it
-is an opaque `partial def`. In contrast, the exact correspondence between
-`geqCore` below and the private recursion used by `Lean.Level.geq` is proved.
+`normalize` is an opaque `partial def`, so `Lean4Lean.Verify.Axioms` assumes it
+equals the total copy `Lean.Level.Total.normalize` defined there; the semantic
+behavior of that copy is `eval_normalize` below, which is still open. The exact
+correspondence between `geqCore` below and the private recursion used by
+`Lean.Level.geq` is proved.
 -/
 
 variable (ρ : Name → Nat) (μ : LMVarId → Nat) in
@@ -37,30 +39,24 @@ private theorem getOffsetAux_eq_offset :
 private theorem getOffset_eq_offset : l.getOffset = offset l := by
   simp [Level.getOffset, getOffsetAux_eq_offset]
 
-theorem eval_eq_getLevelOffset_add_getOffset :
+theorem eval_getLevelOffset :
     eval ρ μ l = eval ρ μ l.getLevelOffset + l.getOffset := by
-  induction l with
-  | succ l ih =>
-    simp only [eval, Level.getLevelOffset, getOffset_eq_offset, offset, ih]
-    omega
-  | _ => rfl
+  induction l with | succ l ih => ?_ | _ => rfl
+  simp only [eval, Level.getLevelOffset, getOffset_eq_offset, offset, ih]
+  omega
 
 theorem fallback_sound
     (h : (u.getLevelOffset = v.getLevelOffset ∨ v.getLevelOffset.isZero = true) ∧
       v.getOffset ≤ u.getOffset) :
     eval ρ μ v ≤ eval ρ μ u := by
-  calc
-    eval ρ μ v = eval ρ μ v.getLevelOffset + v.getOffset :=
-      eval_eq_getLevelOffset_add_getOffset
-    _ ≤ eval ρ μ u.getLevelOffset + u.getOffset := by
-      rcases h with ⟨hv | hv, hk⟩
-      · rw [← hv]; omega
-      · have hv : v.getLevelOffset = .zero := by
-          generalize hbase : v.getLevelOffset = base at hv
-          cases base <;> simp_all [Level.isZero]
-        simp [hv, eval]
-        omega
-    _ = eval ρ μ u := eval_eq_getLevelOffset_add_getOffset.symm
+  rw [eval_getLevelOffset, eval_getLevelOffset (l := u)]
+  rcases h with ⟨hv | hv, hk⟩
+  · rw [← hv]; omega
+  · have hv : v.getLevelOffset = .zero := by
+      generalize hbase : v.getLevelOffset = base at hv
+      cases base <;> simp_all [Level.isZero]
+    simp [hv, eval]
+    omega
 
 def geqCore : Level → Level → Bool
   -- Keep this in the same source-shaped form as `go`'s `u == v || ...` prefix.
@@ -85,20 +81,19 @@ def geqCore : Level → Level → Bool
   termination_by u v => (u, v)
 
 private theorem geqCore_eq_go : geqCore u v = go u v := by
-  fun_induction go
-  next u v ih₁ ih₂ =>
-    cases u <;> cases v <;> simp_all [geqCore, go]
+  fun_induction go with | _ u v
+  cases u <;> cases v <;> simp_all [geqCore, go]
 
 theorem geqCore_sound (h : geqCore u v) : eval ρ μ v ≤ eval ρ μ u := by
-  induction u, v using geqCore.induct <;>
+  induction u, v using geqCore.induct with
     simp only [geqCore, Bool.or_eq_true, Bool.and_eq_true, beq_iff_eq,
       decide_eq_true_eq] at h
-  case case1 => simp [eval]
-  case case2 ih₂ ih₁ =>
+  | case1 => simp [eval]
+  | case2 _ _ _ ih₂ ih₁ =>
     rcases h with rfl | ⟨h₁, h₂⟩
     · exact Nat.le_refl _
     · exact (Nat.max_le).2 ⟨ih₂ h₁, ih₁ h₂⟩
-  case case3 u₁ u₂ v₁ v₂ ih₄ ih₃ ih₂ ih₁ =>
+  | case3 u₁ u₂ v₁ v₂ ih₄ ih₃ ih₂ ih₁ =>
     rcases h with heq | (h | h) | ⟨h₁, h₂⟩
     · exact Nat.le_of_eq (congrArg (eval ρ μ) heq).symm
     · exact Nat.le_trans (ih₄ h) (Nat.le_max_left ..)
@@ -107,15 +102,14 @@ theorem geqCore_sound (h : geqCore u v) : eval ρ μ v ≤ eval ρ μ u := by
       split
       · exact Nat.zero_le _
       · exact (Nat.max_le).2 ⟨ih₂ h₁, ih₁ h₂⟩
-  case case4 u₁ u₂ v _ _ _ ih₂ ih₁ =>
+  | case4 u₁ u₂ v _ _ _ ih₂ ih₁ =>
     rcases h with rfl | h
     · exact Nat.le_refl _
-    · rcases h with h | h
-      · rcases h with h | h
-        · exact Nat.le_trans (ih₂ h) (Nat.le_max_left ..)
-        · exact Nat.le_trans (ih₁ h) (Nat.le_max_right ..)
+    · rcases h with (h | h) | h
+      · exact Nat.le_trans (ih₂ h) (Nat.le_max_left ..)
+      · exact Nat.le_trans (ih₁ h) (Nat.le_max_right ..)
       · exact fallback_sound h
-  case case5 u₁ u₂ v _ _ ih =>
+  | case5 u₁ u₂ v _ _ ih =>
     rcases h with rfl | h
     · exact Nat.le_refl _
     · simp only [eval, Nat.imax]
@@ -123,40 +117,35 @@ theorem geqCore_sound (h : geqCore u v) : eval ρ μ v ≤ eval ρ μ u := by
       split <;> rename_i hz
       · simpa [hz] using hv
       · exact Nat.le_trans hv (Nat.le_max_right ..)
-  case case6 u v ih =>
+  | case6 u v ih =>
     rcases h with heq | h
     · exact Nat.le_of_eq (congrArg (eval ρ μ) heq).symm
     · simpa [eval] using Nat.add_le_add_right (ih h) 1
-  case case7 u v₁ v₂ _ _ ih₂ ih₁ =>
+  | case7 u v₁ v₂ _ _ ih₂ ih₁ =>
     rcases h with rfl | ⟨h₁, h₂⟩
     · exact Nat.le_refl _
     · simp only [eval, Nat.imax]
       split
       · exact Nat.zero_le _
       · exact (Nat.max_le).2 ⟨ih₂ h₁, ih₁ h₂⟩
-  case case8 =>
+  | case8 =>
     rcases h with heq | h
     · exact Nat.le_of_eq (congrArg (eval ρ μ) heq).symm
     · exact fallback_sound h
 
-/-- Semantic specification for the opaque `partial def` `Lean.Level.normalize`
-in [Lean 4.30's `Lean/Level.lean`](https://github.com/leanprover/lean4/blob/v4.30.0/src/Lean/Level.lean#L379-L401).
+theorem eval_normalize {ρ μ l} : eval ρ μ l.normalize = eval ρ μ l := by
+  rw [normalize_eq]; sorry
 
-This is the sole additional trust assumption in this file and must be audited
-when the pinned Lean toolchain changes. -/
-axiom eval_normalize : eval ρ μ l.normalize = eval ρ μ l
+theorem geq_eq_core : geq u v = geqCore (normalize u) (normalize v) := by
+  simp [geq, geqCore_eq_go]
 
-theorem geq_eq_core :
-    Lean.Level.geq u v = geqCore (Lean.Level.normalize u) (Lean.Level.normalize v) := by
-  simp [Lean.Level.geq, geqCore_eq_go]
-
-theorem isEquiv_sound (h : Lean.Level.isEquiv u v) : eval ρ μ u = eval ρ μ v := by
+theorem isEquiv_sound (h : isEquiv u v) : eval ρ μ u = eval ρ μ v := by
   simp only [Level.isEquiv, Bool.or_eq_true, beq_iff_eq] at h
   rcases h with rfl | h
   · rfl
   · rw [← eval_normalize (l := u), ← eval_normalize (l := v), h]
 
-theorem geq_sound (h : Lean.Level.geq u v) : eval ρ μ v ≤ eval ρ μ u := by
+theorem geq_sound (h : geq u v) : eval ρ μ v ≤ eval ρ μ u := by
   rw [geq_eq_core] at h
   rw [← eval_normalize (l := u), ← eval_normalize (l := v)]
   exact geqCore_sound h
@@ -179,17 +168,17 @@ theorem eval_ofLevel (h : VLevel.ofLevel Us l = some l') :
     simp [VLevel.eval, eval]
   | mvar n => simp [VLevel.ofLevel] at h
 
-theorem isEquiv_wf (h : Lean.Level.isEquiv u v)
+theorem isEquiv_wf (h : isEquiv u v)
     (hu : VLevel.ofLevel Us u = some u') (hv : VLevel.ofLevel Us v = some v') : u' ≈ v' := by
   rw [VLevel.equiv_def]
   intro ns
   rw [eval_ofLevel (μ := fun _ => 0) hu, eval_ofLevel (μ := fun _ => 0) hv]
-  exact isEquiv_sound (μ := fun _ => 0) h
+  exact isEquiv_sound h
 
-theorem geq_wf (h : Lean.Level.geq u v)
+theorem geq_wf (h : geq u v)
     (hu : VLevel.ofLevel Us u = some u') (hv : VLevel.ofLevel Us v = some v') : v' ≤ u' := by
   intro ns
   rw [eval_ofLevel (μ := fun _ => 0) hv, eval_ofLevel (μ := fun _ => 0) hu]
-  exact geq_sound (μ := fun _ => 0) h
+  exact geq_sound h
 
-end Lean.Level.Semantics
+end Lean.Level
