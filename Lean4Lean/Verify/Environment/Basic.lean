@@ -26,12 +26,43 @@ def TrConstVal (ci : ConstantInfo) (ci' : VConstVal) : Prop :=
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrDefVal (ci : ConstantInfo) (ci' : VDefVal) : Prop :=
   TrConstVal safety env ci ci'.toVConstVal ∧
-  TrExprS env ci.levelParams [] ci.value! ci'.value
+  TrExprS env ci.levelParams [] (ci.value! (allowOpaque := true)) ci'.value
 
-variable (safety : DefinitionSafety) (env : VEnv) in
-def TrThmVal (ci : TheoremVal) (ci' : VDefVal) : Prop :=
-  TrConstVal safety env (.thmInfo ci) ci'.toVConstVal ∧
-  TrExprS env ci.levelParams [] ci.value ci'.value
+/-- The step an abstract environment takes when `ci`, modelled by `ci'`, is added.
+
+At safety levels where the declaration is visible the constant is added; where it is not, the
+environment is unchanged, matching `TrEnv'.ignore`. Stating this rather than just `venv ≤ venv'`
+is what lets a caller see *which* constant a step added. -/
+def VEnv.AddConst (venv : VEnv) (safety : DefinitionSafety) (ci : ConstantInfo)
+    (ci' : VConstant) (venv' : VEnv) : Prop :=
+  if safety ≤ ci.safety then
+    TrConstant safety venv ci ci' ∧ ci'.WF venv ∧ venv.addConst ci.name ci' = some venv'
+  else
+    venv' = venv
+
+theorem VEnv.AddConst.le {venv venv' : VEnv} {ci ci'}
+    (H : VEnv.AddConst venv safety ci ci' venv') : venv ≤ venv' := by
+  unfold VEnv.AddConst at H; split at H
+  · exact addConst_le H.2.2
+  · exact H ▸ VEnv.LE.rfl
+
+/-- As `VEnv.AddConst`, for a definition: the constant is added and then its defining equation,
+matching `TrEnv'.defn`. -/
+def VEnv.AddDef (venv : VEnv) (safety : DefinitionSafety) (ci : ConstantInfo)
+    (ci' : VDefVal) (venv' : VEnv) : Prop :=
+  if safety ≤ ci.safety then
+    ∃ base, TrDefVal safety venv ci ci' ∧ ci'.WF venv ∧
+      venv.addConst ci.name ci'.toVConstant = some base ∧
+      venv' = base.addDefEq ci'.toDefEq
+  else
+    venv' = venv
+
+theorem VEnv.AddDef.le {venv venv' : VEnv} {ci ci'}
+    (H : VEnv.AddDef venv safety ci ci' venv') : venv ≤ venv' := by
+  unfold VEnv.AddDef at H; split at H
+  · obtain ⟨base, _, _, hadd, rfl⟩ := H
+    exact (addConst_le hadd).trans (VEnv.addDefEq_le ..)
+  · exact H ▸ VEnv.LE.rfl
 
 def AddQuot1 (name : Name) (kind : QuotKind) (ci' : VConstant) (P : ConstMap → VEnv → Prop)
     (m : ConstMap) (env : VEnv) : Prop :=
@@ -100,17 +131,15 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
   | thm {ci' : VDefVal} :
-    TrThmVal safety env ci ci' →
+    TrDefVal safety env (.thmInfo ci) ci' →
     C.find? ci.name = none → ci'.WF env →
     env.HasType ci'.uvars [] ci'.type (.sort .zero) →
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.thmInfo ci)) Q env'
-  /-- Opaque bodies do not contribute definitional equalities, so `TrEnv'` retains only
-  the checked header. Soundness of the opaque-body checker is not represented here. -/
-  | opaque {ci' : VConstVal} :
-    TrConstVal safety env (.opaqueInfo ci) ci' →
-    C.find? ci.name = none → ci'.toVConstant.WF env →
+  | opaque {ci' : VDefVal} :
+    TrDefVal safety env (.opaqueInfo ci) ci' →
+    C.find? ci.name = none → ci'.WF env →
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.opaqueInfo ci)) Q env'
@@ -146,8 +175,8 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     exact ⟨_, (H.decl (.example h2)).decl (.axiom ⟨_, h3⟩ (hn ▸ h4))⟩
   | «opaque» h1 _ h2 h3 _ ih =>
     have ⟨_, H⟩ := ih
-    have := h1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
-    exact ⟨_, H.decl <| .axiom h2 (this ▸ h3)⟩
+    have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
+    exact ⟨_, H.decl <| .opaque h2 (this ▸ h3)⟩
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩

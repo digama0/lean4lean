@@ -9,27 +9,36 @@ open private Lean.Kernel.Environment.add from Lean.Environment
 
 theorem addAxiom.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : AxiomVal) :
     (addAxiom env v).WF fun env' =>
-      ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+      ∃ ves' : VEnvs, ves'.WF env' ∧ ∃ ci' : VConstVal, ∀ safety,
+        (ves.venv safety).AddConst safety (.axiomInfo v) ci'.toVConstant (ves'.venv safety) := by
   let checkSafety : DefinitionSafety := if v.isUnsafe then .unsafe else .safe
   have hsafety : checkSafety ≤ (ConstantInfo.axiomInfo v).safety := by
     cases v.isUnsafe <;> exact DefinitionSafety.le_rfl
   unfold addAxiom
   refine (checkConstantVal.WF wf (.axiomInfo v) false hsafety).run wf |>.bind fun _ h => ?_
   obtain ⟨ci', htr, hci, hn, hnonprim⟩ := h
-  refine .pure <| addConst.WF wf (.axiomInfo v) ci' checkSafety ?_ htr hci hn
+  have ⟨ves', hwf, hstep⟩ := addConst.WF wf (.axiomInfo v) ci' checkSafety ?_ htr hci hn
     (hnonprim rfl) fun _ _ htr hci hadd old => ?_
+  · exact .pure ⟨ves', hwf, ci', hstep⟩
   · intro safety _
     cases v.isUnsafe <;> cases safety <;> trivial
   · exact .axiom htr
       (by rwa [← old.map_wf.find?'_eq_find?]) hci hadd old
 
-theorem addNonrecursiveDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (v : DefinitionVal) (hunsafe : v.safety ≠ .unsafe) :
+theorem addDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (v : DefinitionVal) :
     (addDefinition env v).WF fun env' =>
-      ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+      ∃ ves' : VEnvs, ves'.WF env' ∧ (∀ safety, ves.venv safety ≤ ves'.venv safety) ∧
+        (v.safety ≠ .unsafe → ∃ ci' : VDefVal, ∀ safety,
+          (ves.venv safety).AddDef safety (.defnInfo v) ci' (ves'.venv safety)) := by
   unfold addDefinition
   split
-  · contradiction
+  · extract_lets _ F1 F2
+    refine (checkConstantVal.WF wf (.defnInfo v) false
+      DefinitionSafety.unsafe_le).run wf |>.bind fun _ h1 => ?_
+    unfold F2
+    refine (checkNoMVarNoFVar.WF _ _ _).bind fun _ h2 => ?_
+    sorry
   refine (checkDefinition.WF wf v).run wf |>.bind fun _ h => ?_
   obtain ⟨allow, ci', hp, hu, ht, hname, hvalue, hci, hfresh, hnonprim⟩ := h
   have hle : v.safety ≤ .safe := DefinitionSafety.le_safe
@@ -38,7 +47,8 @@ theorem addNonrecursiveDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves
     refine ⟨⟨⟨?_, hu, ht.mono hmono⟩, hname⟩, hvalue.mono hmono⟩
     rw [ConstantInfo.defnInfo_safety]
     exact DefinitionSafety.le_rfl
-  refine .pure <| addDef.WF wf v ci' v.safety ?_ htr (hci.mono hmono) hfresh ?_ ?_
+  have ⟨ves', hwf, hstep⟩ := addDef.WF wf v ci' v.safety ?_ htr (hci.mono hmono) hfresh ?_ ?_
+  · exact .pure ⟨ves', hwf, (hstep · |>.le), fun _ => ⟨ci', hstep⟩⟩
   · simp [ConstantInfo.defnInfo_safety]
   · intro hnamePrim
     have hallow : allow = true := by
@@ -63,38 +73,42 @@ theorem addNonrecursiveDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves
 
 theorem addTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : TheoremVal) :
     (addTheorem env v).WF fun env' =>
-      ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
-  unfold addTheorem
+      ∃ ves' : VEnvs, ves'.WF env' ∧ ∃ ci' : VConstVal, ∀ safety,
+        (ves.venv safety).AddConst safety (.thmInfo v) ci'.toVConstant (ves'.venv safety) := by
   refine (checkTheorem.WF wf v).run wf |>.bind fun _ h => ?_
   obtain ⟨ci', htr, hbody, hprop, hn, hnonprim⟩ := h
-  refine .pure <| addConst.WF wf (.thmInfo v) ci'.toVConstVal .safe
+  have ⟨ves', hwf, hstep⟩ := addConst.WF wf (.thmInfo v) ci'.toVConstVal .safe
     (fun _ _ => DefinitionSafety.le_safe) htr.1 ⟨_, hprop⟩ hn hnonprim
     fun safety _ hheader _ hadd old => ?_
+  · exact .pure ⟨ves', hwf, ci'.toVConstVal, hstep⟩
   have hle := wf.mono hheader.1
-  have htr' : TrThmVal safety (ves.venv safety) v ci' :=
+  have htr' : TrDefVal safety (ves.venv safety) (.thmInfo v) ci' :=
     ⟨⟨hheader, htr.1.2⟩, htr.2.mono hle⟩
   exact .thm htr' (by rwa [← old.map_wf.find?'_eq_find?]) (hbody.mono hle)
     (hprop.mono hle) hadd old
 
 theorem addOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : OpaqueVal) :
     (addOpaque env v).WF fun env' =>
-      ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
+      ∃ ves' : VEnvs, ves'.WF env' ∧ ∃ ci' : VConstVal, ∀ safety,
+        (ves.venv safety).AddConst safety (.opaqueInfo v) ci'.toVConstant (ves'.venv safety) := by
   let checkSafety : DefinitionSafety := if v.isUnsafe then .unsafe else .safe
   have hsafety : (ConstantInfo.opaqueInfo v).safety = checkSafety := by
     cases v.isUnsafe <;> rfl
-  unfold addOpaque
   refine (checkOpaque.WF wf v).run wf |>.bind fun _ h => ?_
-  obtain ⟨ci', hu, ht, hname, hci, hfresh, hnonprim, _⟩ := h
+  obtain ⟨ci', hu, ht, hname, hvalue, hciC, hci, hfresh, hnonprim⟩ := h
   have hle : checkSafety ≤ .safe := DefinitionSafety.le_safe
   have hmono := wf.mono hle
-  have htr : TrConstVal checkSafety (ves.venv checkSafety) (.opaqueInfo v) ci' :=
+  have htr : TrConstVal checkSafety (ves.venv checkSafety) (.opaqueInfo v) ci'.toVConstVal :=
     ⟨⟨hsafety.symm ▸ DefinitionSafety.le_rfl, hu, ht.mono hmono⟩, hname⟩
-  refine .pure <| addConst.WF wf (.opaqueInfo v) ci' checkSafety ?_ htr
-    (hci.mono hmono) hfresh hnonprim fun _ _ htr hci hadd old => ?_
+  have ⟨ves', hwf, hstep⟩ := addConst.WF wf (.opaqueInfo v) ci'.toVConstVal checkSafety ?_ htr
+    (hciC.mono hmono) hfresh hnonprim fun safety _ htr hciW hadd old => ?_
+  · exact .pure ⟨ves', hwf, ci'.toVConstVal, hstep⟩
   · intro safety hvisible
     rwa [hsafety] at hvisible
-  · exact .opaque ⟨htr, hname⟩
-      (by rwa [← old.map_wf.find?'_eq_find?]) hci hadd old
+  · have hvis : safety ≤ checkSafety := hsafety ▸ htr.1
+    have hto := hmono.trans (wf.mono hvis)
+    exact .opaque (ci' := ci') ⟨⟨htr, hname⟩, hvalue.mono hto⟩
+      (by rwa [← old.map_wf.find?'_eq_find?]) (hci.mono hto) hadd old
 
 theorem checkEqType.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
     (checkEqType env).WF fun _ => False := by
@@ -124,27 +138,19 @@ theorem addQuot.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
   · exact .pure ⟨ves, wf, fun _ => VEnv.LE.rfl⟩
   · exact (checkEqType.WF wf).bind fun _ h => False.elim h
 
-/-- Declaration forms currently represented by `TrEnv`. Recursive unsafe definitions and
-mutual definitions require a recursive-body relation, while inductives require a
-constructive `AddInduct` model. -/
-def _root_.Lean.Declaration.IsModelled : Declaration → Prop
-  | .axiomDecl _ | .thmDecl _ | .opaqueDecl _ | .quotDecl => True
-  | .defnDecl v => v.safety ≠ .unsafe
-  | .mutualDefnDecl _ | .inductDecl .. => False
-
-/-- Successful checked addition of a modelled declaration preserves well-formedness and
-extends every safety-indexed abstract environment. Quotient initialization is vacuous
-until inductive environments are represented, so this theorem currently applies only to
-synthetic environments without inductive declarations. -/
-theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration)
-    (hdecl : decl.IsModelled) :
+/-- Successful checked addition preserves well-formedness and extends every safety-indexed
+abstract environment. The declaration forms still outstanding are recursive unsafe and mutual
+definitions, which need a recursive-body relation, and inductives, which need a constructive
+`AddInduct` model. -/
+theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration) :
     (addDecl env decl (check := true) (fuel := {})).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
   cases decl with
-  | axiomDecl v => exact addAxiom.WF wf v
-  | defnDecl v => exact addNonrecursiveDefinition.WF wf v (by simpa [Declaration.IsModelled] using hdecl)
-  | thmDecl v => exact addTheorem.WF wf v
-  | opaqueDecl v => exact addOpaque.WF wf v
-  | mutualDefnDecl _ => simp [Declaration.IsModelled] at hdecl
+  | axiomDecl v => exact (addAxiom.WF wf v).mono fun _ ⟨ves', hwf, _, h⟩ => ⟨ves', hwf, (h · |>.le)⟩
+  | thmDecl v => exact (addTheorem.WF wf v).mono fun _ ⟨ves', hwf, _, h⟩ => ⟨ves', hwf, (h · |>.le)⟩
+  | defnDecl v => exact (addDefinition.WF wf v).mono fun _ ⟨ves', hwf, h, _⟩ => ⟨ves', hwf, h⟩
+  | opaqueDecl v =>
+    exact (addOpaque.WF wf v).mono fun _ ⟨ves', hwf, _, h⟩ => ⟨ves', hwf, (h · |>.le)⟩
   | quotDecl => exact addQuot.WF wf
-  | inductDecl _ _ _ _ => simp [Declaration.IsModelled] at hdecl
+  | mutualDefnDecl _ => sorry
+  | inductDecl _ _ _ _ => sorry
