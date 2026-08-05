@@ -124,7 +124,8 @@ def checkMutualHeaders (env : Environment) (safety : DefinitionSafety)
     if v.safety != safety then
       throw <| .other
         "invalid mutual definition, declarations must have the same safety annotation"
-    -- Each member gets fresh caches indexed by its own universe parameters.
+    -- Each member is checked with fresh caches.  `checkMutualNames` has already forced the
+    -- universe parameters to agree, so `v.levelParams` here is `v₀.levelParams`.
     M.run env safety (lctx := {}) (lparams := v.levelParams) (fuel := fuel) <|
       checkConstantVal env v.toConstantVal
     checkMutualHeaders env safety fuel vs
