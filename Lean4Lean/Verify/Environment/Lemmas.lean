@@ -70,7 +70,9 @@ theorem Aligned.addInduct (H : AddInduct C₁ venv₁ decl C₂ venv₂) :
 theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := by
   induction H with
   | empty => exact .empty
+  | ignore h1 h2 _ ih => exact ih.ignoreConst h1 h2 rfl
   | «axiom» h1 h2 _ h _ ih => exact ih.const h2 h1 h rfl
+  | thm h1 h2 _ _ h _ ih => exact ih.const h2 h1.1.1 h rfl
   | «opaque» h1 h2 _ h _ ih => exact ih.const h2 h1.1.1 h rfl
   | defn h1 h2 _ h _ ih => exact (ih.const h2 h1.1.1 h rfl).defeq
   | quot _ h _ ih => exact ih.addQuot h
@@ -147,7 +149,11 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
     rw [hC.find?_insert]; simp; split <;> simp +contextual [*]
   induction H with
   | empty => simp [SMap.find?] at h
-  | «axiom» _ _ _ h1 H ih | «opaque» _ _ _ h1 H ih =>
+  | ignore h1 h2 H ih =>
+    obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
+    · exact ih h
+    · exact (h2 hs).elim
+  | «axiom» _ _ _ h1 H ih =>
     obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
     · exact (ih h).mono (VEnv.addConst_le h1)
     · contradiction
@@ -160,6 +166,23 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
         (H.defn h2 h3 h4 h1).wf.ordered.defEqWF VEnv.addDefEq_self
       let ⟨⟨⟨b1, b2, b3⟩, b4⟩, b5⟩ := h2
       refine ⟨_, b5.mono le, b2.symm ▸ b4.symm ▸ ⟨_, this.symm⟩⟩
+  | thm h2 h3 h4 h5 h1 H ih =>
+    have' le := VEnv.addConst_le h1
+    obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
+    · exact (ih h).mono le
+    · cases hv
+      let ⟨⟨⟨b1, b2, b3⟩, b4⟩, b5⟩ := h2
+      dsimp only [ConstantInfo.name, ConstantInfo.levelParams, ConstantInfo.toConstantVal] at b2 b4 ⊢
+      have hp := h5.mono le
+      have hb := h4.mono le
+      have hc := VEnv.HasType.const0 (VEnv.addConst_self h1) ⟨_, hp⟩
+      rw [b4] at hc
+      refine ⟨_, b5.mono le, b2.symm ▸ b4.symm ▸ ?_⟩
+      exact ⟨_, .proofIrrel hp hb hc⟩
+  | «opaque» _ _ _ h1 H ih =>
+    obtain h | ⟨rfl, rfl⟩ := this H.map_wf h
+    · exact (ih h).mono (VEnv.addConst_le h1)
+    · contradiction
   | quot _ h1 H ih =>
     suffices ∀ {n k ci' P}, (∀ C env, Aligned safety C env → P C env → C.find? name = some ci) →
         ∀ C env, Aligned safety C env → AddQuot1 n k ci' P C env → C.find? name = some ci by

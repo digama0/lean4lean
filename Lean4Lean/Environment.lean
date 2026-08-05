@@ -86,6 +86,8 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
         if v.safety != v₀.safety then
           throw <| .other
             "invalid mutual definition, declarations must have the same safety annotation"
+        -- The whole block is checked under one set of level parameters, so they must agree;
+        -- lean4#14608 adds the same check to the C++ kernel.
         if v.levelParams != v₀.levelParams then
           throw <| .other
             "invalid mutual definition, declarations must have the same universe level parameters"

@@ -17,6 +17,12 @@ structure VEnvs.WF (env : Environment) (ves : VEnvs) where
     Environment.primitives.contains n → ci.safety = .safe ∧ ci.levelParams = []
   mono : safety ≤ safety' → ves.venv safety' ≤ ves.venv safety
 
+/-- Assemble a `VEnvs` from a pointwise existential. `DefinitionSafety` has three elements, so
+this is a finite case split rather than an appeal to choice -- the name records what it replaces. -/
+theorem VEnvs.axiom_of_choice {P : DefinitionSafety → VEnv → Prop} (H : ∀ sf, ∃ x, P sf x) :
+    ∃ x : VEnvs, ∀ sf, P sf (x.venv sf) := by
+  have ⟨x1, _⟩ := H .safe; have ⟨x2, _⟩ := H .partial; have ⟨x3, _⟩ := H .unsafe
+  exact ⟨⟨fun | .safe => x1 | .partial => x2 | .unsafe => x3⟩, by rintro ⟨⟩ <;> assumption⟩
 
 namespace TypeChecker
 open Inner
