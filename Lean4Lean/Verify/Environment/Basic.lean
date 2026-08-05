@@ -111,6 +111,19 @@ nonrec theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
   nomatch H
 
+/-- Insert a whole block of definitions into the constant map. -/
+def insertDefs (C : ConstMap) (cis : List DefinitionVal) : ConstMap :=
+  cis.foldl (fun C ci => C.insert ci.name (.defnInfo ci)) C
+
+variable (safety : DefinitionSafety) (env env' : VEnv) in
+/-- Translation data for a mutual block: the headers are translated against the environment
+before the block is added, the values against the environment that already has every constant
+of the block, mirroring the kernel adding them all as axioms first. -/
+def TrDefBlock (cis : List DefinitionVal) (cis' : List VDefVal) : Prop :=
+  List.Forall₂ (fun ci ci' =>
+    TrConstVal safety env (.defnInfo ci) ci'.toVConstVal ∧
+    TrExprS env' ci.levelParams [] ci.value ci'.value) cis cis'
+
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | empty : TrEnv' {} false .empty
@@ -130,6 +143,17 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
+  /-- A mutual block, and an unsafe definition as the one-element case. -/
+  | mutualDef {cis : List DefinitionVal} {cis' : List VDefVal} :
+    TrDefBlock safety env env' cis cis' →
+    -- the block's names are distinct; `addMutual` checks this, as does lean4#14632
+    (cis.map (·.name)).Nodup →
+    (∀ ci ∈ cis, C.find? ci.name = none) →
+    (∀ ci' ∈ cis', ci'.toVConstant.WF env) →
+    env.addConsts cis' = some env' →
+    (∀ ci' ∈ cis', ci'.WF env') →
+    TrEnv' C Q env →
+    TrEnv' (insertDefs C cis) Q (env'.addDefEqs cis')
   | thm {ci' : VDefVal} :
     TrDefVal safety env (.thmInfo ci) ci' →
     C.find? ci.name = none → ci'.WF env →
@@ -168,6 +192,9 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .def h2 (this ▸ h3)⟩
+  | mutualDef _ _ _ h2 h3 h4 _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.decl <| .mutualDef h2 h3 h4⟩
   | thm h1 _ h2 h3 h4 _ ih =>
     have ⟨_, H⟩ := ih
     have hn := h1.1.2

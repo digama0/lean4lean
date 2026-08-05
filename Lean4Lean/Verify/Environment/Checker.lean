@@ -85,7 +85,7 @@ theorem checkConstantValCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF e
   refine (TypeChecker.M.WF.liftExcept
     (checkNoMVarNoFVar.WF env ci.name ci.type)).bind fun _ _ _ hclosed => ?_
   have hclosed' : ci.type.FVarsIn (· ∈ (TypeChecker.VContext.mk' wf safety ci.levelParams).vlctx.fvars) := by
-    simpa [TypeChecker.VContext.mk'] using hclosed
+    simpa [TypeChecker.VContext.mk', TypeChecker.VContext.mk1] using hclosed
   refine (TypeChecker.checkType.WF hclosed').bind
     fun _ _ _ ⟨type', sort', _, htype, hsort, hhasType⟩ => ?_
   refine (TypeChecker.ensureSort.WF hsort).bind
@@ -109,23 +109,28 @@ theorem checkConstantVal.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     obtain ⟨ci', hu, ht, hn', hci, hn, hp⟩ := h
     exact ⟨ci', ⟨⟨hs, hu, ht⟩, hn'⟩, hci, hn, hp⟩
 
-theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (decl : Declaration) (name : Name) (levelParams : List Name) (type value : Expr)
-    (type' : VExpr) (hdeclType : TrExprS (ves.venv safety) levelParams [] type type')
+/-- The body check proper, with the mvar/fvar check already discharged. `addDefinition` runs
+the two in the same `do` block for a safe definition but splits them for an unsafe one (the
+mvar/fvar check happens before the constant is added as an axiom), so they are verified
+separately.
+
+Stated against a single-level model (`VEnvAt`): a mutual block's bodies are checked in the
+temporary environment holding the whole block as axioms, which has no model at every level. -/
+theorem checkBodyCore.WF {env : Environment} {venv : VEnv} (wf : VEnvAt env safety venv)
+    (decl : Declaration) (levelParams : List Name) (type value : Expr)
+    (type' : VExpr) (hdeclType : TrExprS venv levelParams [] type type')
+    (hclosed : value.FVarsIn fun _ => False)
     (state : TypeChecker.VState := {}) :
     ((do
-      Environment.checkNoMVarNoFVar env name value
       let valueType ← TypeChecker.checkType value
       if !(← TypeChecker.isDefEq valueType type) then
         throw <| Exception.declTypeMismatch env decl valueType) : TypeChecker.M Unit).WF
-      (.mk' wf safety levelParams) state fun _ _ =>
-        ∃ value', TrExprS (ves.venv safety) levelParams [] value value' ∧
-          (ves.venv safety).HasType levelParams.length [] value' type' := by
-  refine (TypeChecker.M.WF.liftExcept
-    (checkNoMVarNoFVar.WF env name value)).bind fun _ _ _ hclosed => ?_
+      (.mk1 wf levelParams) state fun _ _ =>
+        ∃ value', TrExprS venv levelParams [] value value' ∧
+          venv.HasType levelParams.length [] value' type' := by
   have hclosed' : value.FVarsIn
-      (· ∈ (TypeChecker.VContext.mk' wf safety levelParams).vlctx.fvars) := by
-    simpa [TypeChecker.VContext.mk'] using hclosed
+      (· ∈ (TypeChecker.VContext.mk1 wf levelParams).vlctx.fvars) := by
+    simpa [TypeChecker.VContext.mk1] using hclosed
   refine (TypeChecker.checkType.WF hclosed').bind
     fun valueType _ _ ⟨value', valueType', _, hvalue, hvalueType, hhasType⟩ => ?_
   refine (TypeChecker.isDefEq.WF hvalueType hdeclType).bind fun equal _ _ hequal => ?_
@@ -134,7 +139,23 @@ theorem checkBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   · rename_i hnot
     refine .pure ⟨value', hvalue, ?_⟩
     have heq : equal = true := by cases equal <;> simp_all
-    exact hhasType.defeqU_r (wf.tr (safety := safety)).wf (by trivial) (hequal heq)
+    exact hhasType.defeqU_r wf.tr.wf (by trivial) (hequal heq)
+
+theorem checkBody.WF {env : Environment} {venv : VEnv} (wf : VEnvAt env safety venv)
+    (decl : Declaration) (name : Name) (levelParams : List Name) (type value : Expr)
+    (type' : VExpr) (hdeclType : TrExprS venv levelParams [] type type')
+    (state : TypeChecker.VState := {}) :
+    ((do
+      Environment.checkNoMVarNoFVar env name value
+      let valueType ← TypeChecker.checkType value
+      if !(← TypeChecker.isDefEq valueType type) then
+        throw <| Exception.declTypeMismatch env decl valueType) : TypeChecker.M Unit).WF
+      (.mk1 wf levelParams) state fun _ _ =>
+        ∃ value', TrExprS venv levelParams [] value value' ∧
+          venv.HasType levelParams.length [] value' type' :=
+  (TypeChecker.M.WF.liftExcept
+    (checkNoMVarNoFVar.WF env name value)).bind fun _ _ _ hclosed =>
+  checkBodyCore.WF wf decl levelParams type value type' hdeclType hclosed _
 
 theorem checkTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (v : TheoremVal) :
@@ -158,7 +179,7 @@ theorem checkTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   · exact .throw
   · rename_i hnot
     have hisProp : isProp = true := by cases isProp <;> simp_all
-    refine .pureBind <| (checkBody.WF wf (.thmDecl v) v.name v.levelParams v.type
+    refine .pureBind <| (checkBody.WF (wf.toVEnvAt .safe) (.thmDecl v) v.name v.levelParams v.type
       v.value ci'.type htr.1.2.2 state').mono fun _ _ _ ⟨value', hvalue, hvalueType⟩ => ?_
     let ci'' : VDefVal := { ci' with value := value' }
     refine ⟨ci'', ⟨htr, hvalue⟩, ?_, ?_, hn, hnonprim rfl⟩
@@ -188,7 +209,7 @@ theorem checkDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   refine (checkPrimitiveDef.WF wf v).bind fun allow state _ hp => ?_
   refine (checkConstantValCore.WF (safety := .safe) wf (.defnInfo v) allow state).bind
     fun _ state' _ ⟨ci', hu, ht, hname, hci, hfresh, hnonprim⟩ => ?_
-  exact (checkBody.WF wf (.defnDecl v) v.name v.levelParams v.type v.value
+  exact (checkBody.WF (wf.toVEnvAt .safe) (.defnDecl v) v.name v.levelParams v.type v.value
     ci'.type ht state').mono fun _ _ _ ⟨value', hvalue, hvalueType⟩ => by
       let ci'' : VDefVal := { ci' with value := value' }
       refine ⟨allow, ci'', hp, hu, ht, hname, hvalue, ?_, hfresh, hnonprim⟩
@@ -219,7 +240,7 @@ theorem checkOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
         Environment.primitives.contains v.name = false := by
   refine (checkConstantValCore.WF (safety := .safe) wf (.opaqueInfo v) false).bind
     fun _ state _ ⟨ci', hu, ht, hname, hci, hfresh, hnonprim⟩ => ?_
-  exact (checkBody.WF wf (.opaqueDecl v) v.name v.levelParams v.type v.value
+  exact (checkBody.WF (wf.toVEnvAt .safe) (.opaqueDecl v) v.name v.levelParams v.type v.value
     ci'.type ht state).mono fun _ _ _ ⟨value', hvalue, hvalueType⟩ => by
       let ci'' : VDefVal := { ci' with value := value' }
       refine ⟨ci'', hu, ht, hname, hvalue, hci, ?_, hfresh, hnonprim rfl⟩

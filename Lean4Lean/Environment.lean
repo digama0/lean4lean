@@ -31,23 +31,21 @@ def addDefinition (env : Environment) (v : DefinitionVal)
     if check then
       _ ← (checkConstantVal env v.toConstantVal).run env
         (safety := .unsafe) (lparams := v.levelParams) (fuel := fuel)
-    let env' := env.add (.defnInfo v)
+    let env' := env.add (.axiomInfo { v with isUnsafe := true })
     if check then
       checkNoMVarNoFVar env' v.name v.value
       M.run env' (safety := .unsafe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.defnDecl v) valType
-    return env'
-  else
-    if check then
-      M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
-        checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
-        checkNoMVarNoFVar env v.name v.value
-        let valType ← TypeChecker.checkType v.value
-        if !(← isDefEq valType v.type) then
-          throw <| .declTypeMismatch env (.defnDecl v) valType
-    return env.add (.defnInfo v)
+  else if check then
+    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
+      checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
+      checkNoMVarNoFVar env v.name v.value
+      let valType ← TypeChecker.checkType v.value
+      if !(← isDefEq valType v.type) then
+        throw <| .declTypeMismatch env (.defnDecl v) valType
+  return env.add (.defnInfo v)
 
 def addTheorem (env : Environment) (v : TheoremVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
@@ -95,9 +93,8 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
           throw <| .other s!"invalid mutual definition, duplicate declaration name '{v.name}'"
         found := found.insert v.name
         checkConstantVal env v.toConstantVal
-  let mut env' := env
-  for v in vs do
-    env' := env'.add (.defnInfo v)
+  let env' := vs.foldl (init := env) fun env' v =>
+    env'.add (.axiomInfo { v with isUnsafe := v₀.safety == .unsafe })
   if check then
     M.run env' (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
       for v in vs do
@@ -105,7 +102,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.mutualDefnDecl vs) valType
-  return env'
+  return vs.foldl (fun env' v => env'.add (.defnInfo v)) env
 
 /-- Type check given declaration and add it to the environment -/
 def addDecl (env : Environment) (decl : Declaration) (check := true) (fuel : FuelConfig := {}) :

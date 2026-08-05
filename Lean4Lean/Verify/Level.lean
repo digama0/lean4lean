@@ -85,6 +85,23 @@ instance : LawfulBEqCmp quickCmp where
 
 end Name
 
+namespace NameSet
+open _root_.Std
+
+theorem contains_insert {s : NameSet} {a b : Name} :
+    (s.insert a).contains b = (a == b || s.contains b) := by
+  have key : (Name.quickCmp a b == Ordering.eq) = (a == b) := by
+    have := @LawfulBEqCmp.compare_eq_iff_beq _ _ Name.quickCmp _ a b
+    cases h : Name.quickCmp a b <;> simp_all
+  have h : (s.insert a).contains b
+      = (Name.quickCmp a b == Ordering.eq || s.contains b) :=
+    Std.TreeSet.contains_insert (t := s) (k := a) (a := b)
+  rw [h, key]
+
+@[simp] theorem contains_empty {a : Name} : (∅ : NameSet).contains a = false := rfl
+
+end NameSet
+
 namespace Level
 open Lean4Lean
 
