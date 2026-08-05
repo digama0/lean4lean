@@ -113,6 +113,145 @@ end Syntax
 
 namespace Level
 
+/-!
+### A total copy of `Lean.Level.normalize`
+
+`Lean.Level.normalize` and four of its helpers are `partial def`s, so they are opaque and nothing
+can be proved about them. The `Total` namespace below is a clause-by-clause copy of
+[Lean's `Lean/Level.lean`](https://github.com/leanprover/lean4/blob/v4.33.0-rc2/src/Lean/Level.lean#L319-L404),
+under the same names, with the termination proofs supplied. That makes `normalize_eq` below a
+purely syntactic trust assumption, checkable by reading the two definitions side by side;
+`Lean4Lean.Tests.LevelStd` also checks it on a finite corpus of levels.
+-/
+namespace Total
+
+/-- The structural size of a level, used as the termination measure for `normalize`. -/
+private def size : Level → Nat
+  | .zero | .param _ | .mvar _ => 1
+  | .succ l => size l + 1
+  | .max l₁ l₂ => size l₁ + size l₂ + 1
+  | .imax l₁ l₂ => size l₁ + size l₂ + 2
+
+/-- Secondary termination measure for `normalize`: in the `imax` branch it recurses on
+`mkLevelMax l₁ l₂`, which has the same `size` as `imax l₁ l₂` but a smaller `tag`. -/
+private def tag (l : Level) : Nat :=
+  match l.getLevelOffset with
+  | .imax .. => 1
+  | _ => 0
+
+private theorem tag_le (l : Level) : tag l ≤ 1 := by unfold tag; split <;> omega
+
+private theorem one_le_size (l : Level) : 1 ≤ size l := by cases l <;> simp [size]
+
+private theorem getOffsetAux_eq (l : Level) (k) : getOffsetAux l k = getOffsetAux l 0 + k := by
+  induction l generalizing k with
+  | succ l ih => rw [getOffsetAux, ih (k+1), getOffsetAux, ih 1]; omega
+  | _ => simp [getOffsetAux]
+
+private theorem size_getLevelOffset (l : Level) :
+    size l.getLevelOffset + l.getOffset = size l := by
+  simp only [getOffset]
+  induction l with | succ l ih => ?_ | _ => rfl
+  show size l.getLevelOffset + getOffsetAux l 1 = size l + 1
+  rw [getOffsetAux_eq l 1]; omega
+
+end Total
+open private accMax mkIMaxAux mkMaxAux skipExplicit isExplicitSubsumedAux
+  isExplicitSubsumed from Lean.Level
+
+def Total.mkMaxAux (lvls : Array Level) (extraK : Nat) (i : Nat)
+    (prev : Level) (prevK : Nat) (result : Level) : Level :=
+  if h : i < lvls.size then
+    let lvl   := lvls[i]
+    let curr  := lvl.getLevelOffset
+    let currK := lvl.getOffset
+    if curr == prev then mkMaxAux lvls extraK (i+1) curr currK result
+    else mkMaxAux lvls extraK (i+1) curr currK (accMax result prev (extraK + prevK))
+  else accMax result prev (extraK + prevK)
+
+/-- Patch for `partial def Lean.Level.mkMaxAux`. -/
+@[simp] axiom mkMaxAux_eq : mkMaxAux = Total.mkMaxAux
+
+def Total.skipExplicit (lvls : Array Level) (i : Nat) : Nat :=
+  if h : i < lvls.size then
+    if lvls[i].getLevelOffset.isZero then skipExplicit lvls (i+1) else i
+  else i
+
+/-- Patch for `partial def Lean.Level.skipExplicit`. -/
+@[simp] axiom skipExplicit_eq : skipExplicit = Total.skipExplicit
+
+def Total.isExplicitSubsumedAux (lvls : Array Level) (maxExplicit : Nat) (i : Nat) : Bool :=
+  if h : i < lvls.size then
+    if lvls[i].getOffset ≥ maxExplicit then true
+    else isExplicitSubsumedAux lvls maxExplicit (i+1)
+  else false
+
+/-- Patch for `partial def Lean.Level.isExplicitSubsumedAux`. -/
+@[simp] axiom isExplicitSubsumedAux_eq : isExplicitSubsumedAux = Total.isExplicitSubsumedAux
+
+mutual
+
+/-- A total copy of `partial def Lean.Level.normalize`. -/
+def Total.normalize (l : Level) : Level :=
+  if isAlreadyNormalizedCheap l then l else
+  let k := l.getOffset
+  match h : l.getLevelOffset with
+  | .max l₁ l₂ =>
+    let lvls  := getMaxArgsAux l₁ false #[]
+    let lvls  := getMaxArgsAux l₂ false lvls
+    let lvls  := lvls.qsort normLt
+    let firstNonExplicit := skipExplicit lvls 0
+    let i := if isExplicitSubsumed lvls firstNonExplicit then firstNonExplicit
+              else firstNonExplicit - 1
+    let lvl₁  := lvls[i]!
+    let prev  := lvl₁.getLevelOffset
+    let prevK := lvl₁.getOffset
+    mkMaxAux lvls k (i+1) prev prevK Level.zero
+  | .imax l₁ l₂ =>
+    if l₂.isNeverZero then addOffset (normalize (mkLevelMax l₁ l₂)) k
+    else addOffset (mkIMaxAux (normalize l₁) (normalize l₂)) k
+  | _ => unreachable!
+termination_by (1, 3 * size l + tag l)
+decreasing_by all_goals
+  refine .right _ ?_
+  have hsz := size_getLevelOffset l
+  rw [h] at hsz
+  simp only [size] at hsz
+  have := one_le_size l₁
+  have := one_le_size l₂
+  have := tag_le l₁
+  have := tag_le l₂
+  first
+  | omega
+  | have ht : tag l = 1 := by simp [tag, h]
+    have e1 : size (mkLevelMax l₁ l₂) = size l₁ + size l₂ + 1 := rfl
+    have e2 : tag (mkLevelMax l₁ l₂) = 0 := rfl
+    omega
+
+def Total.getMaxArgsAux : Level → Bool → Array Level → Array Level
+  | .max l₁ l₂, norm, lvls => getMaxArgsAux l₂ norm (getMaxArgsAux l₁ norm lvls)
+  | l, false, lvls => getMaxArgsAux (normalize l) true lvls
+  | l, true, lvls => lvls.push l
+termination_by l b => (if b then 0 else 1, 3 * size l + tag l + 1)
+decreasing_by
+  any_goals cases norm
+  any_goals first | refine .right _ ?_ | exact .left _ _ (by decide)
+  all_goals first
+  | omega
+  | have e1 : size (Level.max l₁ l₂) = size l₁ + size l₂ + 1 := rfl
+    have e2 : tag (Level.max l₁ l₂) = 0 := rfl
+    have := one_le_size l₁
+    have := one_le_size l₂
+    have := tag_le l₁
+    have := tag_le l₂
+    omega
+
+end
+
+/-- `Lean.Level.normalize` is a `partial def`, so it is opaque;
+`Total.normalize` above is a total copy of it. -/
+axiom normalize_eq : normalize = Total.normalize
+
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
   if depth > Nat.pow 2 24 - 1 then panic! "universe level depth is too big"
   else
