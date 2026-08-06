@@ -252,37 +252,41 @@ end
 `Total.normalize` above is a total copy of it. -/
 axiom normalize_eq : normalize = Total.normalize
 
+/--
+A total specification of the `opaque` `mkData`. Wherever the C++ `lean_level_mk_data` returns,
+`mkData'` agrees with it.
+
+The depth is saturated at `2 ^ 24 - 1`. The C++ instead calls `lean_internal_panic` when the
+depth does not fit in 24 bits, which prints to stderr and calls `exit(1)`, so it returns no
+`Level.Data` at all on those inputs and pins down nothing there. Saturating keeps the `hasMVar`
+and `hasParam` bits, which is what makes `hasParam_eq` and `hasMVar_eq` hold unconditionally.
+This is not a claim that the implementation computes this value: `mkData_eq` is a specification
+chosen for the opaque constant, and results proved from it transfer to the implementation only
+for runs that do not abort.
+
+This branch used to read `panic! "universe level depth is too big"`, copied from the Lean
+definition of `mkData` that preceded the `@[extern]` one. `panic!` evaluates to `0` in the
+logic, which drops both flag bits, and that is inconsistent with each of `hasParam_eq` and
+`hasMVar_eq` separately: `Level.succ` of a level of cached depth `2 ^ 24 - 1` would report
+`hasParam = false` however many `Level.param`s it contains, while `hasParam'` reports `true`.
+That was the soundness bug reported in leanprover/lean4#8554, fixed for `Level` by
+leanprover/lean4#8559 and for `Expr` by leanprover/lean4#8560, which moved the checks into C++
+so that they abort.
+
+Saturating here is not a claim that the kernel saturates; it does not, it aborts. It is a claim
+about which total function to pick for a branch on which the kernel returns nothing, and the
+only requirements on that pick are that it agree with the kernel everywhere the kernel returns,
+and that it keep the cached fields conservative.
+-/
 def mkData' (h : UInt64) (depth : Nat := 0) (hasMVar hasParam : Bool := false) : Level.Data :=
-  if depth > Nat.pow 2 24 - 1 then panic! "universe level depth is too big"
-  else
-    h.toUInt32.toUInt64 +
-    hasMVar.toUInt64.shiftLeft 32 +
-    hasParam.toUInt64.shiftLeft 33 +
-    depth.toUInt64.shiftLeft 40
+  h.toUInt32.toUInt64 +
+  hasMVar.toUInt64.shiftLeft 32 +
+  hasParam.toUInt64.shiftLeft 33 +
+  (min depth (2 ^ 24 - 1)).toUInt64.shiftLeft 40
 
 /-- This exists only for the bit-twiddling proofs, it shouldn't appear
 in the main results, which use the functions below instead -/
 axiom mkData_eq : @mkData = @mkData'
-
-def hasParam' : Level → Bool
-  | .param .. => true
-  | .zero | .mvar .. => false
-  | .succ l => l.hasParam'
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasParam' || l₂.hasParam'
-
-/-- This was false prior to the fix of lean4#8554; it should now be provable
-using `mkData_eq` and friends, but this has not been done yet -/
-@[simp] axiom hasParam_eq (l : Level) : l.hasParam = l.hasParam'
-
-def hasMVar' : Level → Bool
-  | .mvar .. => true
-  | .zero | .param .. => false
-  | .succ l => l.hasMVar'
-  | .max l₁ l₂ | .imax l₁ l₂ => l₁.hasMVar' || l₂.hasMVar'
-
-/-- This was false prior to the fix of lean4#8554; it should now be provable
-using `mkData_eq` and friends, but this has not been done yet -/
-@[simp] axiom hasMVar_eq (l : Level) : l.hasMVar = l.hasMVar'
 
 /-- This is because the `BEq` instance is implemented in C++ -/
 @[instance] axiom instLawfulBEqLevel : LawfulBEq Level
