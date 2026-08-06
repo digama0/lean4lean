@@ -1,5 +1,6 @@
 import Lean4Lean.Theory.VLevel
 import Lean4Lean.Level
+import Lean4Lean.Verify.LevelStd
 import Lean4Lean.Verify.Axioms
 import Std.Tactic.BVDecide
 import Std.Data.TreeMap.Lemmas
@@ -84,6 +85,23 @@ instance : LawfulBEqCmp quickCmp where
       simp +contextual; exact fun _ => ih
 
 end Name
+
+namespace NameSet
+open _root_.Std
+
+theorem contains_insert {s : NameSet} {a b : Name} :
+    (s.insert a).contains b = (a == b || s.contains b) := by
+  have key : (Name.quickCmp a b == Ordering.eq) = (a == b) := by
+    have := @LawfulBEqCmp.compare_eq_iff_beq _ _ Name.quickCmp _ a b
+    cases h : Name.quickCmp a b <;> simp_all
+  have h : (s.insert a).contains b
+      = (Name.quickCmp a b == Ordering.eq || s.contains b) :=
+    Std.TreeSet.contains_insert (t := s) (k := a) (a := b)
+  rw [h, key]
+
+@[simp] theorem contains_empty {a : Name} : (∅ : NameSet).contains a = false := rfl
+
+end NameSet
 
 namespace Level
 open Lean4Lean
@@ -578,10 +596,6 @@ theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.e
   · exact Nat.le_trans (ih H) (Nat.le_max_left ..)
 
 end Normalize
-
-theorem isEquiv_wf (h : isEquiv u v)
-    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : u' ≈ v' := by
-  sorry
 
 theorem isEquivList_wf (H : Level.isEquivList us vs) :
     List.mapM (VLevel.ofLevel Us) us = some us' →
