@@ -45,6 +45,9 @@ def liftN : VExpr → (k :_:= 0) → VExpr
 
 abbrev lift := liftN 1
 
+@[simp] theorem lift_bvar (i : Nat) : (VExpr.bvar i).lift = .bvar (i + 1) := by
+  simp [lift, liftN, liftVar, Nat.add_comm]
+
 @[simp] theorem liftN_zero (e : VExpr) (k : Nat) : liftN 0 e k = e := by
   induction e generalizing k <;> simp [liftN, liftVar, *]
 

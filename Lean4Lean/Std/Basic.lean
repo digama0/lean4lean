@@ -59,6 +59,28 @@ theorem List.Forall₂.imp (H : ∀ a b, R a b → S a b)
     {l₁ l₂} (h : Forall₂ R l₁ l₂) : Forall₂ S l₁ l₂ := by
   induction h <;> constructor <;> [(apply H; assumption); assumption]
 
+theorem List.Forall₂.forall_left {P : α → Prop} (H : ∀ a b, R a b → P a)
+    {l₁ l₂} (h : Forall₂ R l₁ l₂) : ∀ a ∈ l₁, P a := by
+  induction h with
+  | nil => simp
+  | cons h₁ _ ih =>
+    intro a ha
+    simp only [List.mem_cons] at ha
+    rcases ha with rfl | ha
+    · exact H _ _ h₁
+    · exact ih a ha
+
+theorem List.Forall₂.forall_right {P : β → Prop} (H : ∀ a b, R a b → P b)
+    {l₁ l₂} (h : Forall₂ R l₁ l₂) : ∀ b ∈ l₂, P b := by
+  induction h with
+  | nil => simp
+  | cons h₁ _ ih =>
+    intro b hb
+    simp only [List.mem_cons] at hb
+    rcases hb with rfl | hb
+    · exact H _ _ h₁
+    · exact ih b hb
+
 theorem List.Forall₂.trans (H : ∀ a b c, R a b → S b c → T a c)
     {l₁ l₂ l₃} (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ S l₂ l₃) : Forall₂ T l₁ l₃ := by
   induction h₁ generalizing l₃ <;> cases h₂ <;> constructor <;> solve_by_elim
