@@ -1,5 +1,5 @@
 import Lean4Lean.Theory.Typing.Lemmas
-import Lean4Lean.Theory.Pattern
+import Lean4Lean.Theory.Typing.Pattern
 
 namespace Lean4Lean
 open Lean4Lean

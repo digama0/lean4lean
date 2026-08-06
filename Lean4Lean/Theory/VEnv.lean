@@ -1,5 +1,5 @@
 import Lean4Lean.Theory.VExpr
-import Lean4Lean.Theory.Pattern
+import Lean4Lean.Theory.Typing.Pattern
 
 namespace Lean4Lean
 

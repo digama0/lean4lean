@@ -1,5 +1,5 @@
 import Lean4Lean.Theory.Typing.Lemmas
-import Lean4Lean.Theory.Pattern
+import Lean4Lean.Theory.Typing.Pattern
 
 -- TODO: remove, this is now part of ChurchRosser.lean
 

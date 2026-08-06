@@ -1,5 +1,5 @@
 import Lean4Lean.Theory.Typing.Injectivity
-import Lean4Lean.Theory.Pattern
+import Lean4Lean.Theory.Typing.Pattern
 
 /-! # Unique typing and its consequences. -/
 
