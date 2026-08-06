@@ -43,6 +43,29 @@ theorem addConst_pats {env env' : VEnv} {n ci} (h : env.addConst n ci = some env
 /-- `addDefEq` leaves `pats` unchanged. -/
 theorem addDefEq_pats {env : VEnv} {df} : (env.addDefEq df).pats = env.pats := rfl
 
+/-- `addConsts` (a block of `addConst`s) leaves `pats` unchanged. -/
+theorem addConsts_pats {env env' : VEnv} : ∀ {cis},
+    env.addConsts cis = some env' → env'.pats = env.pats
+  | [], h => by cases h; rfl
+  | _ :: _, h => by
+    simp [VEnv.addConsts, Option.bind_eq_some_iff] at h
+    obtain ⟨_, h1, h2⟩ := h
+    exact (addConsts_pats h2).trans (addConst_pats h1)
+
+/-- `addDefEqs` (a block of `addDefEq`s) leaves `pats` unchanged. -/
+theorem addDefEqs_pats : ∀ {cis : List VDefVal} {env : VEnv}, (env.addDefEqs cis).pats = env.pats
+  | [], _ => rfl
+  | ci :: cis, env => by
+    show ((env.addDefEq ci.toDefEq).addDefEqs cis).pats = env.pats
+    rw [addDefEqs_pats, addDefEq_pats]
+
+/-- `addDefEqs` (a block of `addDefEq`s) only grows the environment. -/
+theorem addDefEqs_le : ∀ {cis : List VDefVal} {env : VEnv}, env ≤ env.addDefEqs cis
+  | [], _ => .rfl
+  | ci :: cis, env => by
+    show env ≤ (env.addDefEq ci.toDefEq).addDefEqs cis
+    exact addDefEq_le.trans addDefEqs_le
+
 /-- `addQuot` (a chain of `addConst`s and one `addDefEq`) leaves `pats` unchanged. -/
 theorem addQuot_pats {env env' : VEnv} (h : env.addQuot = some env') : env'.pats = env.pats := by
   rw [VEnv.addQuot] at h
@@ -275,6 +298,7 @@ theorem _root_.Lean4Lean.VDecl.WF.pats_eq_or_induct {env d env'} (h : VDecl.WF e
   cases h with
   | «axiom» _ h2 => exact .inl (addConst_pats h2)
   | «def» _ h2 => exact .inl (by rw [addDefEq_pats]; exact addConst_pats h2)
+  | mutualDef _ h2 _ => exact .inl (by rw [addDefEqs_pats]; exact addConsts_pats h2)
   | «opaque» _ h2 => exact .inl (addConst_pats h2)
   | «example» _ => exact .inl rfl
   | quot _ h2 => exact .inl (addQuot_pats h2)
@@ -285,6 +309,7 @@ theorem _root_.Lean4Lean.VDecl.WF.le {env d env'} (h : VDecl.WF env d env') : en
   cases h with
   | «axiom» _ h2 => exact addConst_le h2
   | «def» _ h2 => exact (addConst_le h2).trans addDefEq_le
+  | mutualDef _ h2 _ => exact (VEnv.addConsts_le h2).trans addDefEqs_le
   | «opaque» _ h2 => exact addConst_le h2
   | «example» _ => exact .rfl
   | quot _ h2 => exact addQuot_le h2

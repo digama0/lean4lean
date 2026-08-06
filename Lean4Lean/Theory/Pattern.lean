@@ -1,4 +1,5 @@
 import Lean4Lean.Theory.VExpr
+import Batteries.Tactic.Init
 
 namespace Lean4Lean
 

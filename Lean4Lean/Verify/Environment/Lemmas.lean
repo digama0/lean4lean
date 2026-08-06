@@ -129,7 +129,7 @@ theorem TrEnv'.aligned (H : TrEnv' safety C Q venv) : Aligned safety C venv := b
     exact Aligned.addDefEqs <| ih.insertDefs hnd hfr
       (Lean4Lean.List.Forall₂.imp (fun _ _ h => h.1) hblk) hadd
   | quot _ h _ ih => exact ih.addQuot h
-  | induct _ h _ ih => exact ih.addInduct h
+  | induct _ _ h _ ih => exact ih.addInduct h
 
 theorem TrEnv'.map_wf (H : TrEnv' safety C Q venv) : C.WF := H.aligned.map_wf
 
@@ -184,6 +184,18 @@ theorem AddQuot.pull {recName rval} (H : AddQuot C₁ C₂ env₁ env₂) (wf : 
   refine (AddQuot1.pull <| AddQuot1.pull <| AddQuot1.pull <| AddQuot1.pull ?_) _ _ wf H
   rintro m env hwf ⟨rfl, _⟩; exact hfind
 
+/-- Inserting a whole block of definitions preserves constant-map well-formedness,
+provided every name is fresh and the block has no duplicate names. -/
+theorem insertDefs_wf : ∀ {cis : List DefinitionVal} {C : ConstMap}, C.WF →
+    (∀ d ∈ cis, C.find? d.name = none) → (cis.map (·.name)).Nodup → (insertDefs C cis).WF
+  | [], _, hC, _, _ => hC
+  | d :: ds, C, hC, hfr, hnd => by
+    rw [List.map_cons, List.nodup_cons] at hnd
+    refine insertDefs_wf (cis := ds) (hC.insert _ _ (hfr _ (.head _))) (fun e he => ?_) hnd.2
+    rw [hC.find?_insert, if_neg]; · exact hfr e (.tail _ he)
+    simp only [beq_iff_eq]; intro hh
+    exact hnd.1 (List.mem_map.2 ⟨e, he, hh.symm⟩)
+
 /-- Constant-map well-formedness of a translated environment, proved directly by
 induction on `TrEnv'` (each step is a fresh insertion or an `AddQuot`/`AddInduct`
 batch that preserves `SMap.WF`). Unlike `TrEnv'.map_wf`, this does not route
@@ -191,11 +203,14 @@ through `Aligned`, so it is free of the `Aligned.addInduct` placeholder. -/
 theorem TrEnv'.constMap_wf (H : TrEnv' safety C Q venv) : C.WF := by
   induction H with
   | empty => exact .empty
+  | ignore h1 _ _ ih => exact ih.insert _ _ h1
   | «axiom» _ h2 _ _ _ ih => exact ih.insert _ _ h2
   | defn _ h2 _ _ _ ih => exact ih.insert _ _ h2
+  | mutualDef _ hnd hfr _ _ _ _ ih => exact insertDefs_wf ih hfr hnd
+  | thm _ h2 _ _ _ _ ih => exact ih.insert _ _ h2
   | «opaque» _ h2 _ _ _ ih => exact ih.insert _ _ h2
   | quot _ h2 _ ih => exact h2.wf ih
-  | induct _ h2 _ ih => exact h2.wf ih
+  | induct _ _ h2 _ ih => exact h2.wf ih
 
 theorem Aligned.find? (H : Aligned safety C venv)
     (h : C.find? name = some ci) (hs : safety ≤ ci.safety) :
@@ -355,11 +370,11 @@ theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci
     obtain h | ⟨rfl, rfl⟩ := this wf.map_wf (ih _ _ wf' h5)
     · exact h
     · contradiction
-  | induct _ hadd H ih =>
-    -- The freshly-registered inductive/constructor/recursor constants all carry
-    -- `value? = none` (`AddInduct.novalue`), so `hv : ci.value? = some v` forces
-    -- `name` to have been present already in `C` (`AddInduct.value_find`); then
-    -- `ih` applies and the result is carried forward by `≤`-monotonicity.
+  | induct _ _ hadd H ih =>
+    -- The freshly-registered inductive/constructor/recursor constants carry no
+    -- delta-unfolding value (`deltaValue? = none`), so `hv : ci.deltaValue? = some v`
+    -- forces `name` to have been present already in `C` (`AddInduct.value_find`);
+    -- then `ih` applies and the result is carried forward by `≤`-monotonicity.
     exact (ih (hadd.value_find h hv)).mono hadd.le
 
 nonrec theorem TrEnv.of_value (H : TrEnv safety env venv) (h : env.find? name = some ci)
@@ -386,12 +401,32 @@ theorem TrEnv'.pats_iota {safety : DefinitionSafety} {C : ConstMap} {Q : Bool}
     {venv : VEnv} {recName cName : Name} {rval : RecursorVal} {rule : RecursorRule}
     (H : TrEnv' safety C Q venv)
     (hrule : rval.rules.find? (·.ctor == cName) = some rule)
-    (hrec : C.find? recName = some (.recInfo rval)) :
+    (hrec : C.find? recName = some (.recInfo rval))
+    (hsafe : safety ≤ (Lean.ConstantInfo.recInfo rval).safety) :
     ∃ r, venv.pats
       (SimplePattern.iota recName rval.getMajorIdx cName
         (rval.numParams + rule.nfields)).toPattern r := by
   induction H with
   | empty => simp [SMap.find?] at hrec
+  | ignore h1 h2 h3 ih =>
+    rw [h3.constMap_wf.find?_insert] at hrec; split at hrec
+    · -- Collision: the freshly-`ignore`d constant *is* the looked-up recursor. But
+      -- `ignore` fires only when the constant is *invisible* at this safety level
+      -- (`h2 : ¬ safety ≤ ci.safety`), which `hsafe` rules out for our recursor —
+      -- so this case cannot occur. (`hsafe` is exactly the "the recursor is
+      -- registered, not ignored" guard the downstream consumer already satisfies
+      -- for its safe recursors.)
+      injection hrec with hrec; subst hrec; exact absurd hsafe h2
+    · exact ih hrec
+  | thm _ _ _ _ h5 h6 ih =>
+    rw [h6.constMap_wf.find?_insert] at hrec; split at hrec
+    · exact absurd hrec (by nofun)
+    · let ⟨r, hp⟩ := ih hrec; exact ⟨r, (VEnv.addConst_le h5).pats hp⟩
+  | mutualDef _ hnd hfr _ hadd _ h7 ih =>
+    rcases insertDefs_find? h7.constMap_wf hfr hnd hrec with hrec' | ⟨d, _, _, hd⟩
+    · let ⟨r, hp⟩ := ih hrec'
+      exact ⟨r, ((VEnv.addConsts_le hadd).trans VEnv.addDefEqs_le).pats hp⟩
+    · exact absurd hd (by nofun)
   | «axiom» _ _ _ h4 h5 ih =>
     rw [h5.constMap_wf.find?_insert] at hrec; split at hrec
     · exact absurd hrec (by nofun)
@@ -408,7 +443,7 @@ theorem TrEnv'.pats_iota {safety : DefinitionSafety} {C : ConstMap} {Q : Bool}
   | quot _ h2 h3 ih =>
     let ⟨r, hp⟩ := ih (h2.pull h3.constMap_wf hrec)
     exact ⟨r, h2.le.pats hp⟩
-  | induct _ hadd h3 ih =>
+  | induct _ _ hadd h3 ih =>
     rcases hadd.rec_find hrec with hC | ⟨r, hr, hname, hmaj, hpar, hrules⟩
     · let ⟨r, hp⟩ := ih hC; exact ⟨r, hadd.le.pats hp⟩
     · obtain ⟨hctor, hmem⟩ : rule.ctor = cName ∧ rule ∈ rval.rules :=
@@ -426,11 +461,12 @@ theorem TrEnv.pats_iota {safety : DefinitionSafety} {env : Environment} {venv : 
     {recName cName : Name} {rval : RecursorVal} {rule : RecursorRule}
     (H : TrEnv safety env venv)
     (hrec : env.find? recName = some (.recInfo rval))
-    (hrule : rval.rules.find? (·.ctor == cName) = some rule) :
+    (hrule : rval.rules.find? (·.ctor == cName) = some rule)
+    (hsafe : safety ≤ (Lean.ConstantInfo.recInfo rval).safety) :
     ∃ r, venv.pats
       (SimplePattern.iota recName rval.getMajorIdx cName
         (rval.numParams + rule.nfields)).toPattern r := by
-  refine TrEnv'.pats_iota H hrule ?_
+  refine TrEnv'.pats_iota H hrule ?_ hsafe
   have h : env.constants.find?' recName = some (.recInfo rval) := hrec
   rwa [(TrEnv'.constMap_wf H).find?'_eq_find?] at h
 

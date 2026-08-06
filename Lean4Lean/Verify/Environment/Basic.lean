@@ -1,6 +1,7 @@
 import Lean4Lean.Verify.LocalContext
 import Lean4Lean.Theory.Typing.EnvLemmas
 import Lean4Lean.Std.SMap
+import Lean4Lean.Declaration
 
 namespace Lean4Lean
 open Lean hiding Environment Exception
@@ -125,9 +126,10 @@ Fields:
   reduct closedness) agreeing between the kernel `RecursorVal`/`RecursorRule`
   and the theory `VRecursor`/`VRecRule`. This is what ties a kernel-side
   recursor lookup to the `VEnv.addInduct_pat` ι-rule statement;
-* `value_find` — a value-carrying constant resolvable in `m₂` was already
-  resolvable in `m₁`: the registered constants (`novalue`) all have
-  `value? = none`, so they are never value-carrying. -/
+* `value_find` — a (delta-)value-carrying constant resolvable in `m₂` was already
+  resolvable in `m₁`: the registered constants (inductive types, constructors and
+  recursors) carry no delta-unfolding value (`deltaValue? = none`, just as
+  `novalue` records `value? = none`), so they are never value-carrying. -/
 structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     (m₂ : ConstMap) (env₂ : VEnv) where
   cis : List (ConstantInfo × VConstant)
@@ -145,7 +147,7 @@ structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
       ∀ rule ∈ rval.rules, ∃ ru ∈ r.rules,
         ru.ctor = rule.ctor ∧ ru.nfields = rule.nfields ∧ ru.rhs.Closed
   value_find : ∀ {name : Name} {ci : ConstantInfo} {v : Expr},
-    m₂.find? name = some ci → ci.value? = some v → m₁.find? name = some ci
+    m₂.find? name = some ci → ci.deltaValue? = some v → m₁.find? name = some ci
 
 theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
@@ -216,6 +218,11 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     TrEnv' C false env →
     TrEnv' C' true env'
   | induct :
+    -- `AddInduct` translates the block's constants at `.safe` (see `AddInduct`),
+    -- so this step is only taken when checking at the `.safe` level; support for
+    -- inductives under weaker safety levels is future work. Guarding here keeps
+    -- the `.unsafe` front-end path free of inductives (`TrEnv'.no_inductInfo`).
+    safety = .safe →
     decl.WF env →
     AddInduct C env decl C' env' →
     TrEnv' C Q env →
@@ -250,6 +257,6 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩
-  | induct h1 h2 _ ih =>
+  | induct _ h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .induct h1 h2.to_addInduct⟩
