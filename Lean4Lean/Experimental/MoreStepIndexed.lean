@@ -66,7 +66,7 @@ inductive ShapeS (Shape : Type) (n : Nat) : Type where
   | forallE : Shape → List (Shape × Shape) → ShapeS Shape n
   | lam : List (Shape × Shape) → ShapeS Shape n
 
-def Shape : Nat → Type
+@[implicit_reducible] def Shape : Nat → Type
   | 0 => Unit -- bottom
   | n + 1 => ShapeS (Shape n) n
 

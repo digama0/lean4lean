@@ -2,6 +2,7 @@ import Lean
 import Lean4Lean.Theory.VLevel
 
 namespace Lean4Lean
+open Lean4Lean
 
 inductive VExpr where
   | bvar (deBruijnIndex : Nat)

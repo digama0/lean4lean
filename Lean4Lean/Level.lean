@@ -10,6 +10,7 @@ def forEach [Monad m] (l : Level) (f : Level → m Bool) : m Unit := do
   | .max l₁ l₂ | .imax l₁ l₂ => l₁.forEach f; l₂.forEach f
   | .zero | .param .. | .mvar .. => pure ()
 
+/-- Returns `some n` if level parameter `n` appears in `l` and `n ∉ ps`. -/
 def getUndefParam (l : Level) (ps : List Name) : Option Name := Id.run do
   (·.2) <$> StateT.run (s := none) do
     l.forEach fun l => do
@@ -70,7 +71,7 @@ def orderedInsert (cmp : α → α → Ordering) (a : α) : List α → Option (
     | .eq => none
     | .gt => (orderedInsert cmp a l).map (b :: ·)
 
-def NormLevel := Std.TreeMap (List Name) Node compare
+@[reducible] def NormLevel := Std.TreeMap (List Name) Node compare
   deriving Repr
 
 instance : BEq NormLevel where
@@ -245,7 +246,7 @@ def normalize' (l : Level) : Level := (Normalize.normalize l (paths := true)).to
 
 def isEquiv' (u v : Level) : Bool := u == v || Normalize.normalize u == Normalize.normalize v
 
-def isEquivList : List Level → List Level → Bool := List.all2 isEquiv'
+def isEquivList : List Level → List Level → Bool := List.all2 isEquiv
 
 def geq' (u v : Level) : Bool := (Normalize.normalize v).le (Normalize.normalize u)
 

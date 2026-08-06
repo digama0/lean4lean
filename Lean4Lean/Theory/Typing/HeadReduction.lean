@@ -11,6 +11,8 @@ Ryo Kashima, "A Proof of the Standardization Theorem in λ-Calculus"
 -/
 
 namespace Lean4Lean
+open Lean4Lean
+
 namespace VEnv
 
 open VExpr

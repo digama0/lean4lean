@@ -4,7 +4,7 @@ import Lean4Lean.Theory.Typing.Strong
 namespace Lean4Lean
 namespace VEnv
 
-open VExpr
+open Lean4Lean VExpr
 
 section
 set_option hygiene false

@@ -31,31 +31,31 @@ def addDefinition (env : Environment) (v : DefinitionVal)
     if check then
       _ ← (checkConstantVal env v.toConstantVal).run env
         (safety := .unsafe) (lparams := v.levelParams) (fuel := fuel)
-    let env' := env.add (.defnInfo v)
+    let env' := env.add (.axiomInfo { v with isUnsafe := true })
     if check then
       checkNoMVarNoFVar env' v.name v.value
       M.run env' (safety := .unsafe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.defnDecl v) valType
-    return env'
-  else
-    if check then
-      M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
-        checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
-        let valType ← TypeChecker.checkType v.value
-        if !(← isDefEq valType v.type) then
-          throw <| .declTypeMismatch env (.defnDecl v) valType
-    return env.add (.defnInfo v)
+  else if check then
+    M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
+      checkConstantVal env v.toConstantVal (← checkPrimitiveDef v)
+      checkNoMVarNoFVar env v.name v.value
+      let valType ← TypeChecker.checkType v.value
+      if !(← isDefEq valType v.type) then
+        throw <| .declTypeMismatch env (.defnDecl v) valType
+  return env.add (.defnInfo v)
 
 def addTheorem (env : Environment) (v : TheoremVal) (check := true) (fuel : FuelConfig := {}) :
     Except Exception Environment := do
   if check then
     -- TODO(Leo): we must add support for handling tasks here
     M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
+      checkConstantVal env v.toConstantVal
       if !(← isProp v.type) then
         throw <| .thmTypeIsNotProp env v.name v.type
-      checkConstantVal env v.toConstantVal
+      checkNoMVarNoFVar env v.name v.value
       let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.thmDecl v) valType
@@ -66,6 +66,7 @@ def addOpaque (env : Environment) (v : OpaqueVal) (check := true) (fuel : FuelCo
   if check then
     M.run env (safety := .safe) (lctx := {}) (lparams := v.levelParams) (fuel := fuel) do
       checkConstantVal env v.toConstantVal
+      checkNoMVarNoFVar env v.name v.value
       let valType ← TypeChecker.checkType v.value
       if !(← isDefEq valType v.type) then
         throw <| .declTypeMismatch env (.opaqueDecl v) valType
@@ -78,14 +79,22 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
     throw <| .other "invalid mutual definition, declaration is not tagged as unsafe/partial"
   if check then
     M.run env (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
+      let mut found : NameSet := {}
       for v in vs do
         if v.safety != v₀.safety then
           throw <| .other
             "invalid mutual definition, declarations must have the same safety annotation"
+        -- The whole block is checked under one set of level parameters, so they must agree;
+        -- lean4#14608 adds the same check to the C++ kernel.
+        if v.levelParams != v₀.levelParams then
+          throw <| .other
+            "invalid mutual definition, declarations must have the same universe level parameters"
+        if found.contains v.name then
+          throw <| .other s!"invalid mutual definition, duplicate declaration name '{v.name}'"
+        found := found.insert v.name
         checkConstantVal env v.toConstantVal
-  let mut env' := env
-  for v in vs do
-    env' := env'.add (.defnInfo v)
+  let env' := vs.foldl (init := env) fun env' v =>
+    env'.add (.axiomInfo { v with isUnsafe := v₀.safety == .unsafe })
   if check then
     M.run env' (safety := v₀.safety) (lctx := {}) (lparams := v₀.levelParams) (fuel := fuel) do
       for v in vs do
@@ -93,7 +102,7 @@ def addMutual (env : Environment) (vs : List DefinitionVal)
         let valType ← TypeChecker.checkType v.value
         if !(← isDefEq valType v.type) then
           throw <| .declTypeMismatch env' (.mutualDefnDecl vs) valType
-  return env'
+  return vs.foldl (fun env' v => env'.add (.defnInfo v)) env
 
 /-- Type check given declaration and add it to the environment -/
 def addDecl (env : Environment) (decl : Declaration) (check := true) (fuel : FuelConfig := {}) :

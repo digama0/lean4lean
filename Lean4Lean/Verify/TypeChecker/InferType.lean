@@ -1,20 +1,11 @@
 import Lean4Lean.Verify.TypeChecker.Reduce
 import Lean4Lean.Verify.EquivManager
 
+open Lean4Lean
+
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 open Kernel
-
-theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
-    RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
-      (∃ u, e1 = .sort u) ∧ c.TrExpr e1 e' ∧ c.FVarsBelow e e1 := by
-  simp [ensureSortCore]; split
-  · let .sort _ := e
-    exact .pure ⟨⟨_, rfl⟩, he.trExpr c.Ewf c.Δwf, .rfl⟩
-  refine (whnf.WF he).bind fun e _ _ ⟨hb, he⟩ => ?_; split
-  · let .sort _ := e
-    exact .pure ⟨⟨_, rfl⟩, he, hb⟩
-  exact .getEnv <| .getLCtx .throw
 
 theorem ensureForallCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (ensureForallCore e e₀) fun e1 _ => c.FVarsBelow e e1 ∧
@@ -423,7 +414,7 @@ theorem inferType'.WF
     (h1 : e.FVarsIn (· ∈ c.vlctx.fvars))
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :
     (inferType' e inferOnly).WF c s fun ty _ => ∃ e' ty', c.TrTyping e ty e' ty' := by
-  unfold inferType'; lift_lets; intro F F1 F2 --; simp
+  unfold inferType'; lift_lets; intro F F1
   split <;> [exact .throw; refine .get <| .get ?_]
   split
   · rename_i h; refine .stateWF fun wf => .pure ?_
@@ -431,7 +422,7 @@ theorem inferType'.WF
     have : ic.WF c s := by
       subst ic; cases inferOnly <;> [exact wf.inferTypeC_wf; exact wf.inferTypeI_wf]
     exact (this h).2.2.2.2 h1
-  generalize hP : (fun ty:Expr => _) = P
+  generalize hP : (fun _ (_ : VState) => _) = P
   have hF {ty e' ty' s} (H : c.TrTyping e ty e' ty') : (F ty).WF c s P := by
     rintro _ mwf wf a s' ⟨⟩
     refine let s' := _; ⟨s', rfl, ?_⟩
@@ -445,7 +436,7 @@ theorem inferType'.WF
     subst P; revert s'; cases inferOnly <;> (dsimp -zeta; intro s'; refine ⟨.rfl, ?_, _, _, H⟩)
     · exact { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
     · exact { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
-  unfold F1; refine .get ?_; split
+  split
   · extract_lets G1; split <;> [split; skip]
     · refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h => ?_
       have ⟨_, h, _⟩ := c.trenv.find? h <|

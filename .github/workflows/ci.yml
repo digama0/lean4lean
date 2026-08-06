@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch supersedes an in-flight run; master runs are
+# never cancelled, since those are the ones that populate the build cache.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  build:
+    name: Build and self-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      # Installs the toolchain pinned in `lean-toolchain` and runs `lake build`,
+      # i.e. the `defaultTargets`: the `Lean4Lean` library, the `lean4lean` exe,
+      # `Lean4Lean.Theory`, `Lean4Lean.Verify` and `Lean4Lean.Tests`. The proofs
+      # in `Verify` deliberately contain `sorry`s, so warnings must not fail the
+      # build. `Lean4Lean.Experimental` is WIP and is not a default target.
+      - name: Build
+        uses: leanprover/lean-action@v1
+        with:
+          use-mathlib-cache: false
+
+      # `Lean4Lean.Experimental` is WIP and deliberately not a default target, but it still has to
+      # compile. `sorry`s here are expected, as in `Verify`.
+      - name: Build Lean4Lean.Experimental
+        run: lake build Lean4Lean.Experimental
+
+      # `lake build` only establishes that lean4lean compiles; these check that it still
+      # *works*. The two modes exercise different code paths, so both are worth running.
+
+      # Module-at-a-time replay, against an environment built from the module's imports.
+      # This is the path that goes through `replayFromImports`, including the compacted
+      # region handling that regressed into a SIGSEGV, so keep it as a regression test.
+      #
+      # One small module on purpose: `main` spawns an unbounded `IO.asTask` per module and
+      # each replay imports the world, so peak RSS scales with the fan-out and a large
+      # prefix (e.g. `Lean4Lean`) is OOM-killed. Widen once replay uses a bounded task
+      # pool, as lean4checker does.
+      - name: Replay Init.Core through lean4lean
+        run: lake exe lean4lean Init.Core
+
+      # `--fresh` instead rechecks the module *and all its imports* into an empty
+      # environment -- ~43k declarations, the closest thing to an end-to-end kernel test.
+      # Single-threaded and `withImportModules`-bracketed, so it stays cheap on memory.
+      # Core only: modules importing `Lean` currently fail with "type checker does not
+      # support loose bound variables" (digama0/lean4lean#17).
+      - name: Recheck Init.System.IO and its imports from scratch
+        run: lake exe lean4lean --fresh Init.System.IO

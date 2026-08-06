@@ -6,6 +6,8 @@ import Lean4Lean.Instantiate
 import Batteries.Data.String.Lemmas
 import Std.Tactic.BVDecide
 
+open Lean4Lean
+
 namespace Lean
 
 instance : LawfulBEq FVarId where
@@ -71,7 +73,7 @@ theorem beq_refl (s : Substring.Raw) : s == s := by
   termination_by n.byteIdx - i.byteIdx
   refine ⟨?_, loop⟩
   obtain h | h := Nat.le_or_le s.repair.startPos.byteIdx s.repair.stopPos.byteIdx
-  · rw [Nat.add_sub_cancel' h]
+  · simp only [Nat.add_sub_cancel' h, decide_eq_true_eq]
     apply String.Pos.Raw.IsValid.le_rawEndPos
     simp [Substring.Raw.repair]; split <;> simp [*]
   · simp [Nat.sub_eq_zero_of_le h]
@@ -80,7 +82,8 @@ theorem beq_refl (s : Substring.Raw) : s == s := by
 
 open private substrEq.loop from Init.Data.String.Basic in
 theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
-  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq]
+  simp +contextual [(· == ·), Substring.Raw.beq, String.Pos.Raw.substrEq]
+  simp [Substring.Raw.bsize]
   let rec loop {s s' b b' i n} :
       substrEq.loop s s' ⟨b + i⟩ ⟨b' + i⟩ ⟨b + n⟩ ↔
       substrEq.loop s' s ⟨b' + i⟩ ⟨b + i⟩ ⟨b' + n⟩ := by
@@ -96,7 +99,8 @@ theorem beq_symm {s t : Substring.Raw} : s == t → t == s := by
 
 open private substrEq.loop from Init.Data.String.Basic in
 theorem beq_trans {s t : Substring.Raw} : s == t → t == u → s == u := by
-  simp +contextual [(· == ·), Substring.Raw.beq, Substring.Raw.bsize, String.Pos.Raw.substrEq]
+  simp +contextual [(· == ·), Substring.Raw.beq, String.Pos.Raw.substrEq]
+  simp [Substring.Raw.bsize]
   let ⟨s, ⟨b⟩, e⟩ := s.repair
   let ⟨s2, ⟨b2⟩, e2⟩ := t.repair
   let ⟨s3, ⟨b3⟩, e3⟩ := u.repair
@@ -194,6 +198,336 @@ instance : EquivBEq DataValue where
 
 end DataValue
 
+namespace Expr
+
+theorem Data.looseBVarRange_le :
+    (Data.looseBVarRange d).toNat ≤ 2 ^ 20 - 1 := by
+  rw [Data.looseBVarRange]
+  suffices (UInt64.shiftRight d 44).toNat ≤ 2 ^ 20 - 1 by simp; omega
+  show d.toBitVec >>> 44#64 ≤ 0xfffff#64
+  bv_decide
+
+private theorem Data.flag_eq_getLsbD (d : Data) (n : UInt64) (hn : n < 64) :
+    ((d.shiftRight n).land 1 == 1) = d.toBitVec.getLsbD n.toNat := by
+  apply Bool.eq_iff_iff.2
+  simp only [beq_iff_eq]
+  have hmod : UInt64.mod n 64 = n := UInt64.mod_eq_of_lt hn
+  constructor
+  · intro h
+    have hb := congrArg UInt64.toBitVec h
+    simp [UInt64.shiftRight, UInt64.land, hmod] at hb
+    have := congrArg (fun x : BitVec 64 => x.getLsbD 0) hb
+    simpa using this
+  · intro h
+    apply UInt64.toBitVec_inj.mp
+    simp [UInt64.shiftRight, UInt64.land, hmod]
+    ext i
+    by_cases hi : i = 0
+    · subst i
+      simpa using h
+    · simp [hi]
+
+private theorem Data.hasFVar_eq_getLsbD (d : Data) :
+    d.hasFVar = d.toBitVec.getLsbD 40 := by
+  simpa [Data.hasFVar] using Data.flag_eq_getLsbD d 40 (by decide)
+
+private theorem Data.hasExprMVar_eq_getLsbD (d : Data) :
+    d.hasExprMVar = d.toBitVec.getLsbD 41 := by
+  simpa [Data.hasExprMVar] using Data.flag_eq_getLsbD d 41 (by decide)
+
+private theorem Data.hasLevelMVar_eq_getLsbD (d : Data) :
+    d.hasLevelMVar = d.toBitVec.getLsbD 42 := by
+  simpa [Data.hasLevelMVar] using Data.flag_eq_getLsbD d 42 (by decide)
+
+private theorem Data.hasLevelParam_eq_getLsbD (d : Data) :
+    d.hasLevelParam = d.toBitVec.getLsbD 43 := by
+  simpa [Data.hasLevelParam] using Data.flag_eq_getLsbD d 43 (by decide)
+
+private def flagAt (fv ev lv lp : Bool) : Nat → Bool
+  | 0 => fv
+  | 1 => ev
+  | 2 => lv
+  | 3 => lp
+  | _ => false
+
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
+
+private theorem mkData_flags (H : br ≤ 2 ^ 20 - 1) :
+    (mkData h br d fv ev lv lp).hasFVar = fv ∧
+    (mkData h br d fv ev lv lp).hasExprMVar = ev ∧
+    (mkData h br d fv ev lv lp).hasLevelMVar = lv ∧
+    (mkData h br d fv ev lv lp).hasLevelParam = lp := by
+  rw [mkData_eq, mkData', if_pos H]
+  simp [Data.hasFVar, Data.hasExprMVar, Data.hasLevelMVar, Data.hasLevelParam,
+    (· == ·), ← UInt64.toBitVec_inj]
+  have hh : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 :=
+    Nat.le_of_lt_succ h.toUInt32.1.1.2
+  have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
+  have hfv := hb fv
+  have hev := hb ev
+  have hlv := hb lv
+  have hlp := hb lp
+  have hnat : br.toUInt64.toNat = br := by simp; omega
+  have hbr : br.toUInt64.toBitVec ≤ 0xfffff#64 := (hnat ▸ H :)
+  let depth : UInt8 := if d > 255 then 255 else d.toUInt8
+  have hd : depth.toUInt64.toBitVec ≤ 0xff#64 := Nat.le_of_lt_succ depth.1.1.2
+  let data :=
+    h.toUInt32.toUInt64.toBitVec +
+    depth.toUInt64.toBitVec <<< 32#64 +
+    fv.toUInt64.toBitVec <<< 40#64 +
+    ev.toUInt64.toBitVec <<< 41#64 +
+    lv.toUInt64.toBitVec <<< 42#64 +
+    lp.toUInt64.toBitVec <<< 43#64 +
+    br.toUInt64.toBitVec <<< 44#64
+  change
+    decide (data >>> 40#64 &&& 1#64 = 1#64) = fv ∧
+    decide (data >>> 41#64 &&& 1#64 = 1#64) = ev ∧
+    decide (data >>> 42#64 &&& 1#64 = 1#64) = lv ∧
+    decide (data >>> 43#64 &&& 1#64 = 1#64) = lp
+  bv_decide
+
+private theorem mkData_hasFVar (H : br ≤ 2 ^ 20 - 1) :
+    (mkData h br d fv ev lv lp).hasFVar = fv := by
+  exact (mkData_flags H).1
+
+private theorem mkData_hasExprMVar (H : br ≤ 2 ^ 20 - 1) :
+    (mkData h br d fv ev lv lp).hasExprMVar = ev := by
+  exact (mkData_flags H).2.1
+
+private theorem mkData_hasLevelMVar (H : br ≤ 2 ^ 20 - 1) :
+    (mkData h br d fv ev lv lp).hasLevelMVar = lv := by
+  exact (mkData_flags H).2.2.1
+
+private theorem mkData_hasLevelParam (H : br ≤ 2 ^ 20 - 1) :
+    (mkData h br d fv ev lv lp).hasLevelParam = lp := by
+  exact (mkData_flags H).2.2.2
+
+private theorem mkData_flags_of_false (br d h) :
+    (mkData h br d false false false false).hasFVar = false ∧
+    (mkData h br d false false false false).hasExprMVar = false ∧
+    (mkData h br d false false false false).hasLevelMVar = false ∧
+    (mkData h br d false false false false).hasLevelParam = false := by
+  by_cases H : br ≤ 2 ^ 20 - 1
+  · exact mkData_flags H
+  · rw [mkData_eq, mkData', if_neg H]
+    exact ⟨rfl, rfl, rfl, rfl⟩
+
+private theorem mkData_hasFVar_of_false (br d h) :
+    (mkData h br d false false false false).hasFVar = false :=
+  (mkData_flags_of_false br d h).1
+
+private theorem mkData_hasExprMVar_of_false (br d h) :
+    (mkData h br d false false false false).hasExprMVar = false :=
+  (mkData_flags_of_false br d h).2.1
+
+private theorem mkData_hasLevelMVar_of_false (br d h) :
+    (mkData h br d false false false false).hasLevelMVar = false :=
+  (mkData_flags_of_false br d h).2.2.1
+
+private theorem mkData_hasLevelParam_of_false (br d h) :
+    (mkData h br d false false false false).hasLevelParam = false :=
+  (mkData_flags_of_false br d h).2.2.2
+
+private theorem mkAppData_flag (i : Nat) (hi : i < 4) :
+    (mkAppData fData aData).toBitVec.getLsbD (40 + i) = flagAt
+      (fData.hasFVar || aData.hasFVar)
+      (fData.hasExprMVar || aData.hasExprMVar)
+      (fData.hasLevelMVar || aData.hasLevelMVar)
+      (fData.hasLevelParam || aData.hasLevelParam) i := by
+  have hm : max fData.looseBVarRange aData.looseBVarRange ≤
+      (Nat.pow 2 20 - 1).toUInt32 := by
+    dsimp +instances [instMaxUInt32, maxOfLe]
+    split <;> exact Data.looseBVarRange_le
+  rw [mkAppData_eq, mkAppData', if_pos hm]
+  generalize (mixHash fData aData).toUInt32 = hash
+  have : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
+  rcases this with rfl | rfl | rfl | rfl
+  · simp [flagAt, Data.hasFVar_eq_getLsbD]
+  · simp [flagAt, Data.hasExprMVar_eq_getLsbD]
+  · simp [flagAt, Data.hasLevelMVar_eq_getLsbD]
+  · simp [flagAt, Data.hasLevelParam_eq_getLsbD]
+
+private theorem mkAppData_hasFVar :
+    (mkAppData fData aData).hasFVar = (fData.hasFVar || aData.hasFVar) := by
+  rw [Data.hasFVar_eq_getLsbD]
+  exact mkAppData_flag 0 (by decide)
+
+private theorem mkAppData_hasExprMVar :
+    (mkAppData fData aData).hasExprMVar = (fData.hasExprMVar || aData.hasExprMVar) := by
+  rw [Data.hasExprMVar_eq_getLsbD]
+  exact mkAppData_flag 1 (by decide)
+
+private theorem mkAppData_hasLevelMVar :
+    (mkAppData fData aData).hasLevelMVar = (fData.hasLevelMVar || aData.hasLevelMVar) := by
+  rw [Data.hasLevelMVar_eq_getLsbD]
+  exact mkAppData_flag 2 (by decide)
+
+private theorem mkAppData_hasLevelParam :
+    (mkAppData fData aData).hasLevelParam = (fData.hasLevelParam || aData.hasLevelParam) := by
+  rw [Data.hasLevelParam_eq_getLsbD]
+  exact mkAppData_flag 3 (by decide)
+
+private theorem binder_looseBVarRange_le (ty body : Expr) :
+    max ty.data.looseBVarRange.toNat (body.data.looseBVarRange.toNat - 1) ≤ 2 ^ 20 - 1 := by
+  have hty := Data.looseBVarRange_le (d := ty.data)
+  have hbody := Data.looseBVarRange_le (d := body.data)
+  omega
+
+private theorem let_looseBVarRange_le (ty val body : Expr) :
+    max (max ty.data.looseBVarRange.toNat val.data.looseBVarRange.toNat)
+      (body.data.looseBVarRange.toNat - 1) ≤ 2 ^ 20 - 1 := by
+  have hty := Data.looseBVarRange_le (d := ty.data)
+  have hval := Data.looseBVarRange_le (d := val.data)
+  have hbody := Data.looseBVarRange_le (d := body.data)
+  omega
+
+def hasFVar' : Expr → Bool
+  | .fvar _ => true
+  | .const ..
+  | .bvar _
+  | .sort _
+  | .mvar _
+  | .lit _ => false
+  | .mdata _ e => e.hasFVar'
+  | .proj _ _ e => e.hasFVar'
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.hasFVar' || e2.hasFVar'
+  | .letE _ t v b _ => t.hasFVar' || v.hasFVar' || b.hasFVar'
+
+/-- The cached `hasFVar` bit agrees with structural traversal. -/
+theorem hasFVar_eq (e : Expr) : e.hasFVar = e.hasFVar' := by
+  change e.data.hasFVar = e.hasFVar'
+  induction e with
+  | bvar => simp [Expr.data, hasFVar', mkData_hasFVar_of_false]
+  | fvar | mvar | sort | const | lit =>
+    simp only [Expr.data, hasFVar']
+    apply mkData_hasFVar
+    omega
+  | app _ _ ih1 ih2 =>
+    simp only [Expr.data, hasFVar']
+    rw [mkAppData_hasFVar, ih1, ih2]
+  | lam _ ty body _ ihty ihbody | forallE _ ty body _ ihty ihbody =>
+    simp only [Expr.data, mkDataForBinder, hasFVar']
+    rw [mkData_hasFVar (binder_looseBVarRange_le ty body), ihty, ihbody]
+  | letE _ ty val body _ ihty ihval ihbody =>
+    simp only [Expr.data, mkDataForLet, hasFVar']
+    rw [mkData_hasFVar (let_looseBVarRange_le ty val body), ihty, ihval, ihbody]
+  | mdata _ e ih | proj _ _ e ih =>
+    simp only [Expr.data, hasFVar']
+    rw [mkData_hasFVar (Data.looseBVarRange_le (d := e.data)), ih]
+
+def hasExprMVar' : Expr → Bool
+  | .mvar _ => true
+  | .const ..
+  | .bvar _
+  | .sort _
+  | .fvar _
+  | .lit _ => false
+  | .mdata _ e => e.hasExprMVar'
+  | .proj _ _ e => e.hasExprMVar'
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.hasExprMVar' || e2.hasExprMVar'
+  | .letE _ t v b _ => t.hasExprMVar' || v.hasExprMVar' || b.hasExprMVar'
+
+/-- The cached `hasExprMVar` bit agrees with structural traversal. -/
+@[simp] theorem hasExprMVar_eq (e : Expr) : e.hasExprMVar = e.hasExprMVar' := by
+  change e.data.hasExprMVar = e.hasExprMVar'
+  induction e with
+  | bvar => simp [Expr.data, hasExprMVar', mkData_hasExprMVar_of_false]
+  | fvar | mvar | sort | const | lit =>
+    simp only [Expr.data, hasExprMVar']
+    apply mkData_hasExprMVar
+    omega
+  | app _ _ ih1 ih2 =>
+    simp only [Expr.data, hasExprMVar']
+    rw [mkAppData_hasExprMVar, ih1, ih2]
+  | lam _ ty body _ ihty ihbody | forallE _ ty body _ ihty ihbody =>
+    simp only [Expr.data, mkDataForBinder, hasExprMVar']
+    rw [mkData_hasExprMVar (binder_looseBVarRange_le ty body), ihty, ihbody]
+  | letE _ ty val body _ ihty ihval ihbody =>
+    simp only [Expr.data, mkDataForLet, hasExprMVar']
+    rw [mkData_hasExprMVar (let_looseBVarRange_le ty val body), ihty, ihval, ihbody]
+  | mdata _ e ih | proj _ _ e ih =>
+    simp only [Expr.data, hasExprMVar']
+    rw [mkData_hasExprMVar (Data.looseBVarRange_le (d := e.data)), ih]
+
+def hasLevelMVar' : Expr → Bool
+  | .const _ ls => ls.any (·.hasMVar)
+  | .sort u => u.hasMVar
+  | .bvar _
+  | .fvar _
+  | .mvar _
+  | .lit _ => false
+  | .mdata _ e => e.hasLevelMVar'
+  | .proj _ _ e => e.hasLevelMVar'
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.hasLevelMVar' || e2.hasLevelMVar'
+  | .letE _ t v b _ => t.hasLevelMVar' || v.hasLevelMVar' || b.hasLevelMVar'
+
+/-- The cached `hasLevelMVar` bit agrees with structural traversal. -/
+@[simp] theorem hasLevelMVar_eq (e : Expr) : e.hasLevelMVar = e.hasLevelMVar' := by
+  change e.data.hasLevelMVar = e.hasLevelMVar'
+  induction e with
+  | bvar => simp [Expr.data, hasLevelMVar', mkData_hasLevelMVar_of_false]
+  | fvar | mvar | sort | const | lit =>
+    simp only [Expr.data, hasLevelMVar']
+    apply mkData_hasLevelMVar
+    omega
+  | app _ _ ih1 ih2 =>
+    simp only [Expr.data, hasLevelMVar']
+    rw [mkAppData_hasLevelMVar, ih1, ih2]
+  | lam _ ty body _ ihty ihbody | forallE _ ty body _ ihty ihbody =>
+    simp only [Expr.data, mkDataForBinder, hasLevelMVar']
+    rw [mkData_hasLevelMVar (binder_looseBVarRange_le ty body), ihty, ihbody]
+  | letE _ ty val body _ ihty ihval ihbody =>
+    simp only [Expr.data, mkDataForLet, hasLevelMVar']
+    rw [mkData_hasLevelMVar (let_looseBVarRange_le ty val body), ihty, ihval, ihbody]
+  | mdata _ e ih | proj _ _ e ih =>
+    simp only [Expr.data, hasLevelMVar']
+    rw [mkData_hasLevelMVar (Data.looseBVarRange_le (d := e.data)), ih]
+
+def hasLevelParam' : Expr → Bool
+  | .const _ ls => ls.any (·.hasParam)
+  | .sort u => u.hasParam
+  | .bvar _
+  | .fvar _
+  | .mvar _
+  | .lit _ => false
+  | .mdata _ e => e.hasLevelParam'
+  | .proj _ _ e => e.hasLevelParam'
+  | .app e1 e2
+  | .lam _ e1 e2 _
+  | .forallE _ e1 e2 _ => e1.hasLevelParam' || e2.hasLevelParam'
+  | .letE _ t v b _ => t.hasLevelParam' || v.hasLevelParam' || b.hasLevelParam'
+
+/-- The cached `hasLevelParam` bit agrees with structural traversal. -/
+@[simp] theorem hasLevelParam_eq (e : Expr) : e.hasLevelParam = e.hasLevelParam' := by
+  change e.data.hasLevelParam = e.hasLevelParam'
+  induction e with
+  | bvar => simp [Expr.data, hasLevelParam', mkData_hasLevelParam_of_false]
+  | fvar | mvar | sort | const | lit =>
+    simp only [Expr.data, hasLevelParam']
+    apply mkData_hasLevelParam
+    omega
+  | app _ _ ih1 ih2 =>
+    simp only [Expr.data, hasLevelParam']
+    rw [mkAppData_hasLevelParam, ih1, ih2]
+  | lam _ ty body _ ihty ihbody | forallE _ ty body _ ihty ihbody =>
+    simp only [Expr.data, mkDataForBinder, hasLevelParam']
+    rw [mkData_hasLevelParam (binder_looseBVarRange_le ty body), ihty, ihbody]
+  | letE _ ty val body _ ihty ihval ihbody =>
+    simp only [Expr.data, mkDataForLet, hasLevelParam']
+    rw [mkData_hasLevelParam (let_looseBVarRange_le ty val body), ihty, ihval, ihbody]
+  | mdata _ e ih | proj _ _ e ih =>
+    simp only [Expr.data, hasLevelParam']
+    rw [mkData_hasLevelParam (Data.looseBVarRange_le (d := e.data)), ih]
+
+end Expr
+
 namespace Literal
 open Expr in
 theorem toConstructor_hasLevelParam :
@@ -225,6 +559,9 @@ attribute [simp] mkConst mkBVar mkSort mkFVar mkMVar mkMData mkProj mkApp mkLamb
   updateApp! updateFVar! updateConst! updateSort! updateMData! updateProj!
   updateForall! updateForallE! updateLambda! updateLambdaE! updateLetE! updateLet!
 
+set_option allowUnsafeReducibility true
+attribute [local reducible] Data
+
 theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
     (mkData h br d fv ev lv lp).looseBVarRange.toNat = br := by
   rw [mkData_eq, mkData', if_pos H]; dsimp only [Data.looseBVarRange, -Nat.reducePow]
@@ -248,12 +585,6 @@ theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
       lp.toUInt64.toBitVec <<< 43#64 +
       br.toUInt64.toBitVec <<< 44#64) >>> 44#64 =
     br.toUInt64.toBitVec
-  bv_decide
-
-theorem Data.looseBVarRange_le : (Data.looseBVarRange d).toNat ≤ 2^20 - 1 := by
-  rw [Data.looseBVarRange]
-  suffices (UInt64.shiftRight d 44).toNat ≤ 2 ^ 20 - 1 by simp; omega
-  show d.toBitVec >>> 44#64 ≤ 0xfffff#64
   bv_decide
 
 theorem looseBVarRange_le : looseBVarRange e ≤ 2^20 - 1 := Data.looseBVarRange_le
@@ -415,6 +746,7 @@ open private mkAppRevRangeAux from Lean.Expr in
 theorem mkAppRevRange_eq(h1 : args.toList = l₁ ++ l₂ ++ l₃)
       (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
     mkAppRevRange e i j args = mkAppList e l₂.reverse := by
+  unfold mkAppRevRange
   simpa using loop l₁ l₂.reverse l₃ [] (by simpa using h1) h2 (by simpa using h3)
 where
   loop {start i} (l₁ l₂ l₃ l₄) (h1 : args.toList = l₁ ++ l₂.reverse ++ l₃)

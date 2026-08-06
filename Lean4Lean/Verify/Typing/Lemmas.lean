@@ -6,8 +6,8 @@ import Lean4Lean.Theory.Typing.UniqueTyping
 import Lean4Lean.Instantiate
 
 namespace Lean4Lean
-open VEnv Lean
-open scoped List
+open Lean4Lean VEnv Lean
+open scoped _root_.List
 
 theorem fvarsIn_iff : FVarsIn P e ↔ (∀ fv ∈ e.fvarsList, P fv) ∧ FVarsIn (fun _ => True) e := by
   induction e <;> simp [FVarsIn, Expr.fvarsList, *] <;> grind
@@ -268,7 +268,7 @@ theorem FVLift'.fvars_sublist (W : FVLift' Δ Δ' dk n k) : Δ.fvars <+ Δ'.fvar
   induction W with
   | refl => exact .refl _
   | skip_fvar _ _ _ ih => exact .cons _ ih
-  | cons_fvar _ _ _ _ ih => exact .cons₂ _ ih
+  | cons_fvar _ _ _ _ ih => exact .cons_cons _ ih
   | cons_bvar _ _ ih => exact ih
 
 theorem FVLift'.bvars_eq (W : FVLift' Δ Δ' dk n k) : Δ'.bvars = Δ.bvars := by
@@ -534,7 +534,8 @@ protected theorem WF.instL : ∀ {Δ}, VLCtx.WF env ls.length Δ →
     VLCtx.WF env U (Δ.instL ls)
   | [], _ => ⟨⟩
   | (_, d) :: Δ, ⟨h1, h2, h3⟩ =>
-    ⟨h1.instL, by simpa [instL_eq_map, fvars] using h2, by simpa using h3.instL hls⟩
+    ⟨h1.instL, by simpa [instL_eq_map, fvars, Function.comp_def] using h2,
+      by simpa using h3.instL hls⟩
 
 theorem find?_instL : find? Δ v = some (e, A) →
     find? (Δ.instL ls) v = some (e.instL ls, A.instL ls) := by
@@ -737,7 +738,7 @@ theorem VLCtx.IsDefEq.find?_uniq (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
     · rintro ⟨⟩ ⟨⟩; exact ⟨⟨_, h4⟩, h3⟩
     · simp
       rintro d₁' n₁' H1' rfl rfl d₂' n₂' H2' rfl rfl
-      simpa [VLocalDecl.depth] using find?_uniq hΔ H1' H2'
+      simpa [VLocalDecl.depth, VLCtx.toCtx] using find?_uniq hΔ H1' H2'
 
 theorem VLCtx.IsDefEq.find?_defeqDFC (hΔ : VLCtx.IsDefEq env U Δ₁ Δ₂)
     (H : Δ₁.find? v = some (e₁, A₁)) :
@@ -1382,7 +1383,20 @@ theorem ofLevel_isNeverZero (h : VLevel.ofLevel Us u = some u') (H : u.isNeverZe
     exact H.elim (ih1 h1 · _ h.1) (ih2 h2 · _ h.2)
   | imax _ _ ih1 ih2 =>
     obtain ⟨_, h1, _, h2, rfl⟩ := h
-    simp [VLevel.eval, Nat.imax, ih2 h2 H ls]
+    simp [VLevel.eval, Lean.Nat.imax, ih2 h2 H ls]
+
+theorem ofLevel_isAlwaysZero (h : VLevel.ofLevel Us u = some u') (H : u.isAlwaysZero) :
+    u' ≈ .zero := by
+  induction u generalizing u' with
+    simp [Level.isAlwaysZero, VLevel.ofLevel] at H h <;> subst_vars <;>
+    refine VLevel.equiv_def.2 fun ls => ?_
+  | zero => rfl
+  | max _ _ ih1 ih2 =>
+    obtain ⟨_, h1, _, h2, rfl⟩ := h
+    simp [VLevel.eval, VLevel.equiv_def.1 (ih1 h1 H.1) ls, VLevel.equiv_def.1 (ih2 h2 H.2) ls]
+  | imax _ _ _ ih2 =>
+    obtain ⟨_, _, _, h2, rfl⟩ := h
+    simp [VLevel.eval, Lean.Nat.imax, VLevel.equiv_def.1 (ih2 h2 H) ls]
 
 theorem ofLevel_mkLevelIMax'
     (h1 : VLevel.ofLevel Us u = some u') (h2 : VLevel.ofLevel Us v = some v') :

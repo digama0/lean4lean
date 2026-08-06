@@ -8,7 +8,7 @@ variable [Params]
 structure Classifier' where
   level : SLevel
   HasTy' (e : SExpr) : Prop
-def Classifier (_Γ : List SExpr) (_A : SExpr) := Classifier'
+@[implicit_reducible] def Classifier (_Γ : List SExpr) (_A : SExpr) := Classifier'
 
 def Classifier.HasTy (C : Classifier Γ A) (e : SExpr) : Prop := Γ ⊢ e : A ∧ C.HasTy' e
 

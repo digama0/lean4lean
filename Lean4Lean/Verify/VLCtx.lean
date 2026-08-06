@@ -41,7 +41,7 @@ def VLocalDecl.instL : VLocalDecl → List VLevel → VLocalDecl
   | .vlam A, ls => .vlam (A.instL ls)
   | .vlet A e, ls => .vlet (A.instL ls) (e.instL ls)
 
-def VLCtx := List (Option (FVarId × List FVarId) × VLocalDecl)
+@[reducible] def VLCtx := List (Option (FVarId × List FVarId) × VLocalDecl)
 
 namespace VLCtx
 

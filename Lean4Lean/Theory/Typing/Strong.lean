@@ -1,6 +1,8 @@
 import Lean4Lean.Theory.Typing.Lemmas
 
 namespace Lean4Lean
+open Lean4Lean
+
 namespace VEnv
 
 open VExpr
@@ -336,10 +338,11 @@ theorem IsDefEqStrong.instL (H : env.IsDefEqStrong U Γ e1 e2 A) :
     exact .defeqDF (.inst hls) ih1 ih2
   | beta _ _ _ _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 ih6 =>
     simpa using .beta (.inst hls) (.inst hls) ih1 ih2 ih3 ih4
-      (by simpa using ih5) (by simpa using ih6)
+      (by simpa [VExpr.instL] using ih5) (by simpa [VExpr.instL] using ih6)
   | eta _ _ _ _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 ih6 =>
     simpa [VExpr.instL] using .eta (.inst hls) (.inst hls) ih1 ih2
-      (by simpa using ih3) ih4 (by simpa [VExpr.instL] using ih5) (by simpa [VExpr.instL] using ih6)
+      (by simpa [VExpr.instL] using ih3) ih4
+      (by simpa [VExpr.instL] using ih5) (by simpa [VExpr.instL] using ih6)
   | proofIrrel _ _ _ ih1 ih2 ih3 =>
     exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 _ _ _ _ _ _ ih1 ih2 ih3 ih4 ih5 =>

@@ -6,6 +6,20 @@ import Batteries.Tactic.SeqFocus
 
 open Std
 
+/-
+These are stdlib-shaped lemmas that live in the root namespace upstream (mathlib, or eventually
+batteries/core). Declaring them under root here would make `import Mathlib` and `import Lean4Lean`
+conflict.
+
+So instead, we declare them in `namespace Lean4Lean`. Consumers of this file need an
+`open Lean4Lean`, which is what keeps `h.length_eq`-style dot notation working.
+
+Beware also that `Lean4Lean.List` now exists: an `open (scoped) List` under an `open Lean4Lean`
+resolves to it, so such opens are written `_root_.List`.
+-/
+namespace Lean4Lean
+open List Lean4Lean
+
 attribute [simp] Option.bind_eq_some_iff List.filterMap_cons
 
 theorem Option.beq_some_iff [BEq α] {a : Option α} {b : α} :
@@ -74,7 +88,7 @@ theorem List.Forall₂.zipWith_l {l₁ l₂} (H : ∀ a b, R a b → S a (f a b)
 
 theorem List.Forall₂.flip : ∀ {a b}, Forall₂ (flip R) b a → Forall₂ R a b
   | _, _, .nil => .nil
-  | _, _, .cons h₁ h₂ => .cons h₁ h₂.flip
+  | _, _, .cons h₁ h₂ => .cons h₁ (flip h₂)
 
 theorem List.Forall₂.forall_exists_l {l₁ l₂} (h : Forall₂ R l₁ l₂) : ∀ a ∈ l₁, ∃ b ∈ l₂, R a b := by
   induction h with simp [*] | cons _ _ ih => exact fun a h => .inr (ih _ h)
@@ -111,7 +125,7 @@ theorem List.map_fst_lookup {f : α → β} [BEq β] (l : List α) (b : β) :
 
 def List.All (P : α → Prop) : List α → Prop
   | [] => True
-  | a::as => P a ∧ as.All P
+  | a::as => P a ∧ All P as
 
 theorem List.All.imp {P Q : α → Prop} (h : ∀ a, P a → Q a) : ∀ {l : List α}, l.All P → l.All Q
   | [] => id
@@ -214,6 +228,8 @@ instance [BEq α] [PartialEquivBEq α] : PartialEquivBEq (List α) where
 
 instance [BEq α] [EquivBEq α] : EquivBEq (List α) where
   rfl {a} := by simp [(· == ·)]; induction a <;> simp [List.beq, *]
+
+end Lean4Lean
 
 namespace BitVec
 

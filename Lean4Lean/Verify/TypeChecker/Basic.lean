@@ -37,9 +37,10 @@ theorem WF.pureBind  {f : β → Except ε α} {Q}
 end Except
 
 namespace Lean4Lean
+open Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
-open scoped List
+open scoped _root_.List
 
 namespace EquivManager
 
@@ -239,7 +240,7 @@ theorem WHNFCache.WF.empty : WHNFCache.WF c s {} := fun _ => by simp
 
 def UnfoldCache.WF (c : VContext) (m : ExprMap Expr) : Prop :=
   ∀ ⦃e e' : Expr⦄, m[e]? = some e' → ∃ n ls ci, e = .const n ls ∧
-      c.env.find? n = some ci ∧ e' = ci.instantiateValueLevelParams! ls
+      c.env.find? n = some ci ∧ e' = Inner.instantiateDeltaValue ci ls
 
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
@@ -314,7 +315,7 @@ structure Methods.WF (m : Methods) where
   isDefEqCore : c.TrExprS e₁ e₁' → c.TrExprS e₂ e₂' →
     (m.isDefEqCore e₁ e₂).WF c s fun b _ => b → c.IsDefEqU e₁' e₂'
   whnfCore : c.TrExprS e e' →
-    (m.whnfCore e cheapRec cheapProj).WF c s fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
+    (m.whnfCore e cheapProj).WF c s fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
   whnf : c.TrExprS e e' →
     (m.whnf e).WF c s fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
   inferType : e.FVarsIn (· ∈ c.vlctx.fvars) →
@@ -879,19 +880,19 @@ theorem checkType.WF {c : VContext} {s : VState} (h1 : e.FVarsIn (· ∈ c.vlctx
   inferType.WF' h1 nofun
 
 theorem whnfCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
-    RecM.WF c s (whnfCore e cheapRec cheapProj) fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' :=
+    RecM.WF c s (whnfCore e cheapProj) fun e₁ _ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' :=
   fun _ wf => wf.whnfCore he
 
 theorem isDelta_is_some : isDelta env e = some ci ↔
-    ∃ n, env.find? n = some ci ∧ (∃ v, ci.value? = some v) ∧ ∃ ls, e.getAppFn = .const n ls := by
-  simp [isDelta]
+    ∃ n, env.find? n = some ci ∧ (∃ v, ci.deltaValue? = some v) ∧
+      ∃ ls, e.getAppFn = .const n ls ∧ ls.length = ci.numLevelParams := by
+  simp only [isDelta]
   split <;> [split <;> [split; skip]; skip] <;>
-    simp_all [ConstantInfo.hasValue_eq, Option.isSome_iff_exists] <;>
-    rintro rfl <;> assumption
+    simp_all [Option.isSome_iff_exists] <;> grind
 
 def UnfoldDefinition.WF (c : VContext) (e e₀ : Expr) (e' : VExpr) : Option Expr → Prop
   | some e₁ => c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e'
-  | none => ∀ {{n ci v ls}}, c.env.find? n = some ci → ci.value? = some v →
+  | none => ∀ {{n ci v ls}}, c.env.find? n = some ci → ci.deltaValue? = some v →
     e₀ = .const n ls → ls.length = ci.numLevelParams → False
 
 theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
@@ -899,17 +900,15 @@ theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e'
   dsimp [unfoldDefinitionCore]
   split <;> [refine .getEnv ?_; (rename_i H; exact .pure fun _ _ _ _ _ _ h => nomatch H _ _ h)]
   split; rotate_left
-  · rename_i H; refine .pure ?_; rintro _ _ _ _ h1 h2 ⟨⟩
-    cases H _ (isDelta_is_some.2 ⟨_, h1, ⟨_, h2⟩, _, rfl⟩)
+  · rename_i H; refine .pure ?_; rintro _ _ _ _ h1 h2 ⟨⟩ hlen
+    cases H _ (isDelta_is_some.2 ⟨_, h1, ⟨_, h2⟩, _, rfl, hlen⟩)
   rename_i n ls oci ci h1
-  obtain ⟨_, h3, ⟨_, h4⟩, _, ⟨⟩⟩ := isDelta_is_some.1 h1
-  split <;> rename_i h2 <;> [refine .pureBind ?_; refine .pure ?_]; rotate_left
-  · simp at h2; rintro _ _ _ _ h1 _ ⟨⟩; cases h1 ▸ h3; exact h2
+  obtain ⟨_, h3, ⟨_, h4⟩, _, ⟨⟩, hlen⟩ := isDelta_is_some.1 h1
   have : UnfoldDefinition.WF c (.const n ls) (.const n ls) e'
-      (some (ci.instantiateValueLevelParams! ls)) := by
+      (some (instantiateDeltaValue ci ls)) := by
     let .const a1 a2 a3 := he
     have ⟨rfl, b1, b2, b3⟩ := c.trenv.find?_uniq h3 a1
-    simp [ConstantInfo.instantiateValueLevelParams!, ConstantInfo.value!_eq, h4]
+    simp [instantiateDeltaValue, h4]
     have c1 := c.trenv.of_value h3 b1 h4 |>.instL c.Ewf (by trivial) a2 (b2.trans a3.symm)
     have := c1.weakFV c.Ewf (.from_nil c.mlctx.noBV) c.Δwf
     rw [c1.wf.closedN c.Ewf trivial |>.liftN_eq (Nat.zero_le _)] at this
@@ -918,7 +917,7 @@ theorem unfoldDefinitionCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e'
     · exact (List.mapM_eq_some.1 a2).length_eq.symm.trans <| a3.trans b2.symm
   split <;> [rename_i h5; exact .pure this]
   refine .pureBind <| .get ?_
-  split <;> [rename_i eq; refine .pureBind ?_]
+  split <;> [rename_i eq; skip]
   · refine .stateWF fun wf => .pure ?_
     obtain ⟨_, _, _, ⟨⟩, a1, rfl⟩ := wf.unfold_wf eq
     cases h3.symm.trans a1; exact this
@@ -944,3 +943,14 @@ theorem unfoldDefinition.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   simp only [Expr.getAppArgsRevList_reverse]; constructor
   · exact (e.mkAppList_getAppArgsList ▸ h1.mkAppList :)
   · exact h2.rebuild_mkAppList c.Ewf c.Δwf stk.tr (e.mkAppList_getAppArgsList ▸ he :)
+
+theorem ensureSortCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+    RecM.WF c s (ensureSortCore e e₀) fun e1 _ =>
+      (∃ u, e1 = .sort u) ∧ c.TrExpr e1 e' ∧ c.FVarsBelow e e1 := by
+  simp [ensureSortCore]; split
+  · let .sort _ := e
+    exact .pure ⟨⟨_, rfl⟩, he.trExpr c.Ewf c.Δwf, .rfl⟩
+  refine (whnf.WF he).bind fun e _ _ ⟨hb, he⟩ => ?_; split
+  · let .sort _ := e
+    exact .pure ⟨⟨_, rfl⟩, he, hb⟩
+  exact .getEnv <| .getLCtx .throw

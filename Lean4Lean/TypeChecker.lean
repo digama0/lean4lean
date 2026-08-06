@@ -63,7 +63,7 @@ instance (priority := low) : MonadWithReaderOf LocalContext M where
 
 structure Methods where
   protected isDefEqCore : Expr → Expr → M Bool
-  protected whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : M Expr
+  protected whnfCore (e : Expr) (cheapProj := false) : M Expr
   protected whnf (e : Expr) : M Expr
   protected inferType (e : Expr) (inferOnly : Bool) : M Expr
 
@@ -76,23 +76,29 @@ inductive ReductionStatus where
 
 namespace Inner
 
+/-- Reduces `e` to its weak-head normal form. -/
 def whnf (e : Expr) : RecM Expr := fun m => m.whnf e
 
 @[inline] def withLCtx [MonadWithReaderOf LocalContext m] (lctx : LocalContext) (x : m α) : m α :=
   withReader (fun _ => lctx) x
 
+/-- Ensures that `e` is defeq to some `e' := .sort ..`, returning `e'`. If not, throws an error with
+`s` (the expression required to be a sort). -/
 def ensureSortCore (e s : Expr) : RecM Expr := do
   if e.isSort then return e
   let e ← whnf e
   if e.isSort then return e
   throw <| .typeExpected (← getEnv) (← getLCtx) s
 
+/-- Ensures that `e` is defeq to some `e' := .forallE ..`, returning `e'`. If not, throws an error
+with `s := f a` (the application requiring `f` to be of function type). -/
 def ensureForallCore (e s : Expr) : RecM Expr := do
   if e.isForall then return e
   let e ← whnf e
   if e.isForall then return e
   throw <| .funExpected (← getEnv) (← getLCtx) s
 
+/-- Checks that `l` does not contain any level parameters not found in the context `tc`. -/
 def checkLevel (tc : Context) (l : Level) : Except Exception Unit := do
   if let some n2 := l.getUndefParam tc.lparams then
     throw <| .other s!"invalid reference to undefined universe level parameter '{n2}'"
@@ -102,6 +108,7 @@ def inferFVar (tc : Context) (name : FVarId) : Except Exception Expr := do
     return decl.type
   throw <| .other "unknown free variable"
 
+/-- Infers the type of `.const name ls`. -/
 def inferConstant (tc : Context) (name : Name) (ls : List Level) (inferOnly : Bool) :
     Except Exception Expr := do
   let e := Expr.const name ls
@@ -121,8 +128,14 @@ def inferConstant (tc : Context) (name : Name) (ls : List Level) (inferOnly : Bo
       checkLevel tc l
   return info.instantiateTypeLevelParams ls
 
+/-- Infers the type of expression `e`. If `inferOnly := false`, this function throws an error
+whenever `e` is not typeable according to Lean's algorithmic typing judgment (barring resource
+exhaustion: it may also throw `.deterministicTimeout` or `.deepRecursion` on a typeable term).
+Setting `inferOnly := true` optimizes to avoid unnecessary checks in the case that `e` is already
+known to be well-typed. -/
 def inferType (e : Expr) (inferOnly := true) : RecM Expr := fun m => m.inferType e inferOnly
 
+/-- Infers the type of lambda expression `e`. -/
 def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
   loop fvars : Expr → RecM Expr
   | .lam name dom body bi => do
@@ -137,6 +150,7 @@ def inferLambda (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let r := r.cheapBetaReduce
     return (← getLCtx).mkForall fvars r
 
+/-- Infers the type of for-all expression `e`. -/
 def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e where
   loop fvars us : Expr → RecM Expr
   | .forallE name dom body bi => do
@@ -150,14 +164,24 @@ def inferForall (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] #[] e wher
     let s ← ensureSortCore r e
     return .sort <| us.foldr mkLevelIMax' s.sortLevel!
 
+/-- Returns whether `t` and `s` are definitionally equal according to Lean's algorithmic
+definitional equality judgment.
+
+NOTE: This function does not do any typechecking of its own on `t` and `s`. So, when this is used as
+part of a typechecking routine, it is expected that they are already well-typed (that is, that
+`checkType t` and `checkType s` did not/would not throw an error). This is what justifies the
+internal uses of `inferType` at its default `inferOnly := true`: on a well-typed subterm the fast
+path returns the same type the checking path would have. -/
 def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore t s
 
+@[inherit_doc isDefEqCore]
 def isDefEq (t s : Expr) : RecM Bool := do
   let r ← isDefEqCore t s
   if r then
     modify fun st => { st with eqvManager := st.eqvManager.addEquiv t s }
   pure r
 
+/-- Infers the type of application `e`, assuming that `e` is already well-typed. -/
 def inferApp (e : Expr) : RecM Expr := do
   e.withApp fun f args =>
   let rec loop fType j i : RecM Expr :=
@@ -172,6 +196,7 @@ def inferApp (e : Expr) : RecM Expr := do
       return fType.instantiateRevRange j args.size args
   do loop (← inferType f) 0 0
 
+/-- Infers the type of let-expression `e`. -/
 def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
   loop fvars : Expr → RecM Expr
   | .letE name type val body _ => do
@@ -189,9 +214,17 @@ def inferLet (e : Expr) (inferOnly : Bool) : RecM Expr := loop #[] e where
     let r := r.cheapBetaReduce
     return (← getLCtx).mkForall fvars r
 
-def isProp (e : Expr) : RecM Bool :=
-  return (← whnf (← inferType e)) == .prop
+/-- Gets the universe level of the sort that `e`'s type is defeq to, failing if `e` is not
+a type. -/
+def getSortLevel (e : Expr) : RecM Level := do
+  let .sort u ← ensureSortCore (← inferType e) e | unreachable!
+  return u
 
+/-- Checks if `e` is a proposition, that is, if its type is a sort whose level normalizes to
+zero. -/
+def isProp (e : Expr) : RecM Bool := return (← getSortLevel e).isAlwaysZero
+
+/-- Infers the type of structure projection `e`. -/
 def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Expr := do
   let e := Expr.proj typeName idx struct
   let type ← whnf structType
@@ -208,18 +241,20 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
   for i in [:I_val.numParams] do
     let .forallE _ _ b _ ← whnf r | fail
     r := b.instantiate1 args[i]!
-  let isPropType ← isProp type
+  let maybePropType := !(← getSortLevel type).isNeverZero
   for i in [:idx] do
     let .forallE _ dom b _ ← whnf r | fail
     if b.hasLooseBVars then
-      if isPropType then if !(← isProp dom) then fail
+      -- prop structs cannot have non-prop dependent fields
+      if maybePropType then if !(← isProp dom) then fail
       r := b.instantiate1 (.proj I_name i struct)
     else
       r := b
   let .forallE _ dom _ _ ← whnf r | fail
-  if isPropType then if !(← isProp dom) then fail
+  if maybePropType then if !(← isProp dom) then fail
   return dom
 
+@[inherit_doc inferType]
 def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
   if e.hasLooseBVars then
     throw <| .other
@@ -254,6 +289,8 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
         let fType ← ensureForallCore (← inferType' f inferOnly) e
         let aType ← inferType' a inferOnly
         let dType := fType.bindingDomain!
+        -- it can be shown that if `e` is typeable as `T`, then `T` is typeable as `Sort l`
+        -- for some universe level `l`, so this use of `isDefEq` is valid
         let ok ← if a.isAppOfArity ``eagerReduce 2 then
           withTheReader Context (fun s => {s with eagerReduce := true}) <|
             isDefEq dType aType
@@ -267,26 +304,40 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
     { s with inferTypeC := s.inferTypeC.insert e r }
   return r
 
-def whnfCore (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr :=
-  fun m => m.whnfCore e cheapRec cheapProj
+/-- Reduces `e` to its weak-head normal form, without unfolding definitions. This is a conservative
+version of `whnf` (which does unfold definitions), to be used for efficiency purposes.
 
-def reduceRecursor (e : Expr) (cheapRec := false) (cheapProj := false) : RecM (Option Expr) := do
+Setting `cheapProj` to `true` will cause the struct argument to be reduced "lazily" (using
+`whnfCore` rather than `whnf`) when reducing struct projections, and suppresses caching of the
+result. This can be a useful optimization if we're checking the definitional equality of two struct
+projections of the same projection, where we might save some work by directly checking if the struct
+arguments are defeq (rather than eagerly applying a projection).
+
+The kernel has a companion `cheap_rec` flag doing the same for the major premise of a recursor, but
+nothing has set it since lean4#9275 removed the old compiler, so it is omitted here. -/
+def whnfCore (e : Expr) (cheapProj := false) : RecM Expr :=
+  fun m => m.whnfCore e cheapProj
+
+def reduceRecursor (e : Expr) : RecM (Option Expr) := do
   let env ← getEnv
   if env.quotInit then
     if let some r ← quotReduceRec e whnf then
       return r
-  let whnf' e := if cheapRec then whnfCore e cheapRec cheapProj else whnf e
-  if let some r ← inductiveReduceRec env e whnf' inferType isDefEq then
+  if let some r ← inductiveReduceRec env e whnf inferType isDefEq then
     return r
   return none
 
-def whnfFVar (e : Expr) (cheapRec cheapProj : Bool) : RecM Expr := do
+/-- Reduces the free variable `e`: to the `whnfCore` of its definition if `e` is a let variable,
+and to itself if it is a lambda variable. -/
+def whnfFVar (e : Expr) (cheapProj : Bool) : RecM Expr := do
   if let some (.ldecl (value := v) ..) := (← getLCtx).find? e.fvarId! then
-    return ← whnfCore v cheapRec cheapProj
+    return ← whnfCore v cheapProj
   return e
 
-def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (Option Expr) := do
-  let mut c ← (if cheapProj then whnfCore struct cheapRec cheapProj else whnf struct)
+/-- Reduces a projection of `struct` at index `idx` (when `struct` is reducible to a constructor
+application). -/
+def reduceProj (idx : Nat) (struct : Expr) (cheapProj : Bool) : RecM (Option Expr) := do
+  let mut c ← (if cheapProj then whnfCore struct cheapProj else whnf struct)
   if let .lit (.strVal s) := c then
     c ← whnf (.strLitToConstructor s)
   c.withApp fun mk args => do
@@ -298,70 +349,87 @@ def reduceProj (idx : Nat) (struct : Expr) (cheapRec cheapProj : Bool) : RecM (O
 def isLetFVar (lctx : LocalContext) (fvar : FVarId) : Bool :=
   lctx.find? fvar matches some (.ldecl ..)
 
-def whnfCore' (e : Expr) (cheapRec := false) (cheapProj := false) : RecM Expr := do
+@[inherit_doc whnfCore]
+def whnfCore' (e : Expr) (cheapProj := false) : RecM Expr := do
   match e with
   | .bvar .. | .sort .. | .mvar .. | .forallE .. | .const .. | .lam .. | .lit .. => return e
-  | .mdata _ e => return ← whnfCore' e cheapRec cheapProj
+  | .mdata _ e => return ← whnfCore' e cheapProj
   | .fvar id => if !isLetFVar (← getLCtx) id then return e
   | .app .. | .letE .. | .proj .. => pure ()
   if let some r := (← get).whnfCoreCache[e]? then
     return r
   let rec save r := do
-    if !cheapRec && !cheapProj then
+    if !cheapProj then
       modify fun s => { s with whnfCoreCache := s.whnfCoreCache.insert e r }
     return r
   match e with
   | .bvar .. | .sort .. | .mvar .. | .forallE .. | .const .. | .lam .. | .lit ..
   | .mdata .. => unreachable!
-  | .fvar _ => return ← whnfFVar e cheapRec cheapProj
+  | .fvar _ => return ← whnfFVar e cheapProj
   | .app .. =>
+    -- beta-reduce at the head as much as possible, apply any remaining `rargs`
+    -- to the resulting expression, and re-run `whnfCore`
     e.withAppRev fun f0 rargs => do
-    let f ← whnfCore f0 cheapRec cheapProj
+    -- the head may still be a let variable/binding, projection, or mdata-wrapped expression
+    let f ← whnfCore f0 cheapProj
     if let .lam _ _ body _ := f then
       let rec loop m (f : Expr) : RecM Expr :=
         let rec cont := do
           let r := f.instantiateRange (rargs.size - m) rargs.size rargs
           let r := r.mkAppRevRange 0 (rargs.size - m) rargs
-          save <|← whnfCore r cheapRec cheapProj
+          save <|← whnfCore r cheapProj
         if let .lam _ _ body _ := f then
           if m < rargs.size then loop (m + 1) body
           else cont
         else cont
       loop 1 body
     else if f == f0 then
-      if let some r ← reduceRecursor e cheapRec cheapProj then
-        whnfCore r cheapRec cheapProj
+      if let some r ← reduceRecursor e then
+        whnfCore r cheapProj
       else
         pure e
     else
       let r := f.mkAppRevRange 0 rargs.size rargs
-      save <|← whnfCore r cheapRec cheapProj
+      -- the recursive call re-decomposes `r` and reaches the `f == f0` branch above, so
+      -- `reduceRecursor` is still applied; adding arguments can only enable further normalization
+      -- if the head reduced to a partial recursor application
+      save <|← whnfCore r cheapProj
   | .letE _ _ val body _ =>
-    save <|← whnfCore (body.instantiate1 val) cheapRec cheapProj
+    save <|← whnfCore (body.instantiate1 val) cheapProj
   | .proj _ idx s =>
-    if let some m ← reduceProj idx s cheapRec cheapProj then
-      save <|← whnfCore m cheapRec cheapProj
+    if let some m ← reduceProj idx s cheapProj then
+      save <|← whnfCore m cheapProj
     else
       save e
 
+/-- Checks if the head of `e` is a constant that can be delta-reduced, applied to the right number
+of universe levels, returning its `ConstantInfo` if so. See `ConstantInfo.deltaValue?` for which
+constants qualify. -/
 def isDelta (env : Environment) (e : Expr) : Option ConstantInfo := do
-  if let .const c _ := e.getAppFn then
+  if let .const c ls := e.getAppFn then
     if let some ci := env.find? c then
-      if ci.hasValue then
+      if ci.deltaValue?.isSome && ls.length == ci.numLevelParams then
         return ci
   none
 
+def instantiateDeltaValue (ci : ConstantInfo) (ls : List Level) : Expr :=
+  ci.deltaValue?.get!.instantiateLevelParams ci.levelParams ls
+
+/-- If `e` is itself a constant that can be delta-reduced, returns its value with the constant's
+level parameters instantiated. Unlike `unfoldDefinition`, this does not look through applications:
+`e` must be a `.const`. -/
 def unfoldDefinitionCore (e : Expr) : RecM (Option Expr) := do
   let .const _ ls := e | return none
   let env ← getEnv
   let some d := isDelta env e | return none
-  unless ls.length == d.numLevelParams do return none
-  unless 0 < ls.length do return some (d.instantiateValueLevelParams! ls)
+  unless 0 < ls.length do return some (instantiateDeltaValue d ls)
   if let some r := (← get).unfold[e]? then return some r
-  let r := d.instantiateValueLevelParams! ls
+  let r := instantiateDeltaValue d ls
   modify fun s => { s with unfold := s.unfold.insert e r }
   return some r
 
+/-- Unfolds the definition at the head of the application `e` (or `e` itself if it is not an
+application). -/
 def unfoldDefinition (e : Expr) : RecM (Option Expr) := do
   if e.isApp then
     let f0 := e.getAppFn
@@ -381,6 +449,9 @@ def reduceNative (_env : Environment) (e : Expr) : Except Exception (Option Expr
 
 def rawNatLitExt? (e : Expr) : Option Nat := if e == .natZero then some 0 else e.rawNatLit?
 
+/-- Reduces the application `f a b` to a Nat literal if `a` and `b` can be reduced to Nat literals.
+
+Note: `f` should have an (efficient) external implementation. -/
 def reduceBinNatOp (f : Nat → Nat → Nat) (a b : Expr) : RecM (Option Expr) := do
   let some v1 := rawNatLitExt? (← whnf a) | return none
   let some v2 := rawNatLitExt? (← whnf b) | return none
@@ -394,11 +465,20 @@ def reducePow (a b : Expr) : RecM (Option Expr) := do
   if v2 > reducePowMaxExp then return none
   return some <| .lit <| .natVal <| Nat.pow v1 v2
 
+/-- Reduces the application `f a b` to a boolean expression if `a` and `b` can be reduced to Nat
+literals.
+
+Note: `f` should have an (efficient) external implementation. -/
 def reduceBinNatPred (f : Nat → Nat → Bool) (a b : Expr) : RecM (Option Expr) := do
   let some v1 := rawNatLitExt? (← whnf a) | return none
   let some v2 := rawNatLitExt? (← whnf b) | return none
   return toExpr <| f v1 v2
 
+/-- Reduces `e` to a literal if possible, where the unary operation `Nat.succ` and the binary
+operations and predicates with an external implementation may be applied: `Nat.add`, `Nat.sub`,
+`Nat.mul`, `Nat.pow`, `Nat.gcd`, `Nat.mod`, `Nat.div`, `Nat.land`, `Nat.lor`, `Nat.xor`,
+`Nat.shiftLeft`, `Nat.shiftRight` produce a `Nat` literal, while the predicates `Nat.beq` and
+`Nat.ble` produce a `Bool` literal. -/
 def reduceNat (e : Expr) : RecM (Option Expr) := do
   let nargs := e.getAppNumArgs
   if nargs == 1 then
@@ -424,6 +504,7 @@ def reduceNat (e : Expr) : RecM (Option Expr) := do
     if f == ``Nat.shiftRight then return ← reduceBinNatOp Nat.shiftRight a b
   return none
 
+@[inherit_doc whnf]
 def whnf' (e : Expr) : RecM Expr := do
   -- Do not cache easy cases
   match e with
@@ -450,6 +531,9 @@ def whnf' (e : Expr) : RecM Expr := do
   modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
+/-- If `t` and `s` are lambda expressions, checks that their domains are defeq and recurses on the
+bodies, substituting in a new free variable for that binder (this substitution is delayed for
+efficiency purposes using the `subst` parameter). Otherwise, does a normal defeq check. -/
 def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
   | .lam _ tDom tBody _, .lam name sDom sBody bi => do
@@ -466,6 +550,9 @@ def isDefEqLambda (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
       isDefEqLambda tBody sBody (subst.push default)
   | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
+/-- If `t` and `s` are for-all expressions, checks that their domains are defeq and recurses on the
+bodies, substituting in a new free variable for that binder (this substitution is delayed for
+efficiency purposes using the `subst` parameter). Otherwise, does a normal defeq check. -/
 def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
   match t, s with
   | .forallE _ tDom tBody _, .forallE name sDom sBody bi => do
@@ -482,7 +569,16 @@ def isDefEqForall (t s : Expr) (subst : Array Expr := #[]) : RecM Bool :=
       isDefEqForall tBody sBody (subst.push default)
   | t, s => isDefEq (t.instantiateRev subst) (s.instantiateRev subst)
 
+/-- Decides definitional equality of `t` and `s` in the cases that can be settled without
+reduction, returning `.undef` to defer to the calling function otherwise.
+
+It returns `.true` if they are α-equivalent or have previously been checked for definitional
+equality, and otherwise decides two sorts by level equivalence and two literals by equality,
+returning `.false` where these disagree. Two lambdas or two for-alls are handed to
+`isDefEqLambda`/`isDefEqForall`, which may return either. All remaining cases — including two
+constants, two free variables, two applications and two projections — are deferred. -/
 def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
+  -- optimization for terms that are already α-equivalent or were previously checked
   if ← modifyGet fun (.mk a1 a2 a3 a4 a5 a6 a7 (eqvManager := m)) =>
     let (b, m) := m.isEquiv useHash t s
     (b, .mk a1 a2 a3 a4 a5 a6 a7 (eqvManager := m))
@@ -490,12 +586,15 @@ def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
   match t, s with
   | .lam .., .lam .. => toLBoolM <| isDefEqLambda t s
   | .forallE .., .forallE .. => toLBoolM <| isDefEqForall t s
-  | .sort a1, .sort a2 => pure (a1.isEquiv' a2).toLBool
+  | .sort a1, .sort a2 => pure (a1.isEquiv a2).toLBool
   | .mdata _ a1, .mdata _ a2 => toLBoolM <| isDefEq a1 a2
   | .mvar .., .mvar .. => unreachable!
   | .lit a1, .lit a2 => pure (a1 == a2).toLBool
   | _, _ => return .undef
 
+/-- Assuming that `t` and `s` have the same function heads, returns true if they are applications
+with definitionally equal arguments (in which case they are defeq), and false otherwise (deferring
+further defeq checking to caller). -/
 def isDefEqArgs (t s : Expr) : RecM Bool := do
   match t, s with
   | .app tf ta, .app sf sa =>
@@ -504,30 +603,50 @@ def isDefEqArgs (t s : Expr) : RecM Bool := do
   | .app .., _ | _, .app .. => return false
   | _, _ => return true
 
+/-- Assuming `t` and `s` are WHNF, checks if they are defeq on account of `t` being an η-expansion
+of `s`.
+
+Assuming that `s` has a function type `(x : A) → B x`, it η-expands to `fun (x : A) => s x`
+(which it is definitionally equal to by the η rule). -/
 def tryEtaExpansionCore (t s : Expr) : RecM Bool := do
   if t.isLambda && !s.isLambda then
     let .forallE name ty _ bi ← whnf (← inferType s) | return false
     isDefEq t (.lam name ty (.app s (.bvar 0)) bi)
   else return false
 
+@[inherit_doc tryEtaExpansionCore]
 def tryEtaExpansion (t s : Expr) : RecM Bool :=
   tryEtaExpansionCore t s <||> tryEtaExpansionCore s t
 
+/-- Assuming `t` and `s` in WHNF, checks if they are defeq on account of `s` being defeq to the
+struct-η-expansion of `t`.
+
+Assuming that `t` has a non-recursive structure type `S` with constructor `S.mk` and projections
+`pᵢ`, it struct-η-expands to `S.mk (p₁ t) ... (pₙ t)` (which it is definitionally equal to by the
+struct-η rule). -/
 def tryEtaStructCore (t s : Expr) : RecM Bool := do
   let .const f _ := s.getAppFn | return false
   let env ← getEnv
   let .ctorInfo fInfo ← env.get f | return false
   unless s.getAppNumArgs == fInfo.numParams + fInfo.numFields do return false
-  unless env.isStructureLike fInfo.induct do return false
+  unless env.isNonRecStructure fInfo.induct do return false
   unless ← isDefEq (← inferType t) (← inferType s) do return false
   let args := s.getAppArgs
   for h : i in [fInfo.numParams:args.size] do
+    -- since `t` is in WHNF, and assuming it is not a constructor application, this projection
+    -- cannot reduce (so we are directly checking if `s` is defeq to the struct-η-expansion of `t`)
     unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) args[i] do return false
   return true
 
+@[inherit_doc tryEtaStructCore]
 def tryEtaStruct (t s : Expr) : RecM Bool :=
+  -- when `t` and `s` are both constructor applications, `isDefEqApp` has already compared their
+  -- arguments and returned false, and the projections in `tryEtaStructCore` reduce back to those
+  -- same arguments, so both calls below merely redo that work. The kernel has the same redundancy.
   tryEtaStructCore t s <||> tryEtaStructCore s t
 
+/-- Checks if applications `t` and `s` (should be WHNF) are defeq on account of their function heads
+and arguments being defeq. -/
 def isDefEqApp (t s : Expr) : RecM Bool := do
   unless t.isApp && s.isApp do return false
   t.withApp fun tf tArgs =>
@@ -542,6 +661,8 @@ def isDefEqApp (t s : Expr) : RecM Bool := do
     loop 0
   else return false
 
+/-- Checks if `t` and `s` are definitionally equivalent according to proof irrelevance (that is,
+they are proofs of the same proposition). -/
 def isDefEqProofIrrel (t s : Expr) : RecM LBool := do
   let tType ← inferType t
   if !(← isProp tType) then return .undef
@@ -565,6 +686,15 @@ def tryUnfoldProjApp (e : Expr) : RecM (Option Expr) := do
   let e' ← whnfCore e
   return if e' != e then e' else none
 
+/-- Performs a single step of δ-reduction on `tn`, `sn`, or both (according to optimizations)
+followed by weak-head normalization (without further δ-reduction). Returns `.bool` if the resulting
+terms are settled by `quickIsDefEq`, or if they are applications of the same defined constant with
+defeq args. Otherwise returns `.continue`, indicating to the calling `lazyDeltaReduction` that
+δ-reduction is to be continued.
+
+If neither side has a δ-reducible head, returns `.unknown` with the terms unchanged, leaving further
+defeq-checking to `isDefEqCore'`. Note that these are weak-head normal forms with respect to
+`cheapProj := true`, so a projection at the head may still be reducible. -/
 def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
   let env ← getEnv
   let delta e := do whnfCore (← unfoldDefinition e).get! (cheapProj := true)
@@ -576,6 +706,8 @@ def lazyDeltaReductionStep (tn sn : Expr) : RecM ReductionStatus := do
   match isDelta env tn, isDelta env sn with
   | none, none => return .unknown tn sn
   | some _, none =>
+    -- `sn` was normalized with `cheapProj := true`, so a projection at its head may not have been
+    -- reduced; `tryUnfoldProjApp` retries it with the struct argument fully normalized
     if let some sn' ← tryUnfoldProjApp sn then
       cont tn sn'
     else
@@ -610,6 +742,9 @@ def isNatSuccOf? : Expr → Option Expr
   | .app (.const ``Nat.succ _) e => return e
   | _ => none
 
+/-- Returns `.true` if `t` and `s` are both zero, either as a literal or as `Nat.zero`. If they are
+both successors of natural numbers `t'` and `s'`, either as literals or `Nat.succ` applications,
+checks that `t'` and `s'` are definitionally equal. Otherwise, defers to the calling function. -/
 def isDefEqOffset (t s : Expr) : RecM LBool := do
   if isNatZero t && isNatZero s then
     return .true
@@ -617,6 +752,14 @@ def isDefEqOffset (t s : Expr) : RecM LBool := do
   | some t', some s' => toLBoolM <| isDefEqCore t' s'
   | _, _ => return .undef
 
+/-- Repeatedly δ-reduces the `cheapProj := true` weak-head normal forms `tn` and `sn` until the
+question is settled. Returns `.bool` if:
+- they are both zero or both natural number successors (as literals or `Nat.succ` applications)
+- one of them can be converted to a natural number/boolean literal
+- a `lazyDeltaReductionStep` settles them
+
+Otherwise returns `.unknown` with the reduced terms, deferring to the calling function. Throws
+`.deterministicTimeout` after `FuelConfig.lazyDelta` steps. -/
 def lazyDeltaReduction (tn sn : Expr) : RecM ReductionStatus := do
   loop tn sn (← readThe Context).fuel.lazyDelta
 where
@@ -639,17 +782,23 @@ where
     | .continue tn sn => loop tn sn fuel
     | r => return r
 
+/-- If `t` is a string literal and `s` is a `String.ofList` application, checks that they are defeq
+after expanding `t` into a `String.ofList` application of an explicit character list. Otherwise,
+defers to the calling function. -/
 def tryStringLitExpansionCore (t s : Expr) : RecM LBool := do
   let .lit (.strVal st) := t | return .undef
   let .app sf _ := s | return .undef
   unless sf == .const ``String.ofList [] do return .undef
   toLBoolM <| isDefEqCore (.strLitToConstructor st) s
 
+@[inherit_doc tryStringLitExpansionCore]
 def tryStringLitExpansion (t s : Expr) : RecM LBool := do
   match ← tryStringLitExpansionCore t s with
   | .undef => tryStringLitExpansionCore s t
   | r => return r
 
+/-- Checks if `t` and `s` are defeq on account of both being of a unit type (a type with one
+constructor without any fields or indices). -/
 def isDefEqUnitLike (t s : Expr) : RecM Bool := do
   let tType ← whnf (← inferType t)
   let .const I _ := tType.getAppFn | return false
@@ -659,6 +808,7 @@ def isDefEqUnitLike (t s : Expr) : RecM Bool := do
   let .ctorInfo { numFields := 0, .. } ← env.get c | return false
   isDefEqCore tType (← inferType s)
 
+@[inherit_doc isDefEqCore]
 def isDefEqCore' (t s : Expr) : RecM Bool := do
   let r ← quickIsDefEq t s (useHash := true)
   if r != .undef then return r == .true
@@ -686,14 +836,18 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
     if tf == sf && Level.isEquivList tl sl then return true
   | .fvar tv, .fvar sv => if tv == sv then return true
   | .proj _ ti te, .proj _ si se =>
+    -- optimized by the previous reduction functions using `cheapProj := true`
     if ti == si then if ← isDefEq te se then return true
   | _, _ => pure ()
 
+  -- the previous reduction functions used `cheapProj := true`, so we may not have a complete WHNF
   let tnn ← whnfCore tn
   let snn ← whnfCore sn
   if !(ptrEqExpr tnn tn && ptrEqExpr snn sn) then
+    -- if projection reduced, need to re-run (as we may not have a WHNF)
     return ← isDefEqCore tnn snn
 
+  -- tn and sn are both in WHNF
   if ← isDefEqApp tn sn then return true
   if ← tryEtaExpansion tn sn then return true
   if ← tryEtaStruct tn sn then return true
@@ -709,15 +863,16 @@ open Inner
 def Methods.withFuel : Nat → Methods
   | 0 =>
     { isDefEqCore := fun _ _ => throw .deepRecursion
-      whnfCore := fun _ _ _ => throw .deepRecursion
+      whnfCore := fun _ _ => throw .deepRecursion
       whnf := fun _ => throw .deepRecursion
       inferType := fun _ _ => throw .deepRecursion }
   | n + 1 =>
     { isDefEqCore := fun t s => isDefEqCore' t s (withFuel n)
-      whnfCore := fun e r p => whnfCore' e r p (withFuel n)
+      whnfCore := fun e p => whnfCore' e p (withFuel n)
       whnf := fun e => whnf' e (withFuel n)
       inferType := fun e i => inferType' e i (withFuel n) }
 
+/-- Runs `x` with a limit on the recursion depth, taken from `FuelConfig.recDepth`. -/
 def RecM.run (x : RecM α) : M α := do x (Methods.withFuel (← readThe Context).fuel.recDepth)
 
 def RecM.runTermElab (x : RecM α) (safety := DefinitionSafety.safe) : Elab.Term.TermElabM α :=
@@ -725,24 +880,37 @@ def RecM.runTermElab (x : RecM α) (safety := DefinitionSafety.safe) : Elab.Term
 
 instance : MonadLift RecM Elab.Term.TermElabM := ⟨RecM.runTermElab⟩
 
+@[inherit_doc whnf']
 def whnf (e : Expr) : M Expr := (Inner.whnf e).run
 
 def whnfCore (e : Expr) : M Expr := (Inner.whnfCore e).run
 
 def unfoldDefinition (e : Expr) : M Expr := return (← (Inner.unfoldDefinition e).run).getD e
 
+/-- Infers the type of expression `e`. Note that this uses the optimization `inferOnly := true`, and
+so should only be used for the purpose of type inference on terms that are known to be well-typed.
+To typecheck terms for the first time, use `checkType`. -/
 def inferType (e : Expr) : M Expr := (Inner.inferType e).run
 
+/-- Infers the type of expression `e` and checks that `e` is well-typed according to Lean's typing
+judgment.
+
+Use `inferType` to infer type alone. -/
 def checkType (e : Expr) : M Expr := (Inner.inferType e (inferOnly := false)).run
 
+@[inherit_doc isDefEqCore]
 def isDefEq (t s : Expr) : M Bool := (Inner.isDefEq t s).run
 
+@[inherit_doc Inner.isProp]
 def isProp (t : Expr) : M Bool := (Inner.isProp t).run
 
+@[inherit_doc ensureSortCore]
 def ensureSort (t : Expr) (s := t) : M Expr := (ensureSortCore t s).run
 
+@[inherit_doc ensureForallCore]
 def ensureForall (t : Expr) (s := t) : M Expr := (ensureForallCore t s).run
 
+/-- Ensures that `e` is a type/proposition. If it is not, throws an error. -/
 def ensureType (e : Expr) : M Expr := do ensureSort (← inferType e) e
 
 def etaExpand (e : Expr) : M Expr :=
