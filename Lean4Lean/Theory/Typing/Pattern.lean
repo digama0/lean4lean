@@ -67,12 +67,9 @@ theorem Pattern.inter_comm (p q : Pattern) : p.inter q = q.inter p := by
 
 /-! ### Combinatorics of constructor spines `(.const c).varN k`
 
-The redex pattern of an ι rule (`SimplePattern.iota`) is a *constructor spine*
-`(.const r).varN M` (a recursor head applied to `M` argument holes) applied to
-another constructor spine `(.const c).varN N`. These lemmas capture the two facts
-about such spines used to discharge the structural `Params` side-conditions:
-a spine contains no application node, and two spines intersect only when their
-heads and lengths agree. -/
+An ι redex is built from spines `(.const c).varN k`; these lemmas record that a
+spine has no application node and that two spines intersect only when their heads
+and lengths agree. -/
 
 /-- Every subpattern of a constructor spine `(.const c).varN k` is a shorter spine
 `(.const c).varN i` with `i ≤ k`. -/
@@ -286,12 +283,9 @@ theorem Pattern.Check.OK.map
   induction ck <;> simp [OK, *] at H ⊢; cases H; constructor <;> solve_by_elim
 
 /-- `ck.Realizes m1 m2 chk` says the typed-triple list `chk : List (lhs, rhs, ty)`
-enumerates exactly the `defeq` entries of `ck`, with each triple's `lhs`/`rhs`
-being the corresponding `RHS.apply`ied sides (the type is carried by `chk`,
-since `Check` does not record it). This is a *pure* predicate — it mentions no
-definitional-equality relation — so it can sit in the `IsDefEq` inductive
-alongside the strictly-positive premise `∀ t ∈ chk, IsDefEq Γ t.1 t.2.1 t.2.2`
-without tripping the positivity checker. Bridged to `Check.OK` by
+enumerates exactly the `defeq` entries of `ck`, each triple's `lhs`/`rhs` being the
+corresponding `RHS.apply`ied sides. Being a pure predicate (no defeq relation), it
+can sit positively in the `IsDefEq` inductive; bridged to `Check.OK` by
 `Realizes.toOK` / `OK.exists_realizer`. -/
 def Pattern.Check.Realizes {p : Pattern} (m1 : List VLevel) (m2 : p.Path → VExpr) :
     p.Check → List (VExpr × VExpr × VExpr) → Prop
@@ -334,10 +328,9 @@ theorem Pattern.Check.OK.exists_realizer {rel : VExpr → VExpr → VExpr → Pr
 
 /-! ### Transport helpers for the `pat` reduction rule
 
-These bridge `Pattern.RHS.apply` / `Pattern.Matches` / `Pattern.Check.Realizes`
-with `ClosedN`, `LevelWF`, lifting, instantiation and level-instantiation, so
-that the `pat` cases of the `IsDefEq` recursions in `Theory.Typing` are
-mechanical. -/
+Commute `RHS.apply` / `Matches` / `Realizes` with `ClosedN`, `LevelWF`, lifting,
+instantiation and level-instantiation, making the `pat` cases of the `IsDefEq`
+recursions mechanical. -/
 
 /-- If every hole `m2 x` is `ClosedN k`, then the reduct `r.apply m1 m2` is
 `ClosedN k`. -/
@@ -446,27 +439,18 @@ def SimplePattern.toPattern : SimplePattern → Pattern
   | .defn c => .const c
   | .iota r m c n => .app (.varN (.const r) m) (.varN (.const c) n)
 
-/-- The path selecting the `i`-th argument (0-indexed) of a `q.varN k`
-sub-pattern. A `q.varN k` pattern matches a spine `q' a₀ … a_{k-1}`; the
-outermost `.var` (added last) captures the last argument `a_{k-1}` at path
-`none`, so argument `i` sits at `someᵏ⁻¹⁻ⁱ none`. Validated against
-`Pattern.Matches`: for a spine, the matcher's hole function composed with
-`varN_pathOf k i` returns `aᵢ`. -/
+/-- The path selecting the `i`-th argument (0-indexed) of a `q.varN k` spine
+pattern: argument `i` sits at `someᵏ⁻¹⁻ⁱ none`. -/
 def Pattern.varN_pathOf {q : Pattern} : (k i : Nat) → i < k → (q.varN k).Path
   | k+1, i, _ =>
     if _hik : i = k then (none : Option (q.varN k).Path)
     else some (Pattern.varN_pathOf (q := q) k i (by omega))
 
-/-- The ι-reduction reduct as a pattern `RHS`, for a recursor with `np`
-parameters, `nm` motives, `nmin` minors, `nind` indices, firing on a
-constructor with `nf` fields. `rhs` is the closed kernel rule template
-`fun params motives minors fields => …`. The reduct applies `rhs` to the
-recursor's parameters/motives/minors (rec-side holes `[0, np+nm+nmin)`) and
-then the constructor's fields (ctor-side holes `[np, np+nf)`) — exactly the
-argument slicing performed by `inductiveReduceRec` (drop the recursor's own
-indices and major; take the constructor arguments past its parameters). The
-recursive calls, if any, are already inside `rhs` and re-fire through this same
-rule. -/
+/-- The ι-reduction reduct as a pattern `RHS`, for a recursor with `np` parameters,
+`nm` motives, `nmin` minors, `nind` indices, firing on a constructor with `nf`
+fields. Applies the closed rule template `rhs` to the recursor's
+parameters/motives/minors and the constructor's fields, matching the argument
+slicing of `inductiveReduceRec`. -/
 def SimplePattern.iotaRHS (r c : Name) (np nm nmin nind nf : Nat)
     (rhs : VExpr) (hrhs : rhs.Closed) :
     (SimplePattern.iota r (np+nm+nmin+nind) c (np+nf)).toPattern.RHS :=

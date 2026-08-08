@@ -270,8 +270,8 @@ theorem EqUpToLevels.instL (H : env.IsDefEqStrong U' Γ e1 e2 A) :
   | defeqDF _ _ _ _ ih => exact ih
   | beta _ _ _ _ _ _ _ _ ih1 _ ih3 ih4 _ ih6 => exact ⟨.app (.lam ih1.1 ih3.1) ih4.1, ih6.2⟩
   | eta _ _ _ _ _ _ _ _ ih1 _ _ ih4 ih5 => exact ⟨.lam ih1.1 (.app ih5.1 .bvar), ih4.1⟩
-  -- IOTA-TODO(soundness): EqUpToLevels of a pat-reduction reduct under two ≈ level
-  -- substitutions — needs an EqUpToLevels congruence for `RHS.apply`
+  -- IOTA-TODO(soundness): EqUpToLevels of a pat-reduction reduct; needs an
+  -- EqUpToLevels congruence for `RHS.apply`.
   | pat _ _ _ _ _ ihe _ => exact ⟨ihe.1, sorry⟩
 
 
@@ -641,8 +641,8 @@ theorem EqUpToLevels.defeq (H : env.IsDefEqStrong U Γ e1 e2 A)
     have c2 := ih2 trivial H2 (EqUpToLevels.refl (by trivial) h7).2
     refine .weak0 henv <| c1.trans <| .trans ?_ c2.symm
     exact .extra h1 h2 h3 h4 h5 h6 h7 h6 h7
-  -- IOTA-TODO(soundness): EqUpToLevels.defeq for a pat-reduction — reconstruct a
-  -- pat derivation for the level-variant endpoints of the reduct
+  -- IOTA-TODO(soundness): EqUpToLevels.defeq for a pat-reduction; reconstruct a
+  -- pat derivation for the level-variant endpoints of the reduct.
   | pat _ _ _ _ _ _ _ => exact sorry
 
 variable! (henv : Ordered env) (envIH : env.OnTypes (EnvStrong env)) in

@@ -14,22 +14,17 @@ def VDefVal.toDefEq (v : VDefVal) : VDefEq :=
 structure VInductiveType extends VConstVal where
   ctors : List VConstVal
 
-/-- One recursor computation (ι) rule, mirroring `Lean.RecursorRule`: it fires
-on constructor `ctor` (which has `nfields` non-parameter arguments) and rewrites
-to `rhs` applied to the recursor's parameters/motives/minors and the
-constructor's fields. `rhs` is the closed, universe-abstracted reduct template
-`fun params motives minors fields => minorᵢ fields recursiveCalls` — the
-recursive calls are already baked in (they reference the recursor by name and
-re-fire through this same rule), exactly as the kernel builds it. -/
+/-- One recursor computation (ι) rule, mirroring `Lean.RecursorRule`: firing on
+constructor `ctor` (with `nfields` non-parameter arguments) rewrites to the
+closed reduct template `rhs`. -/
 structure VRecRule where
   ctor : Name
   nfields : Nat
   rhs : VExpr
 
-/-- A recursor, mirroring `Lean.RecursorVal`. Extends `VConstVal` with the
-recursor's own name/universe-count/type; the `num*` fields record the telescope
-segmentation (`getMajorIdx = numParams + numMotives + numMinors + numIndices`),
-`k` flags K-like reduction, and `rules` holds one ι rule per constructor. -/
+/-- A recursor, mirroring `Lean.RecursorVal`: the `num*` fields record the
+telescope segmentation, `k` flags K-like reduction, and `rules` holds one ι rule
+per constructor. -/
 structure VRecursor extends VConstVal where
   all : List Name
   numParams : Nat
@@ -39,14 +34,13 @@ structure VRecursor extends VConstVal where
   k : Bool
   rules : List VRecRule
 
-/-- The recursor argument index of the major premise: everything to its left
-(parameters, motives, minors, indices) precedes it in an application spine.
-Mirrors `Lean.RecursorVal.getMajorIdx`. -/
+/-- The recursor argument index of the major premise. Mirrors
+`Lean.RecursorVal.getMajorIdx`. -/
 def VRecursor.getMajorIdx (r : VRecursor) : Nat :=
   r.numParams + r.numMotives + r.numMinors + r.numIndices
 
-/-- The recursor argument index of the first index (equivalently, the count of
-parameters + motives + minors). Mirrors `Lean.RecursorVal.getFirstIndexIdx`. -/
+/-- The recursor argument index of the first index. Mirrors
+`Lean.RecursorVal.getFirstIndexIdx`. -/
 def VRecursor.getFirstIndexIdx (r : VRecursor) : Nat :=
   r.numParams + r.numMotives + r.numMinors
 

@@ -17,9 +17,7 @@ structure VDefEq where
   constants : Name → Option VConstant
   defeqs : VDefEq → Prop
   /-- Schematic reduction rules, keyed by a `Pattern` (the redex shape) and its
-  associated reduct/side-condition pair. This is the registry through which
-  ι-reduction (recursor-applied-to-constructor) rules are added; see
-  `VEnv.addPat` and `IsDefEq.pat`. -/
+  reduct/side-condition pair; the registry for ι-reduction rules. -/
   pats : (p : Pattern) → p.RHS × p.Check → Prop
 
 def VEnv.empty : VEnv where
@@ -39,11 +37,10 @@ def VEnv.addConst (env : VEnv) (name : Name) (ci : VConstant) : Option VEnv :=
 def VEnv.addDefEq (env : VEnv) (df : VDefEq) : VEnv :=
   { env with defeqs := fun x => x = df ∨ env.defeqs x }
 
-/-- Register a schematic pattern-reduction rule `r` for pattern `p`. Used to
-install ι-reduction rules when an inductive declaration is added; see
-`VEnv.addInduct`. The dependent equality `∃ h : p' = p, h ▸ r' = r` is needed
-because `r'` and `r` inhabit `p'.RHS × p'.Check` and `p.RHS × p.Check`
-respectively. -/
+/-- Register a schematic pattern-reduction rule `r` for pattern `p`; used to
+install ι-reduction rules in `VEnv.addInduct`. The dependent equality
+`∃ h : p' = p, h ▸ r' = r` accounts for `r'` and `r` living in different
+`RHS × Check` types. -/
 def VEnv.addPat (env : VEnv) (p : Pattern) (r : p.RHS × p.Check) : VEnv :=
   { env with pats := fun p' r' => (∃ h : p' = p, h ▸ r' = r) ∨ env.pats p' r' }
 

@@ -8,30 +8,18 @@ open VExpr
 /-!
 # A concrete `Params` instance from `env.pats`
 
-`ChurchRosser`'s development is parameterised over an abstract pattern-reduction
-relation `Params.Pat`. `VEnv.toParams` instantiates it with the environment's own
-registered ι rules (`env.pats`), which is the relation actually driving the
-`IsDefEq.pat` rule.
-
-The structural side conditions (`pat_simple`/`pat_uniq`/`pat_app_l`/`pat_app_l_uniq`/
-`pat_app_uniq`/`extra_pat`) are properties of *how* `env.pats` is populated. This
-file establishes the **population invariant** `VEnv.PatsIota`: in a well-formed
-environment every registered pattern is a `SimplePattern.iota` redex
-`(recN spine) applied to (ctorN spine)`, whose recursor head is a registered
-constant and whose recursor name determines the recursor's arity. From it:
-
-* `pat_simple`, `pat_app_l`, `pat_app_l_uniq` are **proved** (`WF.pat_simple`,
-  `WF.pat_app_l`, `WF.pat_app_l_uniq`).
-* `pat_uniq`, `pat_app_uniq`, `extra_pat` remain `IOTA-TODO`s: each is *false*
-  against the current, deliberately-underspecified `VInductDecl.WF`/`VDefEq`
-  registration and needs a separate design change (see the notes on `toParams`).
+`VEnv.toParams` instantiates `ChurchRosser`'s abstract pattern-reduction relation
+`Params.Pat` with the environment's own registered ι rules `env.pats`. Its engine is
+the population invariant `VEnv.PatsIota` (every registered pattern is a
+`SimplePattern.iota` redex with a registered recursor head of fixed arity), from
+which `pat_simple`, `pat_app_l`, `pat_app_l_uniq` are proved; `pat_uniq`,
+`pat_app_uniq`, `extra_pat` remain `IOTA-TODO`s (see the notes on `toParams`).
 -/
 
 /-! ### Environment-population lemmas
 
 `env.pats` is populated only by `addRecRule` (through `addInduct`), which installs
-`SimplePattern.iota`-shaped patterns; `addConst`/`addDefEq`/`addQuot` leave it
-untouched. These lemmas track that through the `foldlM` pipeline of `addInduct`. -/
+`SimplePattern.iota`-shaped patterns; the other extensions leave it untouched. -/
 
 /-- `addConst` leaves `pats` unchanged. -/
 theorem addConst_pats {env env' : VEnv} {n ci} (h : env.addConst n ci = some env') :
@@ -126,9 +114,8 @@ theorem addConst_foldlM_reg {α} {nm : α → Name} {ci : α → VConstant} :
     · exact ⟨_, (foldlM_le (fun hh => addConst_le hh) h2).constants hspec_b⟩
     · exact addConst_foldlM_reg h2 a ha'
 
-/-- In a successful `addConst` fold, the naming function is injective on the list
-(two elements with the same name coincide — otherwise the second `addConst` would
-clash). -/
+/-- In a successful `addConst` fold, the naming function is injective on the list:
+two elements with the same name coincide. -/
 theorem addConst_foldlM_inj {α} {nm : α → Name} {ci : α → VConstant} :
     ∀ {l : List α} {init final : VEnv},
       l.foldlM (fun (e : VEnv) a => e.addConst (nm a) (ci a)) init = some final →
@@ -317,10 +304,9 @@ theorem _root_.Lean4Lean.VDecl.WF.le {env d env'} (h : VDecl.WF env d env') : en
 
 /-! ### The population invariant -/
 
-/-- The invariant satisfied by every well-formed environment's pattern registry:
-every registered pattern is a `SimplePattern.iota` redex whose recursor head is a
-registered constant (`shape`), and the recursor name determines the recursor's
-spine arity `M` (`arity`). -/
+/-- The pattern-registry invariant of a well-formed environment: every registered
+pattern is a `SimplePattern.iota` redex whose recursor head is a registered constant
+(`shape`), and the recursor name determines the spine arity `M` (`arity`). -/
 structure PatsIota (env : VEnv) : Prop where
   shape : ∀ {p rr}, env.pats p rr →
     ∃ recN M ctorN N c,
@@ -341,9 +327,8 @@ theorem PatsIota.of_le {env env' : VEnv} (H : env.PatsIota)
     rw [hpats] at h1 h2; exact H.arity h1 h2
 
 /-- `PatsIota` is preserved by `addInduct`: freshly-registered ι patterns are
-ι-shaped with the recursor as a new constant (`shape`); old/new recursor names
-cannot collide (fresh vs. already-registered), and distinct new recursor names have
-distinct arities (`arity`). -/
+ι-shaped with the recursor as a new constant, and old/new recursor names cannot
+collide. -/
 theorem PatsIota.induct {env env' : VEnv} {decl : VInductDecl} (H : env.PatsIota)
     (h : env.addInduct decl = some env') : env'.PatsIota := by
   constructor
@@ -404,9 +389,8 @@ theorem WF.pat_app_l {env : VEnv} (H : env.WF) {p p₁ p₂ p₃ p₄ rr} (hp : 
   exact Pattern.not_app_subpattern_varN_const
 
 /-- `Params.pat_app_l_uniq` for `env.pats`: a variable-argument slot of one ι redex's
-recursor spine never intersects another ι redex's recursor spine. The recursor name
-determines the spine arity (`PatsIota.arity`), so a strictly-shorter prefix of the
-same recursor's spine cannot have full length. -/
+recursor spine never intersects another ι redex's recursor spine, since the recursor
+name fixes the spine arity (`PatsIota.arity`). -/
 theorem WF.pat_app_l_uniq {env : VEnv} (H : env.WF) {p r p' r' p₁ p₂ p₁' p₂' p₃}
     (hp : env.pats p r) (hp' : env.pats p' r')
     (hs : Subpattern (.app p₁ p₂) p) (hs' : Subpattern (.app p₁' p₂') p')
@@ -433,48 +417,33 @@ theorem WF.pat_app_l_uniq {env : VEnv} (H : env.WF) {p r p' r' p₁ p₂ p₁' p
       omega
 
 /-- The `Params` structure induced by a well-formed environment `env`, taking the
-abstract reduction relation `Pat` to be `env.pats`.
-
-Three of the structural side conditions are discharged from the pattern population
-invariant `VEnv.PatsIota` (`WF.pat_simple`/`WF.pat_app_l`/`WF.pat_app_l_uniq`); the
-remaining three are `IOTA-TODO`s, each *false* against the current, deliberately
-underspecified declaration/registration predicates (see per-field notes). -/
+abstract reduction relation `Pat` to be `env.pats`. Three side conditions are
+discharged from `VEnv.PatsIota`; the remaining three are `IOTA-TODO`s (see per-field
+notes). -/
 @[reducible] def toParams (env : VEnv) (henv : env.WF) (U : Nat) : Params where
   env := env
   henv := henv
   univs := U
   Pat := env.pats
   pat_simple := fun hp => henv.pat_simple hp
-  -- IOTA-TODO(soundness): the `r ≍ r'` conjunct needs functionality of `env.pats`
-  -- (a pattern determines its reduct), which fails against the current
-  -- `VInductDecl.WF`: two recursor rules with the same `ctor` and `nfields` but
-  -- different `rhs` register the *same* iota pattern with *different* reducts. The
-  -- `p₃ = ctor-spine` case additionally needs `recN ≠ ctorN` where `ctorN = ru.ctor`
-  -- is an unconstrained `Name`. Both need `VInductDecl.WF` strengthened to pin each
-  -- rule's `ctor`/`nfields`/`rhs` to the recursor's actual shape.
+  -- IOTA-TODO(soundness): needs functionality of `env.pats` (a pattern determines its
+  -- reduct), false while `VInductDecl.WF` lets two rules register the same iota pattern
+  -- with different reducts; needs `VInductDecl.WF` to pin each rule's shape.
   pat_uniq := sorry
-  -- `pat_wf` is the genuine content: an `env.pats` reduction is a definitional
-  -- equality. Recover a `Realizes` witness from the abstract `Check.OK` premise
-  -- and feed it to `IsDefEq.pat`.
+  -- `pat_wf` is the genuine content: recover a `Realizes` witness from `Check.OK` and
+  -- feed it to `IsDefEq.pat`.
   pat_wf := fun {p r e m1 m2 Γ A} hpat hmatch hty hok =>
     let ⟨_, hr, hall⟩ := hok.exists_realizer (rel := fun a b t => IsDefEq env U Γ a b t)
     ⟨A, IsDefEq.pat hpat hmatch hty hr hall⟩
   pat_app_l := fun hp hs => henv.pat_app_l hp hs
   pat_app_l_uniq := fun hp hp' hs hs' hv => henv.pat_app_l_uniq hp hp' hs hs' hv
-  -- IOTA-TODO(soundness): needs `recN ≠ ctorN'` where `recN` is a recursor head and
-  -- `ctorN'` is another pattern's constructor head `= ru.ctor`. Since the current
-  -- `VInductDecl.WF` leaves each recursor rule's `ctor` field an unconstrained
-  -- `Name`, `ru.ctor` may equal a recursor name, so this is false as stated. Closing
-  -- it needs `VInductDecl.WF` to require each `ru.ctor` to be an actual constructor
-  -- of the inductive (a registered constant, hence distinct from recursor names).
+  -- IOTA-TODO(soundness): needs `recN ≠ ru.ctor`, false while `VInductDecl.WF` leaves
+  -- `ru.ctor` an unconstrained `Name`; needs it to require `ru.ctor` be an actual
+  -- constructor (hence a registered constant distinct from recursor names).
   pat_app_uniq := sorry
-  -- IOTA-TODO(soundness): `extra_pat` demands every `env.defeqs df` be realised by a
-  -- registered pattern, but `addInduct` registers only `SimplePattern.iota` (ι)
-  -- patterns — never `SimplePattern.defn` (δ) — while `def`/`opaque`/`quot` install
-  -- `.const`-headed defeqs that no `.app`-headed ι pattern can `Matches`. So it is
-  -- false for any env with a `def`/quot. Closing it needs `addDefEq`/`addQuot`/δ-rule
-  -- registration to *also* install `SimplePattern.defn` pats (a separate design
-  -- change to the pattern registry).
+  -- IOTA-TODO(soundness): demands every `env.defeqs df` be realised by a registered
+  -- pattern, but `addInduct` registers only ι patterns, never `SimplePattern.defn` (δ);
+  -- false for any env with a `def`/quot until δ-rule registration also installs `.defn`.
   extra_pat := sorry
 
 end VEnv

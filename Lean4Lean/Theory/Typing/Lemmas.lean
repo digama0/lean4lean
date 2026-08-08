@@ -814,8 +814,7 @@ theorem IsDefEq.forallE_inv'
   | pat _ _ _ _ _ ihe _ =>
     obtain eq | eq := eq
     · exact ihe (.inl eq)
-    -- IOTA-TODO(soundness): forallE-inversion through a pat (ι-)reduction reduct —
-    -- needs that a reduct which is a `forallE` has invertible domain/codomain typing
+    -- IOTA-TODO(soundness): forallE-inversion through a pat (ι-)reduction reduct.
     · exact sorry
   | _ => nomatch eq
 
@@ -860,8 +859,7 @@ theorem IsDefEq.sort_inv'
   | pat _ _ _ _ _ ihe _ =>
     obtain eq | eq := eq
     · exact ihe (.inl eq)
-    -- IOTA-TODO(soundness): sort-inversion through a pat (ι-)reduction reduct —
-    -- needs that a reduct which is a `sort` carries a WF level
+    -- IOTA-TODO(soundness): sort-inversion through a pat (ι-)reduction reduct.
     · exact sorry
   | _ => nomatch eq
 
