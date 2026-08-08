@@ -105,6 +105,13 @@ def ClosedN : VExpr → (k :_:= 0) → Prop
 
 abbrev Closed := ClosedN
 
+instance decClosedN : ∀ (e : VExpr) (k : Nat), Decidable (e.ClosedN k)
+  | .bvar _, _ => inferInstanceAs (Decidable (_ < _))
+  | .sort .., _ | .const .., _ => .isTrue trivial
+  | .app f a, k => @instDecidableAnd _ _ (decClosedN f k) (decClosedN a k)
+  | .lam t b, k => @instDecidableAnd _ _ (decClosedN t k) (decClosedN b (k+1))
+  | .forallE t b, k => @instDecidableAnd _ _ (decClosedN t k) (decClosedN b (k+1))
+
 @[simp] theorem ClosedN.default : ClosedN default k := trivial
 
 theorem ClosedN.mono (h : k ≤ k') (self : ClosedN e k) : ClosedN e k' := by
