@@ -71,20 +71,20 @@ private def deeperSamples : Array Level :=
 
 /--
 info: 'Lean.Level.isEquiv_wf' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
  Level.normalize_eq]
 -/
 #guard_msgs in #print axioms Level.isEquiv_wf
 
 /--
 info: 'Lean.Level.geq_wf' depends on axioms: [propext,
- sorryAx,
  Classical.choice,
  Quot.sound,
  Level.instLawfulBEqLevel,
+ Level.isExplicitSubsumedAux_eq,
  Level.normalize_eq]
 -/
 #guard_msgs in #print axioms Level.geq_wf

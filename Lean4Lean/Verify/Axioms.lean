@@ -126,7 +126,7 @@ purely syntactic trust assumption, checkable by reading the two definitions side
 namespace Total
 
 /-- The structural size of a level, used as the termination measure for `normalize`. -/
-private def size : Level → Nat
+def size : Level → Nat
   | .zero | .param _ | .mvar _ => 1
   | .succ l => size l + 1
   | .max l₁ l₂ => size l₁ + size l₂ + 1
@@ -141,14 +141,14 @@ private def tag (l : Level) : Nat :=
 
 private theorem tag_le (l : Level) : tag l ≤ 1 := by unfold tag; split <;> omega
 
-private theorem one_le_size (l : Level) : 1 ≤ size l := by cases l <;> simp [size]
+theorem one_le_size (l : Level) : 1 ≤ size l := by cases l <;> simp [size]
 
 private theorem getOffsetAux_eq (l : Level) (k) : getOffsetAux l k = getOffsetAux l 0 + k := by
   induction l generalizing k with
   | succ l ih => rw [getOffsetAux, ih (k+1), getOffsetAux, ih 1]; omega
   | _ => simp [getOffsetAux]
 
-private theorem size_getLevelOffset (l : Level) :
+theorem size_getLevelOffset (l : Level) :
     size l.getLevelOffset + l.getOffset = size l := by
   simp only [getOffset]
   induction l with | succ l ih => ?_ | _ => rfl

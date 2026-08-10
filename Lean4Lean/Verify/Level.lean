@@ -1,107 +1,12 @@
 import Lean4Lean.Theory.VLevel
 import Lean4Lean.Level
+import Lean4Lean.Verify.Name
 import Lean4Lean.Verify.LevelStd
 import Lean4Lean.Verify.Axioms
 import Std.Tactic.BVDecide
 import Std.Data.TreeMap.Lemmas
 
 namespace Lean
-
-namespace Name
-open _root_.Std
-
-instance : TransCmp cmp := by
-  have eq_swap {a b : Name} : a.cmp b = (b.cmp a).swap := by
-    induction a generalizing b with obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [cmp]
-    | str a₁ a₂ ih | num a₁ a₂ ih =>
-      rw [ih]; cases b₁.cmp a₁ <;> simp [← OrientedOrd.eq_swap]
-  refine { eq_swap, isLE_trans {a b c} := ?_ }
-  have {α} [Ord α] [TransOrd α] {a₁ b₁ c₁} {a₂ b₂ c₂ : α}
-      (H1 : (cmp a₁ b₁).isLE → (cmp b₁ c₁).isLE → (cmp a₁ c₁).isLE)
-      (H2 : (cmp c₁ a₁).isLE → (cmp a₁ b₁).isLE → (cmp c₁ b₁).isLE)
-      (H3 : (cmp b₁ c₁).isLE → (cmp c₁ a₁).isLE → (cmp b₁ a₁).isLE) :
-      ((cmp a₁ b₁).then (compare a₂ b₂)).isLE →
-      ((cmp b₁ c₁).then (compare b₂ c₂)).isLE →
-      ((cmp a₁ c₁).then (compare a₂ c₂)).isLE := by
-    simp [Ordering.isLE_then_iff_and]
-    intro h1 h2 h3 h4
-    refine have := H1 h1 h3; ⟨this, ?_⟩
-    obtain eq | eq := Ordering.isLE_iff_eq_lt_or_eq_eq.1 this; · exact .inl eq
-    obtain h2 | h2 := h2
-    · rw [@eq_swap c₁, eq, @eq_swap _ a₁, h2] at H3; simp [h3] at H3
-    obtain h4 | h4 := h4
-    · rw [eq_swap, eq, @eq_swap c₁, h4] at H2; simp [h1] at H2
-    exact .inr (TransCmp.isLE_trans h2 h4)
-  refine (?_ : _ ∧ ((cmp c a).isLE → (cmp a b).isLE → (cmp c b).isLE) ∧
-    ((cmp b c).isLE → (cmp c a).isLE → (cmp b a).isLE)).1
-  induction a generalizing b c with
-    obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [cmp] at * <;>
-    obtain _|⟨c₁,c₂⟩|⟨c₁,c₂⟩ := c <;> simp [cmp] at *
-  | str a₁ a₂ ih | num a₁ a₂ ih =>
-    let ⟨h1, h2, h3⟩ := @ih b₁ c₁
-    exact ⟨this h1 h2 h3, this h2 h3 h1, this h3 h1 h2⟩
-
-instance : LawfulBEqCmp cmp where
-  compare_eq_iff_beq {a b} := by
-    simp; refine ⟨?_, fun h => h ▸ ReflCmp.compare_self⟩
-    induction a generalizing b with obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [cmp]
-    | str a₁ a₂ ih | num a₁ a₂ ih =>
-      refine ?_ ∘ Ordering.then_eq_eq.1
-      simp +contextual; exact fun h _ => ih h
-
-instance : TransCmp quickCmp where
-  eq_swap {a b} := by
-    simp [quickCmp]
-    rw [OrientedOrd.eq_swap]
-    cases compare b.hash a.hash <;> simp
-    induction a generalizing b with obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [quickCmpAux]
-    | str a₁ a₂ ih | num a₁ a₂ ih =>
-      rw [OrientedOrd.eq_swap]
-      cases compare b₂ a₂ <;> simp [ih]
-  isLE_trans {a b c} := by
-    have {α} [Ord α] [TransOrd α] {a₁ b₁ c₁ : α} {a₂ b₂ c₂}
-        (H : (quickCmpAux a₂ b₂).isLE → (quickCmpAux b₂ c₂).isLE → (quickCmpAux a₂ c₂).isLE) :
-        ((compare a₁ b₁).then (quickCmpAux a₂ b₂)).isLE →
-        ((compare b₁ c₁).then (quickCmpAux b₂ c₂)).isLE →
-        ((compare a₁ c₁).then (quickCmpAux a₂ c₂)).isLE := by
-      simp [Ordering.isLE_then_iff_and]
-      intro h1 h2 h3 h4
-      refine ⟨TransCmp.isLE_trans h1 h3, ?_⟩
-      refine h2.elim (fun h2 => .inl <| TransCmp.lt_of_lt_of_isLE h2 h3) fun h2 => ?_
-      refine h4.elim (fun h4 => .inl <| TransCmp.lt_of_isLE_of_lt h1 h4) fun h4 => .inr (H h2 h4)
-    apply this
-    induction a generalizing b c with
-      obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [quickCmpAux] at * <;>
-      obtain _|⟨c₁,c₂⟩|⟨c₁,c₂⟩ := c <;> simp [quickCmpAux] at *
-    | str a₁ a₂ ih | num a₁ a₂ ih => apply this ih
-
-instance : LawfulBEqCmp quickCmp where
-  compare_eq_iff_beq {a b} := by
-    simp; refine ⟨fun h => ?_, fun h => h ▸ ReflCmp.compare_self⟩
-    replace h := (Ordering.then_eq_eq.1 h).2; revert h
-    induction a generalizing b with obtain _|⟨b₁,b₂⟩|⟨b₁,b₂⟩ := b <;> simp [quickCmpAux]
-    | str a₁ a₂ ih | num a₁ a₂ ih =>
-      refine ?_ ∘ Ordering.then_eq_eq.1
-      simp +contextual; exact fun _ => ih
-
-end Name
-
-namespace NameSet
-open _root_.Std
-
-theorem contains_insert {s : NameSet} {a b : Name} :
-    (s.insert a).contains b = (a == b || s.contains b) := by
-  have key : (Name.quickCmp a b == Ordering.eq) = (a == b) := by
-    have := @LawfulBEqCmp.compare_eq_iff_beq _ _ Name.quickCmp _ a b
-    cases h : Name.quickCmp a b <;> simp_all
-  have h : (s.insert a).contains b
-      = (Name.quickCmp a b == Ordering.eq || s.contains b) :=
-    Std.TreeSet.contains_insert (t := s) (k := a) (a := b)
-  rw [h, key]
-
-@[simp] theorem contains_empty {a : Name} : (∅ : NameSet).contains a = false := rfl
-
-end NameSet
 
 namespace Level
 open Lean4Lean
@@ -197,12 +102,11 @@ theorem getUndefParam_none {l : Level} (hmv : l.hasMVar' = false) :
     l.getUndefParam Us = none → ∃ u', VLevel.ofLevel Us l = some u' := by
   suffices ∀ s, ((l.forEach (getUndefParam.F Us)).run s).run.snd = none → s = none ∧ _ from
     (this _ · |>.2)
-  have {l} (hmv : l.hasMVar' = false)
-      {g} (H : ∀ {s'}, (g.run s').run.snd = none → s' = none ∧
+  have {l} (hmv : l.hasMVar' = false) {g}
+      (H : ∀ {s'}, (g.run s').run.snd = none → s' = none ∧
         (((getUndefParam.F Us l).run none).run = (true, none) →
           ∃ u', VLevel.ofLevel Us l = some u')) (s) :
-      ((do if (!(← getUndefParam.F Us l)) = true then pure PUnit.unit else g)
-        |>.run s).run.snd = none →
+      ((do if !(← getUndefParam.F Us l) then pure () else g) |>.run s).run.snd = none →
       s = none ∧ ∃ u', VLevel.ofLevel Us l = some u' := by
     simp; split <;> rename_i h
     · simp; revert h
