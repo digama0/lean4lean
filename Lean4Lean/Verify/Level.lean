@@ -266,7 +266,8 @@ theorem NormLevel.addNode_contains_self : (addNode v k path acc).contains path :
   simp [addNode]; split <;> simp
 
 theorem NormLevel.addConst_contains (H : acc.contains x) : (addConst k path acc).contains x := by
-  simp [addConst] at *; split <;> simp [H, Std.TreeMap.mem_modify]
+  simp [addConst] at *; split <;> simp [H, Std.TreeMap.mem_alter]
+  split <;> simp [H]
 
 theorem normalizeAux_contains (H : acc.contains x) : (normalizeAux u path k acc).contains x := by
   unfold normalizeAux; split
@@ -325,8 +326,7 @@ theorem ext_le {n m : Nat} (H : ∀ x, n ≤ x ↔ m ≤ x) : n = m :=
 
 theorem le_ext_le {n m : Nat} (H : ∀ x, n ≤ x → m ≤ x) : m ≤ n := H _ (Nat.le_refl _)
 
-theorem NormLevel.addConst_eval
-    (H : acc.contains path) (le : EvalPaths ls ρ path (acc.eval ls ρ)) :
+theorem NormLevel.addConst_eval (le : EvalPaths ls ρ path (acc.eval ls ρ)) :
     (addConst k path acc).eval ls ρ = max' (acc.eval ls ρ) (evalPath ls ρ path k) := by
   simp [addConst]; split <;> rename_i h
   · obtain rfl | ⟨rfl, _⟩ := h
@@ -336,17 +336,28 @@ theorem NormLevel.addConst_eval
       rw [this, Nat.max_eq_left]; simp [evalPath]; split <;> [rename_i h; simp]
       let ⟨h1, h2⟩ := allNZ_cons.1 h; exact Nat.le_trans h1 (evalPath_le.1 le h2)
   · refine ext_le fun x => ?_
-    rw [← Std.TreeMap.isSome_getElem?_eq_contains, Option.isSome_iff_exists] at H; let ⟨v, H⟩ := H
-    simp [eval_le, Nat.max_le, Std.TreeMap.getElem?_modify, evalPath_le, Node.eval_le, H]
-    refine ⟨fun h1 => ?_, fun ⟨h1, h2⟩ a b => ?_⟩
-    · have := h1 path; simp [Nat.max_le] at this
-      refine ⟨fun a b h3 h4 => ?_, fun h => (this h).1.1⟩
-      specialize h1 a; split at h1
-      · subst a; cases H.symm.trans h3; exact ⟨(this h4).1.2, (this h4).2⟩
-      · exact h1 _ h3 h4
-    · split
-      · subst a; rintro ⟨⟩ nz; simp [Nat.max_le, nz, h2]; exact h1 _ _ H nz
-      · exact h1 _ _
+    simp [eval_le, Nat.max_le, Std.TreeMap.getElem?_alter, evalPath_le, Node.eval_le]
+    refine ⟨fun H => ⟨fun a b h nz => ?_, fun nz => ?_⟩, fun ⟨H1, H2⟩ a b h nz => ?_⟩
+    · -- the bound at every key transfers back, since `alter` only raises the constant
+      have := H a; split at this
+      · subst a; rw [h] at this
+        obtain ⟨hc, hv⟩ := this _ rfl nz
+        exact ⟨Nat.le_trans (Nat.le_max_right ..) hc, hv⟩
+      · exact this _ h nz
+    · -- and it bounds `k`, whether or not `path` was already present
+      have := H path; rw [if_pos rfl] at this; split at this <;>
+        refine Nat.le_trans ?_ ((this _ rfl nz).1) <;>
+        first
+        | exact Nat.le_refl _
+        | exact Nat.le_max_left ..
+    · -- conversely the bound at `path` is the max of the old one and `k`
+      split at h
+      · subst a; split at h <;> cases h
+        · exact ⟨H2 nz, by simp⟩
+        · rename_i n hn
+          obtain ⟨hc, hv⟩ := H1 _ _ hn nz
+          exact ⟨Nat.max_le.2 ⟨H2 nz, hc⟩, hv⟩
+      · exact H1 _ _ h nz
 
 theorem VarNode.addVar_le : (∀ vn ∈ VarNode.addVar v k l, vn.eval ls ρ ≤ x) ↔
     evalParam ls ρ v + k ≤ x ∧ (∀ vn ∈ l, vn.eval ls ρ ≤ x) := by
@@ -386,35 +397,39 @@ theorem NormLevel.addVar_eval (H : acc.contains path) : (addVar v k path acc).ev
     · subst a; cases h; simp_all [VarNode.addVar_le]; grind
     · grind
 
+/-- The invariant threaded through `normalizeAux`: the current path is either the root, which
+`addConst` creates on demand, or already a key of the map, created by an earlier `addNode`.
+`addVar` is only reached in the second case, since it runs only when `path` already contains
+the variable being added. -/
 theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
-    (H : acc.contains path) (le : EvalPaths ls ρ path (acc.eval ls ρ)) :
+    (H : path = [] ∨ acc.contains path) (le : EvalPaths ls ρ path (acc.eval ls ρ)) :
     (normalizeAux u path k acc).eval ls ρ =
     max' (acc.eval ls ρ) (evalPath ls ρ path (u'.eval ρ + k)) := by
   unfold normalizeAux; split
-  · cases hu; simp [NormLevel.addConst_eval H le, VLevel.eval]
+  · cases hu; simp [NormLevel.addConst_eval le, VLevel.eval]
   · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
-    simp [VLevel.eval, Lean.Nat.imax, NormLevel.addConst_eval H le]
+    simp [VLevel.eval, Lean.Nat.imax, NormLevel.addConst_eval le]
   · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
     rw [normalizeAux_eval hu H le, Nat.add_succ, ← Nat.succ_add]; rfl
   · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, hv, rfl⟩ := hu
-    rw [normalizeAux_eval hv (normalizeAux_contains H)] <;> rw [normalizeAux_eval hu H le]
+    rw [normalizeAux_eval hv (H.imp id normalizeAux_contains)] <;> rw [normalizeAux_eval hu H le]
     · rw [Nat.max_assoc, ← evalPath_max, Nat.add_max_add_right]; rfl
     · exact le.max
   · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨_, hv, rfl⟩, rfl⟩ := hu
-    rw [normalizeAux_eval hv (normalizeAux_contains H)] <;> rw [normalizeAux_eval hu H le]
+    rw [normalizeAux_eval hv (H.imp id normalizeAux_contains)] <;> rw [normalizeAux_eval hu H le]
     · rw [Nat.max_assoc, Nat.add_succ, ← Nat.succ_add, ← evalPath_max, Nat.add_max_add_right]; rfl
     · exact le.max
   · rename_i u v w
     simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨_, hv, _, hw, rfl⟩, rfl⟩ := hu
     rw [normalizeAux_eval
-        (by simpa [VLevel.ofLevel] using ⟨_, hu, _, hw, rfl⟩) (normalizeAux_contains H)] <;>
+        (by simpa [VLevel.ofLevel] using ⟨_, hu, _, hw, rfl⟩) (H.imp id normalizeAux_contains)] <;>
       rw [normalizeAux_eval (by simpa [VLevel.ofLevel] using ⟨_, hu, _, hv, rfl⟩) H le]
     · rw [Nat.max_assoc, ← evalPath_max, Nat.add_max_add_right]; simp [VLevel.eval, imax_max]
     · exact le.max
   · rename_i u v w
     simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨_, hv, _, hw, rfl⟩, rfl⟩ := hu
     rw [normalizeAux_eval (by simpa [VLevel.ofLevel] using ⟨_, hv, _, hw, rfl⟩)
-        (normalizeAux_contains H)] <;>
+        (H.imp id normalizeAux_contains)] <;>
       rw [normalizeAux_eval (by simpa [VLevel.ofLevel] using ⟨_, hu, _, hw, rfl⟩) H le]
     · rw [Nat.max_assoc, ← evalPath_max, Nat.add_max_add_right]; simp [VLevel.eval, imax_imax]
     · exact le.max
@@ -422,15 +437,16 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
     simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨hv, rfl⟩, rfl⟩ := hu
     have := @evalPath_orderedInsert ls ρ v path
     split <;> rename_i h <;> simp [h] at this
-    · rw [normalizeAux_eval hu NormLevel.addNode_contains_self] <;>
-        rw [NormLevel.addNode_eval, NormLevel.addConst_eval H le, Nat.max_assoc]
+    · rw [normalizeAux_eval hu (.inr NormLevel.addNode_contains_self)] <;>
+        rw [NormLevel.addNode_eval, NormLevel.addConst_eval le, Nat.max_assoc]
       · rw [Nat.max_assoc, ← evalPath_max, this, evalPath_cons, ← evalPath_max,
           Nat.add_max_add_right]; congr 2
         simp [VLevel.eval, ← evalParam_eq hv, Lean.Nat.imax]
         cases evalParam .. <;> simp [Nat.max_eq_max, Nat.max_comm]
       · refine .insert h (Nat.le_trans ?_ (Nat.le_max_right ..)) le.max
         rw [this, evalPath_cons, ← evalPath_max]; apply evalPath_mono; grind
-    · dsimp; split
+    · have hne : path ≠ [] := by rintro rfl; simp [orderedInsert] at h
+      dsimp; split
       · rw [normalizeAux_eval hu H le]
         simp [evalPath]; split <;> [rename_i nz; simp]
         have hm := (h ▸ mem_orderedInsert).2 (.inl rfl)
@@ -441,7 +457,8 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
         revert this nz; cases evalParam .. <;> simp
         rw [Nat.max_eq_max, Nat.max_comm (a := VLevel.eval ..), ← Nat.add_max_add_right, ← Nat.max_assoc]
         intro h; rw [Nat.max_eq_left (b := _+1+k)]; omega
-      · rw [normalizeAux_eval hu (NormLevel.addVar_contains H)] <;> rw [NormLevel.addVar_eval H]
+      · rw [normalizeAux_eval hu (H.imp id NormLevel.addVar_contains)] <;>
+          rw [NormLevel.addVar_eval (H.resolve_left hne)]
         · rw [Nat.max_assoc, ← evalPath_max, Nat.add_max_add_right, this,
             evalPath_cons, evalPath_cons]; congr 2; split <;> simp [VLevel.eval, Lean.Nat.imax]
           rename_i h; revert h; simp [← evalParam_eq hv]
@@ -452,10 +469,11 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
   · rename_i v; simp [VLevel.ofLevel] at hu; obtain ⟨hv, rfl⟩ := hu
     have := @evalPath_orderedInsert ls ρ v path
     split <;> rename_i h <;> simp [h] at this
-    · rw [NormLevel.addNode_eval, NormLevel.addConst_eval H le, Nat.max_assoc,
+    · rw [NormLevel.addNode_eval, NormLevel.addConst_eval le, Nat.max_assoc,
         this, evalPath_cons, ← evalPath_max]
       simp [VLevel.eval, ← evalParam_eq hv]; congr 2; split <;> simp; omega
-    · split
+    · have hne : path ≠ [] := by rintro rfl; simp [orderedInsert] at h
+      split
       · simp [evalPath]; split <;> [rename_i nz; simp]
         have hm := (h ▸ mem_orderedInsert).2 (.inl rfl)
         have ⟨p1, p2, a1, a2, a3, a4⟩ := le.of_mem hm
@@ -463,7 +481,7 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
         simp [allNZ] at nz; specialize nz _ hm
         simp [VLevel.eval, ← evalParam_eq hv]
         revert this nz; cases evalParam .. <;> simp; omega
-      · rw [NormLevel.addVar_eval H, this, evalPath_cons, evalPath_cons]
+      · rw [NormLevel.addVar_eval (H.resolve_left hne), this, evalPath_cons, evalPath_cons]
         congr 2; split <;> simp [VLevel.eval, ← evalParam_eq hv]
 
 theorem NormLevel.subsumption_eval {s : NormLevel} :
@@ -473,7 +491,7 @@ theorem NormLevel.subsumption_eval {s : NormLevel} :
 theorem normalize_eval (hu : VLevel.ofLevel ls u = some u') :
     (normalize u).eval ls ρ = u'.eval ρ := by
   simp [normalize, NormLevel.subsumption_eval]
-  exact normalizeAux_eval hu (by simp) .nil
+  exact normalizeAux_eval hu (.inl rfl) .nil
 
 theorem Node.eval_congr {a b : Node} (H : a == b) : a.eval ls ρ = b.eval ls ρ := by
   simp +instances [instBEqNode] at H; simp [H, eval]

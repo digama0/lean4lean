@@ -38,13 +38,10 @@ structure VarNode where
   offset : Nat
   deriving BEq, Ord, Repr
 
-/-- An key-value pair `vs => { path, const, var }` in NormLevel represents
+/-- A key-value pair `vs => { const, var }` in NormLevel represents
 the max of `C(vs, const)` and `V(vs, v, n)` for each `v+n ∈ var`, using the `C` and `V` sublevel
-functions from <https://lmf.cnrs.fr/downloads/Perso/long.pdf>.
-The `path` assists in ensuring the invariant that for each suffix `vs' <:+ path`,
-`vs'` is also in the `NormLevel` map. -/
+functions from <https://lmf.cnrs.fr/downloads/Perso/long.pdf>. -/
 structure Node where
-  path : List Name := []
   const : Nat := 0
   var : List VarNode := []
   deriving Repr, Inhabited
@@ -53,6 +50,8 @@ instance : BEq Node where
   beq n₁ n₂ := n₁.const == n₂.const && n₁.var == n₂.var
 instance : Ord Node where
   compare n₁ n₂ := compare n₁.const n₂.const |>.then <| compare n₁.var n₂.var
+
+def Node.isEmpty (n : Node) : Bool := n.const == 0 && n.var.isEmpty
 
 def subset (cmp : α → α → Ordering) : List α → List α → Bool
   | [], _ => true
@@ -97,7 +96,9 @@ def NormLevel.addNode (v : Name) (k : Nat) (path' : List Name) (s : NormLevel) :
 
 def NormLevel.addConst (k : Nat) (path : List Name) (acc : NormLevel) : NormLevel :=
   if k = 0 || k = 1 && !path.isEmpty then acc else
-  acc.modify path fun n => { n with const := k.max n.const }
+  acc.alter path fun
+    | none => some { const := k }
+    | some n => some { n with const := k.max n.const }
 
 def normalizeAux (l : Level) (path : List Name) (k : Nat) (acc : NormLevel) : NormLevel :=
   match l with
@@ -128,67 +129,110 @@ def subsumeVars : List VarNode → List VarNode → List VarNode
     | .eq => if x.offset ≤ y.offset then subsumeVars xs ys else x :: subsumeVars xs ys
     | .gt => subsumeVars (x :: xs) ys
 
-def findParent (f : List Name → Bool) : (l₁ l₂ : List Name) → List Name
-  | _, [] => []
-  | l₁, a :: l₂ => if f (l₁.reverseAux l₂) then [a] else findParent f (a :: l₁) l₂
+/-- Remove from `n₁` the sublevels dominated by `n₂`, whose condition set is a subset of
+`n₁`'s: `C(c)` is dominated by `C(c')` when `c ≤ c'` and by `V(x+k)` when `c ≤ k + 1`, and
+`V(x+k)` is dominated by `V(x+k')` when `k ≤ k'`.
 
-def NormLevel.subsumption (acc : NormLevel) (paths := false) : NormLevel :=
+`same` says the two sit at the *same* condition set, where a variable may still discharge the
+constant but the variables must not discharge themselves. -/
+def Node.subsumeBy (same : Bool) (n₁ n₂ : Node) : Node :=
+  let n₁ :=
+    if n₁.const = 0 ||
+      (same || n₁.const > n₂.const) &&
+      (n₂.var.isEmpty || n₁.const > n₂.var.foldl (·.max ·.offset) 0 + 1)
+    then n₁ else { n₁ with const := 0 }
+  if same || n₂.var.isEmpty then n₁ else { n₁ with var := subsumeVars n₁.var n₂.var }
+
+/-- Remove the parts of the sublevels at `(p₁, n₁)` that are dominated by the sublevels
+at `(p₂, n₂)`. -/
+def Node.subsume (p₁ : List Name) (n₁ : Node) (p₂ : List Name) (n₂ : Node) : Node :=
+  if subset compare p₂ p₁ then n₁.subsumeBy (p₁.length == p₂.length) n₂ else n₁
+
+/-- Remove the parts of the sublevels at `(p₁, n₁)` dominated by other entries of the map. -/
+def NormLevel.minimize (acc : NormLevel) (p₁ : List Name) (n₁ : Node) : Node :=
+  acc.foldl (init := n₁) (Node.subsume p₁)
+
+def NormLevel.subsumption (acc : NormLevel) : NormLevel :=
   acc.foldl (init := acc) fun acc p₁ n₁ =>
-    let n₁ := acc.foldl (init := n₁) fun n₁ p₂ n₂ =>
-      if !subset compare p₂ p₁ then n₁ else
-      let same := p₁.length == p₂.length
-      let n₁ :=
-        if n₁.const = 0 ||
-          (same || n₁.const > n₂.const) &&
-          (n₂.var.isEmpty || n₁.const > n₁.var.foldl (·.max ·.offset) 0 + 1)
-        then n₁ else { n₁ with const := 0 }
-      if same || n₂.var.isEmpty then n₁ else { n₁ with var := subsumeVars n₁.var n₂.var }
-    let n₁ := if paths then
-      let path := findParent acc.contains [] p₁
-      let var := if let [v] := path then subsumeVars n₁.var [⟨v, 0⟩] else n₁.var
-      { n₁ with path, var }
-    else n₁
-    acc.insert p₁ n₁
+    let n := acc.minimize p₁ n₁
+    if n.isEmpty then acc.erase p₁ else acc.insert p₁ n
 
-def normalize (l : Level) (paths := false) : NormLevel :=
-  Normalize.normalizeAux l [] 0 (.insert {} [] default) |>.subsumption paths
+def normalize (l : Level) : NormLevel :=
+  Normalize.normalizeAux l [] 0 {} |>.subsumption
 
-def leVars : List VarNode → List VarNode → Bool
-  | [], _ => true
-  | _, [] => false
-  | x :: xs, y :: ys =>
-    match Name.cmp x.var y.var with
-    | .lt => false
-    | .eq => x.offset ≤ y.offset && leVars xs ys
-    | .gt => leVars (x :: xs) ys
+/-- Sublevel comparison, following Theorem 39 of the paper: `l₁ ≤ l₂` iff every sublevel
+of `l₁` is dominated by some sublevel of `l₂`, where
+`C(E, L) ≤ C(F, K) ↔ F ⊆ E ∧ L ≤ K`, `C(E, L) ≤ V(F, x, K) ↔ F ⊆ E ∧ L ≤ K + 1`,
+and `V(E, x, L) ≤ V(F, y, K) ↔ F ⊆ E ∧ x = y ∧ L ≤ K`.
 
+Each sublevel picks its own dominator, and a node bundles several of them, so it is not
+enough to look for a single entry of `l₂` dominating a whole node of `l₁`: for
+`imax 2 v ≤ max 2 v` the constant is dominated at `∅` and the variable at `{v}`. Instead
+each entry of `l₂` discharges what it can from the sublevels of `n₁` that are still
+outstanding, which is the same `subsumeBy` step minimization uses; the node is dominated
+once nothing is left, and the fold stops there. -/
 def NormLevel.le (l₁ l₂ : NormLevel) : Bool :=
   l₁.all fun p₁ n₁ =>
-    if n₁.const = 0 && n₁.var.isEmpty then true else
-    l₂.any fun p₂ n₂ =>
-      (!n₂.var.isEmpty || n₁.var.isEmpty) &&
-      subset compare p₂ p₁ &&
-      (n₁.const ≤ n₂.const || n₂.var.any (n₁.const ≤ ·.offset + 1)) &&
-      leVars n₁.var n₂.var
+    -- `none` means nothing is left to discharge, which stops the fold
+    Option.isNone <| l₂.foldlM (init := n₁) (m := Option) fun n p₂ n₂ =>
+      if subset compare p₂ p₁ then
+        let n := n.subsumeBy false n₂
+        if n.isEmpty then none else some n
+      else some n
 
-def NormLevel.buildPaths : StateM NormLevel Unit := do
-  (← get).foldlM (init := ()) fun _ p _ => do
-    let n := (← get).get! p
-    if let [v] := n.path then
-      let l ← getPath (p.erase v) p.length
-      setPath p (v :: l)
+/-!
+Reconstruction of a `Level` from a `NormLevel`.
+
+The paper's canonical form is a set of sublevels `C(S, k)`, `V(S, v+k)`; it does not address
+which such sets are expressible as level expressions. Reifying a sublevel with conditions `S`
+requires nesting it under an imax chain `imax (… imax (imax (_) v₁) …) vₙ` where
+`{v₁, …, vₙ} = S`, and each edge of such a chain itself contributes the sublevel
+`V(S', vᵢ, 0)` where `S'` is the set of conditions up to that point. So a chain order is
+admissible only if each such edge contribution is dominated by the canonical form, i.e.
+there is some `V(T, vᵢ+k)` with `T ⊆ S'` among the sublevels. Canonical forms produced by
+`normalizeAux` always admit at least one such order for every key
+(each key is the condition set of some `imax` chain suffix of the input, whose edges put
+the required `V` entries at subsets of the key, and subsumption only moves coverage to
+smaller sets).
+
+To make the output canonical, the choice of chain must depend only on the canonical
+sublevels, not on incidental map keys (which record which `imax` chains appeared
+syntactically in the input). For each key we take the lexicographically least admissible
+chain, computed greedily. This is well-defined: domination of `V(S', v, 0)` is monotone
+in `S'`, so extending the set of conditions added so far never invalidates other elements,
+and a greedy choice never needs to be revisited (checking that the remainder stays
+completable before committing to each element). -/
+
+/-- Is the edge contribution `V(acc ∪ {a}, a, 0)` dominated by the normal form?
+True iff some `V(T, a+k)` with `T ⊆ acc ∪ {a}` is present. -/
+def NormLevel.addable (s : NormLevel) (a : Name) (acc : List Name) : Bool :=
+  s.any fun p n => n.var.any (·.var == a) && subset compare (p.erase a) acc
+
+/-- Can the elements of `rem` be added to the condition set `acc` one at a time, each
+addition being `addable` at that point? Since `addable` is monotone in `acc`, adding any
+addable element preserves completability, so a greedy check is complete. -/
+def NormLevel.feasible (s : NormLevel) (acc rem : List Name) : Bool :=
+  go rem.length acc rem
 where
-  setPath (p path : List Name) : StateM NormLevel Unit :=
-    modify (·.modify p ({ · with path }))
+  go : Nat → List Name → List Name → Bool
+  | 0, _, rem => rem.isEmpty
+  | fuel+1, acc, rem =>
+    match rem.find? (s.addable · acc) with
+    | none => rem.isEmpty
+    | some a => go fuel ((orderedInsert Name.cmp a acc).getD acc) (rem.erase a)
 
-  getPath (p : List Name) (depth : Nat) : StateM NormLevel (List Name) := do
-    let n := (← get).get! p
-    if let [v] := n.path then
-      if let depth + 1 := depth then
-        let l ← getPath (p.erase v) depth
-        setPath p (v :: l)
-        return v :: l
-    return n.path
+/-- The lexicographically least admissible imax chain building the condition set `p`,
+listed innermost (last-added) first: at each step, remove the least element that is
+`addable` on top of the rest and whose remainder is still completable.
+This depends only on the sublevels of `s`, not on its key set, so equal normal forms
+reify to equal levels. (The fallback returns the remaining set in sorted order;
+it is not reachable for normal forms produced by `normalizeAux`.) -/
+def NormLevel.lexChain (s : NormLevel) : Nat → List Name → List Name
+  | 0, p => p
+  | fuel+1, p =>
+    match p.find? fun a => s.addable a (p.erase a) && s.feasible [] (p.erase a) with
+    | some a => a :: s.lexChain fuel (p.erase a)
+    | none => p
 
 structure Tree where
   const : Nat
@@ -210,22 +254,17 @@ def Tree.modify (path : List Name) (f : Tree → Tree) (t : Tree) : Tree :=
   | a :: p => modify p (t := t) fun t => { t with child := modifyAt f a t.child }
 
 def NormLevel.toTree (acc : NormLevel) : Tree :=
-  (buildPaths.run acc).run.2.foldl (init := ⟨0, [], []⟩) fun t _ n =>
-    t.modify n.path fun t => { t with const := n.const, var := n.var }
-
-def treeVarDedup : List VarNode → List (Name × Tree) → List VarNode
-  | [], _ => []
-  | xs, [] => xs
-  | x :: xs, y :: ys =>
-    match Name.cmp x.1 y.1 with
-    | .lt => x :: treeVarDedup xs (y :: ys)
-    | .eq => if x.2 = 0 then treeVarDedup xs ys else x :: treeVarDedup xs ys
-    | .gt => treeVarDedup (x :: xs) ys
+  acc.foldl (init := ⟨0, [], []⟩) fun t p n =>
+    let path := acc.lexChain p.length p
+    -- the edge into this tree node already contributes `V(p, v, 0)` for the innermost
+    -- chain element `v`, so an explicit `v+0` entry would be redundant
+    let var := if let v :: _ := path then subsumeVars n.var [⟨v, 0⟩] else n.var
+    t.modify path fun t => { t with const := n.const, var }
 
 def Tree.reify : Tree → Level
   | { const, var, child } =>
     let l := child.foldr mkChild none
-    let l := (treeVarDedup var child).foldr (init := l) fun n r =>
+    let l := var.foldr (init := l) fun n r =>
       some (mkMax (addOffset (.param n.var) n.offset) r)
     match l with
     | none => ofNat const
@@ -242,7 +281,7 @@ where
 
 end Normalize
 
-def normalize' (l : Level) : Level := (Normalize.normalize l (paths := true)).toTree.reify
+def normalize' (l : Level) : Level := (Normalize.normalize l).toTree.reify
 
 def isEquiv' (u v : Level) : Bool := u == v || Normalize.normalize u == Normalize.normalize v
 
@@ -266,7 +305,7 @@ def geq' (u v : Level) : Bool := (Normalize.normalize v).le (Normalize.normalize
 -- #guard_msgs in normalize max u 1
 -- /-- info: u -/
 -- #guard_msgs in normalize imax 1 u
--- /-- info: max 1 (imax (u+1) u) -/
+-- /-- info: max 1 (imax (u + 1) u) -/
 -- #guard_msgs in normalize u+1
 -- /-- info: imax 2 u -/
 -- #guard_msgs in normalize imax 2 u
@@ -276,7 +315,7 @@ def geq' (u v : Level) : Bool := (Normalize.normalize v).le (Normalize.normalize
 -- #guard_msgs in normalize max (imax (imax u v) w) (imax (imax u w) v)
 -- /-- info: u -/
 -- #guard_msgs in normalize imax u u
--- /-- info: max 1 (imax (u+1) u) -/
+-- /-- info: max 1 (imax (u + 1) u) -/
 -- #guard_msgs in normalize imax u (u+1)
--- /-- info: max 1 (imax (max (v+1) (imax (u+1) u)) v) -/
+-- /-- info: max 1 (imax (max (v + 1) (imax (u + 1) u)) v) -/
 -- #guard_msgs in normalize imax u v + 1
