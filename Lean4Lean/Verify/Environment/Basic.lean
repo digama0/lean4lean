@@ -106,7 +106,7 @@ re-deriving `addInduct`'s internal steps, it bakes the theory result: `env_eq`
 records the whole `env₁.addInduct decl` and `cis` lists the registered constant
 infos with their model constants. `.safe` is hardcoded as in `AddQuot`; the
 `rec_find` field is what ties a kernel recursor lookup to the `addInduct_pat`
-ι-rule. -/
+ι-rule, down to the telescope split and the translation of each rule's reduct. -/
 structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     (m₂ : ConstMap) (env₂ : VEnv) where
   cis : List (ConstantInfo × VConstant)
@@ -121,8 +121,11 @@ structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
     m₁.find? recName = some (.recInfo rval) ∨
     ∃ r ∈ decl.recs,
       r.name = recName ∧ r.getMajorIdx = rval.getMajorIdx ∧ r.numParams = rval.numParams ∧
+      r.numMotives = rval.numMotives ∧ r.numMinors = rval.numMinors ∧
+      r.numIndices = rval.numIndices ∧
       ∀ rule ∈ rval.rules, ∃ ru ∈ r.rules,
-        ru.ctor = rule.ctor ∧ ru.nfields = rule.nfields ∧ ru.rhs.Closed
+        ru.ctor = rule.ctor ∧ ru.nfields = rule.nfields ∧ ru.rhs.Closed ∧
+        TrExprS env₂ rval.levelParams [] rule.rhs ru.rhs
   value_find : ∀ {name : Name} {ci : ConstantInfo} {v : Expr},
     m₂.find? name = some ci → ci.deltaValue? = some v → m₁.find? name = some ci
 
