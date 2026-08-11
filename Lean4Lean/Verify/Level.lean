@@ -3363,8 +3363,8 @@ end Normalize
 theorem isEquiv'_wf (h : isEquiv' u v)
     (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : u' ≈ v' := by
   simp only [isEquiv', Bool.or_eq_true, beq_iff_eq] at h
-  obtain rfl | h := h
-  · cases hu.symm.trans hv; rfl
+  obtain h | h := h
+  · exact isEquiv_wf h hu hv
   · refine VLevel.equiv_def.2 fun ρ => ?_
     rw [← Normalize.normalize_eval (ρ := ρ) hu, ← Normalize.normalize_eval (ρ := ρ) hv]
     exact Normalize.NormLevel.eval_congr h
@@ -3382,9 +3382,12 @@ theorem normalize'_eval (hu : VLevel.ofLevel ls u = some u') :
 
 theorem geq'_wf (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v')
     (h : geq' u v) : v' ≤ u' := by
-  intro ρ
-  rw [← Normalize.normalize_eval (ρ := ρ) hv, ← Normalize.normalize_eval (ρ := ρ) hu]
-  exact Normalize.NormLevel.le_eval Normalize.normalize_vars h
+  simp only [geq', Bool.or_eq_true] at h
+  obtain h | h := h
+  · exact geq_wf h hu hv
+  · intro ρ
+    rw [← Normalize.normalize_eval (ρ := ρ) hv, ← Normalize.normalize_eval (ρ := ρ) hu]
+    exact Normalize.NormLevel.le_eval Normalize.normalize_vars h
 
 theorem isEquivList_wf (H : Level.isEquivList us vs) :
     List.mapM (VLevel.ofLevel Us) us = some us' →
@@ -3412,8 +3415,8 @@ normal forms are reduced (`subsumption_reduced`), mutually dominate each other's
 (`separation`), and reduced forms with the same sublevels are the same map. -/
 theorem isEquiv'_complete (hu : VLevel.ofLevel ls u = some u')
     (hv : VLevel.ofLevel ls v = some v') : isEquiv' u v ↔ u' ≈ v' := by
-  simp [isEquiv', Normalize.normalize_complete hu hv]
-  rintro rfl; cases hu.symm.trans hv; exact rfl
+  simp only [isEquiv', Bool.or_eq_true, Normalize.normalize_complete hu hv]
+  exact ⟨fun h => h.elim (fun h => isEquiv_wf h hu hv) id, .inr⟩
 
 /-- Completeness of `geq'`: every valid semantic inequality is accepted. Every sublevel of
 `normalize v` is semantically bounded by `normalize u`, hence syntactically dominated by one
@@ -3423,6 +3426,8 @@ theorem geq'_complete (hu : VLevel.ofLevel ls u = some u')
     (hv : VLevel.ofLevel ls v = some v') : geq' u v ↔ v' ≤ u' := by
   open Normalize in
   refine ⟨geq'_wf hu hv, fun h => ?_⟩
+  simp only [geq', Bool.or_eq_true]
+  refine .inr ?_
   refine NormLevel.le_complete normalize_sortedVars normalize_sortedVars normalize_nonempty
     normalize_sorted normalize_sorted ?_
   refine NormLevel.separation (normalize_keys hv) normalize_vars fun ρ => ?_
