@@ -317,6 +317,9 @@ unsafe def replayFromFresh (module : Name)
     (fuel : Lean4Lean.FuelConfig := {}) : IO Nat := do
   Lean.withImportModules #[module] {} (trustLevel := 0) fun env => do
     let ctx := { newConstants := env.constants.map₁, verbose, compare, checkQuot := false, fuel }
-    Prod.fst <$> replay ctx (.empty module) decl
+    -- `stage₁ := false` is very important here: while a declaration is being added
+    -- the environment is also held by the replay state, so the map is shared and `stage₁ := true`
+    -- would lead to quadratic performance.
+    Prod.fst <$> replay ctx (.empty module (stage₁ := false)) decl
 
 end Lean4Lean.Replay

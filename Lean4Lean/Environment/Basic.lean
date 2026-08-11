@@ -62,9 +62,9 @@ def checkName (env : Environment) (n : Name)
 open private subsumesInfo Kernel.Environment.mk EnvironmentHeader.mk moduleNames
   moduleNameMap parts toEffectiveImport getData? from Lean.Environment
 
-def empty (mainModule : Name) (trustLevel : UInt32 := 0) : Environment :=
+def empty (mainModule : Name) (stage₁ := false) (trustLevel : UInt32 := 0) : Environment :=
   Kernel.Environment.mk
-    (constants := {})
+    (constants := { stage₁ })
     (quotInit := false)
     (diagnostics := {})
     (const2ModIdx := {})
