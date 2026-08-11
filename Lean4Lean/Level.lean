@@ -261,23 +261,41 @@ def NormLevel.toTree (acc : NormLevel) : Tree :=
     let var := if let v :: _ := path then subsumeVars n.var [⟨v, 0⟩] else n.var
     t.modify path fun t => { t with const := n.const, var }
 
+/-- If the subtree behind an edge labelled `a` holds nothing but the sublevel `V(_, a, k)`,
+return `k`.
+
+Such an edge contributes `imax (a+k) a`, which differs from the plain `a+k` only at `a = 0`,
+where the plain form gives `k` instead of `0`. So the guard may be dropped, and the child
+written as just `a+k`, whenever the node's constant is at least `k` — and if the constant is
+*exactly* `k`, it may then be dropped itself, since `a+k ≥ k`. Without this, `u+1` would reify
+to `max 1 (imax (u+1) u)` rather than to itself, and the canonical form would be roughly twice
+the size of the input on typical levels. -/
+def Tree.plainOffset? (a : Name) : Tree → Option Nat
+  | ⟨0, [], []⟩ => some 0
+  | ⟨0, [v], []⟩ => if v.var == a then some v.offset else none
+  | _ => none
+
 def Tree.reify : Tree → Level
   | { const, var, child } =>
-    let l := child.foldr mkChild none
+    let l := child.foldr (mkChild const) none
     let l := var.foldr (init := l) fun n r =>
       some (mkMax (addOffset (.param n.var) n.offset) r)
     match l with
     | none => ofNat const
-    | some l => if const = 0 then l else max (ofNat const) l
+    | some l =>
+      if const == 0 || child.any fun c => plainOffset? c.1 c.2 == some const then l
+      else max (ofNat const) l
 where
   mkMax (l : Level) : Option Level → Level
   | none => l
   | some u => max l u
-  mkChild
+  mkChild (const : Nat)
   | (n, t), r =>
-    match reify t with
-    | .zero => mkMax (.param n) r
-    | t => mkMax (imax t (.param n)) r
+    match plainOffset? n t with
+    | some k =>
+      if k ≤ const then mkMax (addOffset (.param n) k) r
+      else mkMax (imax (reify t) (.param n)) r
+    | none => mkMax (imax (reify t) (.param n)) r
 
 end Normalize
 

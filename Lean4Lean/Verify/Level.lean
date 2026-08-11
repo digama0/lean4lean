@@ -1356,35 +1356,91 @@ theorem eval_varFold (var : List VarNode) (o : Option Level) :
   simp only [List.foldr_cons, evalOpt_some, eval_mkMax, eval_addOffset, Level.eval, ih,
     Node.eval_cons, VarNode.eval]; omega
 
+/-- The two shapes `plainOffset?` accepts. -/
+theorem Tree.plainOffset?_eq {a : Name} {t : Tree} {k : Nat} (h : plainOffset? a t = some k) :
+    t = ⟨0, [], []⟩ ∧ k = 0 ∨ t = ⟨0, [⟨a, k⟩], []⟩ := by
+  unfold plainOffset? at h
+  split at h
+  · exact .inl ⟨rfl, by simpa using h.symm⟩
+  · rename_i v _
+    split at h <;> [skip; cases h]
+    cases h; rename_i hv
+    exact .inr (by rw [← eq_of_beq hv])
+  · cases h
+
+/-- Dropping the `imax` guard of a plain child is exact modulo the node's constant: the two
+differ only when the edge variable is zero, where the plain form contributes `k ≤ const`. -/
+theorem Tree.plainOffset?_eval {a : Name} {t : Tree} {k const : Nat}
+    (h : plainOffset? a t = some k) (hk : k ≤ const) :
+    max' const (Lean.Nat.imax (eval ls ρ t) (evalParam ls ρ a)) =
+    max' const (evalParam ls ρ a + k) := by
+  obtain ⟨rfl, rfl⟩ | rfl := plainOffset?_eq h
+  · rw [show eval ls ρ ⟨0, [], []⟩ = 0 from by simp [eval, evalChild, Node.eval],
+      imax_zero_left]
+    omega
+  · rw [show eval ls ρ ⟨0, [⟨a, k⟩], []⟩ = evalParam ls ρ a + k from by
+      simp [eval, evalChild, Node.eval, VarNode.eval], imax_eq_ite]
+    split <;> omega
+
+/-- A child emitted plainly at exactly the node's constant makes that constant redundant. -/
+theorem Tree.reifyChild_ge {const : Nat} : ∀ child : List (Name × Tree),
+    (child.any fun c => plainOffset? c.1 c.2 == some const) →
+    const ≤ evalOpt (evalParam ls ρ) μ (child.foldr (reify.mkChild const) none)
+  | (n, t) :: child, h => by
+    rw [List.foldr_cons, reify.mkChild]
+    simp only [List.any_cons, Bool.or_eq_true, beq_iff_eq] at h
+    -- either this child is the witness, in which case it is emitted as `n + const`, or the
+    -- witness is further down and the fold maxes its value in
+    obtain h | h := h
+    · rw [h]; dsimp only; rw [if_pos (Nat.le_refl const)]
+      simp only [evalOpt_some, eval_mkMax, eval_addOffset, Level.eval]
+      omega
+    · have ih := reifyChild_ge (ls := ls) (ρ := ρ) (μ := μ) child h
+      split <;> [split; skip] <;>
+        simp only [evalOpt_some, eval_mkMax] <;> omega
+
 mutual
 
 theorem Tree.reify_eval (t : Tree) : t.reify.eval (evalParam ls ρ) μ = t.eval ls ρ := by
   obtain ⟨const, var, child⟩ := t
   rw [eval]
   simp only [reify]
-  have h1 := eval_varFold (ls := ls) (ρ := ρ) (μ := μ) var (child.foldr reify.mkChild none)
-  rw [reifyChild_eval] at h1
+  have h1 := eval_varFold (ls := ls) (ρ := ρ) (μ := μ) var
+    (child.foldr (reify.mkChild const) none)
+  have hc := reifyChild_eval (ls := ls) (ρ := ρ) (μ := μ) const child
   rw [Node.eval_const (c := const)]
   split <;> [rename_i heq; rename_i l heq]
   · rw [heq, evalOpt_none] at h1
     rw [eval_ofNat]; omega
   · rw [heq, evalOpt_some] at h1
-    split
-    · subst const; omega
-    · simp only [Level.eval, eval_ofNat, h1]; exact (Nat.max_assoc ..).symm
+    split <;> rename_i hd
+    · -- the constant is dropped: either it is zero, or some child already covers it
+      simp only [Bool.or_eq_true, beq_iff_eq] at hd
+      rw [h1]
+      obtain rfl | hd := hd
+      · omega
+      · have := Tree.reifyChild_ge (ls := ls) (ρ := ρ) (μ := μ) (const := const) child hd
+        omega
+    · simp only [Level.eval, eval_ofNat, h1, Nat.max_eq_max]; omega
 
-theorem Tree.reifyChild_eval (child : List (Name × Tree)) :
-    evalOpt (evalParam ls ρ) μ (child.foldr reify.mkChild none) = evalChild ls ρ child := by
+theorem Tree.reifyChild_eval (const : Nat) (child : List (Name × Tree)) :
+    max' const (evalOpt (evalParam ls ρ) μ (child.foldr (reify.mkChild const) none)) =
+    max' const (evalChild ls ρ child) := by
   match child with
   | [] => rfl
   | (n, t) :: child =>
     rw [List.foldr_cons, evalChild, reify.mkChild]
     have ht := reify_eval (ls := ls) (ρ := ρ) (μ := μ) t
-    have ih := reifyChild_eval (ls := ls) (ρ := ρ) (μ := μ) child
-    split <;> rename_i h
-    · rw [h] at ht
-      simp only [evalOpt_some, eval_mkMax, Level.eval, ih, ← ht, imax_zero_left]
-    · simp only [evalOpt_some, eval_mkMax, Level.eval, ih, ht]
+    have ih := reifyChild_eval (ls := ls) (ρ := ρ) (μ := μ) const child
+    split <;> rename_i k h
+    · split <;> rename_i hk
+      · have hp := Tree.plainOffset?_eval (ls := ls) (ρ := ρ) h hk
+        simp only [evalOpt_some, eval_mkMax, eval_addOffset, Level.eval] at *
+        omega
+      · simp only [evalOpt_some, eval_mkMax, Level.eval, ht] at *
+        omega
+    · simp only [evalOpt_some, eval_mkMax, Level.eval, ht] at *
+      omega
 
 end
 

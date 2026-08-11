@@ -49,17 +49,31 @@ universe u v w
 #guard_msgs in normalize max u 1
 /-- info: u -/
 #guard_msgs in normalize imax 1 u
-/-- info: max 1 (imax (u + 1) u) -/
-#guard_msgs in normalize u+1
 /-- info: imax 2 u -/
 #guard_msgs in normalize imax 2 u
+
+-- Constant absorption (`Tree.plainOffset?`): the sublevel `V({u}, u, 1)` is reified as the
+-- plain `u+1` rather than the guarded `imax (u+1) u`, because the node's constant `1` covers
+-- what the plain form contributes at `u = 0`; the constant is then redundant and dropped.
+-- Without this every offset in the input doubles the size of its normal form.
+/-- info: u + 1 -/
+#guard_msgs in normalize u+1
+/-- info: max u (v + 1) -/
+#guard_msgs in normalize max u (v+1)
+-- the constant survives when no variable's offset reaches it
+/-- info: max 2 (u + 1) -/
+#guard_msgs in normalize max 2 (u+1)
+-- and the guard survives when the constant (here 0) does not cover the offset, as it must:
+-- `u+2` is 2 at `u = 0`, where the level is 0
+/-- info: imax (u + 2) u -/
+#guard_msgs in normalize imax (u+2) u
 /-- info: max v (imax (imax u v) w) -/
 #guard_msgs in normalize max w (imax (imax u w) v)
 /-- info: max v (imax (imax u v) w) -/
 #guard_msgs in normalize max (imax (imax u v) w) (imax (imax u w) v)
 /-- info: u -/
 #guard_msgs in normalize imax u u
-/-- info: max 1 (imax (u + 1) u) -/
+/-- info: u + 1 -/
 #guard_msgs in normalize imax u (u+1)
 /-- info: max 1 (imax (max (v + 1) (imax (u + 1) u)) v) -/
 #guard_msgs in normalize imax u v + 1
