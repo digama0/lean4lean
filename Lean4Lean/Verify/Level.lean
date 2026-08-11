@@ -2190,6 +2190,1022 @@ theorem NormLevel.toTree_eval {s : NormLevel} (hsort : ∀ p n, s.get? p = some 
     obtain ⟨-, hadm⟩ := lexChain_spec hsort (Nat.le_refl _) (hsort _ _ hp) (hfeas _ hcon)
     exact Nat.le_trans (hadm.suffix hq).le (NormLevel.eval_le.2 H)
 
+/-!
+### Completeness
+
+`geq'` and `isEquiv'` are not only sound but complete: `NormLevel.le` detects every semantic
+inequality between normal forms, and semantically equal levels have equal normal forms. The
+key is a converse to Theorem 39 (`NormLevel.le_eval`): evaluating at a valuation tailored to
+a single sublevel shows that a semantic bound forces a syntactic dominator among the
+sublevels of the bounding form (`separation`). Completeness of `le` then follows because the
+`subsumeBy` fold removes exactly the dominated sublevels, and canonicity because
+`subsumption` leaves no sublevel dominated by another slot (`Reduced`), so mutual domination
+forces the two maps to be equal.
+-/
+
+/-- The variable lists of nodes are strictly sorted by variable name. -/
+def VarsSorted (l : List VarNode) : Prop := l.Pairwise (compare ·.var ·.var = .lt)
+
+theorem VarsSorted.of_cons (h : VarsSorted (v :: l)) : VarsSorted l := (List.pairwise_cons.1 h).2
+
+theorem VarsSorted.head (h : VarsSorted (v :: l)) : ∀ x ∈ l, compare v.var x.var = .lt :=
+  (List.pairwise_cons.1 h).1
+
+/-- In a sorted variable list, the name determines the entry. -/
+theorem VarsSorted.eq_of_var_eq (h : VarsSorted l) (h₁ : x ∈ l) (h₂ : y ∈ l)
+    (e : x.var = y.var) : x = y := by
+  induction l with | nil => cases h₁ | cons v l ih
+  obtain rfl | h₁' := List.mem_cons.1 h₁
+  · obtain rfl | h₂' := List.mem_cons.1 h₂
+    · rfl
+    · have := h.head _ h₂'; rw [e, Std.ReflOrd.compare_self] at this; cases this
+  · obtain rfl | h₂' := List.mem_cons.1 h₂
+    · have := h.head _ h₁'; rw [← e, Std.ReflOrd.compare_self] at this; cases this
+    · exact ih h.of_cons h₁' h₂'
+
+theorem VarNode.mem_addVar' (h : x ∈ VarNode.addVar v k l) : x.var = v ∨ x ∈ l := by
+  induction l with
+  | nil => simp [addVar] at h; simp [h]
+  | cons y l ih =>
+    simp only [addVar] at h
+    split at h
+    · rcases List.mem_cons.1 h with rfl | h <;> simp [h]
+    · rcases List.mem_cons.1 h with rfl | h <;> simp [h]
+    · rcases List.mem_cons.1 h with rfl | h
+      · simp
+      · exact (ih h).imp_right (.tail _)
+
+theorem VarNode.addVar_sorted (h : VarsSorted l) : VarsSorted (VarNode.addVar v k l) := by
+  induction l with | nil => exact .cons (by simp) .nil | cons x l ih
+  simp only [addVar]
+  split <;> rename_i hc
+  · refine .cons (fun y hy => ?_) h
+    obtain rfl | hy := List.mem_cons.1 hy
+    · exact hc
+    · exact Std.TransCmp.lt_trans hc (h.head _ hy)
+  · rw [Std.LawfulBEqCmp.compare_eq_iff_beq] at hc
+    have e := eq_of_beq hc
+    exact .cons (fun y hy => by rw [e]; exact h.head _ hy) h.of_cons
+  · refine .cons (fun y hy => ?_) (ih h.of_cons)
+    obtain e | hy := VarNode.mem_addVar' hy
+    · rw [e]; exact Std.OrientedCmp.lt_of_gt hc
+    · exact h.head _ hy
+
+/-- Every node of the map has its variable list sorted by name. -/
+def NormLevel.SortedVars (s : NormLevel) : Prop :=
+  ∀ p n, s.get? p = some n → VarsSorted n.var
+
+theorem NormLevel.addVar_sortedVars (h : acc.SortedVars) :
+    (addVar v k path acc).SortedVars := by
+  intro p n hn
+  simp only [addVar, Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_modify] at hn
+  split at hn
+  · obtain ⟨n', hn', rfl⟩ := Option.map_eq_some_iff.1 hn
+    exact VarNode.addVar_sorted (h path n' (Std.TreeMap.get?_eq_getElem? .. ▸ hn'))
+  · exact h _ _ (Std.TreeMap.get?_eq_getElem? .. ▸ hn)
+
+theorem NormLevel.addNode_sortedVars (h : acc.SortedVars) :
+    (addNode v k path acc).SortedVars := by
+  intro p n hn
+  simp only [addNode, Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_alter] at hn
+  split at hn
+  · match e : acc[path]?, hn with
+    | some n', hn =>
+      cases hn; exact VarNode.addVar_sorted (h path n' (Std.TreeMap.get?_eq_getElem? .. ▸ e))
+    | none, hn => cases hn; exact .cons (by simp) .nil
+  · exact h _ _ (Std.TreeMap.get?_eq_getElem? .. ▸ hn)
+
+theorem NormLevel.addConst_sortedVars (h : acc.SortedVars) :
+    (addConst k path acc).SortedVars := by
+  intro p n hn
+  simp only [addConst] at hn; split at hn <;> [exact h _ _ hn; skip]
+  simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_alter] at hn
+  split at hn
+  · match e : acc[path]?, hn with
+    | some n', hn => cases hn; exact h path n' (Std.TreeMap.get?_eq_getElem? .. ▸ e)
+    | none, hn => cases hn; exact .nil
+  · exact h _ _ (Std.TreeMap.get?_eq_getElem? .. ▸ hn)
+
+theorem normalizeAux_sortedVars (h : acc.SortedVars) :
+    (normalizeAux u path k acc).SortedVars := by
+  unfold normalizeAux; split
+  · exact NormLevel.addConst_sortedVars h
+  · exact NormLevel.addConst_sortedVars h
+  · exact normalizeAux_sortedVars h
+  · exact normalizeAux_sortedVars (normalizeAux_sortedVars h)
+  · exact normalizeAux_sortedVars (normalizeAux_sortedVars h)
+  · exact normalizeAux_sortedVars (normalizeAux_sortedVars h)
+  · exact normalizeAux_sortedVars (normalizeAux_sortedVars h)
+  · split <;> [skip; (dsimp; split)]
+    · exact normalizeAux_sortedVars
+        (NormLevel.addNode_sortedVars (NormLevel.addConst_sortedVars h))
+    · exact normalizeAux_sortedVars h
+    · exact normalizeAux_sortedVars (NormLevel.addVar_sortedVars h)
+  · exact h
+  · exact h
+  · split <;> [skip; split]
+    · exact NormLevel.addNode_sortedVars (NormLevel.addConst_sortedVars h)
+    · exact h
+    · exact NormLevel.addVar_sortedVars h
+
+theorem subsumeVars_sublist : ∀ vs₁ vs₂ : List VarNode, List.Sublist (subsumeVars vs₁ vs₂) vs₁
+  | [], _ => by simp [subsumeVars]
+  | _ :: _, [] => by simp [subsumeVars]
+  | x :: xs, y :: ys => by
+    simp only [subsumeVars]; split
+    · exact (subsumeVars_sublist xs (y :: ys)).cons_cons x
+    · split
+      · exact (subsumeVars_sublist xs ys).cons x
+      · exact (subsumeVars_sublist xs ys).cons_cons x
+    · exact subsumeVars_sublist (x :: xs) ys
+
+theorem Node.subsume_var_sublist : List.Sublist (Node.subsume p₁ n₁ p₂ n₂).var n₁.var := by
+  obtain h | ⟨-, -, h⟩ := Node.subsume_var_cases p₁ n₁ p₂ n₂ <;> rw [h]
+  · exact List.Sublist.refl _
+  · exact subsumeVars_sublist ..
+
+theorem NormLevel.minimize_var_sublist {acc : NormLevel} :
+    List.Sublist (acc.minimize p₁ n₁).var n₁.var := by
+  rw [minimize, Std.TreeMap.foldl_eq_foldl_toList]
+  generalize acc.toList = l
+  induction l generalizing n₁ with | nil => exact List.Sublist.refl _ | cons a l ih
+  exact (ih (n₁ := Node.subsume p₁ n₁ a.1 a.2)).trans Node.subsume_var_sublist
+
+theorem NormLevel.subsumption_sortedVars {s : NormLevel} (hs : s.SortedVars) :
+    s.subsumption.SortedVars := by
+  rw [subsumption, Std.TreeMap.foldl_eq_foldl_toList]
+  have hmem pn (h : pn ∈ s.toList) : s.get? pn.1 = some pn.2 :=
+    Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
+  generalize s.toList = l at hmem
+  suffices ∀ (l : List (List Name × Node)) (acc : NormLevel),
+      (∀ pn ∈ l, s.get? pn.1 = some pn.2) → acc.SortedVars →
+      ∀ p n, (List.foldl (fun acc pn =>
+        let n := acc.minimize pn.1 pn.2
+        if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).get? p = some n →
+        VarsSorted n.var from this _ _ hmem hs
+  clear hmem; intro l
+  induction l with | nil => exact fun _ _ => id | cons pn l ih
+  intro acc hl hacc
+  refine ih _ (fun _ h => hl _ (.tail _ h)) fun p n h => ?_
+  rw [subsumption_step_get?] at h
+  split at h
+  · split at h <;> [cases h; skip]
+    cases h; rename_i hp _; subst hp
+    exact (hs _ _ (hl _ (.head _))).sublist minimize_var_sublist
+  · exact hacc _ _ h
+
+theorem normalize_sortedVars : (normalize u).SortedVars :=
+  NormLevel.subsumption_sortedVars (normalizeAux_sortedVars fun p n h => by simp at h)
+
+/-- `subsumption` erases a key rather than leaving an empty node behind. -/
+theorem NormLevel.subsumption_nonempty {s : NormLevel} :
+    ∀ p n, s.subsumption.get? p = some n → n.isEmpty = false := by
+  rw [subsumption, Std.TreeMap.foldl_eq_foldl_toList]
+  suffices ∀ (l : List (List Name × Node)) (acc : NormLevel),
+      (∀ p n, acc.get? p = some n → n.isEmpty = false ∨ (p, n) ∈ l) →
+      ∀ p n, (List.foldl (fun acc pn =>
+        let n := acc.minimize pn.1 pn.2
+        if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).get? p = some n →
+        n.isEmpty = false from
+    this _ _ fun p n h => .inr (Std.TreeMap.mem_toList_iff_getElem?_eq_some.2
+      (Std.TreeMap.get?_eq_getElem? .. ▸ h))
+  intro l
+  induction l with
+  | nil => exact fun acc h p n hn => (h p n hn).resolve_right (by simp)
+  | cons pn l ih =>
+    intro acc hacc
+    refine ih _ fun p n h => ?_
+    rw [subsumption_step_get?] at h
+    split at h <;> rename_i hp
+    · split at h <;> [cases h; skip]
+      cases h; rename_i he; exact .inl (by simpa using he)
+    · refine (hacc _ _ h).imp_right fun hm => ?_
+      obtain h' | h' := List.mem_cons.1 hm
+      · exact absurd (congrArg Prod.fst h'.symm) hp
+      · exact h'
+
+theorem normalize_nonempty : ∀ p n, (normalize u).get? p = some n → n.isEmpty = false :=
+  NormLevel.subsumption_nonempty
+
+theorem NormLevel.addVar_keys (h : (addVar v k path acc).contains p) : acc.contains p := by
+  simpa [addVar, Std.TreeMap.mem_modify] using h
+
+theorem NormLevel.addNode_keys (h : (addNode v k path acc).contains p) :
+    p = path ∨ acc.contains p := by
+  rw [addNode, Std.TreeMap.contains_alter] at h
+  split at h
+  · rename_i hc
+    exact .inl (eq_of_beq (Std.LawfulBEqCmp.compare_eq_iff_beq.1 hc)).symm
+  · exact .inr h
+
+theorem NormLevel.addConst_keys (h : (addConst k path acc).contains p) :
+    p = path ∨ acc.contains p := by
+  rw [addConst] at h; split at h <;> [exact .inr h; skip]
+  rw [Std.TreeMap.contains_alter] at h
+  split at h
+  · rename_i hc
+    exact .inl (eq_of_beq (Std.LawfulBEqCmp.compare_eq_iff_beq.1 hc)).symm
+  · exact .inr h
+
+/-- All keys of the map built by `normalizeAux` consist of level parameters, which are
+in `ls` whenever `ofLevel` succeeds. -/
+theorem normalizeAux_keys (hu : VLevel.ofLevel ls u = some u')
+    (hpath : ∀ x ∈ path, x ∈ ls) (hacc : ∀ p, acc.contains p → ∀ x ∈ p, x ∈ ls) :
+    ∀ p, (normalizeAux u path k acc).contains p → ∀ x ∈ p, x ∈ ls := by
+  unfold normalizeAux; split
+  · exact fun p h => (NormLevel.addConst_keys h).elim
+      (fun e x hx => hpath x (e ▸ hx)) (hacc p)
+  · exact fun p h => (NormLevel.addConst_keys h).elim
+      (fun e x hx => hpath x (e ▸ hx)) (hacc p)
+  · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, rfl⟩ := hu
+    exact normalizeAux_keys hu hpath hacc
+  · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, hv, rfl⟩ := hu
+    exact normalizeAux_keys hv hpath (normalizeAux_keys hu hpath hacc)
+  · simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨_, hv, rfl⟩, rfl⟩ := hu
+    exact normalizeAux_keys hv hpath (normalizeAux_keys hu hpath hacc)
+  · rename_i u v w
+    simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨_, hv, _, hw, rfl⟩, rfl⟩ := hu
+    exact normalizeAux_keys (by simpa [VLevel.ofLevel] using ⟨_, hu, _, hw, rfl⟩) hpath
+      (normalizeAux_keys (by simpa [VLevel.ofLevel] using ⟨_, hu, _, hv, rfl⟩) hpath hacc)
+  · rename_i u v w
+    simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨_, hv, _, hw, rfl⟩, rfl⟩ := hu
+    exact normalizeAux_keys (by simpa [VLevel.ofLevel] using ⟨_, hv, _, hw, rfl⟩) hpath
+      (normalizeAux_keys (by simpa [VLevel.ofLevel] using ⟨_, hu, _, hw, rfl⟩) hpath hacc)
+  · rename_i u v
+    simp [VLevel.ofLevel] at hu; obtain ⟨_, hu, _, ⟨hv, rfl⟩, rfl⟩ := hu
+    have hvls : v ∈ ls := List.idxOf_lt_length_iff.1 hv
+    split <;> rename_i h
+    · refine normalizeAux_keys hu (fun x hx => ?_) fun q hq => ?_
+      · exact ((Extend1.orderedInsert h).mem.1 hx).elim (fun e => e.symm ▸ hvls) (hpath x)
+      · obtain e | hq' := NormLevel.addNode_keys hq
+        · exact fun x hx => by
+            rcases (Extend1.orderedInsert h).mem.1 (e ▸ hx) with rfl | hx'
+            · exact hvls
+            · exact hpath x hx'
+        · exact (NormLevel.addConst_keys hq').elim
+            (fun e x hx => hpath x (e ▸ hx)) (hacc q)
+    · dsimp; split
+      · exact normalizeAux_keys hu hpath hacc
+      · exact normalizeAux_keys hu hpath fun q hq => hacc q (NormLevel.addVar_keys hq)
+  · exact hacc
+  · exact hacc
+  · rename_i v
+    simp [VLevel.ofLevel] at hu; obtain ⟨hv, rfl⟩ := hu
+    have hvls : v ∈ ls := List.idxOf_lt_length_iff.1 hv
+    split <;> rename_i h
+    · intro q hq
+      obtain e | hq' := NormLevel.addNode_keys hq
+      · exact fun x hx => by
+          rcases (Extend1.orderedInsert h).mem.1 (e ▸ hx) with rfl | hx'
+          · exact hvls
+          · exact hpath x hx'
+      · exact (NormLevel.addConst_keys hq').elim
+          (fun e x hx => hpath x (e ▸ hx)) (hacc q)
+    · split
+      · exact hacc
+      · exact fun q hq => hacc q (NormLevel.addVar_keys hq)
+
+theorem normalize_keys (hu : VLevel.ofLevel ls u = some u') :
+    ∀ p n, (normalize u).get? p = some n → ∀ x ∈ p, x ∈ ls := by
+  intro p n h
+  obtain ⟨n₀, h₀, -⟩ := NormLevel.subsumption_covers.1 p n h
+  have hc : (normalizeAux u [] 0 {}).contains p :=
+    Std.TreeMap.isSome_getElem?_eq_contains.symm.trans
+      (by simp [Std.TreeMap.get?_eq_getElem?] at h₀; simp [h₀])
+  exact normalizeAux_keys hu (by simp) (fun q hq => by simp at hq) p hc
+
+/-- A single sublevel of the canonical form: `Sub.const p k` is `C(p, k)` and
+`Sub.var p x k` is `V(p, x, k)`. -/
+inductive Sub where
+  | const (p : List Name) (k : Nat)
+  | var (p : List Name) (x : Name) (k : Nat)
+
+def Sub.path : Sub → List Name
+  | .const p _ => p
+  | .var p _ _ => p
+
+/-- Domination of sublevels, following Theorem 39: `s.le t` when `t`'s value bounds `s`'s
+value under every valuation. The dominator's condition set is a *subset*, so that it fires
+whenever the dominated sublevel does; a constant is dominated by `V(F, x, K)` up to `K + 1`
+since that sublevel is at least `K + 1` whenever its conditions hold; and a variable
+sublevel is only dominated by the same variable at a larger offset. -/
+protected def Sub.le : Sub → Sub → Prop
+  | .const p k, .const q l => (∀ z ∈ q, z ∈ p) ∧ k ≤ l
+  | .const p k, .var q _ l => (∀ z ∈ q, z ∈ p) ∧ k ≤ l + 1
+  | .var _ _ _, .const _ _ => False
+  | .var p x k, .var q y l => (∀ z ∈ q, z ∈ p) ∧ x = y ∧ k ≤ l
+
+protected theorem Sub.le.trans : ∀ {a b c : Sub}, a.le b → b.le c → a.le c
+  | .const _ _, .const _ _, .const _ _, ⟨s₁, h₁⟩, ⟨s₂, h₂⟩ =>
+    ⟨fun z hz => s₁ _ (s₂ _ hz), Nat.le_trans h₁ h₂⟩
+  | .const _ _, .const _ _, .var _ _ _, ⟨s₁, h₁⟩, ⟨s₂, h₂⟩ =>
+    ⟨fun z hz => s₁ _ (s₂ _ hz), by omega⟩
+  | .const _ _, .var _ _ _, .const _ _, _, h₂ => h₂.elim
+  | .const _ _, .var _ _ _, .var _ _ _, ⟨s₁, h₁⟩, ⟨s₂, _, h₂⟩ =>
+    ⟨fun z hz => s₁ _ (s₂ _ hz), by omega⟩
+  | .var _ _ _, .const _ _, _, h₁, _ => h₁.elim
+  | .var _ _ _, .var _ _ _, .const _ _, _, h₂ => h₂.elim
+  | .var _ _ _, .var _ _ _, .var _ _ _, ⟨s₁, e₁, h₁⟩, ⟨s₂, e₂, h₂⟩ =>
+    ⟨fun z hz => s₁ _ (s₂ _ hz), e₁.trans e₂, Nat.le_trans h₁ h₂⟩
+
+theorem subset_antisymm (h₁ : Sorted l₁) (h₂ : Sorted l₂)
+    (h : ∀ z ∈ l₁, z ∈ l₂) (h' : ∀ z ∈ l₂, z ∈ l₁) : l₁ = l₂ :=
+  subset_eq (subset_of_sorted h₁ h₂ h) <|
+    Nat.le_antisymm (subset_length (subset_of_sorted h₁ h₂ h))
+      (subset_length (subset_of_sorted h₂ h₁ h'))
+
+protected theorem Sub.le.antisymm : ∀ {a b : Sub}, Sorted a.path → Sorted b.path →
+    a.le b → b.le a → a = b
+  | .const p _, .const q _, ha, hb, ⟨s₁, h₁⟩, ⟨s₂, h₂⟩ => by
+    rw [subset_antisymm (l₁ := p) (l₂ := q) ha hb s₂ s₁, Nat.le_antisymm h₁ h₂]
+  | .const _ _, .var _ _ _, _, _, _, h₂ => h₂.elim
+  | .var _ _ _, .const _ _, _, _, h₁, _ => h₁.elim
+  | .var p _ _, .var q _ _, ha, hb, ⟨s₁, e₁, h₁⟩, ⟨s₂, e₂, h₂⟩ => by
+    rw [subset_antisymm (l₁ := p) (l₂ := q) ha hb s₂ s₁, e₁, Nat.le_antisymm h₁ h₂]
+
+/-- The sublevels recorded in a `NormLevel`: `C(p, n.const)` for nonzero constants and
+`V(p, x, k)` for each recorded variable. -/
+def NormLevel.HasSub (s : NormLevel) : Sub → Prop
+  | .const p k => ∃ n, s.get? p = some n ∧ n.const = k ∧ k ≠ 0
+  | .var p x k => ∃ n, s.get? p = some n ∧ ⟨x, k⟩ ∈ n.var
+
+variable (ls : List Name) (ρ : List Nat) in
+def Sub.eval : Sub → Nat
+  | .const p k => evalPath ls ρ p k
+  | .var p x k => evalPath ls ρ p (evalParam ls ρ x + k)
+
+theorem NormLevel.HasSub.le_eval {s : NormLevel} : ∀ {t}, s.HasSub t →
+    t.eval ls ρ ≤ s.eval ls ρ
+  | .const _ _, ⟨_, hn, hk, _⟩ =>
+    Nat.le_trans (evalPath_mono (hk ▸ Node.const_le_eval))
+      (NormLevel.eval_le.1 (Nat.le_refl _) _ _ hn)
+  | .var _ _ _, ⟨_, hn, hx⟩ =>
+    Nat.le_trans (evalPath_mono (Node.var_le_eval hx))
+      (NormLevel.eval_le.1 (Nat.le_refl _) _ _ hn)
+
+theorem NormLevel.lt_eval {s : NormLevel} :
+    m < eval ls ρ s ↔ ∃ p n, s.get? p = some n ∧ m < evalPath ls ρ p (Node.eval ls ρ n) := by
+  refine ⟨fun h => ?_, fun ⟨p, n, hn, hlt⟩ =>
+    Nat.lt_of_lt_of_le hlt (NormLevel.eval_le.1 (Nat.le_refl _) _ _ hn)⟩
+  refine Classical.byContradiction fun hc => ?_
+  exact absurd (eval_le.2 fun p n hn => Nat.not_lt.1 fun hlt => hc ⟨p, n, hn, hlt⟩)
+    (Nat.not_le.2 h)
+
+theorem Node.lt_eval {n : Node} :
+    m < Node.eval ls ρ n ↔ m < n.const ∨ ∃ v ∈ n.var, m < VarNode.eval ls ρ v := by
+  refine ⟨fun h => ?_, fun h => ?_⟩
+  · refine Classical.byContradiction fun hc => ?_
+    rw [not_or] at hc; obtain ⟨h₁, h₂⟩ := hc
+    refine absurd (Node.eval_le.2 ⟨Nat.not_lt.1 h₁, fun v hv => Nat.not_lt.1 fun hlt => ?_⟩)
+      (Nat.not_le.2 h)
+    exact h₂ ⟨v, hv, hlt⟩
+  · obtain h | ⟨v, hv, h⟩ := h
+    · exact Nat.lt_of_lt_of_le h Node.const_le_eval
+    · exact Nat.lt_of_lt_of_le h (Node.var_le_eval hv)
+
+theorem lt_evalPath (h : m < evalPath ls ρ p n) : allNZ ls ρ p ∧ m < n := by
+  rw [evalPath] at h; split at h
+  · exact ⟨‹_›, h⟩
+  · exact absurd h (Nat.not_lt_zero m)
+
+theorem evalParam_map {f : Name → Nat} (hx : x ∈ ls) : evalParam ls (ls.map f) x = f x := by
+  have hv : ls.idxOf x < ls.length := List.idxOf_lt_length_iff.2 hx
+  rw [evalParam_eq hv, List.getElem?_map, List.getElem?_eq_getElem hv]
+  simp [List.getElem_idxOf]
+
+theorem evalParam_not_mem (hx : x ∉ ls) : evalParam ls ρ x = 0 := by
+  simp only [evalParam]
+  rw [if_neg fun h => hx (List.idxOf_lt_length_iff.1 h)]
+
+theorem evalParam_map_pos {f : Name → Nat} (h : 0 < evalParam ls (ls.map f) z) :
+    z ∈ ls ∧ 0 < f z := by
+  by_cases hz : z ∈ ls
+  · refine ⟨hz, ?_⟩; rwa [evalParam_map hz] at h
+  · rw [evalParam_not_mem hz] at h; exact absurd h (Nat.lt_irrefl 0)
+
+theorem evalParam_map_le {f : Name → Nat} (hb : f z ≤ c) :
+    evalParam ls (ls.map f) z ≤ c := by
+  by_cases hz : z ∈ ls
+  · rw [evalParam_map hz]; exact hb
+  · rw [evalParam_not_mem hz]; exact Nat.zero_le _
+
+theorem foldl_max_le {f : α → Nat} {m : Nat} : ∀ {l : List α} {i : Nat},
+    l.foldl (fun r a => max' r (f a)) i ≤ m ↔ i ≤ m ∧ ∀ a ∈ l, f a ≤ m
+  | [], _ => by simp
+  | a :: l, i => by simp [foldl_max_le (l := l), Nat.max_le, and_assoc]
+
+/-- A bound on all the constants and offsets appearing in the map. -/
+def Node.bound (n : Node) : Nat := n.var.foldl (fun r v => max' r v.offset) n.const
+
+def NormLevel.bound (s : NormLevel) : Nat := s.foldl (fun r _ n => max' r n.bound) 0
+
+theorem NormLevel.bound_spec {s : NormLevel} (h : s.get? p = some n) :
+    n.const ≤ s.bound ∧ ∀ v ∈ n.var, v.offset ≤ s.bound := by
+  have hmem := Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 (Std.TreeMap.get?_eq_getElem? .. ▸ h)
+  have hb : n.bound ≤ s.bound := by
+    rw [bound, Std.TreeMap.foldl_eq_foldl_toList]
+    exact ((foldl_max_le (f := fun pn : List Name × Node => pn.2.bound)).1
+      (Nat.le_refl _)).2 _ hmem
+  exact (foldl_max_le (f := fun v : VarNode => v.offset)).1 hb
+
+/-- The separation theorem, a converse to Theorem 39: if the value of `l₁` is bounded by the
+value of `l₂` under every valuation, then every sublevel of `l₁` has a syntactic dominator
+among the sublevels of `l₂`. The valuation exhibiting the dominator sets every variable of
+the sublevel's condition set to `1`, the sublevel's own variable (if any) to a value `N`
+larger than every constant and offset of `l₂`, and everything else to `0`: only entries of
+`l₂` at condition sets below the sublevel's can contribute, and only a sublevel with the
+same variable can reach `N`. -/
+theorem NormLevel.separation {l₁ l₂ : NormLevel}
+    (hls : ∀ p n, l₁.get? p = some n → ∀ x ∈ p, x ∈ ls)
+    (wf₁ : ∀ p n, l₁.get? p = some n → ∀ v ∈ n.var, v.var ∈ p)
+    (h : ∀ ρ, l₁.eval ls ρ ≤ l₂.eval ls ρ) :
+    ∀ t, l₁.HasSub t → ∃ t', l₂.HasSub t' ∧ t.le t' := by
+  intro t ht
+  match t, ht with
+  | .const p k, ⟨n, hn, hk, hk0⟩ =>
+    have hnz : allNZ ls (ls.map fun z => if z ∈ p then 1 else 0) p := by
+      simp only [allNZ, List.all_eq_true, decide_eq_true_eq]
+      intro z hz
+      rw [evalParam_map (hls _ _ hn _ hz)]; simp [hz]
+    have h₁ : k ≤ l₁.eval ls (ls.map fun z => if z ∈ p then 1 else 0) :=
+      Nat.le_trans (by simp [Sub.eval, evalPath, hnz])
+        (HasSub.le_eval (t := .const p k) ⟨n, hn, hk, hk0⟩)
+    have h₂ := NormLevel.lt_eval.1 (Nat.lt_of_lt_of_le (by omega : k - 1 < k)
+      (Nat.le_trans h₁ (h _)))
+    obtain ⟨q, m, hq, hlt⟩ := h₂
+    obtain ⟨hnzq, hlt⟩ := lt_evalPath hlt
+    have hsub : ∀ z ∈ q, z ∈ p := by
+      intro z hz
+      simp only [allNZ, List.all_eq_true, decide_eq_true_eq] at hnzq
+      have := (evalParam_map_pos (hnzq z hz)).2
+      split at this
+      · assumption
+      · exact absurd this (Nat.lt_irrefl 0)
+    obtain hc | ⟨v, hv, hvlt⟩ := Node.lt_eval.1 hlt
+    · exact ⟨.const q m.const, ⟨m, hq, rfl, by omega⟩, hsub, by omega⟩
+    · refine ⟨.var q v.var v.offset, ⟨m, hq, hv⟩, hsub, ?_⟩
+      have hev : evalParam ls (ls.map fun z => if z ∈ p then 1 else 0) v.var ≤ 1 :=
+        evalParam_map_le (by split <;> omega)
+      simp only [VarNode.eval] at hvlt
+      omega
+  | .var p x k, ⟨n, hn, hx⟩ =>
+    have hxp : x ∈ p := wf₁ _ _ hn _ hx
+    have hxls : x ∈ ls := hls _ _ hn _ hxp
+    have hnz : allNZ ls (ls.map fun z =>
+        if z = x then l₂.bound + k + 2 else if z ∈ p then 1 else 0) p := by
+      simp only [allNZ, List.all_eq_true, decide_eq_true_eq]
+      intro z hz
+      simp only [evalParam_map (hls _ _ hn _ hz)]
+      split
+      · omega
+      · omega
+    have h₁ : l₂.bound + k + 2 + k ≤ l₁.eval ls (ls.map fun z =>
+        if z = x then l₂.bound + k + 2 else if z ∈ p then 1 else 0) := by
+      refine Nat.le_trans ?_ (HasSub.le_eval (t := .var p x k) ⟨n, hn, hx⟩)
+      simp [Sub.eval, evalPath, hnz, evalParam_map hxls]
+    obtain ⟨q, m, hq, hlt⟩ := NormLevel.lt_eval.1
+      (Nat.lt_of_lt_of_le (by omega : l₂.bound + k + 2 + k - 1 < l₂.bound + k + 2 + k)
+        (Nat.le_trans h₁ (h _)))
+    obtain ⟨hnzq, hlt⟩ := lt_evalPath hlt
+    have hsub : ∀ z ∈ q, z ∈ p := by
+      intro z hz
+      simp only [allNZ, List.all_eq_true, decide_eq_true_eq] at hnzq
+      have := (evalParam_map_pos (hnzq z hz)).2
+      split at this
+      · rename_i hz'; subst hz'; exact hxp
+      · split at this
+        · assumption
+        · exact absurd this (Nat.lt_irrefl 0)
+    obtain hc | ⟨v, hv, hvlt⟩ := Node.lt_eval.1 hlt
+    · exact absurd hc (by have := (bound_spec hq).1; omega)
+    · by_cases hvx : v.var = x
+      · refine ⟨.var q x v.offset, ⟨m, hq, by rw [← hvx]; exact hv⟩, hsub, rfl, ?_⟩
+        simp [VarNode.eval, hvx, evalParam_map hxls] at hvlt
+        omega
+      · have hoff := (bound_spec hq).2 _ hv
+        have hev : evalParam ls (ls.map fun z =>
+            if z = x then l₂.bound + k + 2 else if z ∈ p then 1 else 0) v.var ≤ 1 :=
+          evalParam_map_le (by rw [if_neg hvx]; split <;> omega)
+        simp only [VarNode.eval] at hvlt
+        exact absurd hvlt (by omega)
+
+private theorem name_lt_ne {a b : Name} (h : compare a b = .lt) : a ≠ b := by
+  rintro rfl; rw [Std.ReflOrd.compare_self] at h; cases h
+
+/-- Exactness of `subsumeVars` on sorted lists: a surviving variable has no dominator
+in the subtracted list. -/
+theorem subsumeVars_complete {x y : VarNode} : ∀ {vs₁ vs₂ : List VarNode},
+    VarsSorted vs₁ → VarsSorted vs₂ → x ∈ subsumeVars vs₁ vs₂ → y ∈ vs₂ →
+    y.var = x.var → x.offset ≤ y.offset → False
+  | [], _, _, _, hx, _ => by simp [subsumeVars] at hx
+  | _ :: _, [], _, _, _, hy => nomatch hy
+  | a :: vs₁, b :: vs₂, h₁, h₂, hx, hy => by
+    intro e hle
+    simp only [subsumeVars] at hx
+    split at hx <;> rename_i hab
+    · rcases List.mem_cons.1 hx with rfl | hx'
+      · rcases List.mem_cons.1 hy with rfl | hy'
+        · exact name_lt_ne hab e.symm
+        · exact name_lt_ne (Std.TransCmp.lt_trans hab (h₂.head _ hy')) e.symm
+      · exact subsumeVars_complete h₁.of_cons h₂ hx' hy e hle
+    · have eab : a.var = b.var := eq_of_beq (Std.LawfulBEqCmp.compare_eq_iff_beq.1 hab)
+      split at hx <;> rename_i hoff
+      · rcases List.mem_cons.1 hy with rfl | hy'
+        · exact name_lt_ne (h₁.head _ (subsumeVars_subset hx)) (eab.trans e)
+        · exact subsumeVars_complete h₁.of_cons h₂.of_cons hx hy' e hle
+      · rcases List.mem_cons.1 hx with rfl | hx'
+        · rcases List.mem_cons.1 hy with rfl | hy'
+          · exact hoff hle
+          · exact name_lt_ne (h₂.head _ hy') (e.trans eab).symm
+        · rcases List.mem_cons.1 hy with rfl | hy'
+          · exact name_lt_ne (h₁.head _ (subsumeVars_subset hx')) (eab.trans e)
+          · exact subsumeVars_complete h₁.of_cons h₂.of_cons hx' hy' e hle
+    · rcases List.mem_cons.1 hy with rfl | hy'
+      · have hbx : compare y.var x.var = .lt := by
+          have hba := Std.OrientedCmp.lt_of_gt hab
+          rcases List.mem_cons.1 (subsumeVars_subset hx) with rfl | hxv
+          · exact hba
+          · exact Std.TransCmp.lt_trans hba (h₁.head _ hxv)
+        exact name_lt_ne hbx e
+      · exact subsumeVars_complete h₁ h₂.of_cons hx hy' e hle
+
+theorem le_foldl_max_self {vs : List VarNode} : ∀ {n : Nat}, n ≤ vs.foldl (·.max ·.offset) n := by
+  induction vs with | nil => exact Nat.le_refl _ | cons a vs ih
+  exact fun {n} => Nat.le_trans (Nat.le_max_left _ _) ih
+
+theorem foldl_max_ge {vs : List VarNode} (hy : y ∈ vs) :
+    ∀ {n : Nat}, y.offset ≤ vs.foldl (·.max ·.offset) n := by
+  induction vs with | nil => cases hy | cons a vs ih
+  rcases List.mem_cons.1 hy with rfl | hy'
+  · exact fun {n} => Nat.le_trans (Nat.le_max_right _ _) le_foldl_max_self
+  · exact fun {n} => ih hy'
+
+/-- Exactness of the constant part of `subsumeBy`: a dominated constant is dropped. -/
+theorem Node.subsumeBy_const_complete {same : Bool} {n₁ n₂ : Node}
+    (h : (same = false ∧ n₁.const ≤ n₂.const) ∨ ∃ y ∈ n₂.var, n₁.const ≤ y.offset + 1) :
+    (n₁.subsumeBy same n₂).const = 0 := by
+  rw [Node.subsumeBy_const_eq]
+  split <;> [rename_i hc; rfl]
+  simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq, List.isEmpty_iff] at hc
+  obtain hc | ⟨hc1, hc2⟩ := hc
+  · exact hc
+  obtain ⟨rfl, hle⟩ | ⟨y, hy, hle⟩ := h
+  · rcases hc1 with hc1 | hc1
+    · cases hc1
+    · omega
+  · rcases hc2 with hc2 | hc2
+    · rw [hc2] at hy; cases hy
+    · have := foldl_max_ge hy (n := 0); omega
+
+theorem Node.subsumeBy_var_sublist {same : Bool} {n₁ n₂ : Node} :
+    List.Sublist (n₁.subsumeBy same n₂).var n₁.var := by
+  rw [Node.subsumeBy_var_eq]; split
+  · exact List.Sublist.refl _
+  · exact subsumeVars_sublist ..
+
+/-- Exactness of the variable part of `subsumeBy` at a different key: a dominated variable
+is dropped. -/
+theorem Node.subsumeBy_var_complete {n₁ n₂ : Node} (h₁ : VarsSorted n₁.var)
+    (h₂ : VarsSorted n₂.var) (hx : x ∈ (n₁.subsumeBy false n₂).var) (hy : y ∈ n₂.var)
+    (e : y.var = x.var) (hle : x.offset ≤ y.offset) : False := by
+  rw [Node.subsumeBy_var_eq] at hx
+  split at hx <;> rename_i hc
+  · simp only [Bool.false_or, List.isEmpty_iff] at hc
+    rw [hc] at hy; cases hy
+  · exact subsumeVars_complete h₁ h₂ hx hy e hle
+
+/-- Completeness of the discharging fold in `NormLevel.le`: if every sublevel of `n₁` has a
+dominator among the entries of `l` at a subkey of `p₁`, the fold discharges everything and
+returns `none`. -/
+theorem NormLevel.le_fold_complete {p₁ : List Name} :
+    ∀ (l : List (List Name × Node)) (n₁ : Node), VarsSorted n₁.var →
+    (∀ pn ∈ l, VarsSorted pn.2.var) → n₁.isEmpty = false →
+    (n₁.const ≠ 0 → ∃ pn ∈ l, subset compare pn.1 p₁ ∧
+      (n₁.const ≤ pn.2.const ∨ ∃ y ∈ pn.2.var, n₁.const ≤ y.offset + 1)) →
+    (∀ x ∈ n₁.var, ∃ pn ∈ l, subset compare pn.1 p₁ ∧
+      ∃ y ∈ pn.2.var, y.var = x.var ∧ x.offset ≤ y.offset) →
+    List.foldlM (m := Option) (fun n pn =>
+      if subset compare pn.1 p₁ then
+        if (n.subsumeBy false pn.2).isEmpty then none else some (n.subsumeBy false pn.2)
+      else some n) n₁ l = none
+  | [], n₁, _, _, hne, hconst, hvar => by
+    rw [Node.isEmpty, Bool.and_eq_false_iff] at hne
+    obtain h0 | hv := hne
+    · obtain ⟨_, h, -⟩ := hconst (by simpa using h0)
+      cases h
+    · obtain ⟨x, hx⟩ := List.exists_mem_of_ne_nil _ (by simpa using hv)
+      obtain ⟨_, h, -⟩ := hvar x hx
+      cases h
+  | pn :: l, n₁, hvs₁, hvsl, hne, hconst, hvar => by
+    simp only [List.foldlM_cons]
+    by_cases hs : subset compare pn.1 p₁
+    · rw [if_pos hs]
+      by_cases he : (n₁.subsumeBy false pn.2).isEmpty
+      · rw [if_pos he]; rfl
+      · rw [if_neg he]
+        show List.foldlM _ _ l = none
+        refine le_fold_complete l _ (hvs₁.sublist Node.subsumeBy_var_sublist)
+          (fun pn h => hvsl _ (.tail _ h)) (by simpa using he) ?_ ?_
+        · intro h0
+          have hc : (n₁.subsumeBy false pn.2).const = n₁.const :=
+            (Node.subsumeBy_const_cases ..).resolve_right h0
+          obtain ⟨pn', hpn', hsub', hdom'⟩ := hconst (hc ▸ h0)
+          rcases List.mem_cons.1 hpn' with rfl | hpn'
+          · exact absurd (Node.subsumeBy_const_complete
+              (hdom'.imp (fun h => ⟨rfl, h⟩) id)) h0
+          · exact ⟨pn', hpn', hsub', hc ▸ hdom'⟩
+        · intro x hx
+          obtain ⟨pn', hpn', hsub', y, hy, e, hle⟩ := hvar x (Node.subsumeBy_var_subset hx)
+          rcases List.mem_cons.1 hpn' with rfl | hpn'
+          · exact (Node.subsumeBy_var_complete hvs₁ (hvsl _ (.head _)) hx hy e hle).elim
+          · exact ⟨pn', hpn', hsub', y, hy, e, hle⟩
+    · rw [if_neg hs]
+      show List.foldlM _ _ l = none
+      refine le_fold_complete l n₁ hvs₁ (fun pn h => hvsl _ (.tail _ h)) hne ?_ ?_
+      · intro h0
+        obtain ⟨pn', hpn', hsub', hdom'⟩ := hconst h0
+        rcases List.mem_cons.1 hpn' with rfl | hpn'
+        · exact absurd hsub' hs
+        · exact ⟨pn', hpn', hsub', hdom'⟩
+      · intro x hx
+        obtain ⟨pn', hpn', hsub', hy⟩ := hvar x hx
+        rcases List.mem_cons.1 hpn' with rfl | hpn'
+        · exact absurd hsub' hs
+        · exact ⟨pn', hpn', hsub', hy⟩
+
+/-- Completeness of `NormLevel.le`: per-sublevel domination implies acceptance. -/
+theorem NormLevel.le_complete {l₁ l₂ : NormLevel}
+    (hvs₁ : l₁.SortedVars) (hvs₂ : l₂.SortedVars)
+    (hne : ∀ p n, l₁.get? p = some n → n.isEmpty = false)
+    (hsort₁ : ∀ p n, l₁.get? p = some n → Sorted p)
+    (hsort₂ : ∀ p n, l₂.get? p = some n → Sorted p)
+    (hdom : ∀ t, l₁.HasSub t → ∃ t', l₂.HasSub t' ∧ t.le t') :
+    l₁.le l₂ := by
+  rw [NormLevel.le, Std.TreeMap.all_eq_all_toList, List.all_eq_true]
+  rintro ⟨p₁, n₁⟩ hmem
+  have h₁ := Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 hmem
+  simp only [Std.TreeMap.foldlM_eq_foldlM_toList, Option.isNone_iff_eq_none]
+  have hmem₂ : ∀ q m, l₂.get? q = some m → (q, m) ∈ l₂.toList := fun q m h =>
+    Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 (Std.TreeMap.get?_eq_getElem? .. ▸ h)
+  refine le_fold_complete l₂.toList n₁ (hvs₁ _ _ h₁)
+    (fun pn h => hvs₂ _ _ <| Std.TreeMap.get?_eq_getElem? .. ▸
+      Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h) (hne _ _ h₁) (fun h0 => ?_) (fun x hx => ?_)
+  · obtain ⟨t', ht', hle⟩ := hdom (.const p₁ n₁.const) ⟨n₁, h₁, rfl, h0⟩
+    match t', ht', hle with
+    | .const q _, ⟨m, hq, hc, _⟩, ⟨hsub, hle⟩ =>
+      exact ⟨(q, m), hmem₂ _ _ hq,
+        subset_of_sorted (hsort₂ _ _ hq) (hsort₁ _ _ h₁) hsub, .inl (hc ▸ hle)⟩
+    | .var q yv yk, ⟨m, hq, hyk⟩, ⟨hsub, hle⟩ =>
+      exact ⟨(q, m), hmem₂ _ _ hq,
+        subset_of_sorted (hsort₂ _ _ hq) (hsort₁ _ _ h₁) hsub, .inr ⟨⟨yv, yk⟩, hyk, hle⟩⟩
+  · obtain ⟨t', ht', hle⟩ := hdom (.var p₁ x.var x.offset) ⟨n₁, h₁, hx⟩
+    match t', ht', hle with
+    | .const _ _, _, hle => exact hle.elim
+    | .var q yv yk, ⟨m, hq, hyk⟩, ⟨hsub, hev, hle⟩ =>
+      exact ⟨(q, m), hmem₂ _ _ hq,
+        subset_of_sorted (hsort₂ _ _ hq) (hsort₁ _ _ h₁) hsub, ⟨yv, yk⟩, hyk, hev.symm, hle⟩
+
+/-- The sublevels of a single node keyed at `p`. -/
+def Node.HasSub (p : List Name) (n : Node) : Sub → Prop
+  | .const q k => p = q ∧ n.const = k ∧ k ≠ 0
+  | .var q x k => p = q ∧ ⟨x, k⟩ ∈ n.var
+
+theorem NormLevel.hasSub_iff {s : NormLevel} {t} :
+    s.HasSub t ↔ ∃ p n, s.get? p = some n ∧ Node.HasSub p n t := by
+  match t with
+  | .const p k =>
+    constructor
+    · rintro ⟨n, hn, hk, hk0⟩; exact ⟨p, n, hn, rfl, hk, hk0⟩
+    · rintro ⟨q, n, hn, rfl, hk, hk0⟩; exact ⟨n, hn, hk, hk0⟩
+  | .var p x k =>
+    constructor
+    · rintro ⟨n, hn, hx⟩; exact ⟨p, n, hn, rfl, hx⟩
+    · rintro ⟨q, n, hn, rfl, hx⟩; exact ⟨n, hn, hx⟩
+
+theorem Node.subsume_hasSub : ∀ {t}, Node.HasSub p₁ (Node.subsume p₁ n p₂ n₂) t →
+    Node.HasSub p₁ n t
+  | .const _ k, ⟨rfl, hck, hk0⟩ => by
+    refine ⟨rfl, ?_, hk0⟩
+    obtain h | h := Node.subsume_const_cases p₁ n p₂ n₂
+    · rw [← h]; exact hck
+    · rw [h] at hck; exact absurd hck.symm hk0
+  | .var _ _ _, ⟨rfl, hxk⟩ => ⟨rfl, Node.subsume_var_subset hxk⟩
+
+theorem NormLevel.minimize_hasSub {acc : NormLevel} {t}
+    (h : Node.HasSub p₁ (acc.minimize p₁ n₁) t) : Node.HasSub p₁ n₁ t := by
+  rw [minimize, Std.TreeMap.foldl_eq_foldl_toList] at h
+  generalize acc.toList = l at h
+  induction l generalizing n₁ with
+  | nil => exact h
+  | cons a l ih => exact Node.subsume_hasSub (ih h)
+
+/-- A `subsumption` step only removes sublevels. -/
+theorem NormLevel.subsumption_step_hasSub {acc : NormLevel} {p₁ : List Name} {n₁ : Node}
+    (h₁ : acc.get? p₁ = some n₁) {t}
+    (h : NormLevel.HasSub (if (acc.minimize p₁ n₁).isEmpty then acc.erase p₁
+      else acc.insert p₁ (acc.minimize p₁ n₁)) t) : acc.HasSub t := by
+  rw [hasSub_iff] at h ⊢
+  obtain ⟨p, n, hp, hn⟩ := h
+  rw [subsumption_step_get?] at hp
+  split at hp <;> rename_i hpe
+  · split at hp <;> [cases hp; skip]
+    cases hp; subst hpe
+    exact ⟨p₁, n₁, h₁, minimize_hasSub hn⟩
+  · exact ⟨p, n, hp, hn⟩
+
+/-- Exactness of minimization, fold form: a sublevel surviving the subtraction of every entry
+in `l` is not (strictly) dominated by any of their sublevels — domination forces equality. -/
+theorem NormLevel.minimize_exact_aux {acc : NormLevel} {p₁ : List Name} {n₁ : Node}
+    (hsort : ∀ p n, acc.get? p = some n → Sorted p) (hvsa : acc.SortedVars)
+    (h₁ : acc.get? p₁ = some n₁) (hs₁ : Sorted p₁) (hvs₁ : VarsSorted n₁.var) :
+    ∀ (l : List (List Name × Node)) (n : Node),
+      (∀ pn ∈ l, acc.get? pn.1 = some pn.2) →
+      (∀ x ∈ n.var, x ∈ n₁.var) → (n.const ≠ 0 → n.const = n₁.const) → VarsSorted n.var →
+      ∀ t, Node.HasSub p₁ (l.foldl (fun n pn => Node.subsume p₁ n pn.1 pn.2) n) t →
+      Node.HasSub p₁ n t ∧
+        ∀ pn ∈ l, ∀ t', Node.HasSub pn.1 pn.2 t' → t.le t' → t = t'
+  | [], _, _, _, _, _, _, ht => ⟨ht, fun _ h => nomatch h⟩
+  | (p₂, n₂) :: l, n, hl, hnvar, hnconst, hvs, t, ht => by
+    simp only [List.foldl_cons] at ht
+    have h₂ : acc.get? p₂ = some n₂ := hl _ (.head _)
+    have hvs₂ : VarsSorted n₂.var := hvsa _ _ h₂
+    have hs₂ : Sorted p₂ := hsort _ _ h₂
+    obtain ⟨ht', hrest⟩ := minimize_exact_aux hsort hvsa h₁ hs₁ hvs₁ l
+      (Node.subsume p₁ n p₂ n₂) (fun pn h => hl _ (.tail _ h))
+      (fun x hx => hnvar _ (Node.subsume_var_subset hx))
+      (fun h0 => by
+        obtain hc | hc := Node.subsume_const_cases p₁ n p₂ n₂
+        · rw [hc]; exact hnconst (hc ▸ h0)
+        · exact absurd hc h0)
+      (hvs.sublist Node.subsume_var_sublist) t ht
+    refine ⟨Node.subsume_hasSub ht', ?_⟩
+    rintro pn hpn t' ht'' hle
+    rcases List.mem_cons.1 hpn with rfl | hpn
+    · obtain ⟨q, k⟩ | ⟨q, x, k⟩ := t <;> obtain ⟨q', k'⟩ | ⟨q', y, k'⟩ := t'
+      · -- const dominated by const
+        obtain ⟨rfl, hck, hk0⟩ := ht'
+        obtain ⟨rfl, hck', hk0'⟩ := ht''
+        obtain ⟨hsub, hlek⟩ := hle
+        have hgate : subset compare p₂ p₁ := subset_of_sorted hs₂ hs₁ hsub
+        have hsu : Node.subsume p₁ n p₂ n₂ = n.subsumeBy (p₁.length == p₂.length) n₂ := by
+          rw [Node.subsume, if_pos hgate]
+        by_cases hlen : p₁.length = p₂.length
+        · have hqq : p₂ = p₁ := subset_eq hgate hlen.symm
+          have hn₂ : n₂ = n₁ := by
+            rw [hqq] at h₂; cases h₂.symm.trans h₁; rfl
+          have hkc : n.const = k := by
+            obtain hc | hc := Node.subsume_const_cases p₁ n p₂ n₂
+            · rw [← hc]; exact hck
+            · rw [hc] at hck; exact absurd hck.symm hk0
+          have hne0 : n.const ≠ 0 := fun h0 => hk0 (hkc.symm.trans h0)
+          rw [hqq, show k = k' from by rw [← hck', hn₂, ← hnconst hne0, hkc]]
+        · have hbeq : (p₁.length == p₂.length) = false := by simpa using hlen
+          rw [hsu, hbeq] at hck
+          have hkc : n.const = k := by
+            obtain hc | hc := Node.subsumeBy_const_cases (same := false) n n₂
+            · rw [← hc]; exact hck
+            · rw [hc] at hck; exact absurd hck.symm hk0
+          refine absurd hck ?_
+          rw [Node.subsumeBy_const_complete (n₁ := n) (n₂ := n₂)
+            (.inl ⟨rfl, by rw [hkc, hck']; exact hlek⟩)]
+          exact fun h => hk0 h.symm
+      · -- const dominated by a variable
+        obtain ⟨rfl, hck, hk0⟩ := ht'
+        obtain ⟨rfl, hyk⟩ := ht''
+        obtain ⟨hsub, hlek⟩ := hle
+        have hgate : subset compare p₂ p₁ := subset_of_sorted hs₂ hs₁ hsub
+        have hsu : Node.subsume p₁ n p₂ n₂ = n.subsumeBy (p₁.length == p₂.length) n₂ := by
+          rw [Node.subsume, if_pos hgate]
+        rw [hsu] at hck
+        have hkc : n.const = k := by
+          obtain hc | hc := Node.subsumeBy_const_cases (same := p₁.length == p₂.length) n n₂
+          · rw [← hc]; exact hck
+          · rw [hc] at hck; exact absurd hck.symm hk0
+        refine absurd hck ?_
+        rw [Node.subsumeBy_const_complete (n₁ := n) (n₂ := n₂)
+          (.inr ⟨⟨y, k'⟩, hyk, by rw [hkc]; exact hlek⟩)]
+        exact fun h => hk0 h.symm
+      · exact hle.elim
+      · -- variable dominated by a variable
+        obtain ⟨rfl, hxk⟩ := ht'
+        obtain ⟨rfl, hyk⟩ := ht''
+        obtain ⟨hsub, rfl, hlek⟩ := hle
+        have hgate : subset compare p₂ p₁ := subset_of_sorted hs₂ hs₁ hsub
+        have hsu : Node.subsume p₁ n p₂ n₂ = n.subsumeBy (p₁.length == p₂.length) n₂ := by
+          rw [Node.subsume, if_pos hgate]
+        by_cases hlen : p₁.length = p₂.length
+        · have hqq : p₂ = p₁ := subset_eq hgate hlen.symm
+          have hn₂ : n₂ = n₁ := by
+            rw [hqq] at h₂; cases h₂.symm.trans h₁; rfl
+          have hk : (⟨x, k⟩ : VarNode) = ⟨x, k'⟩ :=
+            hvs₁.eq_of_var_eq (hnvar _ (Node.subsume_var_subset hxk)) (hn₂ ▸ hyk) rfl
+          rw [hqq, show k = k' from congrArg VarNode.offset hk]
+        · have hbeq : (p₁.length == p₂.length) = false := by simpa using hlen
+          rw [hsu, hbeq] at hxk
+          exact (Node.subsumeBy_var_complete hvs hvs₂ hxk hyk rfl hlek).elim
+    · exact hrest _ hpn _ ht'' hle
+
+theorem NormLevel.minimize_exact {acc : NormLevel} {p₁ : List Name} {n₁ : Node}
+    (hsort : ∀ p n, acc.get? p = some n → Sorted p) (hvsa : acc.SortedVars)
+    (h₁ : acc.get? p₁ = some n₁) :
+    ∀ t t', Node.HasSub p₁ (acc.minimize p₁ n₁) t → acc.HasSub t' → t.le t' → t = t' := by
+  intro t t' ht ht' hle
+  rw [minimize, Std.TreeMap.foldl_eq_foldl_toList] at ht
+  have hmem pn (h : pn ∈ acc.toList) : acc.get? pn.1 = some pn.2 :=
+    Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
+  obtain ⟨-, hexact⟩ := minimize_exact_aux hsort hvsa h₁ (hsort _ _ h₁) (hvsa _ _ h₁)
+    acc.toList n₁ hmem (fun _ => id) (fun _ => rfl) (hvsa _ _ h₁) t ht
+  obtain ⟨p₂, n₂, hp₂, hn₂⟩ := hasSub_iff.1 ht'
+  exact hexact (p₂, n₂) (Std.TreeMap.mem_toList_iff_getElem?_eq_some.2
+    (Std.TreeMap.get?_eq_getElem? .. ▸ hp₂)) _ hn₂ hle
+
+/-- A normal form is reduced when no sublevel is dominated by another: domination between
+recorded sublevels forces them to be the same sublevel. -/
+def NormLevel.Reduced (s : NormLevel) : Prop :=
+  ∀ t t', s.HasSub t → s.HasSub t' → t.le t' → t = t'
+
+/-- `subsumption` produces a reduced map: every entry is minimized against the (current)
+whole map, minimization removes exactly the dominated sublevels, and later steps only
+shrink the map, which cannot introduce new domination. -/
+theorem NormLevel.subsumption_reduced {s : NormLevel}
+    (hsort : ∀ p n, s.get? p = some n → Sorted p) (hvsa : s.SortedVars) :
+    s.subsumption.Reduced := by
+  have hmem pn (h : pn ∈ s.toList) : s.get? pn.1 = some pn.2 :=
+    Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
+  have nd : (s.toList.map Prod.fst).Nodup := by simpa using Std.TreeMap.nodup_keys (t := s)
+  rw [Reduced, subsumption, Std.TreeMap.foldl_eq_foldl_toList]
+  suffices ∀ (l : List (List Name × Node)) (acc : NormLevel),
+      (l.map Prod.fst).Nodup →
+      (∀ pn ∈ l, acc.get? pn.1 = some pn.2) →
+      (∀ p n, acc.get? p = some n → Sorted p) → acc.SortedVars →
+      (∀ p n, acc.get? p = some n → p ∉ l.map Prod.fst →
+        ∀ t t', Node.HasSub p n t → acc.HasSub t' → t.le t' → t = t') →
+      ∀ t t', (List.foldl (fun acc pn =>
+        let n := acc.minimize pn.1 pn.2
+        if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).HasSub t →
+      (List.foldl (fun acc pn =>
+        let n := acc.minimize pn.1 pn.2
+        if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).HasSub t' →
+      t.le t' → t = t' from
+    this _ _ nd hmem hsort hvsa fun p n hp hnp => absurd
+      (List.mem_map_of_mem (f := Prod.fst) (Std.TreeMap.mem_toList_iff_getElem?_eq_some.2
+        (Std.TreeMap.get?_eq_getElem? .. ▸ hp))) hnp
+  clear hmem nd hsort hvsa; intro l
+  induction l with
+  | nil =>
+    intro acc _ _ _ _ hred t t' ht ht' hle
+    obtain ⟨p, n, hp, hnt⟩ := hasSub_iff.1 ht
+    exact hred p n hp (by simp) t t' hnt ht' hle
+  | cons pn l ih =>
+    obtain ⟨p₂, n₂⟩ := pn
+    intro acc nd hl hsorta hvsacc hred
+    simp only [List.map_cons, List.nodup_cons] at nd
+    have h₂ : acc.get? p₂ = some n₂ := hl _ (.head _)
+    simp only [List.foldl_cons]
+    have hstep := subsumption_step_get? acc n₂ p₂
+    refine ih _ nd.2 (fun pn' h => ?_) (fun p n h => ?_) (fun p n h => ?_)
+      (fun p n hp hnp t t' hnt ht' hle => ?_)
+    · have hne : p₂ ≠ pn'.1 := fun e => nd.1 (e ▸ List.mem_map_of_mem (f := Prod.fst) h)
+      rw [hstep, if_neg hne]
+      exact hl _ (.tail _ h)
+    · rw [hstep] at h; split at h <;> rename_i hpe
+      · split at h <;> [cases h; skip]
+        cases h; exact hpe ▸ hsorta _ _ h₂
+      · exact hsorta _ _ h
+    · rw [hstep] at h; split at h <;> rename_i hpe
+      · split at h <;> [cases h; skip]
+        cases h
+        exact (hvsacc _ _ h₂).sublist minimize_var_sublist
+      · exact hvsacc _ _ h
+    · rw [hstep] at hp; split at hp <;> rename_i hpe
+      · split at hp <;> [cases hp; skip]
+        cases hp; subst hpe
+        exact minimize_exact hsorta hvsacc h₂ t t' hnt (subsumption_step_hasSub h₂ ht') hle
+      · refine hred p n hp ?_ t t' hnt (subsumption_step_hasSub h₂ ht') hle
+        simp only [List.map_cons, List.mem_cons, not_or]
+        exact ⟨fun e => hpe e.symm, hnp⟩
+
+theorem normalize_reduced : (normalize u).Reduced := by
+  refine NormLevel.subsumption_reduced ?_ (normalizeAux_sortedVars fun _ _ => by simp)
+  exact fun p n h => (normalizeAux_wf (by simp) (by simp [NormLevel.WF]) p n h).2.2
+
+/-! Canonicity: two reduced normal forms with the same semantics have the same sublevels,
+and hence are equal maps. -/
+
+instance : LawfulBEq Node where
+  rfl {a} := by cases a <;> simp! +instances [instBEqNode]
+  eq_of_beq {a b} h := by
+    cases a; cases b
+    simp! +instances [instBEqNode] at h
+    simp [h.1, h.2]
+
+theorem VarsSorted.eq_of_mem_iff : ∀ {l₁ l₂ : List VarNode}, VarsSorted l₁ → VarsSorted l₂ →
+    (∀ x, x ∈ l₁ ↔ x ∈ l₂) → l₁ = l₂
+  | [], [], _, _, _ => rfl
+  | [], _ :: _, _, _, h => nomatch (h _).2 (.head _)
+  | _ :: _, [], _, _, h => nomatch (h _).1 (.head _)
+  | a :: l₁, b :: l₂, h₁, h₂, h => by
+    cases show a = b by
+      rcases List.mem_cons.1 ((h a).1 (.head _)) with rfl | ha <;> [rfl; skip]
+      rcases List.mem_cons.1 ((h b).2 (.head _)) with rfl | hb <;> [rfl; skip]
+      exact absurd (h₂.head _ ha) (by rw [Std.OrientedCmp.gt_of_lt (h₁.head _ hb)]; simp)
+    refine congrArg (a :: ·) (VarsSorted.eq_of_mem_iff h₁.of_cons h₂.of_cons
+      fun x => ⟨fun hx => ?_, fun hx => ?_⟩)
+    · rcases List.mem_cons.1 ((h x).1 (.tail _ hx)) with rfl | hx'
+      · exact absurd (h₁.head _ hx) (by rw [Std.ReflOrd.compare_self]; simp)
+      · exact hx'
+    · rcases List.mem_cons.1 ((h x).2 (.tail _ hx)) with rfl | hx'
+      · exact absurd (h₂.head _ hx) (by rw [Std.ReflOrd.compare_self]; simp)
+      · exact hx'
+
+theorem NormLevel.HasSub.path_sorted {s : NormLevel}
+    (hsort : ∀ p n, s.get? p = some n → Sorted p) : ∀ {t}, s.HasSub t → Sorted t.path
+  | .const _ _, ⟨_, hn, _⟩ => hsort _ _ hn
+  | .var _ _ _, ⟨_, hn, _⟩ => hsort _ _ hn
+
+/-- In reduced maps, mutual per-sublevel domination pins the sublevels to be equal: the
+dominator of a sublevel is itself dominated by a sublevel of the first map, which by
+reducedness is the sublevel we started from, and antisymmetry finishes. -/
+theorem NormLevel.Reduced.hasSub_iff_hasSub {A B : NormLevel}
+    (rA : A.Reduced) (rB : B.Reduced)
+    (sortA : ∀ p n, A.get? p = some n → Sorted p)
+    (sortB : ∀ p n, B.get? p = some n → Sorted p)
+    (hAB : ∀ t, A.HasSub t → ∃ t', B.HasSub t' ∧ t.le t')
+    (hBA : ∀ t, B.HasSub t → ∃ t', A.HasSub t' ∧ t.le t') :
+    ∀ t, A.HasSub t ↔ B.HasSub t := by
+  suffices ∀ {A B : NormLevel}, A.Reduced →
+      (∀ p n, A.get? p = some n → Sorted p) → (∀ p n, B.get? p = some n → Sorted p) →
+      (∀ t, A.HasSub t → ∃ t', B.HasSub t' ∧ t.le t') →
+      (∀ t, B.HasSub t → ∃ t', A.HasSub t' ∧ t.le t') →
+      ∀ t, A.HasSub t → B.HasSub t from
+    fun t => ⟨this rA sortA sortB hAB hBA t, this rB sortB sortA hBA hAB t⟩
+  clear rA rB sortA sortB hAB hBA
+  intro A B rA sortA sortB hAB hBA t ht
+  obtain ⟨t', ht', hle⟩ := hAB t ht
+  obtain ⟨t'', ht'', hle'⟩ := hBA t' ht'
+  cases rA t t'' ht ht'' (hle.trans hle')
+  exact (hle.antisymm (HasSub.path_sorted sortA ht) (HasSub.path_sorted sortB ht') hle').symm ▸
+    ht'
+
+/-- Two reduced normal forms with the same sublevels are equal as `NormLevel`s. -/
+theorem NormLevel.eq_of_hasSub_iff {A B : NormLevel}
+    (hvsA : A.SortedVars) (hvsB : B.SortedVars)
+    (hneA : ∀ p n, A.get? p = some n → n.isEmpty = false)
+    (hneB : ∀ p n, B.get? p = some n → n.isEmpty = false)
+    (h : ∀ t, A.HasSub t ↔ B.HasSub t) : A == B := by
+  suffices ∀ {A B : NormLevel}, A.SortedVars → B.SortedVars →
+      (∀ p n, A.get? p = some n → n.isEmpty = false) →
+      (∀ t, A.HasSub t ↔ B.HasSub t) →
+      ∀ p n, A.get? p = some n → B.get? p = some n by
+    have h1 := @this A B hvsA hvsB hneA h
+    have h2 := @this B A hvsB hvsA hneB fun t => (h t).symm
+    simp +instances only [instBEqNormLevel, Std.TreeMap.all_eq_all_toList,
+      Bool.and_eq_true, List.all_eq_true]
+    constructor <;> rintro ⟨p, n⟩ hpn
+    · have := h1 p n (Std.TreeMap.get?_eq_getElem? .. ▸
+        Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 hpn)
+      rw [Std.TreeMap.get?_eq_getElem?] at this
+      simp [this]
+    · have := h2 p n (Std.TreeMap.get?_eq_getElem? .. ▸
+        Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 hpn)
+      rw [Std.TreeMap.get?_eq_getElem?] at this
+      simp [this]
+  clear hvsA hvsB hneA hneB h
+  intro A B hvsA hvsB hneA h p n hp
+  have hne := hneA _ _ hp
+  rw [Node.isEmpty, Bool.and_eq_false_iff] at hne
+  have hBp : ∃ m, B.get? p = some m := by
+    obtain h0 | hv := hne
+    · obtain ⟨m, hm, -⟩ := (h (.const p n.const)).1 ⟨n, hp, rfl, by simpa using h0⟩
+      exact ⟨m, hm⟩
+    · obtain ⟨x, hx⟩ := List.exists_mem_of_ne_nil _ (by simpa using hv)
+      obtain ⟨m, hm, -⟩ := (h (.var p x.var x.offset)).1 ⟨n, hp, hx⟩
+      exact ⟨m, hm⟩
+  obtain ⟨m, hm⟩ := hBp
+  have hconst : n.const = m.const := by
+    by_cases h0 : n.const = 0
+    · by_cases h0' : m.const = 0
+      · rw [h0, h0']
+      · obtain ⟨n', hn', hc, -⟩ := (h (.const p m.const)).2 ⟨m, hm, rfl, h0'⟩
+        cases hn'.symm.trans hp
+        exact absurd (h0 ▸ hc).symm h0'
+    · obtain ⟨m', hm', hc, -⟩ := (h (.const p n.const)).1 ⟨n, hp, rfl, h0⟩
+      cases hm'.symm.trans hm
+      exact hc.symm
+  have hvar : n.var = m.var := by
+    refine VarsSorted.eq_of_mem_iff (hvsA _ _ hp) (hvsB _ _ hm)
+      fun x => ⟨fun hx => ?_, fun hx => ?_⟩
+    · obtain ⟨m', hm', hx'⟩ := (h (.var p x.var x.offset)).1 ⟨n, hp, hx⟩
+      cases hm'.symm.trans hm
+      exact hx'
+    · obtain ⟨n', hn', hx'⟩ := (h (.var p x.var x.offset)).2 ⟨m, hm, hx⟩
+      cases hn'.symm.trans hp
+      exact hx'
+  obtain ⟨nc, nv⟩ := n
+  obtain ⟨mc, mv⟩ := m
+  cases hconst; cases hvar
+  exact hm
+
 end Normalize
 
 theorem isEquiv'_wf (h : isEquiv' u v)
@@ -2225,3 +3241,41 @@ theorem isEquivList_wf (H : Level.isEquivList us vs) :
   induction us generalizing vs with cases vs <;> simp [List.all2] at H <;> simp | cons u us ih
   rename_i v vs; rintro _ _ u' hu us' hus rfl v' hv vs' hvs rfl
   exact .cons (isEquiv_wf H.1 hu hv) (ih H.2 hus hvs)
+
+/-- Completeness of `geq'`: every valid semantic inequality is accepted. Every sublevel of
+`normalize v` is semantically bounded by `normalize u`, hence syntactically dominated by one
+of its sublevels (`separation`), which is exactly what the discharging fold in
+`NormLevel.le` checks for. -/
+theorem geq'_complete (hu : VLevel.ofLevel ls u = some u')
+    (hv : VLevel.ofLevel ls v = some v') (h : v' ≤ u') : geq' u v := by
+  show (Normalize.normalize v).le (Normalize.normalize u)
+  refine Normalize.NormLevel.le_complete Normalize.normalize_sortedVars
+    Normalize.normalize_sortedVars Normalize.normalize_nonempty
+    Normalize.normalize_sorted Normalize.normalize_sorted ?_
+  refine Normalize.NormLevel.separation (Normalize.normalize_keys hv)
+    Normalize.normalize_vars fun ρ => ?_
+  rw [Normalize.normalize_eval hv, Normalize.normalize_eval hu]
+  exact h ρ
+
+/-- Completeness of `isEquiv'`: semantically equal levels have equal normal forms. Both
+normal forms are reduced (`subsumption_reduced`), mutually dominate each other's sublevels
+(`separation`), and reduced forms with the same sublevels are the same map. -/
+theorem isEquiv'_complete (hu : VLevel.ofLevel ls u = some u')
+    (hv : VLevel.ofLevel ls v = some v') (h : u' ≈ v') : isEquiv' u v := by
+  have equiv := VLevel.equiv_def.1 h
+  have h₁ : ∀ ρ, (Normalize.normalize u).eval ls ρ ≤ (Normalize.normalize v).eval ls ρ :=
+    fun ρ => by rw [Normalize.normalize_eval hu, Normalize.normalize_eval hv, equiv ρ]
+                exact Nat.le_refl _
+  have h₂ : ∀ ρ, (Normalize.normalize v).eval ls ρ ≤ (Normalize.normalize u).eval ls ρ :=
+    fun ρ => by rw [Normalize.normalize_eval hu, Normalize.normalize_eval hv, equiv ρ]
+                exact Nat.le_refl _
+  simp only [isEquiv', Bool.or_eq_true]
+  refine .inr ?_
+  exact Normalize.NormLevel.eq_of_hasSub_iff Normalize.normalize_sortedVars
+    Normalize.normalize_sortedVars Normalize.normalize_nonempty Normalize.normalize_nonempty
+    (Normalize.NormLevel.Reduced.hasSub_iff_hasSub Normalize.normalize_reduced
+      Normalize.normalize_reduced Normalize.normalize_sorted Normalize.normalize_sorted
+      (Normalize.NormLevel.separation (Normalize.normalize_keys hu)
+        Normalize.normalize_vars h₁)
+      (Normalize.NormLevel.separation (Normalize.normalize_keys hv)
+        Normalize.normalize_vars h₂))
