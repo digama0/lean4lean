@@ -2267,7 +2267,7 @@ theorem ShapeFun.app_core (f : ShapeFun n) (x) :
   have ⟨h1, h2⟩ := mem_trunc.1 <| List.mem_of_find?_eq_some h
   refine .inr ⟨_, h2, h1, this⟩
 
-def ShapeFun.WF.app {f : ShapeFun n} (wf : WF Shape.WF f) (wfa : a.WF) : (ShapeFun.app f a).WF := by
+theorem ShapeFun.WF.app {f : ShapeFun n} (wf : WF Shape.WF f) (wfa : a.WF) : (ShapeFun.app f a).WF := by
   have ⟨_, _, h, _⟩ := WShape.join_prop.app_core WShape.join_prop ⟨_, wf⟩ ⟨_, wfa⟩
   exact (wf.2 _ h).2
 
@@ -2648,7 +2648,7 @@ theorem WShape.HasDom.def : HasDom f a ↔
   ⟨fun H _ _ h => have ⟨_, _, h1, h2⟩ := H _ _ h; ⟨_, _, f.mem_val h1, h2⟩,
    fun H _ _ h => have ⟨_, _, h1, h2⟩ := H _ _ (f.mem_val h); ⟨_, _, h1, h2⟩⟩
 
-def WShape.HasTypePi.def {b : WShapeFun n} :
+theorem WShape.HasTypePi.def {b : WShapeFun n} :
     HasTypePi b a rel ↔ HasDom b a ∧ ∀ x y, (x, y) ∈ b → y.HasType (.sort rel) :=
   and_congr_right' ⟨fun H _ _ h => H _ _ h, fun H _ _ h => H _ _ (b.mem_val h)⟩
 
@@ -2811,7 +2811,7 @@ theorem WShape.HasDom.iff {f : WShapeFun n} :
       have ⟨x₁, b1, b2⟩ := f.app_eq x'
       exact ⟨_, b2, _, b1, a1, (f.app_of_mem (f.mem_val h)).2.trans a3, a2⟩
 
-def WShape.HasTypePi.iff {b : WShapeFun n} :
+theorem WShape.HasTypePi.iff {b : WShapeFun n} :
     HasTypePi b a rel ↔ HasDom b a ∧ ∀ x, x.HasType a → (b.app x).HasType (.sort rel) := by
   refine WShape.HasTypePi.def.trans <| and_congr_right fun hd =>
     ⟨fun H x h => ?_, fun H x y h => ?_⟩
@@ -2820,7 +2820,7 @@ def WShape.HasTypePi.iff {b : WShapeFun n} :
     have ⟨x', a1, a2, a3⟩ := HasDom.iff.1 hd x
     exact (H _ a2).mono_l (b.app_mono_r a1 |>.trans h1) (h2.trans a3)
 
-def WShape.HasTypePi.iff' {b : WShapeFun n} :
+theorem WShape.HasTypePi.iff' {b : WShapeFun n} :
     HasTypePi b a rel ↔ HasDom b a ∧ ∀ x, (b.app x).HasType (.sort rel) := by
   refine WShape.HasTypePi.iff.trans <| and_congr_right fun h1 => ⟨fun H x => ?_, fun H _ _ => H _⟩
   have ⟨x', a1, a2, a3⟩ := HasDom.iff.1 h1 x
@@ -2840,7 +2840,7 @@ theorem WShape.HasTypeLam.iff {f : WShapeFun n} {a b} :
       ((WShape.HasTypePi.iff.1 hp).2 _ b2 |>.mono_l (b.app_mono_r b1) b3)
       ((H _ a2).mono_l (.trans (f.app_mono_r a1) h1) (h2.trans a3))
 
-def WShape.HasTypeLam.iff' {b : WShapeFun n} :
+theorem WShape.HasTypeLam.iff' {b : WShapeFun n} :
     HasTypeLam f a b ↔ HasTypePi b a true ∧ HasDom f a ∧ ∀ x, (f.app x).HasType (b.app x) := by
   refine WShape.HasTypeLam.iff.trans <| and_congr_right fun h1 => and_congr_right fun h2 =>
     ⟨fun H x => ?_, fun H _ _ => H _⟩

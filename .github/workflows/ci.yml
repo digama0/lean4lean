@@ -35,6 +35,10 @@ jobs:
       - name: Build Lean4Lean.Experimental
         run: lake build Lean4Lean.Experimental
 
+      # Compile the internal test suite
+      - name: Build Lean4Lean.Tests
+        run: lake build Lean4Lean.Tests
+
       # `lake build` only establishes that lean4lean compiles; these check that it still
       # *works*. The two modes exercise different code paths, so both are worth running.
 

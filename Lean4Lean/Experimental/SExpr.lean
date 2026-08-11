@@ -525,7 +525,7 @@ def _root_.Lean4Lean.Pattern.RHS.Closed {p : Pattern} : p.RHS → Prop
   | .var _ => True
   | .app f a => f.Closed ∧ a.Closed
 
-def _root_.Lean4Lean.Pattern.RHS.Closed.applyS {p : Pattern} {m1 m2} :
+theorem _root_.Lean4Lean.Pattern.RHS.Closed.applyS {p : Pattern} {m1 m2} :
     ∀ r : p.RHS, r.Closed → (∀ a, (m2 a).ClosedN k) → (r.applyS m1 m2).ClosedN k
   | .fixed .., h1, _ => h1.mkS.instL.mono (Nat.zero_le _)
   | .var _, _, h2 => h2 _

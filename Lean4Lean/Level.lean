@@ -356,39 +356,8 @@ to the fallback — and it is roughly 20× cheaper than normalizing. -/
 def isEquiv' (u v : Level) : Bool :=
   isEquiv u v || Normalize.normalize u == Normalize.normalize v
 
-def isEquivList : List Level → List Level → Bool := List.all2 isEquiv
+def isEquivList : List Level → List Level → Bool := List.all2 isEquiv'
 
 /-- Core's `geq` as a fast path, on the same grounds as `isEquiv'`. -/
 def geq' (u v : Level) : Bool :=
   geq u v || (Normalize.normalize v).le (Normalize.normalize u)
-
--- local elab "normalize " l:level : command => do
---   Elab.Command.runTermElabM fun _ => do
---     logInfo m!"{normalize' (← Elab.Term.elabLevel l)}"
---     -- logInfo m!"{repr <| Normalize.normalize (← Elab.Term.elabLevel l) }"
-
--- local elab "normalize " l:level " ≤ " l':level : command => do
---   Elab.Command.runTermElabM fun _ => do
---     logInfo m!"{geq' (← Elab.Term.elabLevel l') (← Elab.Term.elabLevel l)}"
---     -- logInfo m!"{repr <| Normalize.normalize (← Elab.Term.elabLevel l)}"
---     -- logInfo m!"{repr <| Normalize.normalize (← Elab.Term.elabLevel l')}"
-
--- universe u v w
--- /-- info: max 1 u -/
--- #guard_msgs in normalize max u 1
--- /-- info: u -/
--- #guard_msgs in normalize imax 1 u
--- /-- info: max 1 (imax (u + 1) u) -/
--- #guard_msgs in normalize u+1
--- /-- info: imax 2 u -/
--- #guard_msgs in normalize imax 2 u
--- /-- info: max v (imax (imax u v) w) -/
--- #guard_msgs in normalize max w (imax (imax u w) v)
--- /-- info: max v (imax (imax u v) w) -/
--- #guard_msgs in normalize max (imax (imax u v) w) (imax (imax u w) v)
--- /-- info: u -/
--- #guard_msgs in normalize imax u u
--- /-- info: max 1 (imax (u + 1) u) -/
--- #guard_msgs in normalize imax u (u+1)
--- /-- info: max 1 (imax (max (v + 1) (imax (u + 1) u)) v) -/
--- #guard_msgs in normalize imax u v + 1

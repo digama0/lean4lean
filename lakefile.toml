@@ -1,5 +1,5 @@
 name = "lean4lean"
-defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verify", "Lean4Lean.Tests"]
+defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verify"]
 
 [[require]]
 name = "batteries"

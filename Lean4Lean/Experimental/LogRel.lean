@@ -57,7 +57,7 @@ def Classifier.forallE
 
 def NormalType : SExpr → Prop | .sort _ | .forallE .. => True | _ => False
 
-def NormalType.whnf : ∀ {A}, NormalType A → WHNF Γ A
+theorem NormalType.whnf : ∀ {A}, NormalType A → WHNF Γ A
   | .sort _, _ => .sort
   | .forallE .., _ => .forallE
 

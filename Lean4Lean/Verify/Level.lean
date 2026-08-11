@@ -3840,7 +3840,7 @@ theorem isEquivList_wf (H : Level.isEquivList us vs) :
   simp [Level.isEquivList] at H; revert us' vs'
   induction us generalizing vs with cases vs <;> simp [List.all2] at H <;> simp | cons u us ih
   rename_i v vs; rintro _ _ u' hu us' hus rfl v' hv vs' hvs rfl
-  exact .cons (isEquiv_wf H.1 hu hv) (ih H.2 hus hvs)
+  exact .cons (isEquiv'_wf H.1 hu hv) (ih H.2 hus hvs)
 
 /-- Canonicity of `normalize'`: semantically equal levels reconstruct to syntactically equal
 levels. The normal forms are `BEq`-equal, hence have the same entry list, and the
