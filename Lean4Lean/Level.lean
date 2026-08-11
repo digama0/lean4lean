@@ -297,9 +297,56 @@ where
       else mkMax (imax (reify t) (.param n)) r
     | none => mkMax (imax (reify t) (.param n)) r
 
+/-!
+### Fast path for levels without an essential `imax`
+
+Levels arising in practice are almost always built from `zero`, `succ`, `max` and `param`
+alone: `mkLevelIMax'` already discharges `imax _ 0`, `imax _ (_+1)`, `imax a a` and
+`imax ≤1 _` where the kernel builds levels, and in a census of the 522k level comparisons
+performed while checking Lean+Std+Batteries, 99.8% of the levels reaching them were
+`imax`-free.
+
+Such a level's canonical form is flat: its sublevels are `C(∅, K)` and one `V({x}, x, kₓ)`
+per parameter, nothing is ever subsumed (a condition set is `∅` or a singleton, and the `C`
+node carries no variables), and each `imax` chain is a single edge. So the whole `NormLevel`
+can be replaced by a sorted merge, and the tree read off directly. Note that every parameter
+occurrence contributes its offset to the constant as well, so `K` dominates every `kₓ` and
+the reified children never need their `imax` guard.
+-/
+
+/-- The map a run of flat data stands for: the constant at the root (absent when zero) and
+`V({x}, x, k)` at each singleton key. Note this inserts the keys in sorted order, whereas
+`normalizeAux` inserts them in traversal order, so the two build the same entries in
+differently balanced trees — everything downstream compares maps entry by entry. -/
+def toNormLevel (c : Nat) (vs : List VarNode) : NormLevel :=
+  vs.foldl (fun s v => s.insert [v.var] ⟨0, [v]⟩)
+    (if c = 0 then {} else (∅ : NormLevel).insert [] ⟨c, []⟩)
+
+/-- Collect the largest constant and the largest offset of each parameter, throwing the
+`NormLevel` built from what has been collected so far on reaching an `imax`, so that
+`normalizeAux` picks up from there rather than retraversing. -/
+def flatAux : Level → Nat → Nat × List VarNode → Except NormLevel (Nat × List VarNode)
+  | .zero, k, (c, vs) => .ok (Nat.max c k, vs)
+  | .succ l, k, acc => flatAux l (k+1) acc
+  | .max a b, k, acc =>
+    match flatAux a k acc with
+    | .ok acc => flatAux b k acc
+    | .error s => .error (normalizeAux b [] k s)
+  | .param x, k, (c, vs) => .ok (Nat.max c k, VarNode.addVar x k vs)
+  | .mvar _, _, acc => .ok acc
+  | l@(.imax ..), k, (c, vs) => .error (normalizeAux l [] k (toNormLevel c vs))
+
+/-- The tree `toTree` builds for a flat level: the constant at the root, and one child per
+parameter holding `V({x}, x, kₓ)` — dropped when `kₓ = 0`, as the edge already provides it. -/
+def flatTree (c : Nat) (vs : List VarNode) : Tree :=
+  ⟨c, [], vs.map fun v => (v.var, ⟨0, if v.offset == 0 then [] else [v], []⟩)⟩
+
 end Normalize
 
-def normalize' (l : Level) : Level := (Normalize.normalize l).toTree.reify
+def normalize' (l : Level) : Level :=
+  match Normalize.flatAux l 0 (0, []) with
+  | .ok (c, vs) => (Normalize.flatTree c vs).reify
+  | .error s => s.subsumption.toTree.reify
 
 /-- Core's `isEquiv` is sound but incomplete, so it can be used as a fast path: when it
 accepts, the levels really are equivalent, and when it rejects we fall back to the complete
