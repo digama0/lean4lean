@@ -3144,8 +3144,7 @@ theorem NormLevel.Reduced.hasSub_iff_hasSub {A B : NormLevel}
   obtain ⟨t', ht', hle⟩ := hAB t ht
   obtain ⟨t'', ht'', hle'⟩ := hBA t' ht'
   cases rA t t'' ht ht'' (hle.trans hle')
-  exact (hle.antisymm (HasSub.path_sorted sortA ht) (HasSub.path_sorted sortB ht') hle').symm ▸
-    ht'
+  exact (hle.antisymm (HasSub.path_sorted sortA ht) (HasSub.path_sorted sortB ht') hle').symm ▸ ht'
 
 /-- Two reduced normal forms with the same sublevels are equal as `NormLevel`s. -/
 theorem NormLevel.eq_of_hasSub_iff {A B : NormLevel}
@@ -3206,6 +3205,103 @@ theorem NormLevel.eq_of_hasSub_iff {A B : NormLevel}
   cases hconst; cases hvar
   exact hm
 
+/-- Semantically equal levels have `BEq`-equal normal forms. -/
+theorem normalize_complete (hu : VLevel.ofLevel ls u = some u')
+    (hv : VLevel.ofLevel ls v = some v') : normalize u == normalize v ↔ u' ≈ v' := by
+  refine .trans ⟨fun h ls => ?_, fun h => ?_⟩ VLevel.equiv_def.symm
+  · rw [← normalize_eval hu, NormLevel.eval_congr h, normalize_eval hv]
+  have h₁ : ∀ ρ, (normalize u).eval ls ρ ≤ (normalize v).eval ls ρ := fun ρ => by
+    rw [normalize_eval hu, normalize_eval hv, h ρ]; exact Nat.le_refl _
+  have h₂ : ∀ ρ, (normalize v).eval ls ρ ≤ (normalize u).eval ls ρ := fun ρ => by
+    rw [normalize_eval hu, normalize_eval hv, h ρ]; exact Nat.le_refl _
+  exact NormLevel.eq_of_hasSub_iff normalize_sortedVars normalize_sortedVars
+    normalize_nonempty normalize_nonempty
+    (NormLevel.Reduced.hasSub_iff_hasSub normalize_reduced normalize_reduced
+      normalize_sorted normalize_sorted
+      (NormLevel.separation (normalize_keys hu) normalize_vars h₁)
+      (NormLevel.separation (normalize_keys hv) normalize_vars h₂))
+
+/-! `BEq`-equal maps have equal `toList`s, and the reconstruction depends on the map only
+through `toList`, so equal normal forms reify to syntactically equal levels. (`TreeMap`
+equality itself does not follow from `==`: the internal tree shape depends on insertion
+order.) -/
+
+private theorem listName_compare_self {p : List Name} : compare p p = .eq :=
+  Std.LawfulBEqCmp.compare_eq_iff_beq.2 (by simp)
+
+theorem sorted_pairs_eq : ∀ {l₁ l₂ : List (List Name × Node)},
+    l₁.Pairwise (compare ·.1 ·.1 = .lt) → l₂.Pairwise (compare ·.1 ·.1 = .lt) →
+    (∀ x, x ∈ l₁ ↔ x ∈ l₂) → l₁ = l₂
+  | [], [], _, _, _ => rfl
+  | [], _ :: _, _, _, h => nomatch (h _).2 (.head _)
+  | _ :: _, [], _, _, h => nomatch (h _).1 (.head _)
+  | a :: l₁, b :: l₂, h₁, h₂, h => by
+    have head₁ := (List.pairwise_cons.1 h₁).1
+    have head₂ := (List.pairwise_cons.1 h₂).1
+    cases show a = b by
+      rcases List.mem_cons.1 ((h a).1 (.head _)) with rfl | ha <;> [rfl; skip]
+      rcases List.mem_cons.1 ((h b).2 (.head _)) with rfl | hb <;> [rfl; skip]
+      cases Std.OrientedCmp.not_lt_of_lt (head₁ _ hb) (head₂ _ ha)
+    refine congrArg (a :: ·) (sorted_pairs_eq (List.pairwise_cons.1 h₁).2
+      (List.pairwise_cons.1 h₂).2 fun x => ⟨fun hx => ?_, fun hx => ?_⟩)
+    · rcases List.mem_cons.1 ((h x).1 (.tail _ hx)) with rfl | hx'
+      · have := head₁ _ hx; rw [listName_compare_self] at this; cases this
+      · exact hx'
+    · rcases List.mem_cons.1 ((h x).2 (.tail _ hx)) with rfl | hx'
+      · have := head₂ _ hx; rw [listName_compare_self] at this; cases this
+      · exact hx'
+
+theorem NormLevel.toList_eq {A B : NormLevel} (h : A == B) : A.toList = B.toList := by
+  simp +instances only [instBEqNormLevel, Std.TreeMap.all_eq_all_toList,
+    Bool.and_eq_true, List.all_eq_true] at h
+  refine sorted_pairs_eq Std.TreeMap.ordered_keys_toList Std.TreeMap.ordered_keys_toList
+    fun x => ⟨fun hx => ?_, fun hx => ?_⟩
+  · have := h.1 x hx
+    rw [beq_iff_eq, Std.TreeMap.get?_eq_getElem?] at this
+    exact Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 this
+  · have := h.2 x hx
+    rw [beq_iff_eq, Std.TreeMap.get?_eq_getElem?] at this
+    exact Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 this
+
+theorem NormLevel.addable_congr {A B : NormLevel} (h : A.toList = B.toList) :
+    A.addable a acc = B.addable a acc := by
+  rw [addable, addable, Std.TreeMap.any_eq_any_toList, Std.TreeMap.any_eq_any_toList, h]
+
+theorem NormLevel.feasible_go_congr {A B : NormLevel} (h : A.toList = B.toList) :
+    ∀ fuel acc rem, NormLevel.feasible.go A fuel acc rem = NormLevel.feasible.go B fuel acc rem
+  | 0, _, _ => rfl
+  | fuel+1, acc, rem => by
+    simp only [feasible.go]
+    rw [show (fun a => A.addable a acc) = fun a => B.addable a acc from
+      funext fun a => addable_congr h]
+    cases rem.find? fun a => B.addable a acc with
+    | none => rfl
+    | some a => exact feasible_go_congr h fuel _ _
+
+theorem NormLevel.feasible_congr {A B : NormLevel} (h : A.toList = B.toList) :
+    A.feasible acc rem = B.feasible acc rem := by
+  simp only [feasible]; exact feasible_go_congr h ..
+
+theorem NormLevel.lexChain_congr {A B : NormLevel} (h : A.toList = B.toList) :
+    ∀ fuel p, A.lexChain fuel p = B.lexChain fuel p
+  | 0, _ => rfl
+  | fuel+1, p => by
+    simp only [lexChain]
+    rw [show (fun a => A.addable a (p.erase a) && A.feasible [] (p.erase a))
+        = fun a => B.addable a (p.erase a) && B.feasible [] (p.erase a) from
+      funext fun a => by rw [addable_congr h, feasible_congr h]]
+    cases p.find? fun a => B.addable a (p.erase a) && B.feasible [] (p.erase a) with
+    | none => rfl
+    | some a => exact congrArg (a :: ·) (lexChain_congr h fuel _)
+
+/-- The reconstruction depends only on the entry list of the map. -/
+theorem NormLevel.toTree_congr {A B : NormLevel} (h : A.toList = B.toList) :
+    A.toTree = B.toTree := by
+  rw [toTree, toTree, Std.TreeMap.foldl_eq_foldl_toList, Std.TreeMap.foldl_eq_foldl_toList, h]
+  congr 1
+  funext t pn
+  rw [lexChain_congr h]
+
 end Normalize
 
 theorem isEquiv'_wf (h : isEquiv' u v)
@@ -3224,12 +3320,12 @@ key admits a chain (`normalize_feas`) and `lexChain` then picks an admissible on
 nothing is lost, since every entry is recorded at the end of its chain. -/
 theorem normalize'_eval (hu : VLevel.ofLevel ls u = some u') :
     Level.eval (Normalize.evalParam ls ρ) μ (normalize' u) = u'.eval ρ := by
-  rw [normalize', Normalize.Tree.reify_eval,
-    Normalize.NormLevel.toTree_eval Normalize.normalize_sorted Normalize.normalize_feas]
-  exact Normalize.normalize_eval hu
+  open Normalize in
+  rw [normalize', Tree.reify_eval, NormLevel.toTree_eval normalize_sorted normalize_feas]
+  exact normalize_eval hu
 
-theorem geq'_wf (h : geq' u v)
-    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : v' ≤ u' := by
+theorem geq'_wf (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v')
+    (h : geq' u v) : v' ≤ u' := by
   intro ρ
   rw [← Normalize.normalize_eval (ρ := ρ) hv, ← Normalize.normalize_eval (ρ := ρ) hu]
   exact Normalize.NormLevel.le_eval Normalize.normalize_vars h
@@ -3242,40 +3338,37 @@ theorem isEquivList_wf (H : Level.isEquivList us vs) :
   rename_i v vs; rintro _ _ u' hu us' hus rfl v' hv vs' hvs rfl
   exact .cons (isEquiv_wf H.1 hu hv) (ih H.2 hus hvs)
 
-/-- Completeness of `geq'`: every valid semantic inequality is accepted. Every sublevel of
-`normalize v` is semantically bounded by `normalize u`, hence syntactically dominated by one
-of its sublevels (`separation`), which is exactly what the discharging fold in
-`NormLevel.le` checks for. -/
-theorem geq'_complete (hu : VLevel.ofLevel ls u = some u')
-    (hv : VLevel.ofLevel ls v = some v') (h : v' ≤ u') : geq' u v := by
-  show (Normalize.normalize v).le (Normalize.normalize u)
-  refine Normalize.NormLevel.le_complete Normalize.normalize_sortedVars
-    Normalize.normalize_sortedVars Normalize.normalize_nonempty
-    Normalize.normalize_sorted Normalize.normalize_sorted ?_
-  refine Normalize.NormLevel.separation (Normalize.normalize_keys hv)
-    Normalize.normalize_vars fun ρ => ?_
-  rw [Normalize.normalize_eval hv, Normalize.normalize_eval hu]
-  exact h ρ
+/-- Canonicity of `normalize'`: semantically equal levels reconstruct to syntactically equal
+levels. The normal forms are `BEq`-equal, hence have the same entry list, and the
+reconstruction (`lexChain` and the tree fold) depends on the map only through its entry
+list. -/
+theorem normalize'_complete (hu : VLevel.ofLevel ls u = some u')
+    (hv : VLevel.ofLevel ls v = some v') : normalize' u = normalize' v ↔ u' ≈ v' := by
+  refine ⟨fun h => ?_, fun h => ?_⟩
+  · refine VLevel.equiv_def.2 fun ρ => ?_
+    rw [← normalize'_eval (μ := fun _ => 0) hu, ← normalize'_eval hv, h]
+  · simp only [normalize']
+    rw [← Normalize.normalize_complete hu hv] at h
+    rw [Normalize.NormLevel.toTree_congr (Normalize.NormLevel.toList_eq h)]
 
 /-- Completeness of `isEquiv'`: semantically equal levels have equal normal forms. Both
 normal forms are reduced (`subsumption_reduced`), mutually dominate each other's sublevels
 (`separation`), and reduced forms with the same sublevels are the same map. -/
 theorem isEquiv'_complete (hu : VLevel.ofLevel ls u = some u')
-    (hv : VLevel.ofLevel ls v = some v') (h : u' ≈ v') : isEquiv' u v := by
-  have equiv := VLevel.equiv_def.1 h
-  have h₁ : ∀ ρ, (Normalize.normalize u).eval ls ρ ≤ (Normalize.normalize v).eval ls ρ :=
-    fun ρ => by rw [Normalize.normalize_eval hu, Normalize.normalize_eval hv, equiv ρ]
-                exact Nat.le_refl _
-  have h₂ : ∀ ρ, (Normalize.normalize v).eval ls ρ ≤ (Normalize.normalize u).eval ls ρ :=
-    fun ρ => by rw [Normalize.normalize_eval hu, Normalize.normalize_eval hv, equiv ρ]
-                exact Nat.le_refl _
-  simp only [isEquiv', Bool.or_eq_true]
-  refine .inr ?_
-  exact Normalize.NormLevel.eq_of_hasSub_iff Normalize.normalize_sortedVars
-    Normalize.normalize_sortedVars Normalize.normalize_nonempty Normalize.normalize_nonempty
-    (Normalize.NormLevel.Reduced.hasSub_iff_hasSub Normalize.normalize_reduced
-      Normalize.normalize_reduced Normalize.normalize_sorted Normalize.normalize_sorted
-      (Normalize.NormLevel.separation (Normalize.normalize_keys hu)
-        Normalize.normalize_vars h₁)
-      (Normalize.NormLevel.separation (Normalize.normalize_keys hv)
-        Normalize.normalize_vars h₂))
+    (hv : VLevel.ofLevel ls v = some v') : isEquiv' u v ↔ u' ≈ v' := by
+  simp [isEquiv', Normalize.normalize_complete hu hv]
+  rintro rfl; cases hu.symm.trans hv; exact rfl
+
+/-- Completeness of `geq'`: every valid semantic inequality is accepted. Every sublevel of
+`normalize v` is semantically bounded by `normalize u`, hence syntactically dominated by one
+of its sublevels (`separation`), which is exactly what the discharging fold in
+`NormLevel.le` checks for. -/
+theorem geq'_complete (hu : VLevel.ofLevel ls u = some u')
+    (hv : VLevel.ofLevel ls v = some v') : geq' u v ↔ v' ≤ u' := by
+  open Normalize in
+  refine ⟨geq'_wf hu hv, fun h => ?_⟩
+  refine NormLevel.le_complete normalize_sortedVars normalize_sortedVars normalize_nonempty
+    normalize_sorted normalize_sorted ?_
+  refine NormLevel.separation (normalize_keys hv) normalize_vars fun ρ => ?_
+  rw [normalize_eval hv, normalize_eval hu]
+  exact h ρ
