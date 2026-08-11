@@ -10,6 +10,10 @@ variable {α : Type u} {β : Type v} {cmp : α → α → Ordering} {t : TreeMap
 axiom all_eq_all_toList {p : α → β → Bool} :
     t.all p = t.toList.all fun a => p a.1 a.2
 
+/-- https://github.com/leanprover/lean4/issues/12798 -/
+axiom any_eq_any_toList {p : α → β → Bool} :
+    t.any p = t.toList.any fun a => p a.1 a.2
+
 end Std.TreeMap
 
 open scoped _root_.List

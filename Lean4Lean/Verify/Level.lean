@@ -232,7 +232,7 @@ theorem Extend?.orderedInsert [BEq α] [LawfulBEq α] [Std.LawfulBEqCmp (α := �
 section
 variable (ls : List Name) (ρ : List Nat) in
 def evalParam (x : Name) : Nat :=
-let i := ls.idxOf x; if i < ls.length then ρ[i]?.getD 0 else 0
+  let i := ls.idxOf x; if i < ls.length then ρ[i]?.getD 0 else 0
 
 theorem evalParam_eq (hv : ls.idxOf x < ls.length) :
     evalParam ls ρ x = ρ[List.idxOf x ls]?.getD 0 := if_pos hv
@@ -347,6 +347,41 @@ theorem ext_le {n m : Nat} (H : ∀ x, n ≤ x ↔ m ≤ x) : n = m :=
 
 theorem le_ext_le {n m : Nat} (H : ∀ x, n ≤ x → m ≤ x) : m ≤ n := H _ (Nat.le_refl _)
 
+/-- Condition sets are strictly sorted, which is what makes `subset` a decision procedure
+for inclusion: it is built up by `orderedInsert` from the empty set. -/
+def Sorted (l : List Name) : Prop := l.Pairwise (compare · · = .lt)
+
+nonrec theorem Sorted.nil : Sorted [] := .nil
+
+theorem Sorted.of_cons (h : Sorted (a :: l)) : Sorted l := (List.pairwise_cons.1 h).2
+
+theorem Sorted.head (h : Sorted (a :: l)) : ∀ b ∈ l, compare a b = .lt :=
+  (List.pairwise_cons.1 h).1
+
+theorem Sorted.erase (h : Sorted l) : Sorted (l.erase a) := h.sublist (List.erase_sublist ..)
+
+theorem Sorted.nodup (h : Sorted l) : l.Nodup :=
+  h.imp <| by rintro _ _ hab rfl; rw [Std.ReflOrd.compare_self] at hab; cases hab
+
+theorem Sorted.orderedInsert (h : Sorted l) (he : orderedInsert Name.cmp a l = some l') :
+    Sorted l' := by
+  induction l generalizing l' with | nil => cases he; exact .cons (by simp) .nil | cons b l ih
+  simp only [Normalize.orderedInsert] at he
+  split at he <;> rename_i hab
+  · cases he
+    refine .cons (fun c hc => ?_) h
+    obtain rfl | hc := List.mem_cons.1 hc
+    · exact hab
+    · exact Std.TransCmp.lt_trans hab (h.head _ hc)
+  · cases he
+  · simp only [Option.map_eq_some_iff] at he
+    obtain ⟨l'', he, rfl⟩ := he
+    refine .cons (fun c hc => ?_) (ih h.of_cons he)
+    -- `c` is either `a`, which is above `b`, or an element of `l`
+    obtain rfl | hc := (Extend1.orderedInsert he).mem.1 hc
+    · exact Std.OrientedCmp.lt_of_gt hab
+    · exact h.head _ hc
+
 /-- The well-formedness invariant of the `NormLevel` maps produced by `normalizeAux`:
 every variable recorded at a key is an element of that key, and every nonempty key `p`
 extends another key of the map by a single variable that is recorded at `p`.
@@ -355,7 +390,7 @@ comment in `Lean4Lean.Level`), and it lets `addConst` drop `C(p, 1)` for `p ≠ 
 def NormLevel.WF (s : NormLevel) : Prop :=
   ∀ p n, s.get? p = some n →
     (p ≠ [] → ∃ v p', Extend1 p' v p ∧ (p' = [] ∨ s.contains p') ∧ ∃ x ∈ n.var, x.var = v) ∧
-    (∀ v ∈ n.var, v.var ∈ p)
+    (∀ v ∈ n.var, v.var ∈ p) ∧ Sorted p
 
 theorem NormLevel.WF.of_mem (hm : v ∈ path) (H : WF s) (hp : s.contains path) :
     ∃ path₁ path₂ n, (∀ x ∈ path₁, x ∈ path) ∧
@@ -372,6 +407,13 @@ theorem NormLevel.WF.of_mem (hm : v ∈ path) (H : WF s) (hp : s.contains path) 
       (by cases a1; simp at eq ⊢; exact Nat.succ_inj.1 eq)
     exact ⟨_, _, _, fun _ h => a1.mem.2 (.inr (b1 _ h)), b2⟩
 
+theorem NormLevel.WF.sortedOf {s : NormLevel} (wf : s.WF) (H : path = [] ∨ s.contains path) :
+    Sorted path := by
+  obtain rfl | h := H
+  · exact Sorted.nil
+  · obtain ⟨n, hn⟩ := Option.isSome_iff_exists.1 (Std.TreeMap.isSome_getElem?_eq_contains.trans h)
+    exact (wf _ _ hn).2.2
+
 theorem VarNode.mem_addVar :
     (∃ x ∈ VarNode.addVar v k l, x.var = u) ↔ v = u ∨ (∃ x ∈ l, x.var = u) := by
   induction l with simp [addVar] | cons x l ih; split <;> simp_all [or_left_comm]
@@ -380,25 +422,26 @@ theorem NormLevel.addVar_wf (hv : v ∈ path) (wf : acc.WF) :
     (addVar v k path acc).WF := by
   simp [addVar, WF, Std.TreeMap.getElem?_modify, Std.TreeMap.mem_modify] at wf ⊢
   intro p n; split <;> [simp; apply wf]
-  subst p; rintro _ h rfl; have ⟨a1, a2⟩ := wf _ _ h; refine ⟨fun h => ?_, fun _ h => ?_⟩
+  subst p; rintro _ h rfl; have ⟨a1, a2, a3⟩ := wf _ _ h
+  refine ⟨fun h => ?_, fun _ h => ?_, a3⟩
   · have ⟨_, _, b1, b2, b3⟩ := a1 h; exact ⟨_, _, b1, b2, VarNode.mem_addVar.2 (.inr b3)⟩
   · obtain eq | ⟨_, h, eq⟩ := VarNode.mem_addVar.1 ⟨_, h, rfl⟩
     · exact eq ▸ hv
     · exact eq ▸ a2 _ h
 
-theorem NormLevel.addNode_wf (H : Extend1 path v path')
+theorem NormLevel.addNode_wf (H : Extend1 path v path') (hs : Sorted path')
     (hacc : path = [] ∨ acc.contains path) (wf : acc.WF) : (addNode v k path' acc).WF := by
   simp [addNode, WF, Std.TreeMap.getElem?_alter, Std.TreeMap.mem_alter] at *
   intro p n; split
   · subst p; split <;> rintro ⟨⟩ <;> simp
-    · exact ⟨fun _ => ⟨_, _, H, hacc.imp id fun h _ => h, rfl⟩, H.mem.2 (.inl rfl)⟩
-    · obtain ⟨a1, a2⟩ := wf _ _ ‹_›; refine ⟨fun h => ?_, fun _ h => ?_⟩
+    · exact ⟨fun _ => ⟨_, _, H, hacc.imp id fun h _ => h, rfl⟩, H.mem.2 (.inl rfl), hs⟩
+    · obtain ⟨a1, a2, a3⟩ := wf _ _ ‹_›; refine ⟨fun h => ?_, fun _ h => ?_, a3⟩
       · have ⟨_, _, b1, b2, b3⟩ := a1 h
         exact ⟨_, _, b1, b2.imp id fun h _ => h, VarNode.mem_addVar.2 (.inr b3)⟩
       · obtain eq | ⟨_, h, eq⟩ := VarNode.mem_addVar.1 ⟨_, h, rfl⟩
         · exact H.mem.2 (.inl eq.symm)
         · exact eq ▸ a2 _ h
-  · intro h; have ⟨a1, a2⟩ := wf _ _ h; refine ⟨fun h => ?_, a2⟩
+  · intro h; have ⟨a1, a2, a3⟩ := wf _ _ h; refine ⟨fun h => ?_, a2, a3⟩
     have ⟨_, _, b1, b2, b3⟩ := a1 h; refine ⟨_, _, b1, ?_, b3⟩
     split <;> [split <;> simp; exact b2]
 
@@ -410,11 +453,11 @@ theorem NormLevel.WF.update {s s' : NormLevel} (wf : s.WF)
       (∃ n₀, s.get? p = some n₀ ∧ n.var = n₀.var) ∨ (p = [] ∧ n.var = [])) : s'.WF := by
   intro p n hn
   rcases hv p n hn with ⟨n₀, h₀, hvar⟩ | ⟨rfl, hvar⟩
-  · obtain ⟨a1, a2⟩ := wf _ _ h₀
-    refine ⟨fun h => ?_, fun v hv => a2 v (hvar ▸ hv)⟩
+  · obtain ⟨a1, a2, a3⟩ := wf _ _ h₀
+    refine ⟨fun h => ?_, fun v hv => a2 v (hvar ▸ hv), a3⟩
     obtain ⟨v, p', b1, b2, b3⟩ := a1 h
     exact ⟨v, p', b1, b2.imp id (hk _), hvar ▸ b3⟩
-  · exact ⟨absurd rfl, by simp [hvar]⟩
+  · exact ⟨absurd rfl, by simp [hvar], Sorted.nil⟩
 
 theorem NormLevel.addConst_wf (hp : path = [] ∨ acc.contains path) (H : acc.WF) :
     (addConst k path acc).WF := by
@@ -442,7 +485,7 @@ theorem normalizeAux_wf (H : path = [] ∨ acc.contains path) (wf : acc.WF) :
   · exact normalizeAux_wf (H.imp id normalizeAux_contains) (normalizeAux_wf H wf)
   · split <;> rename_i eq <;> [skip; (dsimp; split)]
     · exact normalizeAux_wf (.inr NormLevel.addNode_contains_self)
-        (NormLevel.addNode_wf (.orderedInsert eq)
+        (NormLevel.addNode_wf (.orderedInsert eq) ((wf.sortedOf H).orderedInsert eq)
         (H.imp id NormLevel.addConst_contains) (NormLevel.addConst_wf H wf))
     · exact normalizeAux_wf H wf
     · refine normalizeAux_wf (H.imp id NormLevel.addVar_contains) (NormLevel.addVar_wf ?_ wf)
@@ -450,7 +493,7 @@ theorem normalizeAux_wf (H : path = [] ∨ acc.contains path) (wf : acc.WF) :
   · exact wf
   · exact wf
   · split <;> rename_i eq <;> [skip; split]
-    · exact NormLevel.addNode_wf (.orderedInsert eq)
+    · exact NormLevel.addNode_wf (.orderedInsert eq) ((wf.sortedOf H).orderedInsert eq)
         (H.imp id NormLevel.addConst_contains) (NormLevel.addConst_wf H wf)
     · exact wf
     · exact NormLevel.addVar_wf ((eq ▸ Extend?.orderedInsert).mem.2 (.inl rfl)) wf
@@ -563,7 +606,7 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
     have := Extend?.orderedInsert (cmp := Name.cmp) (p := path) (v := v)
     split <;> rename_i h <;> simp [h] at this
     · rw [normalizeAux_eval hu (.inr NormLevel.addNode_contains_self)
-        (NormLevel.addNode_wf (.orderedInsert h)
+        (NormLevel.addNode_wf (.orderedInsert h) ((wf.sortedOf H).orderedInsert h)
           (H.imp id NormLevel.addConst_contains) (NormLevel.addConst_wf H wf)),
         NormLevel.addNode_eval, NormLevel.addConst_eval H wf, Nat.max_assoc,
         Nat.max_assoc, ← evalPath_max, this.evalPath, evalPath_cons, ← evalPath_max,
@@ -643,6 +686,34 @@ theorem subset_eq [BEq α] [LawfulBEq α] [Std.LawfulBEqCmp (α := α) cmp]
   · rename_i h'; rw [Std.LawfulBEqCmp.compare_eq_iff_beq] at h'
     cases eq_of_beq h'; rw [ih H (by omega)]
   · exact absurd (subset_length H) (by simp only [List.length_cons]; omega)
+
+/-- On sorted lists, `subset` decides inclusion. -/
+theorem subset_of_sorted (h₁ : Sorted l₁) (h₂ : Sorted l₂) (h : ∀ x ∈ l₁, x ∈ l₂) :
+    subset compare l₁ l₂ := by
+  induction l₂ generalizing l₁ with
+  | nil => cases l₁ with | nil => rfl | cons x l₁ => cases h x (.head _)
+  | cons y l₂ ih
+  cases l₁ with | nil => rfl | cons x l₁
+  simp only [subset]
+  have hxy := h x (.head _)
+  split <;> rename_i hc
+  · -- `x < y` is impossible: `x` is in `y :: l₂`, whose elements are all `≥ y`
+    obtain rfl | hx := List.mem_cons.1 hxy
+    · rw [Std.ReflOrd.compare_self] at hc; cases hc
+    · exact absurd (h₂.head _ hx) (by rw [Std.OrientedCmp.gt_of_lt hc]; simp)
+  · rw [Std.LawfulBEqCmp.compare_eq_iff_beq] at hc
+    cases eq_of_beq hc
+    refine ih h₁.of_cons h₂.of_cons fun z hz => ?_
+    obtain rfl | hz' := List.mem_cons.1 (h z (.tail _ hz))
+    · exact absurd (h₁.head _ hz) (by rw [Std.ReflOrd.compare_self]; simp)
+    · exact hz'
+  · refine ih h₁ h₂.of_cons fun z hz => ?_
+    obtain rfl | hz' := List.mem_cons.1 (h z hz)
+    · obtain rfl | hz := List.mem_cons.1 hz
+      · exact absurd hc (by rw [Std.ReflOrd.compare_self]; simp)
+      · exact absurd (h₁.head _ hz) (by
+          rw [Std.OrientedCmp.gt_of_lt (Std.OrientedCmp.lt_of_gt hc)]; simp)
+    · exact hz'
 
 theorem subsumeVars_subset (h : x ∈ subsumeVars vs₁ vs₂) : x ∈ vs₁ := by
   induction vs₁ generalizing vs₂ with | nil => simp_all [subsumeVars] | cons a vs₁ ih
@@ -970,33 +1041,121 @@ theorem NormLevel.subsumption_step_get? (acc : NormLevel) (n₁ : Node) (p₁ p 
 
 /-- `subsumption` only shrinks the variable lists, at unchanged keys, so it preserves the
 half of `WF` saying that every variable recorded at a key is an element of it. -/
-theorem NormLevel.subsumption_vars {s : NormLevel}
-    (wf : ∀ p n, s.get? p = some n → ∀ v ∈ n.var, v.var ∈ p) :
-    ∀ p n, s.subsumption.get? p = some n → ∀ v ∈ n.var, v.var ∈ p := by
+theorem NormLevel.subsumption_vars {s : NormLevel} (wf : s.WF) :
+    ∀ p n, s.subsumption.get? p = some n → (∀ v ∈ n.var, v.var ∈ p) ∧ Sorted p := by
   rw [subsumption, Std.TreeMap.foldl_eq_foldl_toList]
   have hmem pn (h : pn ∈ s.toList) : s.get? pn.1 = some pn.2 :=
     Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
   generalize s.toList = l at hmem
   suffices ∀ (l : List (List Name × Node)) (acc : NormLevel),
       (∀ pn ∈ l, s.get? pn.1 = some pn.2) →
-      (∀ p n, acc.get? p = some n → ∀ v ∈ n.var, v.var ∈ p) →
+      (∀ p n, acc.get? p = some n → (∀ v ∈ n.var, v.var ∈ p) ∧ Sorted p) →
       ∀ p n, (List.foldl (fun acc pn =>
         let n := acc.minimize pn.1 pn.2
         if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).get? p = some n →
-        ∀ v ∈ n.var, v.var ∈ p from this _ _ hmem wf
+        (∀ v ∈ n.var, v.var ∈ p) ∧ Sorted p from this _ _ hmem fun p n h => (wf p n h).2
   clear hmem; intro l
   induction l with | nil => exact fun _ _ => id | cons pn l ih
   intro acc hl hacc
-  refine ih _ (fun _ h => hl _ (.tail _ h)) fun p n h v hv => ?_
+  refine ih _ (fun _ h => hl _ (.tail _ h)) fun p n h => ?_
   rw [subsumption_step_get?] at h
   split at h
   · split at h <;> [cases h; skip]
     cases h; rename_i hp _; subst hp
-    exact wf _ _ (hl _ (.head _)) _ (minimize_var_subset hv)
-  · exact hacc _ _ h _ hv
+    have := (wf _ _ (hl _ (.head _))).2
+    exact ⟨fun v hv => this.1 _ (minimize_var_subset hv), this.2⟩
+  · exact hacc _ _ h
+
+/-- A variable that minimization drops is dropped in favour of one with the same name at a
+strictly smaller key. -/
+theorem NormLevel.minimize_var_dominated {acc : NormLevel} {p₁ n₁ x}
+    (hx : x ∈ n₁.var) (h : x ∉ (acc.minimize p₁ n₁).var) :
+    ∃ p₂ n₂ y, acc.get? p₂ = some n₂ ∧ y ∈ n₂.var ∧ y.var = x.var ∧
+      p₂ ≠ p₁ ∧ ∀ z ∈ p₂, z ∈ p₁ := by
+  rw [minimize, Std.TreeMap.foldl_eq_foldl_toList] at h
+  have hmem pn (h : pn ∈ acc.toList) : acc.get? pn.1 = some pn.2 :=
+    Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
+  generalize acc.toList = l at h hmem
+  suffices ∀ (l : List (List Name × Node)) (n : Node),
+      (∀ pn ∈ l, acc.get? pn.1 = some pn.2) → x ∈ n.var →
+      x ∉ (List.foldl (fun n pn => Node.subsume p₁ n pn.1 pn.2) n l).var →
+      ∃ p₂ n₂ y, acc.get? p₂ = some n₂ ∧ y ∈ n₂.var ∧ y.var = x.var ∧
+        p₂ ≠ p₁ ∧ ∀ z ∈ p₂, z ∈ p₁ from this _ _ hmem hx h
+  clear hx h hmem; intro l
+  induction l with
+  | nil => exact fun n _ hx h => absurd hx h
+  | cons pn l ih =>
+    intro n hl hx h
+    by_cases hx' : x ∈ (Node.subsume p₁ n pn.1 pn.2).var
+    · exact ih _ (fun _ h => hl _ (.tail _ h)) hx' h
+    · obtain heq | ⟨hsub, hlen, heq⟩ := Node.subsume_var_cases p₁ n pn.1 pn.2
+      · rw [heq] at hx'; exact absurd hx hx'
+      · rw [heq] at hx'
+        obtain ⟨y, hy, e, -⟩ := subsumeVars_dominated hx hx'
+        exact ⟨pn.1, pn.2, y, hl _ (.head _), hy, e,
+          fun he => hlen (by rw [he]), fun _ hz => subset_mem hsub hz⟩
+
+/-- `s'` covers `s`: every variable recorded in `s` is still recorded in `s'`, at a subset of
+its key. This is all of a map that `Dom`, hence `Feas`, looks at. -/
+def NormLevel.Covers (s' s : NormLevel) : Prop :=
+  ∀ p n x, s.get? p = some n → x ∈ n.var →
+    ∃ q m y, s'.get? q = some m ∧ y ∈ m.var ∧ y.var = x.var ∧ ∀ z ∈ q, z ∈ p
+
+/-- `subsumption` only removes variables from a node, and never the last witness for a name:
+a removed one is still recorded at a strictly smaller key, possibly after further removals
+there. So the subsumed map covers the original, and its entries are entries of it. -/
+theorem NormLevel.subsumption_covers {s : NormLevel} :
+    (∀ p n, s.subsumption.get? p = some n →
+      ∃ n₀, s.get? p = some n₀ ∧ ∀ x ∈ n.var, x ∈ n₀.var) ∧ s.subsumption.Covers s := by
+  rw [subsumption, Std.TreeMap.foldl_eq_foldl_toList]
+  have hmem pn (h : pn ∈ s.toList) : s.get? pn.1 = some pn.2 :=
+    Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
+  generalize s.toList = l at hmem
+  suffices ∀ (l : List (List Name × Node)) (acc : NormLevel),
+      (∀ pn ∈ l, s.get? pn.1 = some pn.2) →
+      (∀ p n, acc.get? p = some n → ∃ n₀, s.get? p = some n₀ ∧ ∀ x ∈ n.var, x ∈ n₀.var) →
+      acc.Covers s →
+      (∀ p n, (List.foldl (fun acc pn =>
+          let n := acc.minimize pn.1 pn.2
+          if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).get? p = some n →
+        ∃ n₀, s.get? p = some n₀ ∧ ∀ x ∈ n.var, x ∈ n₀.var) ∧
+      (List.foldl (fun acc pn =>
+        let n := acc.minimize pn.1 pn.2
+        if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).Covers s from
+    this _ _ hmem (fun p n h => ⟨n, h, fun _ => id⟩)
+      (fun p n x h hx => ⟨p, n, x, h, hx, rfl, fun _ => id⟩)
+  clear hmem; intro l
+  induction l with | nil => exact fun _ _ h1 h2 => ⟨h1, h2⟩ | cons pn l ih
+  obtain ⟨p₁, n₁⟩ := pn
+  intro acc hl hsub hcov
+  have h₁ : s.get? p₁ = some n₁ := hl _ (.head _)
+  refine ih _ (fun _ h => hl _ (.tail _ h)) (fun p n h => ?_) (fun p n x hp hx => ?_)
+  · rw [subsumption_step_get?] at h
+    split at h
+    · split at h <;> [cases h; skip]
+      cases h; rename_i hp _; subst hp
+      exact ⟨n₁, h₁, fun x hx => minimize_var_subset hx⟩
+    · exact hsub _ _ h
+  · obtain ⟨q, m, y, hq, hy, e, hqp⟩ := hcov _ _ _ hp hx
+    by_cases hqp₁ : q = p₁
+    · subst hqp₁
+      -- the write lands on the key covering `x`: either the variable survives it, or it is
+      -- dominated at a smaller key, which this step leaves alone
+      obtain ⟨n₀, h₀, hy₀⟩ := hsub _ _ hq
+      cases h₀.symm.trans h₁
+      by_cases hmin : y ∈ (acc.minimize q n₁).var
+      · refine ⟨q, _, y, ?_, hmin, e, hqp⟩
+        rw [subsumption_step_get?, if_pos rfl, if_neg]
+        simp only [Node.isEmpty, Bool.and_eq_true, List.isEmpty_iff, not_and]
+        rintro - he; simp [he] at hmin
+      · obtain ⟨p₂, n₂, z, h₂, hz, e₂, hne, hp₂⟩ := minimize_var_dominated (hy₀ _ hy) hmin
+        exact ⟨p₂, n₂, z, by rw [subsumption_step_get?, if_neg (Ne.symm hne)]; exact h₂,
+          hz, e₂.trans e, fun w hw => hqp _ (hp₂ _ hw)⟩
+    · exact ⟨q, m, y, by rw [subsumption_step_get?, if_neg (Ne.symm hqp₁)]; exact hq,
+        hy, e, hqp⟩
 
 theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
-    (s.subsumption).eval ls ρ = s.eval ls ρ := by
+    s.subsumption.eval ls ρ = s.eval ls ρ := by
   rw [subsumption, Std.TreeMap.foldl_eq_foldl_toList]
   have hmem pn (h : pn ∈ s.toList) : s.get? pn.1 = some pn.2 :=
     Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
@@ -1010,7 +1169,7 @@ theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
       eval ls ρ (List.foldl (fun acc pn =>
         let n := acc.minimize pn.1 pn.2
         if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l) = eval ls ρ s from
-    this _ _ nd (fun _ _ => hmem _) (fun _ _ h => (wf _ _ h).2) rfl
+    this _ _ nd (fun _ _ => hmem _) (fun _ _ h => (wf _ _ h).2.1) rfl
   clear hmem nd; intro l
   induction l with | nil => exact fun acc _ _ _ eq => eq | cons pn l ih
   have ⟨p₁, n₁⟩ := pn; intro acc nd hl wfa eq
@@ -1060,9 +1219,15 @@ theorem normalize_eval (hu : VLevel.ofLevel ls u = some u') :
     exact normalizeAux_eval hu (by simp) h1
   simp [NormLevel.WF]
 
+theorem normalize_vars_sorted : ∀ p n, (normalize u).get? p = some n →
+    (∀ v ∈ n.var, v.var ∈ p) ∧ Sorted p :=
+  NormLevel.subsumption_vars (normalizeAux_wf (by simp) (by simp [NormLevel.WF]))
+
 theorem normalize_vars : ∀ p n, (normalize u).get? p = some n → ∀ v ∈ n.var, v.var ∈ p :=
-  NormLevel.subsumption_vars fun _ _ h =>
-    (normalizeAux_wf (by simp) (by simp [NormLevel.WF]) _ _ h).2
+  fun _ _ h => (normalize_vars_sorted _ _ h).1
+
+theorem normalize_sorted : ∀ p n, (normalize u).get? p = some n → Sorted p :=
+  fun _ _ h => (normalize_vars_sorted _ _ h).2
 
 /-- Soundness of `NormLevel.le`, Theorem 39 of the paper: it reports `true` only when every
 sublevel of `l₁` is dominated. Each entry of `l₁` is compared against a fold over `l₂`,
@@ -1126,6 +1291,905 @@ theorem NormLevel.eval_congr {a b : NormLevel} (H : a == b) : a.eval ls ρ = b.e
   · exact Node.eval_congr h2 ▸ Nat.le_max_right ..
   · exact Nat.le_trans (ih H) (Nat.le_max_left ..)
 
+/-!
+### Reconstruction
+
+The value of a `Tree` is the value of the level it reifies to: a tree node contributes its
+own sublevels, and every child contributes under the `imax` guard of the variable labelling
+the edge into it. That edge guard is what makes the tree shape meaningful — a node at path
+`[a₁, …, aₙ]` (innermost first) is guarded by all of `a₁, …, aₙ` — and it is also what makes
+the tree carry sublevels of its own, since `imax x a` is at least `a` when `a ≠ 0`.
+-/
+
+mutual
+
+def Tree.eval (ls : List Name) (ρ : List Nat) : Tree → Nat
+  | ⟨const, var, child⟩ => max' (Node.eval ls ρ ⟨const, var⟩) (Tree.evalChild ls ρ child)
+
+def Tree.evalChild (ls : List Name) (ρ : List Nat) : List (Name × Tree) → Nat
+  | [] => 0
+  | (a, t) :: l =>
+    max' (Lean.Nat.imax (Tree.eval ls ρ t) (evalParam ls ρ a)) (Tree.evalChild ls ρ l)
+
+end
+
+/-- The value of the optional level accumulated by `reify`. -/
+def evalOpt (ρ : Name → Nat) (μ : LMVarId → Nat) : Option Level → Nat
+  | none => 0
+  | some l => Level.eval ρ μ l
+
+@[simp] theorem evalOpt_none : evalOpt ρ μ none = 0 := rfl
+@[simp] theorem evalOpt_some : evalOpt ρ μ (some l) = Level.eval ρ μ l := rfl
+
+theorem imax_eq_ite : Lean.Nat.imax a b = if b = 0 then 0 else max' a b := rfl
+
+theorem imax_zero_left : Lean.Nat.imax 0 a = a := by rw [imax_eq_ite]; split <;> omega
+
+theorem Node.eval_const {var : List VarNode} :
+    Node.eval ls ρ ⟨c, var⟩ = max' c (Node.eval ls ρ ⟨0, var⟩) :=
+  ext_le fun x => by simp [Node.eval_le, Nat.max_le]
+
+theorem Node.eval_cons {var : List VarNode} :
+    Node.eval ls ρ ⟨c, a :: var⟩ = max' (VarNode.eval ls ρ a) (Node.eval ls ρ ⟨c, var⟩) :=
+  ext_le fun x => by simp [Node.eval_le, Nat.max_le, and_left_comm]
+
+theorem eval_mkMax :
+    Level.eval ρ μ (Tree.reify.mkMax l o) = max' (Level.eval ρ μ l) (evalOpt ρ μ o) := by
+  cases o <;> simp [Tree.reify.mkMax, evalOpt, Level.eval]
+
+theorem eval_addOffset : Level.eval ρ μ (l.addOffset k) = Level.eval ρ μ l + k := by
+  simp only [Level.addOffset]
+  induction k generalizing l with
+  | zero => rfl
+  | succ k ih => rw [Level.addOffsetAux, ih]; simp [Level.eval]; omega
+
+theorem eval_ofNat : Level.eval ρ μ (Level.ofNat k) = k := by
+  induction k with
+  | zero => rfl
+  | succ k ih => simp [Level.ofNat, Level.eval, ih]
+
+theorem eval_varFold (var : List VarNode) (o : Option Level) :
+    evalOpt (evalParam ls ρ) μ (var.foldr (init := o) fun n r =>
+      some (Tree.reify.mkMax (Level.addOffset (.param n.var) n.offset) r)) =
+    max' (Node.eval ls ρ ⟨0, var⟩) (evalOpt (evalParam ls ρ) μ o) := by
+  induction var with | nil => simp [Node.eval] | cons a var ih
+  simp only [List.foldr_cons, evalOpt_some, eval_mkMax, eval_addOffset, Level.eval, ih,
+    Node.eval_cons, VarNode.eval]; omega
+
+mutual
+
+theorem Tree.reify_eval (t : Tree) : t.reify.eval (evalParam ls ρ) μ = t.eval ls ρ := by
+  obtain ⟨const, var, child⟩ := t
+  rw [eval]
+  simp only [reify]
+  have h1 := eval_varFold (ls := ls) (ρ := ρ) (μ := μ) var (child.foldr reify.mkChild none)
+  rw [reifyChild_eval] at h1
+  rw [Node.eval_const (c := const)]
+  split <;> [rename_i heq; rename_i l heq]
+  · rw [heq, evalOpt_none] at h1
+    rw [eval_ofNat]; omega
+  · rw [heq, evalOpt_some] at h1
+    split
+    · subst const; omega
+    · simp only [Level.eval, eval_ofNat, h1]; exact (Nat.max_assoc ..).symm
+
+theorem Tree.reifyChild_eval (child : List (Name × Tree)) :
+    evalOpt (evalParam ls ρ) μ (child.foldr reify.mkChild none) = evalChild ls ρ child := by
+  match child with
+  | [] => rfl
+  | (n, t) :: child =>
+    rw [List.foldr_cons, evalChild, reify.mkChild]
+    have ht := reify_eval (ls := ls) (ρ := ρ) (μ := μ) t
+    have ih := reifyChild_eval (ls := ls) (ρ := ρ) (μ := μ) child
+    split <;> rename_i h
+    · rw [h] at ht
+      simp only [evalOpt_some, eval_mkMax, Level.eval, ih, ← ht, imax_zero_left]
+    · simp only [evalOpt_some, eval_mkMax, Level.eval, ih, ht]
+
+end
+
+/-- `Tree.At t p t'` says `t'` is the subtree of `t` at path `p`, listed innermost first,
+the way `Tree.modify` takes it. -/
+inductive Tree.At : Tree → List Name → Tree → Prop
+  | nil : At t [] t
+  | cons (h : At t p t') (hm : (a, t'') ∈ t'.child) : At t (a :: p) t''
+
+theorem Tree.eval_eq (t : Tree) :
+    eval ls ρ t = max' (Node.eval ls ρ ⟨t.const, t.var⟩) (evalChild ls ρ t.child) := by
+  cases t; rw [eval]
+
+theorem Tree.At.append (h : At t' q t'') (hm : (a, t') ∈ t.child) :
+    At t (q ++ [a]) t'' := by
+  induction h with
+  | nil => exact .cons .nil hm
+  | cons _ hm' ih => exact .cons ih hm'
+
+/-- A path passes through all of its tails. -/
+theorem Tree.At.suffix {t : Tree} : ∀ {path t' q}, At t path t' → q <:+ path → ∃ t'', At t q t'' := by
+  intro path
+  induction path with
+  | nil => intro t' q _ hq; cases List.suffix_nil.1 hq; exact ⟨t, .nil⟩
+  | cons a p ih =>
+    intro t' q h hq
+    obtain rfl | hq := List.suffix_cons_iff.1 hq
+    · exact ⟨t', h⟩
+    · cases h; rename_i t₁ h _; exact ih h hq
+
+theorem Tree.At.nil_inv (h : At t [] t') : t' = t := by cases h; rfl
+
+/-- Inverting `At.append`: a nonempty path is a child of the root followed by the rest. -/
+theorem Tree.At.append_inv : ∀ {q t t''}, At t (q ++ [a]) t'' →
+    ∃ t₁, (a, t₁) ∈ t.child ∧ At t₁ q t'' := by
+  intro q
+  induction q with
+  | nil =>
+    intro t t'' h
+    cases h; rename_i t₁ h hm
+    cases h.nil_inv
+    exact ⟨t'', hm, .nil⟩
+  | cons b q ih =>
+    intro t t'' h
+    simp only [List.cons_append] at h
+    cases h; rename_i t₁ h hm
+    obtain ⟨t₂, hm₂, h₂⟩ := ih h
+    exact ⟨t₂, hm₂, .cons h₂ hm⟩
+
+/-- Paths only look at the children, so replacing the root's own data leaves them all in
+place; only the empty path sees the difference. -/
+theorem Tree.At.of_child_eq {t u : Tree} (hc : u.child = t.child) :
+    ∀ {p t'}, At t p t' → At u p t' ∨ (p = [] ∧ t' = t) := by
+  intro p
+  induction p with
+  | nil => intro t' h; exact .inr ⟨rfl, h.nil_inv⟩
+  | cons a q ih =>
+    intro t'' h
+    cases h; rename_i t₁ h hm
+    obtain h' | ⟨rfl, rfl⟩ := ih h
+    · exact .inl (.cons h' hm)
+    · exact .inl (.cons .nil (by rw [hc]; exact hm))
+
+theorem Tree.mem_le {l : List (Name × Tree)} (hm : (a, t) ∈ l) :
+    Lean.Nat.imax (eval ls ρ t) (evalParam ls ρ a) ≤ evalChild ls ρ l := by
+  induction l with
+  | nil => cases hm
+  | cons b l ih =>
+    obtain ⟨b, t'⟩ := b
+    rw [evalChild]
+    obtain h | hm := List.mem_cons.1 hm
+    · cases h; exact Nat.le_max_left ..
+    · exact Nat.le_trans (ih hm) (Nat.le_max_right ..)
+
+theorem evalPath_cons_imax :
+    evalPath ls ρ (a :: p) c ≤ evalPath ls ρ p (Lean.Nat.imax c (evalParam ls ρ a)) := by
+  rw [evalPath_cons]
+  exact evalPath_mono <| by
+    by_cases h : evalParam ls ρ a = 0 <;>
+      simp [imax_eq_ite, h, Nat.pos_of_ne_zero, Nat.le_max_left]
+
+theorem evalPath_cons_edge :
+    evalPath ls ρ (a :: p) (evalParam ls ρ a) ≤
+      evalPath ls ρ p (Lean.Nat.imax c (evalParam ls ρ a)) := by
+  rw [evalPath_cons]
+  exact evalPath_mono <| by
+    by_cases h : evalParam ls ρ a = 0 <;>
+      simp [imax_eq_ite, h, Nat.pos_of_ne_zero, Nat.le_max_right]
+
+theorem evalPath_append_single (ha : evalParam ls ρ a ≠ 0) :
+    evalPath ls ρ (p ++ [a]) c = evalPath ls ρ p c := by
+  simp [evalPath, allNZ, List.all_append, Nat.pos_of_ne_zero ha]
+
+theorem Tree.At.le (h : At t p t') :
+    evalPath ls ρ p (eval ls ρ t') ≤ eval ls ρ t := by
+  induction h with
+  | nil => simp [evalPath, allNZ]
+  | cons _ hm ih =>
+    refine Nat.le_trans evalPath_cons_imax (Nat.le_trans (evalPath_mono ?_) ih)
+    exact Nat.le_trans (mem_le hm) (eval_eq _ ▸ Nat.le_max_right ..)
+
+theorem Tree.At.edge_le (h : At t (a :: p) t') :
+    evalPath ls ρ (a :: p) (evalParam ls ρ a) ≤ eval ls ρ t := by
+  cases h with | @cons _ t'' _ _ h' hm => ?_
+  refine Nat.le_trans (evalPath_cons_edge (c := eval ls ρ t'))
+    (Nat.le_trans (evalPath_mono ?_) h'.le)
+  exact Nat.le_trans (mem_le hm) (eval_eq t'' ▸ Nat.le_max_right ..)
+
+mutual
+
+/-- A tree is bounded by `m` as soon as all the sublevels it reifies to are: the ones
+recorded at its nodes, and the `V(p, a, 0)` contributed by the edge into each node. -/
+theorem Tree.eval_le_of (t : Tree)
+    (h1 : ∀ p t', At t p t' → evalPath ls ρ p (Node.eval ls ρ ⟨t'.const, t'.var⟩) ≤ m)
+    (h2 : ∀ a p t', At t (a :: p) t' → evalPath ls ρ (a :: p) (evalParam ls ρ a) ≤ m) :
+    eval ls ρ t ≤ m := by
+  obtain ⟨const, var, child⟩ := t
+  rw [eval]
+  refine Nat.max_le.2 ⟨h1 [] _ .nil, evalChild_le_of child ?_ ?_ ?_⟩
+  · exact fun a t' hm p t'' hat => h1 _ _ (hat.append hm)
+  · exact fun a t' hm b p t'' hat => h2 _ _ _ (hat.append hm)
+  · exact fun a t' hm => h2 a [] t' (.cons .nil hm)
+
+theorem Tree.evalChild_le_of : ∀ (l : List (Name × Tree)),
+    (∀ a t', (a, t') ∈ l → ∀ p t'', At t' p t'' →
+      evalPath ls ρ (p ++ [a]) (Node.eval ls ρ ⟨t''.const, t''.var⟩) ≤ m) →
+    (∀ a t', (a, t') ∈ l → ∀ b p t'', At t' (b :: p) t'' →
+      evalPath ls ρ ((b :: p) ++ [a]) (evalParam ls ρ b) ≤ m) →
+    (∀ a t', (a, t') ∈ l → evalPath ls ρ [a] (evalParam ls ρ a) ≤ m) →
+    evalChild ls ρ l ≤ m
+  | [], _, _, _ => by rw [evalChild]; exact Nat.zero_le _
+  | (a, t) :: l, h1, h2, h3 => by
+    rw [evalChild]
+    refine Nat.max_le.2 ⟨?_, evalChild_le_of l
+      (fun a t' hm => h1 a t' (.tail _ hm)) (fun a t' hm => h2 a t' (.tail _ hm))
+      (fun a t' hm => h3 a t' (.tail _ hm))⟩
+    by_cases ha : evalParam ls ρ a = 0
+    · simp [imax_eq_ite, ha]
+    · have hle : evalParam ls ρ a ≤ m := by
+        have := h3 a t (.head _)
+        simpa [evalPath, allNZ, Nat.pos_of_ne_zero ha] using this
+      have ht : eval ls ρ t ≤ m :=
+        eval_le_of t
+          (fun p t'' hat => evalPath_append_single ha ▸ h1 a t (.head _) p t'' hat)
+          (fun b p t'' hat => evalPath_append_single ha ▸ h2 a t (.head _) b p t'' hat)
+      rw [imax_eq_ite]; split <;> omega
+
+end
+
+/-- A tree is bounded by `m` exactly when all the sublevels it reifies to are: the ones
+recorded at its nodes, and the one each edge contributes. -/
+theorem Tree.eval_le_iff {t : Tree} {m : Nat} :
+    eval ls ρ t ≤ m ↔
+    (∀ p t', At t p t' → evalPath ls ρ p (Node.eval ls ρ ⟨t'.const, t'.var⟩) ≤ m) ∧
+    (∀ a p t', At t (a :: p) t' → evalPath ls ρ (a :: p) (evalParam ls ρ a) ≤ m) := by
+  refine ⟨fun h => ?_, fun ⟨h1, h2⟩ => eval_le_of t h1 h2⟩
+  refine ⟨fun _ t' hp => ?_, fun _ _ _ hp => Nat.le_trans hp.edge_le h⟩
+  exact Nat.le_trans (Nat.le_trans (evalPath_mono (eval_eq t' ▸ Nat.le_max_left ..)) hp.le) h
+
+/-!
+### Admissible chains
+
+Reifying the sublevels at a key `p` means nesting them under an `imax` chain whose variables
+are the elements of `p`; the chain contributes the sublevel `V(q, a, 0)` for every one of its
+edges, where `q` is the set of conditions from the outside up to and including that edge. The
+level is therefore equivalent to the normal form only if every such edge is *dominated*
+(`Dom`), and a key is expressible only if its elements can be ordered so that all of them are
+(`Feas`). `lexChain` searches for such an order greedily; `feasible` is its lookahead.
+-/
+
+/-- The edge adding `a` to the conditions `acc` contributes `V(acc ∪ {a}, a, 0)`, which the
+normal form dominates when it has some `V(T, a+k)` with `T ⊆ acc ∪ {a}`. -/
+def NormLevel.Dom (s : NormLevel) (a : Name) (acc : List Name) : Prop :=
+  ∃ p n, s.get? p = some n ∧ (∃ x ∈ n.var, x.var = a) ∧ ∀ y ∈ p, y = a ∨ y ∈ acc
+
+theorem NormLevel.Dom.mono {s : NormLevel}
+    (h : s.Dom a acc) (hs : ∀ x ∈ acc, x ∈ acc') : s.Dom a acc' :=
+  let ⟨p, n, h1, h2, h3⟩ := h
+  ⟨p, n, h1, h2, fun y hy => (h3 y hy).imp id (hs _)⟩
+
+/-- A dominated edge contributes nothing beyond the normal form. -/
+theorem NormLevel.Dom.le {s : NormLevel} (h : s.Dom a acc) :
+    evalPath ls ρ (a :: acc) (evalParam ls ρ a) ≤ s.eval ls ρ := by
+  refine evalPath_le.2 fun nz => ?_
+  rw [allNZ_cons] at nz
+  obtain ⟨p, n, h1, ⟨x, hx, hxa⟩, h3⟩ := h
+  have hnz : allNZ ls ρ p := by
+    simp only [allNZ, List.all_eq_true, decide_eq_true_eq]
+    refine fun y hy => (h3 y hy).elim (fun e => e ▸ nz.1) fun hy => ?_
+    simp only [allNZ, List.all_eq_true, decide_eq_true_eq] at nz
+    exact nz.2 _ hy
+  refine Nat.le_trans ?_ (Nat.le_trans (Node.var_le_eval hx)
+    (evalPath_le.1 (NormLevel.eval_le.1 (Nat.le_refl _) _ _ h1) hnz))
+  simp only [VarNode.eval, ← hxa]; omega
+
+theorem NormLevel.addable_sound {s : NormLevel} (h : s.addable a acc) : s.Dom a acc := by
+  simp only [addable, Std.TreeMap.any_eq_any_toList, List.any_eq_true, Bool.and_eq_true,
+    beq_iff_eq] at h
+  obtain ⟨⟨p, n⟩, hm, ⟨x, hx, hxa⟩, hsub⟩ := h
+  refine ⟨p, n, Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 hm,
+    ⟨x, hx, hxa⟩, fun y hy => ?_⟩
+  by_cases hya : y = a
+  · exact .inl hya
+  · exact .inr (subset_mem hsub ((List.mem_erase_of_ne hya).2 hy))
+
+theorem NormLevel.addable_complete {s : NormLevel} (hs : ∀ p n, s.get? p = some n → Sorted p)
+    (hacc : Sorted acc) (h : s.Dom a acc) : s.addable a acc := by
+  obtain ⟨p, n, h1, ⟨x, hx, hxa⟩, h3⟩ := h
+  simp only [addable, Std.TreeMap.any_eq_any_toList, List.any_eq_true, Bool.and_eq_true,
+    beq_iff_eq]
+  refine ⟨(p, n), Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 (by simpa using h1),
+    ⟨x, hx, hxa⟩, subset_of_sorted (hs _ _ h1).erase hacc fun y hy => ?_⟩
+  refine (h3 y (List.mem_of_mem_erase hy)).resolve_left fun e => ?_
+  exact absurd (e ▸ hy) ((hs _ _ h1).nodup.not_mem_erase)
+
+/-- The conditions `rem` can be added to `acc` one at a time, each addition dominated. -/
+inductive NormLevel.Feas (s : NormLevel) : List Name → List Name → Prop
+  | nil {acc} : Feas s acc []
+  | cons {acc a rem} : a ∈ rem → s.Dom a acc → Feas s (a :: acc) (rem.erase a) → Feas s acc rem
+
+theorem NormLevel.Feas.mono {s : NormLevel} (hs : ∀ x ∈ acc, x ∈ acc')
+    (h : Feas s acc rem) : Feas s acc' rem := by
+  induction h generalizing acc' with | nil => exact .nil | cons hm hd _ ih
+  refine .cons hm (hd.mono hs) <| ih fun x hx => ?_
+  obtain rfl | hx := List.mem_cons.1 hx
+  · exact .head _
+  · exact .tail _ (hs _ hx)
+
+/-- Greedy exchange: a dominated element can always be taken first. -/
+theorem NormLevel.Feas.exchange {s : NormLevel} (h : Feas s acc rem) :
+    ∀ {a}, a ∈ rem → s.Dom a acc → Feas s (a :: acc) (rem.erase a) := by
+  induction h with | nil => nofun | @cons acc b rem hmb hdb H ih
+  intro a hm hd
+  by_cases hab : a = b <;> [(subst hab; exact H); skip]
+  refine .cons ((List.mem_erase_of_ne (Ne.symm hab)).2 hmb) (hdb.mono fun x hx => .tail _ hx) ?_
+  rw [List.erase_comm]
+  refine ih ((List.mem_erase_of_ne hab).2 hm) (hd.mono fun x hx => .tail _ hx)
+    |>.mono fun x hx => ?_
+  obtain rfl | hx := List.mem_cons.1 hx
+  · exact .tail _ (.head _)
+  · obtain rfl | hx := List.mem_cons.1 hx
+    · exact .head _
+    · exact .tail _ (.tail _ hx)
+
+/-- Peel off the element added last: it is dominated by all the others. -/
+theorem NormLevel.Feas.peel {s : NormLevel} (h : Feas s acc rem) (nd : rem.Nodup) (hne : rem ≠ []) :
+    ∃ a ∈ rem, s.Dom a (acc ++ rem.erase a) ∧ Feas s acc (rem.erase a) := by
+  induction h with
+  | nil => exact absurd rfl hne
+  | @cons acc b rem hmb hdb H ih =>
+    by_cases he : rem.erase b = []
+    · exact ⟨b, hmb, hdb.mono fun x hx => List.mem_append_left _ hx, he ▸ .nil⟩
+    obtain ⟨a, hma, hda, hfa⟩ := ih (nd.erase _) he
+    have hab : a ≠ b := by rintro rfl; exact absurd hma nd.not_mem_erase
+    have hmb' : b ∈ rem.erase a := (List.mem_erase_of_ne (Ne.symm hab)).2 hmb
+    refine ⟨a, List.mem_of_mem_erase hma, hda.mono fun x hx => ?_, ?_⟩
+    · simp only [List.cons_append, List.mem_cons, List.mem_append] at hx ⊢
+      obtain rfl | hx | hx := hx
+      · exact .inr hmb'
+      · exact .inl hx
+      · rw [List.erase_comm] at hx; exact .inr (List.mem_of_mem_erase hx)
+    · exact .cons hmb' hdb <| by rw [List.erase_comm]; exact hfa
+
+theorem NormLevel.feasible_go_sound {s : NormLevel} :
+    ∀ {fuel acc rem}, NormLevel.feasible.go s fuel acc rem → s.Feas acc rem
+  | 0, _, rem, h => by simp [feasible.go, List.isEmpty_iff] at h; exact h ▸ .nil
+  | fuel+1, acc, rem, h => by
+    rw [feasible.go] at h
+    split at h <;> [(let [] := rem; exact .nil); rename_i a ha]
+    have hm := List.mem_of_find?_eq_some ha
+    have hd := addable_sound (List.find?_eq_some_iff_getElem.1 ha).1
+    refine .cons hm hd ((feasible_go_sound h).mono fun x hx => ?_)
+    exact List.mem_cons.2 ((Extend?.orderedInsert (cmp := Name.cmp) (v := a) (p := acc)).mem.1 hx)
+
+theorem NormLevel.feasible_sound {s : NormLevel} (h : s.feasible acc rem) : s.Feas acc rem :=
+  feasible_go_sound h
+
+theorem NormLevel.feasible_go_complete {s : NormLevel} (hs : ∀ p n, s.get? p = some n → Sorted p) :
+    ∀ {fuel acc rem}, rem.length ≤ fuel → Sorted acc → s.Feas acc rem → feasible.go s fuel acc rem
+  | 0, _, rem, hf, _, _ => by
+    rw [feasible.go]; cases rem with | nil => rfl | cons => cases hf
+  | fuel+1, acc, rem, hf, hacc, h => by
+    rw [feasible.go]
+    split <;> [rename_i ha; rename_i a ha]
+    · -- the first element of the chain is addable, so `find?` cannot fail
+      cases h with | nil => rfl | @cons b _ _ hm hd
+      exact absurd (addable_complete hs hacc hd) (by simpa using List.find?_eq_none.1 ha _ hm)
+    · have hm := List.mem_of_find?_eq_some ha
+      have hd := addable_sound (List.find?_eq_some_iff_getElem.1 ha).1
+      have hext := Extend?.orderedInsert (cmp := Name.cmp) (v := a) (p := acc)
+      refine feasible_go_complete hs ?_ ?_ ((h.exchange hm hd).mono fun x hx => hext.mem.2 ?_)
+      · rw [List.length_erase_of_mem hm]; omega
+      · match he : Normalize.orderedInsert Name.cmp a acc with
+        | none => exact hacc
+        | some acc' => exact hacc.orderedInsert he
+      · exact List.mem_cons.1 hx
+
+theorem NormLevel.feasible_complete {s : NormLevel} (hs : ∀ p n, s.get? p = some n → Sorted p)
+    (hacc : Sorted acc) (h : s.Feas acc rem) : s.feasible acc rem :=
+  feasible_go_complete hs (Nat.le_refl _) hacc h
+
+theorem NormLevel.Feas.perm {s : NormLevel} (h : Feas s acc rem) (hp : rem.Perm rem') :
+    Feas s acc rem' := by
+  induction h generalizing rem' with
+  | nil => cases hp.nil_eq; exact .nil
+  | cons hm hd _ ih => exact .cons (hp.mem_iff.1 hm) hd (ih (hp.erase _))
+
+/-- Extend a chain on the inside: the new element's conditions are all the others. -/
+theorem NormLevel.Feas.cons_last {s : NormLevel} (h : Feas s acc rem) (hnm : a ∉ rem)
+    (hd : s.Dom a (acc ++ rem)) : Feas s acc (a :: rem) := by
+  induction h with
+  | nil => exact .cons (.head _) (by simpa using hd) (by simpa using Feas.nil)
+  | @cons acc b rem hmb hdb _ ih =>
+    have hab : b ≠ a := fun e => hnm (e ▸ hmb)
+    refine .cons (.tail _ hmb) hdb ?_
+    rw [List.erase_cons_tail (by simpa using Ne.symm hab)]
+    refine ih (fun h => hnm (List.mem_of_mem_erase h)) (hd.mono fun x hx => ?_)
+    -- everything outside `a` is still there: `b` moved into the accumulator
+    simp only [List.cons_append, List.mem_cons, List.mem_append] at hx ⊢
+    obtain hx | hx := hx
+    · exact .inr (.inl hx)
+    · by_cases hxb : x = b
+      · exact .inl hxb
+      · exact .inr (.inr ((List.mem_erase_of_ne hxb).2 hx))
+
+/-- Every key of a well-formed normal form admits a chain: its `WF` parent is a key with one
+condition fewer, and the variable relating them dominates the edge between them. -/
+theorem NormLevel.WF.feas {s : NormLevel} (wf : s.WF) : ∀ {p}, s.contains p → s.Feas [] p := by
+  intro p
+  generalize eq : p.length = len
+  induction len generalizing p with
+  | zero => cases List.eq_nil_of_length_eq_zero eq; exact fun _ => .nil
+  | succ len ih =>
+    intro hp
+    have hne : p ≠ [] := by rintro rfl; cases eq
+    obtain ⟨n, hn⟩ := Option.isSome_iff_exists.1 (Std.TreeMap.isSome_getElem?_eq_contains.trans hp)
+    obtain ⟨v, p', h1, h2, x, hx, hxv⟩ := (wf _ _ hn).1 hne
+    have hperm : p.Perm (v :: p') := by cases h1; exact List.perm_middle
+    have hnm : v ∉ p' := by
+      have := (wf.sortedOf (.inr hp)).nodup
+      rw [hperm.nodup_iff] at this
+      exact (List.nodup_cons.1 this).1
+    refine Feas.perm ?_ hperm.symm
+    refine Feas.cons_last (h2.elim (fun e => by subst e; exact .nil) (fun h => ih (by
+      have := h1.length; omega) h)) hnm ⟨p, n, hn, ⟨x, hx, hxv⟩, fun y hy => ?_⟩
+    simpa using (h1.mem.1 hy).imp id id
+
+/-- Domination only reads off variable names and their keys, so a map that covers another
+dominates whatever it does. -/
+theorem NormLevel.Dom.mono_map {s s' : NormLevel} (h : s'.Covers s) (hd : s.Dom a acc) :
+    s'.Dom a acc := by
+  obtain ⟨p, n, hp, ⟨x, hx, hxa⟩, hcond⟩ := hd
+  obtain ⟨q, m, y, hq, hy, e, hsub⟩ := h _ _ _ hp hx
+  exact ⟨q, m, hq, ⟨y, hy, e.trans hxa⟩, fun z hz => hcond _ (hsub _ hz)⟩
+
+theorem NormLevel.Feas.mono_map {s s' : NormLevel} (h : s'.Covers s) :
+    ∀ {acc rem}, s.Feas acc rem → s'.Feas acc rem
+  | _, _, .nil => .nil
+  | _, _, .cons hm hd H => .cons hm (hd.mono_map h) (Feas.mono_map h H)
+
+/-- Every key of the normal form admits a chain. `WF.feas` gives this for the map `normalizeAux`
+builds; subsumption keeps it because it covers that map, dropping a variable only in favour of
+one with the same name at a smaller key. -/
+theorem normalize_feas : ∀ p, (normalize u).contains p → (normalize u).Feas [] p := by
+  intro p hp
+  have wf : (normalizeAux u [] 0 {}).WF := normalizeAux_wf (by simp) (by simp [NormLevel.WF])
+  refine NormLevel.Feas.mono_map NormLevel.subsumption_covers.2 (wf.feas ?_)
+  obtain ⟨n, hn⟩ := Option.isSome_iff_exists.1 (Std.TreeMap.isSome_getElem?_eq_contains.trans hp)
+  obtain ⟨n₀, h₀, -⟩ := NormLevel.subsumption_covers.1 p n
+    (by rw [Std.TreeMap.get?_eq_getElem?]; exact hn)
+  exact Std.TreeMap.isSome_getElem?_eq_contains.symm.trans
+    (by simp [Std.TreeMap.get?_eq_getElem?] at h₀; simp [h₀])
+
+/-- An admissible chain, innermost first: each element is dominated relative to the
+conditions outside it. -/
+def NormLevel.Adm (s : NormLevel) : List Name → Prop
+  | [] => True
+  | a :: l => s.Dom a l ∧ s.Adm l
+
+/-- `lexChain` always reorders its input, even in the fallback branch. -/
+theorem NormLevel.lexChain_perm {s : NormLevel} : ∀ {fuel p}, (s.lexChain fuel p).Perm p
+  | 0, p => by rw [lexChain]
+  | fuel+1, p => by
+    rw [lexChain]
+    split
+    · rename_i a ha
+      exact .trans (.cons _ lexChain_perm)
+        (List.perm_cons_erase (List.mem_of_find?_eq_some ha)).symm
+    · exact .refl _
+
+/-- Whenever a key admits some chain, `lexChain` returns one: it reorders the key, and
+every edge of the resulting `imax` chain is dominated. -/
+theorem NormLevel.lexChain_spec {s : NormLevel} (hs : ∀ p n, s.get? p = some n → Sorted p) :
+    ∀ {fuel p}, p.length ≤ fuel → Sorted p → s.Feas [] p →
+      (s.lexChain fuel p).Perm p ∧ s.Adm (s.lexChain fuel p)
+  | 0, p, hf, _, _ => by
+    rw [lexChain]; cases p with | nil => exact ⟨.refl _, trivial⟩ | cons => cases hf
+  | fuel+1, p, hf, hp, h => by
+    rw [lexChain]
+    split
+    · rename_i a ha
+      have hm := List.mem_of_find?_eq_some ha
+      have hpred := List.find?_eq_some_iff_getElem.1 ha |>.1
+      simp only [Bool.and_eq_true] at hpred
+      have hlen : (p.erase a).length ≤ fuel := by
+        rw [List.length_erase_of_mem hm]; omega
+      obtain ⟨hperm, hadm⟩ :=
+        lexChain_spec hs hlen hp.erase (feasible_sound hpred.2)
+      refine ⟨.trans (.cons _ hperm) (List.perm_cons_erase hm).symm, ?_, hadm⟩
+      exact (addable_sound hpred.1).mono fun x hx => hperm.mem_iff.2 hx
+    · rename_i hnone
+      -- the chain that exists ends somewhere, and `find?` would have found that element
+      refine ⟨.refl _, ?_⟩
+      match p, h with
+      | [], _ => exact trivial
+      | b :: p, h =>
+        obtain ⟨a, hm, hd, hfa⟩ := h.peel hp.nodup (by simp)
+        have h1 : s.addable a ((b :: p).erase a) :=
+          addable_complete hs hp.erase (by simpa using hd)
+        have h2 : s.feasible [] ((b :: p).erase a) := feasible_complete hs Sorted.nil hfa
+        have hnot := List.find?_eq_none.1 hnone _ hm
+        simp [h1, h2] at hnot
+
+theorem NormLevel.Adm.suffix {s : NormLevel} : ∀ {l}, s.Adm l → a :: q <:+ l → s.Dom a q
+  | [], _, h => by simp at h
+  | b :: l, ⟨h1, h2⟩, h => by
+    obtain ⟨l', he⟩ := h
+    match l' with
+    | [] => cases he; exact h1
+    | c :: l' => exact Adm.suffix h2 ⟨l', by cases he; rfl⟩
+
+/-! ### Building the tree -/
+
+theorem evalPath_le_self : evalPath ls ρ path c ≤ c := by rw [evalPath]; split <;> simp
+
+theorem evalPath_perm (h : p.Perm p') : evalPath ls ρ p c = evalPath ls ρ p' c := by
+  simp only [evalPath, show allNZ ls ρ p = allNZ ls ρ p' from Bool.eq_iff_iff.2
+    ⟨allNZ_mono fun _ hx => h.symm.mem_iff.1 hx, allNZ_mono fun _ hx => h.mem_iff.1 hx⟩]
+
+theorem evalPath_singleton :
+    evalPath ls ρ [a] c = if 0 < evalParam ls ρ a then c else 0 := by simp [evalPath, allNZ]
+
+theorem evalPath_single : evalPath ls ρ p (evalPath ls ρ [a] c) = evalPath ls ρ (a :: p) c := by
+  rw [evalPath_singleton, ← evalPath_cons]
+
+theorem imax_eq_evalPath : Lean.Nat.imax c (evalParam ls ρ a) =
+    max' (evalPath ls ρ [a] c) (evalPath ls ρ [a] (evalParam ls ρ a)) := by
+  by_cases h : evalParam ls ρ a = 0 <;>
+    simp [imax_eq_ite, evalPath_singleton, h, Nat.pos_of_ne_zero]
+
+/-- `modify` read from the outside in, matching the way `Tree.At` extends a path: the
+shallowest element of the path selects a child, and the rest is modified inside it. -/
+theorem Tree.modify_append (path : List Name) (g : Tree → Tree) (b : Name) (t : Tree) :
+    Tree.modify (path ++ [b]) g t =
+    { t with child := modifyAt (Tree.modify path g) b t.child } := by
+  induction path generalizing t g with
+  | nil => rfl
+  | cons a p ih => rw [List.cons_append, Tree.modify, ih]; rfl
+
+/-- All that matters about `modifyAt`: it replaces one entry with key `a` by `f` of it, or
+inserts `(a, f default)` somewhere if there is none, and leaves the rest of the list alone. -/
+theorem modifyAt_eq (f : Tree → Tree) (a : Name) (l : List (Name × Tree)) :
+    ∃ l₁ l₂ y, modifyAt f a l = l₁ ++ (a, f y) :: l₂ ∧
+      (l = l₁ ++ l₂ ∧ y = default ∨ l = l₁ ++ (a, y) :: l₂) := by
+  induction l with
+  | nil => exact ⟨[], [], default, rfl, .inl ⟨rfl, rfl⟩⟩
+  | cons b l ih =>
+    obtain ⟨b, t⟩ := b
+    match he : Name.cmp a b with
+    | .lt => exact ⟨[], (b, t) :: l, default, by simp [modifyAt, he], .inl ⟨rfl, rfl⟩⟩
+    | .eq =>
+      rw [Std.LawfulBEqCmp.compare_eq_iff_beq (cmp := Name.cmp)] at he
+      cases eq_of_beq he
+      exact ⟨[], l, t, by
+        simp [modifyAt, Std.ReflCmp.compare_self (cmp := Name.cmp)], .inr rfl⟩
+    | .gt =>
+      obtain ⟨l₁, l₂, y, h1, h2⟩ := ih
+      exact ⟨(b, t) :: l₁, l₂, y, by simp [modifyAt, he, h1],
+        h2.imp (fun ⟨h, hy⟩ => ⟨by simp [h], hy⟩) fun h => by simp [h]⟩
+
+theorem mem_modifyAt_self (f : Tree → Tree) (a : Name) (l : List (Name × Tree)) :
+    ∃ y, (a, f y) ∈ modifyAt f a l := by
+  obtain ⟨l₁, l₂, y, h, -⟩ := modifyAt_eq f a l
+  exact ⟨y, by rw [h]; simp⟩
+
+/-- The node `modify` writes is there to be found, and its data does not depend on what was
+at the path before: the payload of a key is what sits at the end of its chain. -/
+theorem Tree.At_modify_self (path : List Name) (g : Tree → Tree) (t : Tree) :
+    ∃ t₀, Tree.At (t.modify path g) path (g t₀) := by
+  suffices ∀ (r : List Name) (g : Tree → Tree) (t : Tree),
+      ∃ t₀, Tree.At (Tree.modify r.reverse g t) r.reverse (g t₀) by
+    simpa using this path.reverse g t
+  clear path g t; intro r
+  induction r with
+  | nil => exact fun g t => ⟨t, .nil⟩
+  | cons b r ih =>
+    intro g t
+    rw [List.reverse_cons, Tree.modify_append]
+    obtain ⟨x, hx⟩ := mem_modifyAt_self (f := Tree.modify r.reverse g) b t.child
+    obtain ⟨t₀, ht₀⟩ := ih g x
+    exact ⟨t₀, ht₀.append hx⟩
+
+/-- Nothing is lost: an entry either survives `modifyAt` untouched, or is the one it modifies.
+(The second case does not need the entry to be the *first* one with its key, so no
+duplicate-freedom assumption is needed here or below.) -/
+theorem mem_modifyAt {f : Tree → Tree} {l : List (Name × Tree)} (hm : (c, x) ∈ l) :
+    (c, x) ∈ modifyAt f a l ∨ (c = a ∧ (c, f x) ∈ modifyAt f a l) := by
+  obtain ⟨l₁, l₂, y, h, h'⟩ := modifyAt_eq f a l
+  rw [h]
+  obtain ⟨rfl, -⟩ | rfl := h'
+  · obtain hm | hm := List.mem_append.1 hm
+    · exact .inl (List.mem_append.2 (.inl hm))
+    · exact .inl (List.mem_append.2 (.inr (.tail _ hm)))
+  · obtain hm | hm := List.mem_append.1 hm
+    · exact .inl (List.mem_append.2 (.inl hm))
+    obtain heq | hm := List.mem_cons.1 hm
+    · simp only [Prod.mk.injEq] at heq; obtain ⟨rfl, rfl⟩ := heq
+      exact .inr ⟨rfl, List.mem_append.2 (.inr (.head _))⟩
+    · exact .inl (List.mem_append.2 (.inr (.tail _ hm)))
+
+/-- A node written at one path survives a later write at a different path: the write only
+replaces the data of the node it lands on, and every other node keeps its own. -/
+theorem Tree.At_modify_of_ne_aux {g : Tree → Tree} (hg : ∀ t, (g t).child = t.child) :
+    ∀ (r : List Name) {path t t'}, path ≠ r.reverse → At t path t' →
+      ∃ t'', At (Tree.modify r.reverse g t) path t'' ∧
+        t''.const = t'.const ∧ t''.var = t'.var := by
+  intro r
+  induction r with
+  | nil =>
+    intro path t t' hne h
+    rw [List.reverse_nil, Tree.modify]
+    obtain h' | ⟨rfl, rfl⟩ := h.of_child_eq (hg t)
+    · exact ⟨t', h', rfl, rfl⟩
+    · exact absurd rfl hne
+  | cons b r ih =>
+    intro path t t' hne h
+    rw [List.reverse_cons, Tree.modify_append]
+    obtain rfl | ⟨q, a, rfl⟩ := List.eq_nil_or_concat path
+    · cases h.nil_inv; exact ⟨_, .nil, rfl, rfl⟩
+    simp only [List.concat_eq_append, List.reverse_cons] at h hne ⊢
+    obtain ⟨t₁, hm, h₁⟩ := h.append_inv
+    obtain hm' | ⟨rfl, hm'⟩ := mem_modifyAt (f := Tree.modify r.reverse g) (a := b) hm
+    · exact ⟨t', h₁.append hm', rfl, rfl⟩
+    · have : q ≠ r.reverse := by rintro rfl; exact hne rfl
+      obtain ⟨t'', h'', hc, hv⟩ := ih this h₁
+      exact ⟨t'', h''.append hm', hc, hv⟩
+
+theorem Tree.At_modify_of_ne {g : Tree → Tree} (hg : ∀ t, (g t).child = t.child)
+    (hne : path ≠ path') (h : At t path t') :
+    ∃ t'', At (Tree.modify path' g t) path t'' ∧ t''.const = t'.const ∧ t''.var = t'.var := by
+  have := At_modify_of_ne_aux hg path'.reverse (path := path) (by rwa [List.reverse_reverse]) h
+  rwa [List.reverse_reverse] at this
+
+/-- Conversely, nothing appears from nowhere: an entry of `modifyAt` is an entry of the list,
+or the modified one, which was an entry or is fresh. -/
+theorem mem_modifyAt_inv {f : Tree → Tree} {l : List (Name × Tree)}
+    (h : (c, x) ∈ modifyAt f a l) :
+    (c, x) ∈ l ∨ (c = a ∧ ∃ y, x = f y ∧ (y = default ∨ (a, y) ∈ l)) := by
+  induction l with
+  | nil =>
+    simp only [modifyAt, List.mem_singleton, Prod.mk.injEq] at h
+    obtain ⟨rfl, rfl⟩ := h
+    exact .inr ⟨rfl, default, rfl, .inl rfl⟩
+  | cons b l ih =>
+    obtain ⟨b, t⟩ := b
+    match he : Name.cmp a b with
+    | .lt =>
+      simp only [modifyAt, he] at h
+      obtain h | h := List.mem_cons.1 h
+      · cases h; exact .inr ⟨rfl, default, rfl, .inl rfl⟩
+      · exact .inl h
+    | .eq =>
+      rw [Std.LawfulBEqCmp.compare_eq_iff_beq (cmp := Name.cmp)] at he
+      cases eq_of_beq he
+      simp only [modifyAt, Std.ReflCmp.compare_self (cmp := Name.cmp)] at h
+      obtain h | h := List.mem_cons.1 h
+      · cases h; exact .inr ⟨rfl, t, rfl, .inr (.head _)⟩
+      · exact .inl (.tail _ h)
+    | .gt =>
+      simp only [modifyAt, he] at h
+      obtain h | h := List.mem_cons.1 h
+      · cases h; exact .inl (.head _)
+      · exact (ih h).imp (.tail _) fun ⟨rfl, y, hy, h⟩ => ⟨rfl, y, hy, h.imp id (.tail _)⟩
+
+theorem Tree.At.of_child_nil (hc : t.child = []) (h : At t p t') : p = [] ∧ t' = t := by
+  obtain rfl | ⟨q, a, rfl⟩ := List.eq_nil_or_concat p
+  · exact ⟨rfl, h.nil_inv⟩
+  · rw [List.concat_eq_append] at h
+    obtain ⟨t₁, hm, -⟩ := h.append_inv
+    rw [hc] at hm; cases hm
+
+theorem suffix_concat {α} {l₁ l₂ : List α} (h : l₁ <:+ l₂) (a : α) :
+    l₁ ++ [a] <:+ l₂ ++ [a] := by
+  obtain ⟨u, rfl⟩ := h; exact ⟨u, by rw [List.append_assoc]⟩
+
+/-- Inverting a write: a path of the modified tree either ends at the node just written, or
+is a tail of the written path whose node was created empty on the way, or was already there
+carrying the same data. -/
+theorem Tree.At_modify_inv_aux {g : Tree → Tree} (hg : ∀ t, (g t).child = t.child) :
+    ∀ (r : List Name) {path t t'}, At (Tree.modify r.reverse g t) path t' →
+      (path = r.reverse ∧ ∃ t₀, t' = g t₀) ∨
+      (path <:+ r.reverse ∧ t'.const = 0 ∧ t'.var = []) ∨
+      (∃ t'', At t path t'' ∧ t'.const = t''.const ∧ t'.var = t''.var) := by
+  intro r
+  induction r with
+  | nil =>
+    intro path t t' h
+    rw [List.reverse_nil, Tree.modify] at h
+    obtain h' | ⟨rfl, rfl⟩ := h.of_child_eq (hg t).symm
+    · exact .inr (.inr ⟨t', h', rfl, rfl⟩)
+    · exact .inl ⟨rfl, t, rfl⟩
+  | cons b r ih =>
+    intro path t t' h
+    rw [List.reverse_cons, Tree.modify_append] at h
+    obtain rfl | ⟨q, a, rfl⟩ := List.eq_nil_or_concat path
+    · cases h.nil_inv; exact .inr (.inr ⟨t, .nil, rfl, rfl⟩)
+    rw [List.concat_eq_append] at h ⊢
+    obtain ⟨t₁, hm, h₁⟩ := h.append_inv
+    obtain hm | ⟨rfl, y, rfl, hy⟩ := mem_modifyAt_inv hm
+    · exact .inr (.inr ⟨t', h₁.append hm, rfl, rfl⟩)
+    · obtain ⟨rfl, t₀, rfl⟩ | ⟨hs, hc, hv⟩ | ⟨t'', h'', hc, hv⟩ := ih h₁
+      · exact .inl ⟨by rw [List.reverse_cons], t₀, rfl⟩
+      · exact .inr (.inl ⟨by rw [List.reverse_cons]; exact suffix_concat hs _, hc, hv⟩)
+      · obtain rfl | hy := hy
+        · obtain ⟨rfl, rfl⟩ := h''.of_child_nil rfl
+          exact .inr (.inl ⟨by rw [List.reverse_cons]; exact ⟨r.reverse, by simp⟩, hc, hv⟩)
+        · exact .inr (.inr ⟨t'', h''.append hy, hc, hv⟩)
+
+theorem Tree.At_modify_inv {g : Tree → Tree} (hg : ∀ t, (g t).child = t.child)
+    (h : At (Tree.modify path' g t) path t') :
+    (path = path' ∧ ∃ t₀, t' = g t₀) ∨
+    (path <:+ path' ∧ t'.const = 0 ∧ t'.var = []) ∨
+    (∃ t'', At t path t'' ∧ t'.const = t''.const ∧ t'.var = t''.var) := by
+  have := At_modify_inv_aux hg path'.reverse (path := path)
+    (by rwa [List.reverse_reverse]) (t' := t')
+  rwa [List.reverse_reverse] at this
+
+/-- Sorted lists with the same elements are equal, so distinct keys reify to distinct paths:
+`lexChain` only permutes a key. -/
+theorem Sorted.perm_eq (h₁ : Sorted l₁) (h₂ : Sorted l₂) (h : l₁.Perm l₂) : l₁ = l₂ := by
+  induction l₁ generalizing l₂ with
+  | nil => exact h.nil_eq
+  | cons a l₁ ih =>
+    match l₂, h₂, h with
+    | [], _, h => simp at h
+    | b :: l₂, h₂, h =>
+      have hab : a = b := by
+        -- each head is at most every element of the other list
+        obtain rfl | ha := List.mem_cons.1 (h.mem_iff.1 (.head _))
+        · rfl
+        obtain rfl | hb := List.mem_cons.1 (h.symm.mem_iff.1 (.head _))
+        · rfl
+        exact absurd (h₂.head _ ha) (by
+          rw [Std.OrientedCmp.gt_of_lt (h₁.head _ hb)]; simp)
+      subst hab
+      rw [ih h₁.of_cons h₂.of_cons ((List.perm_cons _).1 h)]
+
+/-- The variables the reconstruction records for the entry `(p, n)`: those of `n`, except the
+one the edge into the node already contributes. -/
+def NormLevel.treeVar (s : NormLevel) (p : List Name) (n : Node) : List VarNode :=
+  if let v :: _ := s.lexChain p.length p then subsumeVars n.var [⟨v, 0⟩] else n.var
+
+/-- The entry `(p, n)` is recorded in `t`: at the end of `p`'s chain sits a node carrying
+`n`'s constant and `treeVar p n`. -/
+def NormLevel.WrittenAt (s : NormLevel) (t : Tree) (p : List Name) (n : Node) : Prop :=
+  ∃ t', Tree.At t (s.lexChain p.length p) t' ∧ t'.const = n.const ∧ t'.var = s.treeVar p n
+
+theorem NormLevel.WrittenAt.write {s : NormLevel} (t : Tree) (p : List Name) (n : Node) :
+    s.WrittenAt (t.modify (s.lexChain p.length p)
+      fun t => { t with const := n.const, var := s.treeVar p n }) p n :=
+  let ⟨_, h⟩ := Tree.At_modify_self _ _ t
+  ⟨_, h, rfl, rfl⟩
+
+/-- Distinct keys get distinct chains, since `lexChain` only permutes a sorted key. -/
+theorem NormLevel.lexChain_inj {s : NormLevel} (h₁ : Sorted p) (h₂ : Sorted p')
+    (h : s.lexChain p.length p = s.lexChain p'.length p') : p = p' := by
+  refine Sorted.perm_eq h₁ h₂ ((lexChain_perm (s := s) (fuel := p.length) (p := p)).symm.trans ?_)
+  rw [h]; exact lexChain_perm
+
+/-- Conversely, everything the tree contains comes from an entry: every nonempty path is a
+tail of some key's chain, and the node at the end of a path is either empty scaffolding or
+the entry whose chain leads there. -/
+def NormLevel.Accounted (s : NormLevel) (t : Tree) : Prop :=
+  ∀ path t', Tree.At t path t' →
+    (path ≠ [] → ∃ p n, s.get? p = some n ∧ path <:+ s.lexChain p.length p) ∧
+    (t'.const = 0 ∧ t'.var = [] ∨ ∃ p n, s.get? p = some n ∧
+      path = s.lexChain p.length p ∧ t'.const = n.const ∧ t'.var = s.treeVar p n)
+
+/-- The single pass over the map that both directions of soundness read off: after the fold
+every entry is recorded at the end of its chain, and everything in the tree is accounted for
+by an entry. A write puts its own entry there (`At_modify_self`) and leaves the others alone,
+either because it lands on a different path — distinct keys have distinct chains — or because
+it lands on the same key, and then writes the same data. -/
+theorem NormLevel.toTree_spec {s : NormLevel} (hsort : ∀ p n, s.get? p = some n → Sorted p) :
+    s.Accounted (toTree s) ∧ ∀ p n, s.get? p = some n → s.WrittenAt (toTree s) p n := by
+  rw [toTree, Std.TreeMap.foldl_eq_foldl_toList]
+  have hmem : ∀ pn : List Name × Node, pn ∈ s.toList ↔ s.get? pn.1 = some pn.2 := fun _ =>
+    Std.TreeMap.mem_toList_iff_getElem?_eq_some.trans (by rw [Std.TreeMap.get?_eq_getElem?])
+  have hinit : s.Accounted ⟨0, [], []⟩ := fun path t' h => by
+    obtain ⟨rfl, rfl⟩ := h.of_child_nil rfl
+    exact ⟨fun h => absurd rfl h, .inl ⟨rfl, rfl⟩⟩
+  suffices ∀ (l : List (List Name × Node)) (t : Tree),
+      (∀ pn ∈ l, s.get? pn.1 = some pn.2) → s.Accounted t →
+      s.Accounted (List.foldl (fun t pn =>
+        let path := s.lexChain pn.1.length pn.1
+        let var := if let v :: _ := path then subsumeVars pn.2.var [⟨v, 0⟩] else pn.2.var
+        t.modify path fun t => { t with const := pn.2.const, var }) t l) ∧
+      ∀ p n, s.get? p = some n → (s.WrittenAt t p n ∨ (p, n) ∈ l) →
+      s.WrittenAt (List.foldl (fun t pn =>
+        let path := s.lexChain pn.1.length pn.1
+        let var := if let v :: _ := path then subsumeVars pn.2.var [⟨v, 0⟩] else pn.2.var
+        t.modify path fun t => { t with const := pn.2.const, var }) t l) p n by
+    have := this _ _ (fun pn h => (hmem pn).1 h) hinit
+    exact ⟨this.1, fun p n hp => this.2 p n hp (.inr ((hmem (p, n)).2 hp))⟩
+  clear hmem hinit; intro l
+  induction l with
+  | nil => exact fun _ _ h => ⟨h, fun _ _ _ h => h.resolve_right (by simp)⟩
+  | cons pn l ih =>
+    obtain ⟨p', n'⟩ := pn
+    intro t hl hacc
+    have hp' : s.get? p' = some n' := hl _ (.head _)
+    refine (ih _ (fun _ h => hl _ (.tail _ h)) ?_).imp id fun H p n hp h => H p n hp ?_
+    · -- nothing unaccounted for appears: the write adds its own node and empty scaffolding
+      intro path t' h
+      obtain ⟨rfl, t₀, rfl⟩ | ⟨hs, hc, hv⟩ | ⟨t'', h'', hc, hv⟩ :=
+        Tree.At_modify_inv (g := fun t =>
+          { t with const := n'.const, var := s.treeVar p' n' }) (fun _ => rfl) h
+      · exact ⟨fun _ => ⟨p', n', hp', List.suffix_refl _⟩, .inr ⟨p', n', hp', rfl, rfl, rfl⟩⟩
+      · exact ⟨fun _ => ⟨p', n', hp', hs⟩, .inl ⟨hc, hv⟩⟩
+      · exact ⟨(hacc _ _ h'').1, by rw [hc, hv]; exact (hacc _ _ h'').2⟩
+    · -- and nothing already written is lost
+      obtain ⟨t', hat, hc, hv⟩ | h := h
+      · refine .inl ?_
+        by_cases hpp : p = p'
+        · subst hpp; cases hp.symm.trans hp'; exact .write ..
+        · obtain ⟨t'', hat', hc', hv'⟩ := Tree.At_modify_of_ne (g := fun t =>
+            { t with const := n'.const, var := s.treeVar p' n' }) (fun _ => rfl)
+            (fun he => hpp (lexChain_inj (hsort _ _ hp) (hsort _ _ hp') he)) hat
+          exact ⟨t'', hat', hc' ▸ hc, hv' ▸ hv⟩
+      · obtain h | h := List.mem_cons.1 h
+        · simp only [Prod.mk.injEq] at h
+          obtain ⟨rfl, rfl⟩ := h
+          exact .inl (.write ..)
+        · exact .inr h
+
+/-- What the reconstruction contributes, as a biconditional: the tree is bounded by `m`
+exactly when for every entry the node the tree records for it is, and so is every edge of its
+chain. Nothing here is about domination, so no hypothesis on the chains is needed. -/
+theorem NormLevel.toTree_le_iff {s : NormLevel} (hsort : ∀ p n, s.get? p = some n → Sorted p)
+    {m : Nat} : Tree.eval ls ρ (toTree s) ≤ m ↔
+      ∀ p n, s.get? p = some n →
+        evalPath ls ρ (s.lexChain p.length p) (Node.eval ls ρ ⟨n.const, s.treeVar p n⟩) ≤ m ∧
+        ∀ a q, a :: q <:+ s.lexChain p.length p →
+          evalPath ls ρ (a :: q) (evalParam ls ρ a) ≤ m := by
+  obtain ⟨hacc, hwr⟩ := toTree_spec hsort
+  rw [Tree.eval_le_iff]
+  refine ⟨fun ⟨h1, h2⟩ p n hp => ?_, fun H => ⟨fun path t' hat => ?_, fun a q t' hat => ?_⟩⟩
+  · obtain ⟨t', hat, hc, hv⟩ := hwr p n hp
+    refine ⟨by rw [← hc, ← hv]; exact h1 _ _ hat, fun a q hq => ?_⟩
+    obtain ⟨t'', hat''⟩ := hat.suffix hq
+    exact h2 _ _ _ hat''
+  · obtain ⟨-, ⟨hc, hv⟩ | ⟨p, n, hp, rfl, hc, hv⟩⟩ := hacc _ _ hat
+    · rw [show Node.eval ls ρ ⟨t'.const, t'.var⟩ = 0 from by simp [Node.eval, hc, hv]]
+      simp [evalPath]
+    · rw [hc, hv]; exact (H p n hp).1
+  · obtain ⟨p, n, hp, hsuf⟩ := (hacc _ _ hat).1 (by simp)
+    exact (H p n hp).2 _ _ hsuf
+
+/-- Soundness of the reconstruction: the tree built from a normal form, hence the level it
+reifies to, evaluates like the normal form. Below, because the node recorded for an entry
+carries a subset of its sublevels and every edge is dominated, `lexChain` emitting only
+admissible chains; above, because the one sublevel the node omits, `V(p, v, 0)` for the
+innermost element of the chain, is what the edge into it contributes. -/
+theorem NormLevel.toTree_eval {s : NormLevel} (hsort : ∀ p n, s.get? p = some n → Sorted p)
+    (hfeas : ∀ p, s.contains p → s.Feas [] p) :
+    Tree.eval ls ρ (toTree s) = s.eval ls ρ := by
+  refine ext_le fun m => (toTree_le_iff hsort).trans (Iff.trans ?_ NormLevel.eval_le.symm)
+  refine ⟨fun H p n hp => ?_, fun H p n hp => ⟨?_, fun a q hq => ?_⟩⟩
+  · -- the entry is the node the tree records for it, plus the edge into that node
+    rw [← evalPath_perm (lexChain_perm (s := s) (fuel := p.length) (p := p))]
+    refine evalPath_le.2 fun nz => ?_
+    have h1 := evalPath_le.1 (H p n hp).1 nz
+    rw [Node.eval_le] at h1 ⊢
+    refine ⟨h1.1, ?_⟩
+    rw [NormLevel.treeVar] at h1
+    split at h1
+    · rename_i v q hch
+      refine (subsumeVars_eval ?_).1 h1.2
+      simp only [List.mem_singleton, VarNode.eval]
+      rintro _ rfl
+      exact evalPath_le.1 ((H p n hp).2 v q (by rw [hch]; exact List.suffix_refl _)) (hch ▸ nz)
+    · exact h1.2
+  · -- the recorded node is part of the entry
+    rw [evalPath_perm (lexChain_perm (s := s) (fuel := p.length) (p := p))]
+    refine Nat.le_trans (evalPath_mono ?_) (H p n hp)
+    refine Node.eval_le.2 ⟨Node.const_le_eval (l := n), fun v hv => Node.var_le_eval ?_⟩
+    revert hv; rw [NormLevel.treeVar]; split
+    · exact subsumeVars_subset
+    · exact id
+  · -- and every edge of the chain is dominated by an entry
+    have hcon : s.contains p := Std.TreeMap.isSome_getElem?_eq_contains.symm.trans
+      (by simp [Std.TreeMap.get?_eq_getElem?] at hp; simp [hp])
+    obtain ⟨-, hadm⟩ := lexChain_spec hsort (Nat.le_refl _) (hsort _ _ hp) (hfeas _ hcon)
+    exact Nat.le_trans (hadm.suffix hq).le (NormLevel.eval_le.2 H)
+
 end Normalize
 
 theorem isEquiv'_wf (h : isEquiv' u v)
@@ -1136,6 +2200,17 @@ theorem isEquiv'_wf (h : isEquiv' u v)
   · refine VLevel.equiv_def.2 fun ρ => ?_
     rw [← Normalize.normalize_eval (ρ := ρ) hu, ← Normalize.normalize_eval (ρ := ρ) hv]
     exact Normalize.NormLevel.eval_congr h
+
+/-- Soundness of reification: the level `normalize'` reconstructs evaluates like the input
+everywhere. Reification is `toTree` followed by `reify`, and both preserve the value: the
+tree's `imax` chains contribute nothing the normal form does not already have, since every
+key admits a chain (`normalize_feas`) and `lexChain` then picks an admissible one, and
+nothing is lost, since every entry is recorded at the end of its chain. -/
+theorem normalize'_eval (hu : VLevel.ofLevel ls u = some u') :
+    Level.eval (Normalize.evalParam ls ρ) μ (normalize' u) = u'.eval ρ := by
+  rw [normalize', Normalize.Tree.reify_eval,
+    Normalize.NormLevel.toTree_eval Normalize.normalize_sorted Normalize.normalize_feas]
+  exact Normalize.normalize_eval hu
 
 theorem geq'_wf (h : geq' u v)
     (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : v' ≤ u' := by
