@@ -729,6 +729,64 @@ theorem Node.subsumeBy_var_eq {same : Bool} {n₁ n₂ : Node} :
     if same || n₂.var.isEmpty then n₁.var else subsumeVars n₁.var n₂.var := by
   simp only [Node.subsumeBy]; split <;> split <;> simp
 
+theorem Node.subsumeBy_var_subset {same : Bool}
+    (h : x ∈ (Node.subsumeBy same n₁ n₂).var) : x ∈ n₁.var := by
+  rw [Node.subsumeBy_var_eq] at h; split at h <;> [exact h; exact subsumeVars_subset h]
+
+theorem Node.subsumeBy_const_cases {same : Bool} (n₁ n₂ : Node) :
+    (n₁.subsumeBy same n₂).const = n₁.const ∨ (n₁.subsumeBy same n₂).const = 0 := by
+  rw [Node.subsumeBy_const_eq]; split <;> [exact .inl rfl; exact .inr rfl]
+
+theorem Node.subsumeBy_eval_le {same : Bool} :
+    Node.eval ls ρ (n₁.subsumeBy same n₂) ≤ Node.eval ls ρ n₁ := by
+  refine Node.eval_le.2 ⟨?_, fun v h => Node.var_le_eval (Node.subsumeBy_var_subset h)⟩
+  obtain h | h := Node.subsumeBy_const_cases (same := same) n₁ n₂
+  · exact h ▸ Node.const_le_eval
+  · simp [h]
+
+/-- If `subsumeBy` dropped the constant, the drop was justified: the constant is dominated
+by the constant of `n₂` (only possible when the two keys differ), or by a variable of `n₂`. -/
+theorem Node.subsumeBy_const_drop {same : Bool}
+    (h : (Node.subsumeBy same n₁ n₂).const ≠ n₁.const) :
+    same = false ∧ n₁.const ≤ n₂.const ∨ ∃ y ∈ n₂.var, n₁.const ≤ y.offset + 1 := by
+  rw [Node.subsumeBy_const_eq] at h
+  split at h <;> [cases h rfl; rename_i hc]
+  rw [Bool.or_eq_true, not_or] at hc
+  obtain ⟨-, hc⟩ := hc
+  rw [Bool.and_eq_true, Decidable.not_and_iff_not_or_not] at hc
+  obtain hc | hc := hc <;> rw [Bool.or_eq_true, not_or] at hc <;> obtain ⟨h1, h2⟩ := hc
+  · exact .inl ⟨by simpa using h1, by simpa [Nat.not_lt] using h2⟩
+  · have hne : n₂.var ≠ [] := fun e => h1 (by simp [e])
+    have h2 : n₁.const ≤ n₂.var.foldl (·.max ·.offset) 0 + 1 := by
+      simpa [Nat.not_lt] using h2
+    obtain h | h := le_foldl_max (c := n₁.const) (n := 0) h2
+    · obtain ⟨y, hy⟩ := List.exists_mem_of_ne_nil _ hne
+      exact .inr ⟨y, hy, by omega⟩
+    · exact .inr h
+
+/-- The domination step is exact against a node bounded by `m`: everything `subsumeBy`
+drops from `n₁` is dominated by a sublevel of `n₂`, and `n₂` evaluates to at most `m`.
+Domination of the constant by a variable needs that variable to evaluate to at least its
+offset plus one, which is why the condition set must be all-nonzero (`hnz`). -/
+theorem Node.subsumeBy_eval_iff {same : Bool} {n₁ n₂ : Node} {m : Nat}
+    (hnz : ∀ v ∈ n₂.var, 0 < evalParam ls ρ v.var) (h₂ : Node.eval ls ρ n₂ ≤ m) :
+    Node.eval ls ρ (n₁.subsumeBy same n₂) ≤ m ↔ Node.eval ls ρ n₁ ≤ m := by
+  have hvar₂ v (hv : v ∈ n₂.var) : VarNode.eval ls ρ v ≤ m :=
+    Nat.le_trans (Node.var_le_eval hv) h₂
+  refine ⟨fun h => ?_, fun h => Nat.le_trans Node.subsumeBy_eval_le h⟩
+  rw [Node.eval_le] at h ⊢
+  refine ⟨?_, fun x hx => ?_⟩
+  · by_cases hc : (n₁.subsumeBy same n₂).const = n₁.const
+    · exact hc ▸ h.1
+    obtain ⟨-, hle⟩ | ⟨y, hy, hle⟩ := Node.subsumeBy_const_drop hc
+    · exact Nat.le_trans hle (Nat.le_trans Node.const_le_eval h₂)
+    · refine Nat.le_trans ?_ (hvar₂ _ hy)
+      have := hnz _ hy; simp only [VarNode.eval]; omega
+  · rw [Node.subsumeBy_var_eq] at h
+    split at h
+    · exact h.2 _ hx
+    · exact (subsumeVars_eval hvar₂).1 h.2 _ hx
+
 theorem Node.subsume_const_eq : (Node.subsume p₁ n₁ p₂ n₂).const =
     if !subset compare p₂ p₁ ||
       (n₁.const = 0 ||
@@ -751,40 +809,25 @@ theorem Node.subsume_var_eq : (Node.subsume p₁ n₁ p₂ n₂).var =
   · exact subsumeBy_var_eq
 
 theorem Node.subsume_var_subset (h : x ∈ (Node.subsume p₁ n₁ p₂ n₂).var) : x ∈ n₁.var := by
-  rw [Node.subsume_var_eq] at h; split at h <;> [exact h; exact subsumeVars_subset h]
+  rw [Node.subsume] at h; split at h <;> [exact subsumeBy_var_subset h; exact h]
 
 theorem Node.subsume_const_cases (p₁ n₁ p₂ n₂) :
     (Node.subsume p₁ n₁ p₂ n₂).const = n₁.const ∨ (Node.subsume p₁ n₁ p₂ n₂).const = 0 := by
-  rw [Node.subsume_const_eq]; split <;> [exact .inl rfl; exact .inr rfl]
+  rw [Node.subsume]; split <;> [exact subsumeBy_const_cases ..; exact .inl rfl]
 
 theorem Node.subsume_eval_le :
     Node.eval ls ρ (Node.subsume p₁ n₁ p₂ n₂) ≤ Node.eval ls ρ n₁ := by
-  refine Node.eval_le.2 ⟨?_, fun v h => Node.var_le_eval (Node.subsume_var_subset h)⟩
-  obtain h | h := Node.subsume_const_cases p₁ n₁ p₂ n₂
-  · exact h ▸ Node.const_le_eval
-  · simp [h]
+  rw [Node.subsume]; split <;> [exact subsumeBy_eval_le; exact Nat.le_refl _]
 
 /-- If `subsume` dropped the constant, the drop was justified: the constant is dominated
 by the constant of `n₂` at a strictly smaller key, or by a variable of `n₂`. -/
 theorem Node.subsume_const_drop (h : (Node.subsume p₁ n₁ p₂ n₂).const ≠ n₁.const) :
     subset compare p₂ p₁ ∧
     (p₁.length ≠ p₂.length ∧ n₁.const ≤ n₂.const ∨ ∃ y ∈ n₂.var, n₁.const ≤ y.offset + 1) := by
-  rw [Node.subsume_const_eq] at h
-  split at h <;> [cases h rfl; rename_i hc]
-  rw [Bool.or_eq_true, Bool.or_eq_true, not_or, not_or] at hc
-  obtain ⟨hs, hc0, hc⟩ := hc
-  have hsub : subset compare p₂ p₁ := by revert hs; cases subset compare p₂ p₁ <;> simp
-  refine ⟨hsub, ?_⟩
-  rw [Bool.and_eq_true, Decidable.not_and_iff_not_or_not] at hc
-  obtain hc | hc := hc <;> rw [Bool.or_eq_true, not_or] at hc <;> obtain ⟨h1, h2⟩ := hc
-  · refine .inl ⟨fun e => h1 (by simp [e]), by simpa [Nat.not_lt] using h2⟩
-  · have hne : n₂.var ≠ [] := fun e => h1 (by simp [e])
-    have h2 : n₁.const ≤ n₂.var.foldl (·.max ·.offset) 0 + 1 := by
-      simpa [Nat.not_lt] using h2
-    obtain h | h := le_foldl_max (c := n₁.const) (n := 0) h2
-    · obtain ⟨y, hy⟩ := List.exists_mem_of_ne_nil _ hne
-      exact .inr ⟨y, hy, by omega⟩
-    · exact .inr h
+  rw [Node.subsume] at h
+  split at h <;> [skip; cases h rfl]
+  refine ⟨‹_›, (subsumeBy_const_drop h).imp_left fun ⟨he, hc⟩ => ⟨fun e => ?_, hc⟩⟩
+  simp [e] at he
 
 /-- If `subsume` changed the variable list, the change was `subsumeVars` against the
 variables of `n₂` at a strictly smaller key. -/
@@ -913,6 +956,45 @@ theorem NormLevel.minimize_eval_iff {acc : NormLevel} {p₁ : List Name} {n₁ :
       have hpe : pn.1 ≠ p₁ := fun h => hlen (h ▸ rfl)
       exact .inr ⟨pn.1, pn.2, z, hpe, h₂, hsub, hz, ez.trans e, Nat.le_trans le lez⟩
 
+/-- One step of `subsumption`: the key being minimized is updated, or erased if it drained,
+and no other key changes. -/
+theorem NormLevel.subsumption_step_get? (acc : NormLevel) (n₁ : Node) (p₁ p : List Name) :
+    (if (acc.minimize p₁ n₁).isEmpty then acc.erase p₁
+     else acc.insert p₁ (acc.minimize p₁ n₁)).get? p =
+    if p₁ = p then (if (acc.minimize p₁ n₁).isEmpty then none else some (acc.minimize p₁ n₁))
+    else acc.get? p := by
+  split <;>
+    simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_erase,
+      Std.TreeMap.getElem?_insert] <;>
+    split <;> split <;> simp_all
+
+/-- `subsumption` only shrinks the variable lists, at unchanged keys, so it preserves the
+half of `WF` saying that every variable recorded at a key is an element of it. -/
+theorem NormLevel.subsumption_vars {s : NormLevel}
+    (wf : ∀ p n, s.get? p = some n → ∀ v ∈ n.var, v.var ∈ p) :
+    ∀ p n, s.subsumption.get? p = some n → ∀ v ∈ n.var, v.var ∈ p := by
+  rw [subsumption, Std.TreeMap.foldl_eq_foldl_toList]
+  have hmem pn (h : pn ∈ s.toList) : s.get? pn.1 = some pn.2 :=
+    Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
+  generalize s.toList = l at hmem
+  suffices ∀ (l : List (List Name × Node)) (acc : NormLevel),
+      (∀ pn ∈ l, s.get? pn.1 = some pn.2) →
+      (∀ p n, acc.get? p = some n → ∀ v ∈ n.var, v.var ∈ p) →
+      ∀ p n, (List.foldl (fun acc pn =>
+        let n := acc.minimize pn.1 pn.2
+        if n.isEmpty then acc.erase pn.1 else acc.insert pn.1 n) acc l).get? p = some n →
+        ∀ v ∈ n.var, v.var ∈ p from this _ _ hmem wf
+  clear hmem; intro l
+  induction l with | nil => exact fun _ _ => id | cons pn l ih
+  intro acc hl hacc
+  refine ih _ (fun _ h => hl _ (.tail _ h)) fun p n h v hv => ?_
+  rw [subsumption_step_get?] at h
+  split at h
+  · split at h <;> [cases h; skip]
+    cases h; rename_i hp _; subst hp
+    exact wf _ _ (hl _ (.head _)) _ (minimize_var_subset hv)
+  · exact hacc _ _ h _ hv
+
 theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
     (s.subsumption).eval ls ρ = s.eval ls ρ := by
   rw [subsumption, Std.TreeMap.foldl_eq_foldl_toList]
@@ -935,15 +1017,7 @@ theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
   simp only [List.map_cons, List.nodup_cons] at nd
   have h₁ := hl _ _ (.head _)
   -- a drained key is erased rather than kept, which is the same for `eval`
-  have hins p :
-      (if (acc.minimize p₁ n₁).isEmpty then acc.erase p₁
-       else acc.insert p₁ (acc.minimize p₁ n₁)).get? p =
-      if p₁ = p then if (acc.minimize p₁ n₁).isEmpty then none else some (acc.minimize p₁ n₁)
-      else acc.get? p := by
-    split <;>
-      simp only [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_erase,
-        Std.TreeMap.getElem?_insert] <;>
-      split <;> split <;> simp_all
+  have hins := subsumption_step_get? acc n₁ p₁
   have hmin_le m
       (H : ∀ a b, (if (acc.minimize p₁ n₁).isEmpty then acc.erase p₁
         else acc.insert p₁ (acc.minimize p₁ n₁)).get? a = some b →
@@ -986,6 +1060,48 @@ theorem normalize_eval (hu : VLevel.ofLevel ls u = some u') :
     exact normalizeAux_eval hu (by simp) h1
   simp [NormLevel.WF]
 
+theorem normalize_vars : ∀ p n, (normalize u).get? p = some n → ∀ v ∈ n.var, v.var ∈ p :=
+  NormLevel.subsumption_vars fun _ _ h =>
+    (normalizeAux_wf (by simp) (by simp [NormLevel.WF]) _ _ h).2
+
+/-- Soundness of `NormLevel.le`, Theorem 39 of the paper: it reports `true` only when every
+sublevel of `l₁` is dominated. Each entry of `l₁` is compared against a fold over `l₂`,
+where every entry discharges from the node what it can, and the fold stops (returning
+`none`) once nothing is left to discharge; so the fold ends in `none` only if the node is
+bounded by the total of `l₂`. -/
+theorem NormLevel.le_eval {l₁ l₂ : NormLevel}
+    (wf₂ : ∀ p n, l₂.get? p = some n → ∀ v ∈ n.var, v.var ∈ p)
+    (h : l₁.le l₂) : l₁.eval ls ρ ≤ l₂.eval ls ρ := by
+  refine NormLevel.eval_le.2 fun p₁ n₁ h₁ => evalPath_le.2 fun nz => ?_
+  -- an entry of `l₂` at a key below `p₁` is bounded by the total, on a live condition set
+  have hbd p₂ n₂ (h₂ : l₂.get? p₂ = some n₂) (hsub : subset compare p₂ p₁) :
+      (∀ v ∈ n₂.var, 0 < evalParam ls ρ v.var) ∧ Node.eval ls ρ n₂ ≤ l₂.eval ls ρ := by
+    have hnz : allNZ ls ρ p₂ := allNZ_mono (fun _ h => subset_mem hsub h) nz
+    refine ⟨fun v hv => ?_, ?_⟩
+    · simp only [allNZ, List.all_eq_true, decide_eq_true_eq] at hnz
+      exact hnz _ (wf₂ _ _ h₂ _ hv)
+    · have := evalPath_le.1 (NormLevel.eval_le.1 (Nat.le_refl (l₂.eval ls ρ)) _ _ h₂)
+      exact this hnz
+  rw [NormLevel.le, Std.TreeMap.all_eq_all_toList, List.all_eq_true] at h
+  have hf := h (p₁, n₁) (Std.TreeMap.mem_toList_iff_getElem?_eq_some.2 (by simpa using h₁))
+  simp only [Std.TreeMap.foldlM_eq_foldlM_toList, Option.isNone_iff_eq_none] at hf
+  have hmem pn (h : pn ∈ l₂.toList) : l₂.get? pn.1 = some pn.2 :=
+    Std.TreeMap.get?_eq_getElem? .. ▸ Std.TreeMap.mem_toList_iff_getElem?_eq_some.1 h
+  clear h₁ h
+  generalize l₂.toList = l at hf hmem
+  induction l generalizing n₁ with
+  | nil => simp at hf
+  | cons pn l ih =>
+    simp only [List.foldlM_cons] at hf
+    simp only [List.mem_cons, forall_eq_or_imp] at hmem
+    by_cases hs : subset compare pn.1 p₁
+    · refine (Node.subsumeBy_eval_iff (same := false) (n₂ := pn.2)
+        (hbd _ _ hmem.1 hs).1 (hbd _ _ hmem.1 hs).2).1 ?_
+      by_cases he : (n₁.subsumeBy false pn.2).isEmpty
+      · simp [Node.eval_empty he]
+      · exact ih _ (by simpa [hs, he] using hf) hmem.2
+    · exact ih _ (by simpa [hs] using hf) hmem.2
+
 theorem Node.eval_congr {a b : Node} (H : a == b) : a.eval ls ρ = b.eval ls ρ := by
   simp +instances [instBEqNode] at H; simp [H, eval]
 
@@ -1020,6 +1136,12 @@ theorem isEquiv'_wf (h : isEquiv' u v)
   · refine VLevel.equiv_def.2 fun ρ => ?_
     rw [← Normalize.normalize_eval (ρ := ρ) hu, ← Normalize.normalize_eval (ρ := ρ) hv]
     exact Normalize.NormLevel.eval_congr h
+
+theorem geq'_wf (h : geq' u v)
+    (hu : VLevel.ofLevel ls u = some u') (hv : VLevel.ofLevel ls v = some v') : v' ≤ u' := by
+  intro ρ
+  rw [← Normalize.normalize_eval (ρ := ρ) hv, ← Normalize.normalize_eval (ρ := ρ) hu]
+  exact Normalize.NormLevel.le_eval Normalize.normalize_vars h
 
 theorem isEquivList_wf (H : Level.isEquivList us vs) :
     List.mapM (VLevel.ofLevel Us) us = some us' →
