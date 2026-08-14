@@ -459,6 +459,7 @@ def run (nparams : Nat) (types : List InductiveType) (numNested : Nat) : M Envir
   checkConstructors indTypes stats isUnsafe
   withEnv (← declareConstructors stats indTypes isUnsafe) do
   let elimLevel ← getElimLevel stats indTypes
+  let k ← isKTarget stats indTypes
   mkRecInfos stats indTypes elimLevel fun recInfos => do
   let motives := recInfos.map (·.motive)
   let minors := recInfos.flatMap (·.minors)
@@ -466,7 +467,6 @@ def run (nparams : Nat) (types : List InductiveType) (numNested : Nat) : M Envir
   let numMotives := motives.size
   let all := indTypes.map (·.name) |>.toList
   let lctx ← getLCtx
-  let k ← isKTarget stats indTypes
   let isUnsafe := (← read).safety != .safe
   StateT.run' (s := 0) do
   let mut env ← getEnv
