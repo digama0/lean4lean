@@ -854,6 +854,7 @@ theorem VEnv.IsDefEq.toTyping (H : TY.env.IsDefEq TY.univs Γ e₁ e₂ A) :
   | eta h1 ih1 => have h := TY.eta ih1.2; exact ⟨h, TY.defeq_l (TY.symm h) ih1.2⟩
   | proofIrrel h1 h2 h3 ih1 ih2 ih3 => exact ⟨TY.proofIrrel ih1.2 ih2.2 ih3.2, ih2.2⟩
   | extra h1 h2 h3 => exact ⟨TY.extraDF h1 h2 h3, TY.extra h1 h2 h3⟩
+  | pat => sorry -- `pat` (ι) case; deferred as in the `Theory` copies
 
 theorem VEnv.IsDefEqU.church_rosser
     (H : TY.env.IsDefEq TY.univs Γ e₁ e₂ A) : TY.CRDefEq Γ e₁ e₂ := by
@@ -903,3 +904,4 @@ theorem VEnv.IsDefEqU.church_rosser
     have ⟨_, _, _, _, a1, a2, a3, a4⟩ := TY.extra_pat h1 h2 h3 (Γ := Γ)
     refine have h := .extra h1 h2 h3; mk h (.tail .rfl (.extra a1 a2 a3 fun _ => .rfl)) .rfl ?_
     exact a4 ▸ .refl h.symm.toTyping.2
+  | pat => sorry -- `pat` (ι) case; deferred as in the `Theory` copies
