@@ -1,5 +1,7 @@
 import Lean4Lean.Verify.LocalContext
 import Lean4Lean.Theory.Typing.EnvLemmas
+import Lean4Lean.Std.SMap
+import Lean4Lean.Declaration
 
 namespace Lean4Lean
 open Lean hiding Environment Exception
@@ -98,18 +100,41 @@ nonrec theorem AddQuot.to_addQuot (H : AddQuot m₁ m₂ env₁ env₂) : env₁
 nonrec theorem AddQuot.le (H : AddQuot m₁ m₂ env₁ env₂) : env₁ ≤ env₂ :=
   open AddQuot1 in (le <| le <| le <| le fun _ _ h => h.2 ▸ VEnv.addDefEq_le) _ _ H
 
-/-- This definition is essentially a `sorry`: it should relate `addInductive`'s
-effect on the constant map to `VEnv.addInduct` (which is itself a `sorry`,
-see `Lean4Lean.Theory.Inductive`), but it currently has no constructors, so the
-`TrEnv'.induct` case below can never fire and environments containing inductives
-are outside the verified `TrEnv` relation. -/
-inductive AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
-    (m₂ : ConstMap) (env₂ : VEnv) : Prop
-  -- TODO
+/-- Refinement witness that translating an inductive declaration extends the
+constant map `m₁ → m₂` and model environment `env₁ → env₂` coherently. Instead of
+re-deriving `addInduct`'s internal steps, it bakes the theory result: `env_eq`
+records the whole `env₁.addInduct decl` and `cis` lists the registered constant
+infos with their model constants. `.safe` is hardcoded as in `AddQuot`; the
+`rec_find` field is what ties a kernel recursor lookup to the `addInduct_pat`
+ι-rule, down to the telescope split and the translation of each rule's reduct. -/
+structure AddInduct (m₁ : ConstMap) (env₁ : VEnv) (decl : VInductDecl)
+    (m₂ : ConstMap) (env₂ : VEnv) where
+  cis : List (ConstantInfo × VConstant)
+  tr : ∀ p ∈ cis, TrConstant .safe env₁ p.1 p.2 ∧ m₁.find? p.1.name = none
+  novalue : ∀ p ∈ cis, p.1.value? = none
+  map_eq : m₂ = cis.foldl (fun m p => m.insert p.1.name p.1) m₁
+  env_eq : env₁.addInduct decl = some env₂
+  consts : ∀ p ∈ cis, env₂.constants p.1.name = some p.2
+  wf : m₁.WF → m₂.WF
+  rec_find : ∀ {recName : Name} {rval : RecursorVal},
+    m₂.find? recName = some (.recInfo rval) →
+    m₁.find? recName = some (.recInfo rval) ∨
+    ∃ r ∈ decl.recs,
+      r.name = recName ∧ r.getMajorIdx = rval.getMajorIdx ∧ r.numParams = rval.numParams ∧
+      r.numMotives = rval.numMotives ∧ r.numMinors = rval.numMinors ∧
+      r.numIndices = rval.numIndices ∧
+      ∀ rule ∈ rval.rules, ∃ ru ∈ r.rules,
+        ru.ctor = rule.ctor ∧ ru.nfields = rule.nfields ∧ ru.rhs.Closed ∧
+        TrExprS env₂ rval.levelParams [] rule.rhs ru.rhs
+  value_find : ∀ {name : Name} {ci : ConstantInfo} {v : Expr},
+    m₂.find? name = some ci → ci.deltaValue? = some v → m₁.find? name = some ci
 
-nonrec theorem AddInduct.to_addInduct
+theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
-  nomatch H
+  H.env_eq
+
+theorem AddInduct.le (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁ ≤ env₂ :=
+  VEnv.addInduct_le H.env_eq
 
 /-- Insert a whole block of definitions into the constant map. -/
 def insertDefs (C : ConstMap) (cis : List DefinitionVal) : ConstMap :=
@@ -173,6 +198,9 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     TrEnv' C false env →
     TrEnv' C' true env'
   | induct :
+    -- `AddInduct` translates at `.safe`, so this step only fires at the `.safe`
+    -- level, keeping the `.unsafe` path free of inductives (`TrEnv'.no_inductInfo`).
+    safety = .safe →
     decl.WF env →
     AddInduct C env decl C' env' →
     TrEnv' C Q env →
@@ -207,6 +235,6 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩
-  | induct h1 h2 _ ih =>
+  | induct _ h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .induct h1 h2.to_addInduct⟩

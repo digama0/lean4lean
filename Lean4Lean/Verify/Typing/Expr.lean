@@ -105,6 +105,9 @@ inductive TrExprS : VLCtx → Expr → VExpr → Prop
 def TrExpr (env : VEnv) (Us : List Name) (Δ : VLCtx) (e : Expr) (e' : VExpr) : Prop :=
   ∃ e₂, TrExprS env Us Δ e e₂ ∧ env.IsDefEqU Us.length Δ.toCtx e₂ e'
 
+/-- Left fold of applications: `f.mkApps [a₀, …, aₙ] = f a₀ … aₙ`. -/
+def VExpr.mkApps (f : VExpr) : List VExpr → VExpr := List.foldl .app f
+
 def VExpr.bool : VExpr := .const ``Bool []
 def VExpr.boolTrue : VExpr := .const ``Bool.true []
 def VExpr.boolFalse : VExpr := .const ``Bool.false []

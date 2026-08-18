@@ -25,6 +25,7 @@ instance : EmptyCollection VEnv' := ⟨.empty⟩
 protected def out (env : VEnv') : VEnv where
   constants c := (env.constants c).map (·.toVConstant)
   defeqs df := ∃ df', env.defeqs df' ∧ df = df'.toVDefEq
+  pats _ _ := False
 
 @[simp] theorem empty_out : (∅ : VEnv').out = ∅ := by
   simp [VEnv'.out, EmptyCollection.emptyCollection, empty, VEnv.empty]

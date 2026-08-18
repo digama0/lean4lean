@@ -185,15 +185,19 @@ namespace VEnv
 
 theorem addConst_le {env env' : VEnv} (h : env.addConst n ci = some env') : env ≤ env' := by
   unfold addConst at h; split at h <;> cases h
-  exact ⟨fun _ => by simp; split <;> simp_all, by simp [*]⟩
+  exact ⟨fun _ => by simp; split <;> simp_all, by simp [*], id⟩
 
 theorem addConst_self {env env' : VEnv} (h : env.addConst n ci = some env') :
     env'.constants n = some ci := by
   unfold addConst at h; split at h <;> cases h; simp
 
-theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df := ⟨id, .inr⟩
+theorem addDefEq_le {env : VEnv} : env ≤ env.addDefEq df := ⟨id, .inr, id⟩
 
 theorem addDefEq_self {env : VEnv} : (env.addDefEq df).defeqs df := .inl rfl
+
+theorem addPat_le {env : VEnv} {p r} : env ≤ env.addPat p r := ⟨id, id, .inr⟩
+
+theorem addPat_self {env : VEnv} {p r} : (env.addPat p r).pats p r := .inl ⟨rfl, rfl⟩
 
 def HasObjects (env : VEnv) : List VObject → Prop
   | [] => True
@@ -358,6 +362,9 @@ theorem IsDefEq.closedN' (H : env.IsDefEq U Γ e1 e2 A) (hΓ : CtxClosed Γ) :
       hl.instL.mono (Nat.zero_le _),
       hr.instL.mono (Nat.zero_le _),
       hA.instL.mono (Nat.zero_le _)⟩
+  | pat _ hm _ _ _ ihe _ =>
+    obtain ⟨he, -, hA⟩ := ihe hΓ
+    exact ⟨he, Pattern.RHS.apply_closedN (hm.closedN he) _, hA⟩
 
 theorem Ordered.closed (H : Ordered env) : env.OnTypes fun _ e A => e.ClosedN ∧ A.ClosedN :=
   H.induction _ (fun _ => id) fun _ ih h => (IsDefEq.closedN' ih h trivial).2
@@ -398,6 +405,7 @@ theorem IsDefEq.mono (H : env.IsDefEq U Γ e1 e2 A) : env'.IsDefEq U Γ e1 e2 A 
   | eta _ ih => exact .eta ih
   | proofIrrel _ _ _ ih1 ih2 ih3 => exact .proofIrrel ih1 ih2 ih3
   | extra h1 h2 h3 => exact .extra (henv.2 h1) h2 h3
+  | pat hp hm _ hr _ ihe ihall => exact .pat (henv.3 hp) hm ihe hr ihall
 
 theorem HasType.mono {env env' : VEnv} (henv : env ≤ env') :
     env.HasType U Γ e A → env'.HasType U Γ e A := IsDefEq.mono henv
@@ -484,6 +492,10 @@ theorem IsDefEq.levelWF (H : env.IsDefEq U Γ e1 e2 A) (W : OnCtx Γ fun _ A => 
     let ⟨hh, _, hp⟩ := ih2 W; let ⟨hh', _, _⟩ := ih3 W
     exact ⟨hh, hh', hp⟩
   | extra _ h2 => exact ⟨.instL h2, .instL h2, .instL h2⟩
+  | pat _ hm _ _ _ ihe _ =>
+    obtain ⟨he, -, hA⟩ := ihe W
+    obtain ⟨hm1, hm2⟩ := hm.levelWF he
+    exact ⟨he, Pattern.RHS.apply_levelWF hm1 hm2 _, hA⟩
 
 theorem HasType.const0 (H : env.constants c = some ci) (wf : ci.WF env) :
     HasType env ci.uvars [] (.const c (VLevel.params ci.uvars)) ci.type := by
@@ -525,6 +537,12 @@ theorem IsDefEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.IsDefEq U Γ e1 e2 A) 
       hA2.instL.liftN_eq (Nat.zero_le _),
       hA3.instL.liftN_eq (Nat.zero_le _)]
     exact .extra h1 h2 h3
+  | pat hp hm _ hr _ ihe ihall =>
+    rw [Pattern.RHS.liftN_apply]
+    refine .pat hp (Pattern.matches_liftN.2 ⟨_, hm, fun _ => rfl⟩) (ihe W) hr.map_liftN ?_
+    intro t ht
+    obtain ⟨t0, ht0, rfl⟩ := List.mem_map.1 ht
+    exact ihall t0 ht0 W
 
 variable! (henv : Ordered env) in
 theorem HasType.weakN (W : Ctx.LiftN n k Γ Γ') (H : env.HasType U Γ e A) :
@@ -614,6 +632,12 @@ theorem IsDefEq.instL (H : env.IsDefEq U Γ e1 e2 A) :
   | extra h1 h2 h3 =>
     simp [VExpr.instL_instL]
     exact .extra h1 (by simp [VLevel.WF.inst hls]) (by simp [h3])
+  | pat hp hm _ hr _ ihe ihall =>
+    rw [Pattern.RHS.instL_apply]
+    refine .pat hp (Pattern.matches_instL hm) ihe hr.map_instL ?_
+    intro t ht
+    obtain ⟨t0, ht0, rfl⟩ := List.mem_map.1 ht
+    exact ihall t0 ht0
 
 theorem HasType.instL {env : VEnv} (hls : ∀ l ∈ ls, l.WF U') (H : env.HasType U Γ e A) :
     env.HasType U' (Γ.map (VExpr.instL ls)) (e.instL ls) (A.instL ls) := IsDefEq.instL hls H
@@ -669,6 +693,12 @@ theorem IsDefEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : env.IsDefE
       hA2.instL.instN_eq (Nat.zero_le _),
       hA3.instL.instN_eq (Nat.zero_le _)]
     exact .extra h1 h2 h3
+  | pat hp hm _ hr _ ihe ihall =>
+    rw [Pattern.RHS.instN_apply]
+    refine .pat hp (Pattern.matches_instN hm) (ihe W) hr.map_instN ?_
+    intro t ht
+    obtain ⟨t0, ht0, rfl⟩ := List.mem_map.1 ht
+    exact ihall t0 ht0 W
 
 theorem HasType.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
     (H : env.HasType U Γ₁ e A) (h₀ : env.HasType U Γ₀ e₀ A₀) :
@@ -781,6 +811,11 @@ theorem IsDefEq.forallE_inv'
     have C2 := (A2.instL h2).closedN henv ⟨⟨⟩, C1⟩
     rw [C1.liftN_eq (Nat.zero_le _), C2.liftN_eq (by exact Nat.le_refl _)] at this
     simpa [liftN]
+  | pat _ _ _ _ _ ihe _ =>
+    obtain eq | eq := eq
+    · exact ihe (.inl eq)
+    -- IOTA-TODO(soundness): forallE-inversion through a pat (ι-)reduction reduct.
+    · exact sorry
   | _ => nomatch eq
 
 theorem HasType.forallE_inv (henv : Ordered env) (H : env.HasType U Γ (A.forallE B) V) :
@@ -821,6 +856,11 @@ theorem IsDefEq.sort_inv'
     intro e eq IH
     cases e <;> cases eq; rename_i u
     exact VLevel.WF.inst h2
+  | pat _ _ _ _ _ ihe _ =>
+    obtain eq | eq := eq
+    · exact ihe (.inl eq)
+    -- IOTA-TODO(soundness): sort-inversion through a pat (ι-)reduction reduct.
+    · exact sorry
   | _ => nomatch eq
 
 theorem IsDefEq.sort_inv_l (henv : Ordered env) (H : env.IsDefEq U Γ (.sort u) e2 V) : u.WF U :=
@@ -862,6 +902,7 @@ theorem IsDefEq.isType' (hΓ : OnCtx Γ (env.IsType U)) (H : env.IsDefEq U Γ e1
     have ⟨_, h⟩ := ih2 hΓ
     exact (ih1 ⟨hΓ, _, h.hasType.2⟩).instN henv .zero h2
   | eta _ ih => exact ih hΓ
+  | pat _ _ _ _ _ ihe _ => exact ihe hΓ
 
 theorem Ordered.isType (H : Ordered env) :
     env.OnTypes fun U e A => env.HasType U [] e A ∧ env.IsType U [] A :=
