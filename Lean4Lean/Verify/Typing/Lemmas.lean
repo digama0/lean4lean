@@ -1726,20 +1726,21 @@ theorem TrExprS.stringOfList (henv : env.HasPrimitives) (H : env.contains ``Stri
     TrExprS env Us Δ (.const ``String.ofList []) .stringOfList ∧
     env.HasType Us.length Δ.toCtx .stringOfList (.forallE .listChar .string) := by
   let ⟨_, H⟩ := H
-  cases (henv.stringOfList H).1
-  exact ⟨.const H rfl rfl, .const H nofun rfl⟩
+  let ⟨hu, hty, _⟩ := henv.stringOfList H
+  exact ⟨.const H rfl hu.symm, hty _ _⟩
 
 theorem TrExprS.charOfNat (henv : env.HasPrimitives) (H : env.contains ``Char.ofNat) :
     TrExprS env Us Δ (.const ``Char.ofNat []) .charOfNat ∧
     env.HasType Us.length Δ.toCtx .charOfNat (.forallE .nat .char) := by
   let ⟨_, H⟩ := H
-  cases henv.charOfNat H
-  exact ⟨.const H rfl rfl, .const H nofun rfl⟩
+  let ⟨hu, hty⟩ := henv.charOfNat H
+  exact ⟨.const H rfl hu.symm, hty _ _⟩
 
 theorem VEnv.HasPrimitives.nat_of_charOfNat (wf : Ordered env) (henv : env.HasPrimitives)
     (H : env.contains ``Char.ofNat) : env.contains ``Nat := by
   let ⟨_, H⟩ := H
-  have ⟨_, H⟩ := wf.constWF (henv.charOfNat H ▸ H)
+  let ⟨_, hty⟩ := henv.charOfNat H
+  have ⟨_, H⟩ := (hty 0 []).isType wf trivial
   let ⟨⟨_, H⟩, _⟩ := H.forallE_inv wf
   let ⟨_, H, _⟩ := H.const_inv wf trivial
   exact ⟨_, H⟩
@@ -1749,7 +1750,7 @@ theorem TrExprS.listChar (wf : env.Ordered) (henv : env.HasPrimitives)
     TrExprS env Us Δ (.app (.const ``List [.zero]) (.const ``Char [])) .listChar ∧
     env.IsType Us.length Δ.toCtx .listChar := by
   let ⟨_, H⟩ := H
-  let ⟨_, H, _⟩ := henv.stringOfList H
+  let ⟨_, _, H, _⟩ := henv.stringOfList H
   let ⟨_, H⟩ := H.isType wf (by trivial)
   refine ⟨?_, _, (H.instL (ls := []) nofun).weak0 wf⟩
   let ⟨_, _, A, B⟩ := H.app_inv wf trivial
@@ -1763,7 +1764,7 @@ theorem TrExprS.listCharNil (wf : env.Ordered) (henv : env.HasPrimitives)
     TrExprS env Us Δ (.app (.const ``List.nil [.zero]) (.const ``Char [])) .listCharNil ∧
     env.HasType Us.length Δ.toCtx .listCharNil .listChar := by
   let ⟨_, H⟩ := H
-  let ⟨_, H, _⟩ := henv.stringOfList H
+  let ⟨_, _, H, _⟩ := henv.stringOfList H
   refine ⟨?_, (H.instL (ls := []) nofun).weak0 wf⟩
   let ⟨_, _, A, B⟩ := H.app_inv wf trivial
   let ⟨_, A1, _, A3⟩ := A.const_inv wf trivial
@@ -1777,7 +1778,7 @@ theorem TrExprS.listCharCons (wf : env.Ordered) (henv : env.HasPrimitives)
     env.HasType Us.length Δ.toCtx .listCharCons
       (.forallE .char <| .forallE .listChar .listChar) := by
   let ⟨_, H⟩ := H
-  let ⟨_, _, H⟩ := henv.stringOfList H
+  let ⟨_, _, _, H⟩ := henv.stringOfList H
   refine ⟨?_, (H.instL (ls := []) nofun).weak0 wf⟩
   let ⟨_, _, A, B⟩ := H.app_inv wf trivial
   let ⟨_, A1, _, A3⟩ := A.const_inv wf trivial
