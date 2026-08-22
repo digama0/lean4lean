@@ -5,102 +5,78 @@ import Lean4Lean.Theory.Typing.InductiveLemmas
 
 namespace Lean4Lean
 
-theorem VEnv.addConsts_le {env env' : VEnv} : ∀ {cis}, env.addConsts cis = some env' → env ≤ env'
-  | [], h => by cases h; exact .rfl
-  | _ :: _, h => by
-    simp [VEnv.addConsts, Option.bind_eq_some_iff] at h
-    obtain ⟨_, h1, h2⟩ := h
-    exact (addConst_le h1).trans (addConsts_le h2)
+private theorem VEnv.addMutualHeaders_ordered
+    (henv : Ordered env)
+    (htypes : ∀ ci ∈ cis, ci.toVConstant.WF env)
+    (hadd : env.addMutualHeaders cis = some headers) :
+    Ordered headers := by
+  induction cis generalizing env headers with
+  | nil =>
+    simp [VEnv.addMutualHeaders] at hadd
+    cases hadd
+    exact henv
+  | cons ci cis ih =>
+    cases hci : env.addConst ci.name ci.toVConstant with
+    | none => simp [VEnv.addMutualHeaders, hci] at hadd
+    | some env' =>
+      simp [VEnv.addMutualHeaders, hci] at hadd
+      have henv' : Ordered env' := .const henv (htypes ci (by simp)) hci
+      apply ih henv' _ hadd
+      intro ci' hci'
+      exact (htypes ci' (by simp [hci'])).mono (VEnv.addConst_le hci)
 
-theorem VEnv.addConst_eq_none {env : VEnv} {name ci}
-    (h : env.constants name = none) : ∃ env', env.addConst name ci = some env' := by
-  unfold VEnv.addConst; rw [h]; exact ⟨_, rfl⟩
-
-theorem VEnv.addConst_constants_eq {env env' : VEnv} {name ci}
-    (h : env.addConst name ci = some env') :
-    env'.constants = fun n => if name = n then some ci else env.constants n := by
-  unfold VEnv.addConst at h; split at h <;> cases h; rfl
-
-/-- A block of constants can be added as long as each name is fresh and the block has no
-duplicates; the latter is what `addMutual`'s `found` set checks. -/
-theorem VEnv.exists_addConsts {env : VEnv} : ∀ {cis : List VDefVal},
-    (∀ ci ∈ cis, env.constants ci.name = none) → (cis.map (·.name)).Nodup →
-    ∃ env', env.addConsts cis = some env'
-  | [], _, _ => ⟨_, rfl⟩
-  | ci :: cis, hfresh, hnd => by
-    obtain ⟨env₁, h₁⟩ := VEnv.addConst_eq_none (ci := ci.toVConstant) (hfresh _ (.head _))
-    rw [List.map_cons, List.nodup_cons] at hnd
-    have ⟨env₂, h₂⟩ := VEnv.exists_addConsts (env := env₁) (cis := cis) (fun c hc => ?_) hnd.2
-    · exact ⟨env₂, by simp [VEnv.addConsts, h₁]; exact h₂⟩
-    · rw [VEnv.addConst_constants_eq h₁]
-      have : ci.name ≠ c.name := fun h => hnd.1 (List.mem_map.2 ⟨c, hc, h.symm⟩)
-      simp [this, hfresh c (.tail _ hc)]
-
-theorem VEnv.addConsts_congr {env : VEnv} : ∀ {cis cis' : List VDefVal},
-    List.Forall₂ (fun a b => a.toVConstVal = b.toVConstVal) cis cis' →
-    env.addConsts cis = env.addConsts cis'
-  | [], [], _ => rfl
-  | a :: _, b :: _, .cons h t => by
-    have h1 : a.name = b.name := congrArg VConstVal.name h
-    have h2 : a.toVConstant = b.toVConstant := congrArg VConstVal.toVConstant h
-    show (env.addConst a.name a.toVConstant).bind _ = (env.addConst b.name b.toVConstant).bind _
-    rw [h1, h2]
-    cases env.addConst b.name b.toVConstant
-    · rfl
-    · exact VEnv.addConsts_congr t
-
-theorem VEnv.addConsts_ordered {env env' : VEnv} : ∀ {cis}, Ordered env →
-    (∀ ci ∈ cis, ci.toVConstant.WF env) → env.addConsts cis = some env' → Ordered env'
-  | [], h, _, e => by cases e; exact h
-  | _ :: _, h, hw, e => by
-    simp [VEnv.addConsts, Option.bind_eq_some_iff] at e
-    obtain ⟨_, h1, h2⟩ := e
-    refine VEnv.addConsts_ordered (.const h (hw _ (.head _)) h1) (fun c hc => ?_) h2
-    exact (hw c (.tail _ hc)).mono (VEnv.addConst_le h1)
-
-theorem VEnv.addConsts_constants {env env' : VEnv} : ∀ {cis}, env.addConsts cis = some env' →
-    ∀ ci ∈ cis, env'.constants ci.name = some ci.toVConstant
-  | [], _, _, hc => nomatch hc
-  | _ :: _, e, c, hc => by
-    simp [VEnv.addConsts, Option.bind_eq_some_iff] at e
-    obtain ⟨_, h1, h2⟩ := e
-    cases hc with
-    | head => exact (VEnv.addConsts_le h2).constants (VEnv.addConst_self h1)
-    | tail _ hc => exact VEnv.addConsts_constants h2 c hc
-
-theorem VEnv.addDefEqs_ordered : ∀ {env : VEnv} {cis}, Ordered env →
-    (∀ ci ∈ cis, env.constants ci.name = some ci.toVConstant) →
-    (∀ ci ∈ cis, ci.WF env) → Ordered (env.addDefEqs cis)
-  | _, [], h, _, _ => h
-  | env, ci :: cis, h, hmem, hw => by
-    have hci : ci.WF env := hw _ (.head _)
-    have hord : Ordered (env.addDefEq ci.toDefEq) := by
-      refine .defeq h ⟨?_, hci⟩
-      simp [VDefVal.toDefEq]
-      rw [← (hci.levelWF ⟨⟩).2.2.instL_id]
-      exact .const (hmem _ (.head _)) VLevel.id_WF (by simp)
-    show Ordered ((env.addDefEq ci.toDefEq).addDefEqs cis)
-    refine VEnv.addDefEqs_ordered hord (fun c hc => ?_) (fun c hc => ?_)
-    · exact (VEnv.addDefEq_le (df := ci.toDefEq)).constants (hmem c (.tail _ hc))
-    · exact (hw c (.tail _ hc)).mono VEnv.addDefEq_le
+private theorem VEnv.addMutualDefEqs_ordered
+    (henv : Ordered headers)
+    (hcontains : ∀ ci ∈ cis,
+      headers.constants ci.name = some ci.toVConstant)
+    (hbodies : ∀ ci ∈ cis, ci.WF headers) :
+    Ordered (headers.addMutualDefEqs cis) := by
+  have go : ∀ (rest : List VDefVal) (env : VEnv),
+      rest ⊆ cis → headers ≤ env → Ordered env →
+      Ordered (env.addMutualDefEqs rest) := by
+    intro rest
+    induction rest with
+    | nil => intro env _ _ henv; exact henv
+    | cons ci rest ih =>
+      intro env hsub hle henv
+      have hci : ci ∈ cis := hsub (by simp)
+      have hlhs : env.HasType ci.uvars []
+          (.const ci.name (VLevel.params ci.uvars)) ci.type := by
+        rw [← (hbodies ci hci).levelWF ⟨⟩ |>.2.2.instL_id]
+        exact .const (hle.constants (hcontains ci hci)) VLevel.id_WF (by simp)
+      have hdf : ci.toDefEq.WF env := ⟨hlhs, (hbodies ci hci).mono hle⟩
+      apply ih (env := env.addDefEq ci.toDefEq)
+      · intro x hx; exact hsub (by simp [hx])
+      · exact hle.trans VEnv.addDefEq_le
+      · exact .defeq henv hdf
+  exact go cis headers (fun _ => id) VEnv.LE.rfl henv
 
 theorem VEnv.WF.ordered : WF env → Ordered env
   | ⟨ds, H⟩ => by
-    induction H with | empty => exact .empty | decl h _ ih
-    cases h with
-    | «axiom» h1 h2 => exact .const ih h1 h2
-    | @«def» env env' ci h1 h2 =>
-      refine .defeq (.const ih (h1.isType ih ⟨⟩) h2) ⟨?_, ?_⟩
-      · simp [VDefVal.toDefEq]
-        rw [← (h1.levelWF ⟨⟩).2.2.instL_id]
-        exact .const (addConst_self h2) VLevel.id_WF (by simp)
-      · exact h1.mono (addConst_le h2)
-    | mutualDef h0 h1 h2 =>
-      exact VEnv.addDefEqs_ordered (VEnv.addConsts_ordered ih h0 h1)
-        (VEnv.addConsts_constants h1) h2
-    | «opaque» h1 h2 => exact .const ih (h1.isType ih ⟨⟩) h2
-    | «example» _ => exact ih
-    | quot h1 h2 => exact addQuot_WF ih h1 h2
-    | induct h1 h2 => exact addInduct_WF ih h1 h2
+    induction H with
+    | empty => exact .empty
+    | decl h _ ih =>
+      cases h with
+      | block => exact ih
+      | «axiom» h1 h2 => exact .const ih h1 h2
+      | @«def» env env' ci h1 h2 =>
+        refine .defeq (.const ih (h1.isType ih ⟨⟩) h2) ⟨?_, ?_⟩
+        · simp [VDefVal.toDefEq]
+          rw [← (h1.levelWF ⟨⟩).2.2.instL_id]
+          exact .const (addConst_self h2) VLevel.id_WF (by simp)
+        · exact h1.mono (addConst_le h2)
+      | unsafeDef htype hadd hvalue =>
+        have hordered := Ordered.const ih htype hadd
+        refine .defeq hordered ⟨?_, hvalue⟩
+        simp [VDefVal.toDefEq]
+        rw [← (hvalue.levelWF ⟨⟩).2.2.instL_id]
+        exact .const (addConst_self hadd) VLevel.id_WF (by simp)
+      | «opaque» h1 h2 => exact .const ih (h1.isType ih ⟨⟩) h2
+      | «mutual» htypes hadd hcontains hbodies =>
+        exact addMutualDefEqs_ordered
+          (addMutualHeaders_ordered ih htypes hadd) hcontains hbodies
+      | «example» _ => exact ih
+      | quot h1 h2 => exact addQuot_WF ih h1 h2
+      | induct h1 h2 => exact addInduct_WF ih h1 h2
 
 instance : CoeOut (VEnv.WF env) env.Ordered := ⟨(·.ordered)⟩

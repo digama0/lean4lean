@@ -125,6 +125,8 @@ theorem inst_inst {l : VLevel} : (l.inst ls).inst ls' = l.inst (ls.map (inst ls'
 
 def params (n : Nat) : List VLevel := (List.range n).map .param
 
+@[simp] theorem params_zero : params 0 = [] := rfl
+
 @[simp] theorem params_length {n : Nat} : (params n).length = n := by simp [params]
 
 theorem params_wf {n : Nat} : ∀ ⦃l⦄, l ∈ params n → l.WF n := by simp [params, WF]

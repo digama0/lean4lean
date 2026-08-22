@@ -42,3 +42,7 @@ theorem VEnv.LE.rfl {env : VEnv} : env ≤ env := ⟨id, id⟩
 
 theorem VEnv.LE.trans {a b c : VEnv} (h1 : a ≤ b) (h2 : b ≤ c) : a ≤ c :=
   ⟨h2.1 ∘ h1.1, h2.2 ∘ h1.2⟩
+
+theorem VEnv.LE.contains {env1 env2 : VEnv} (h : env1 ≤ env2) {n : Name}
+    (hc : env1.contains n) : env2.contains n :=
+  let ⟨ci, hci⟩ := hc; ⟨ci, h.constants hci⟩
