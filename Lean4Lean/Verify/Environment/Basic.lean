@@ -1,15 +1,10 @@
+import Lean4Lean.Declaration
 import Lean4Lean.Verify.LocalContext
 import Lean4Lean.Theory.Typing.EnvLemmas
 
 namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
-
-theorem ConstantInfo.hasValue_eq (ci : ConstantInfo) : ci.hasValue = ci.value?.isSome := by
-  cases ci <;> rfl
-
-theorem ConstantInfo.value!_eq (ci : ConstantInfo) : ci.value! = ci.value?.get! := by
-  cases ci <;> simp [ConstantInfo.value?, ConstantInfo.value!]
 
 def _root_.Lean.ConstantInfo.safety (ci : ConstantInfo) : DefinitionSafety :=
   if ci.isUnsafe then .unsafe else if ci.isPartial then .partial else .safe
@@ -26,43 +21,12 @@ def TrConstVal (ci : ConstantInfo) (ci' : VConstVal) : Prop :=
 variable (safety : DefinitionSafety) (env : VEnv) in
 def TrDefVal (ci : ConstantInfo) (ci' : VDefVal) : Prop :=
   TrConstVal safety env ci ci'.toVConstVal ∧
-  TrExprS env ci.levelParams [] (ci.value! (allowOpaque := true)) ci'.value
+  TrExprS env ci.levelParams [] ci.deltaValue?.get! ci'.value
 
-/-- The step an abstract environment takes when `ci`, modelled by `ci'`, is added.
-
-At safety levels where the declaration is visible the constant is added; where it is not, the
-environment is unchanged, matching `TrEnv'.ignore`. Stating this rather than just `venv ≤ venv'`
-is what lets a caller see *which* constant a step added. -/
-def VEnv.AddConst (venv : VEnv) (safety : DefinitionSafety) (ci : ConstantInfo)
-    (ci' : VConstant) (venv' : VEnv) : Prop :=
-  if safety ≤ ci.safety then
-    TrConstant safety venv ci ci' ∧ ci'.WF venv ∧ venv.addConst ci.name ci' = some venv'
-  else
-    venv' = venv
-
-theorem VEnv.AddConst.le {venv venv' : VEnv} {ci ci'}
-    (H : VEnv.AddConst venv safety ci ci' venv') : venv ≤ venv' := by
-  unfold VEnv.AddConst at H; split at H
-  · exact addConst_le H.2.2
-  · exact H ▸ VEnv.LE.rfl
-
-/-- As `VEnv.AddConst`, for a definition: the constant is added and then its defining equation,
-matching `TrEnv'.defn`. -/
-def VEnv.AddDef (venv : VEnv) (safety : DefinitionSafety) (ci : ConstantInfo)
-    (ci' : VDefVal) (venv' : VEnv) : Prop :=
-  if safety ≤ ci.safety then
-    ∃ base, TrDefVal safety venv ci ci' ∧ ci'.WF venv ∧
-      venv.addConst ci.name ci'.toVConstant = some base ∧
-      venv' = base.addDefEq ci'.toDefEq
-  else
-    venv' = venv
-
-theorem VEnv.AddDef.le {venv venv' : VEnv} {ci ci'}
-    (H : VEnv.AddDef venv safety ci ci' venv') : venv ≤ venv' := by
-  unfold VEnv.AddDef at H; split at H
-  · obtain ⟨base, _, _, hadd, rfl⟩ := H
-    exact (addConst_le hadd).trans (VEnv.addDefEq_le ..)
-  · exact H ▸ VEnv.LE.rfl
+variable (safety : DefinitionSafety) (env : VEnv) in
+def TrOpaqueVal (ci : OpaqueVal) (ci' : VDefVal) : Prop :=
+  TrConstVal safety env (.opaqueInfo ci) ci'.toVConstVal ∧
+  TrExprS env ci.levelParams [] ci.value ci'.value
 
 def AddQuot1 (name : Name) (kind : QuotKind) (ci' : VConstant) (P : ConstMap → VEnv → Prop)
     (m : ConstMap) (env : VEnv) : Prop :=
@@ -111,24 +75,27 @@ nonrec theorem AddInduct.to_addInduct
     (H : AddInduct m₁ env₁ decl m₂ env₂) : env₁.addInduct decl = some env₂ :=
   nomatch H
 
-/-- Insert a whole block of definitions into the constant map. -/
-def insertDefs (C : ConstMap) (cis : List DefinitionVal) : ConstMap :=
-  cis.foldl (fun C ci => C.insert ci.name (.defnInfo ci)) C
+def ConstMap.addMutualDefinitions (C : ConstMap) (vs : List DefinitionVal) : ConstMap :=
+  vs.foldl (fun C v => C.insert v.name (.defnInfo v)) C
 
-variable (safety : DefinitionSafety) (env env' : VEnv) in
-/-- Translation data for a mutual block: the headers are translated against the environment
-before the block is added, the values against the environment that already has every constant
-of the block, mirroring the kernel adding them all as axioms first. -/
-def TrDefBlock (cis : List DefinitionVal) (cis' : List VDefVal) : Prop :=
-  List.Forall₂ (fun ci ci' =>
-    TrConstVal safety env (.defnInfo ci) ci'.toVConstVal ∧
-    TrExprS env' ci.levelParams [] ci.value ci'.value) cis cis'
+def mutualOpaqueHeader (v : DefinitionVal) : OpaqueVal := {
+  v.toConstantVal with
+  value := v.value
+  isUnsafe := v.safety == .unsafe
+  all := v.all }
+
+def ConstMap.addMutualOpaqueHeaders (C : ConstMap) (vs : List DefinitionVal) : ConstMap :=
+  vs.foldl (fun C v => C.insert v.name (.opaqueInfo (mutualOpaqueHeader v))) C
+
+def ConstMap.MutualFresh (C : ConstMap) (vs : List DefinitionVal) : Prop :=
+  (∀ v ∈ vs, C.find? v.name = none) ∧ (vs.map (fun v => v.name)).Nodup
 
 variable (safety : DefinitionSafety) in
 inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
   | empty : TrEnv' {} false .empty
-  | ignore :
-    C.find? ci.name = none → ¬safety ≤ ci.safety →
+  | block :
+    C.find? ci.name = none →
+    ¬safety ≤ ci.safety →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name ci) Q env
   | axiom :
@@ -143,30 +110,46 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
-  /-- A mutual block, and an unsafe definition as the one-element case. -/
-  | mutualDef {cis : List DefinitionVal} {cis' : List VDefVal} :
-    TrDefBlock safety env env' cis cis' →
-    -- the block's names are distinct; `addMutual` checks this, as does lean4#14632
-    (cis.map (·.name)).Nodup →
-    (∀ ci ∈ cis, C.find? ci.name = none) →
-    (∀ ci' ∈ cis', ci'.toVConstant.WF env) →
-    env.addConsts cis' = some env' →
-    (∀ ci' ∈ cis', ci'.WF env') →
-    TrEnv' C Q env →
-    TrEnv' (insertDefs C cis) Q (env'.addDefEqs cis')
-  | thm {ci' : VDefVal} :
+  | theorem {ci' : VDefVal} :
     TrDefVal safety env (.thmInfo ci) ci' →
     C.find? ci.name = none → ci'.WF env →
-    env.HasType ci'.uvars [] ci'.type (.sort .zero) →
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
-    TrEnv' (C.insert ci.name (.thmInfo ci)) Q env'
+    TrEnv' (C.insert ci.name (.thmInfo ci)) Q (env'.addDefEq ci'.toDefEq)
+  | unsafeDefn {ci' : VDefVal} :
+    TrConstVal safety env (.defnInfo ci) ci'.toVConstVal →
+    C.find? ci.name = none → ci'.toVConstant.WF env →
+    env.addConst ci.name ci'.toVConstant = some env' →
+    TrExprS env' ci.levelParams [] ci.value ci'.value →
+    ci'.WF env' →
+    TrEnv' C Q env →
+    TrEnv' (C.insert ci.name (.defnInfo ci)) Q (env'.addDefEq ci'.toDefEq)
   | opaque {ci' : VDefVal} :
-    TrDefVal safety env (.opaqueInfo ci) ci' →
+    TrOpaqueVal safety env ci ci' →
     C.find? ci.name = none → ci'.WF env →
     env.addConst ci.name ci'.toVConstant = some env' →
     TrEnv' C Q env →
     TrEnv' (C.insert ci.name (.opaqueInfo ci)) Q env'
+  | mutual :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety env (.defnInfo v) v'.toVConstVal) vs vs' →
+    ConstMap.MutualFresh C vs →
+    (∀ v' ∈ vs', v'.toVConstant.WF env) →
+    env.addMutualHeaders vs' = some headers →
+    (∀ v' ∈ vs', headers.constants v'.name = some v'.toVConstant) →
+    List.Forall₂ (fun v v' =>
+      TrExprS headers v.levelParams [] v.value v'.value) vs vs' →
+    (∀ v' ∈ vs', v'.WF headers) →
+    TrEnv' C Q env →
+    TrEnv' (ConstMap.addMutualDefinitions C vs) Q (headers.addMutualDefEqs vs')
+  | mutualCheck :
+    List.Forall₂ (fun v v' =>
+      TrConstVal safety env (.opaqueInfo (mutualOpaqueHeader v)) v'.toVConstVal) vs vs' →
+    ConstMap.MutualFresh C vs →
+    (∀ v' ∈ vs', v'.toVConstant.WF env) →
+    env.addMutualHeaders vs' = some headers →
+    TrEnv' C Q env →
+    TrEnv' (ConstMap.addMutualOpaqueHeaders C vs) Q headers
   | quot :
     env.QuotReady →
     AddQuot C C' env env' →
@@ -181,10 +164,33 @@ inductive TrEnv' : ConstMap → Bool → VEnv → Prop where
 def TrEnv (safety : DefinitionSafety) (env : Environment) (venv : VEnv) : Prop :=
   TrEnv' safety env.constants env.quotInit venv
 
+private theorem VEnv.WF.addMutualHeaders
+    {env headers : VEnv} {vs' : List VDefVal}
+    (H : env.WF)
+    (htypes : ∀ v' ∈ vs', v'.toVConstant.WF env)
+    (hadd : env.addMutualHeaders vs' = some headers) : headers.WF := by
+  obtain ⟨ds, H⟩ := H
+  induction vs' generalizing env headers ds with
+  | nil =>
+    simp [VEnv.addMutualHeaders] at hadd
+    subst headers
+    exact ⟨ds, H⟩
+  | cons v vs ih =>
+    cases hhead : env.addConst v.name v.toVConstant with
+    | none => simp [VEnv.addMutualHeaders, hhead] at hadd
+    | some next =>
+      simp [VEnv.addMutualHeaders, hhead] at hadd
+      apply ih (env := next) (ds := .axiom v.toVConstVal :: ds) ?_ hadd
+      · exact .decl (.axiom (htypes v (by simp)) hhead) H
+      · intro w hw
+        exact (htypes w (by simp [hw])).mono (VEnv.addConst_le hhead)
+
 theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
   induction H with
   | empty => exact ⟨_, .empty⟩
-  | ignore _ _ _ ih => exact ih
+  | @block _ _ _ ci _ _ _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.decl (VDecl.WF.block (n := ci.name))⟩
   | «axiom» _ _ h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .axiom (ci := ⟨_, _⟩) h1 h2⟩
@@ -192,21 +198,24 @@ theorem TrEnv'.wf (H : TrEnv' safety C Q venv) : venv.WF := by
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .def h2 (this ▸ h3)⟩
-  | mutualDef _ _ _ h2 h3 h4 _ ih =>
+  | «theorem» h1 _ h2 h3 _ ih =>
     have ⟨_, H⟩ := ih
-    exact ⟨_, H.decl <| .mutualDef h2 h3 h4⟩
-  | thm h1 _ h2 h3 h4 _ ih =>
+    have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
+    exact ⟨_, H.decl <| .def h2 (this ▸ h3)⟩
+  | unsafeDefn h1 _ h2 h3 _ h4 _ ih =>
     have ⟨_, H⟩ := ih
-    have hn := h1.1.2
-    dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at hn
-    exact ⟨_, (H.decl (.example h2)).decl (.axiom ⟨_, h3⟩ (hn ▸ h4))⟩
+    have := h1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
+    exact ⟨_, H.decl <| .unsafeDef h2 (this ▸ h3) h4⟩
   | «opaque» h1 _ h2 h3 _ ih =>
     have ⟨_, H⟩ := ih
     have := h1.1.2; dsimp [ConstantInfo.name, ConstantInfo.toConstantVal] at this
     exact ⟨_, H.decl <| .opaque h2 (this ▸ h3)⟩
+  | «mutual» _ _ htypes hadd hcontains _ hbodies _ ih =>
+    have ⟨_, H⟩ := ih
+    exact ⟨_, H.decl <| .mutual htypes hadd hcontains hbodies⟩
+  | mutualCheck _ _ htypes hadd _ ih =>
+    exact ih.addMutualHeaders htypes hadd
   | quot h1 h2 _ ih =>
     have ⟨_, H⟩ := ih
     exact ⟨_, H.decl <| .quot h1 h2.to_addQuot⟩
-  | induct h1 h2 _ ih =>
-    have ⟨_, H⟩ := ih
-    exact ⟨_, H.decl <| .induct h1 h2.to_addInduct⟩
+  | induct _ h _ _ => exact nomatch h
