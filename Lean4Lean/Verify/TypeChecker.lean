@@ -185,6 +185,35 @@ nonrec theorem whnf.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     M.WF c s (whnf e) fun e₁ _ => c.TrExpr e₁ e' :=
   (whnf.WF he).run.mono fun _ _ _ h => h.2
 
+nonrec theorem whnf.WF' {c : VContext} {s : VState} (he : c.TrExpr e e') :
+    M.WF c s (whnf e) fun e₁ _ => c.TrExpr e₁ e' := by
+  let ⟨_, he, eq⟩ := he
+  exact (whnf.WF he).mono fun _ _ _ h => h.defeq c.Ewf c.Δwf eq
+
+nonrec theorem whnfCore.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+    M.WF c s (whnfCore e) fun e₁ _ => c.TrExpr e₁ e' :=
+  (Inner.whnfCore.WF he).run.mono fun _ _ _ h => h.2
+
+nonrec theorem whnfCore.WF' {c : VContext} {s : VState} (he : c.TrExpr e e') :
+    M.WF c s (whnfCore e) fun e₁ _ => c.TrExpr e₁ e' := by
+  let ⟨_, he, eq⟩ := he
+  exact (whnfCore.WF he).mono fun _ _ _ h => h.defeq c.Ewf c.Δwf eq
+
+nonrec theorem unfoldDefinition.WF {c : VContext} {s : VState}
+    (he : c.TrExprS e e') :
+    M.WF c s (unfoldDefinition e) fun e₁ _ => c.TrExpr e₁ e' := by
+  unfold unfoldDefinition
+  refine (Inner.unfoldDefinition.WF he).run.bind fun oe _ _ H => .pure ?_
+  cases oe with
+  | some e₁ => exact H.2
+  | none => exact ⟨_, he, he.wf c.Ewf.ordered c.Δwf⟩
+
+nonrec theorem unfoldDefinition.WF' {c : VContext} {s : VState}
+    (he : c.TrExpr e e') :
+    M.WF c s (unfoldDefinition e) fun e₁ _ => c.TrExpr e₁ e' := by
+  let ⟨_, he, eq⟩ := he
+  exact (unfoldDefinition.WF he).mono fun _ _ _ h => h.defeq c.Ewf c.Δwf eq
+
 nonrec theorem inferType.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     M.WF c s (inferType e) fun ty _ => ∃ ty', c.TrTyping e ty e' ty' :=
   (inferType.WF he).run

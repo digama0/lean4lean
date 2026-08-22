@@ -10,6 +10,9 @@ open Lean4Lean
 
 namespace Lean
 
+@[simp] theorem BinderInfo.default_eq_default :
+    (default : BinderInfo) = .default := rfl
+
 instance : LawfulBEq FVarId where
   eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
   rfl := BEq.rfl (α := Name)
@@ -199,6 +202,9 @@ instance : EquivBEq DataValue where
 end DataValue
 
 namespace Expr
+
+@[simp] theorem natZero_eq_const : Expr.natZero = .const ``Nat.zero [] := rfl
+@[simp] theorem natSucc_eq_const : Expr.natSucc = .const ``Nat.succ [] := rfl
 
 theorem Data.looseBVarRange_le :
     (Data.looseBVarRange d).toNat ≤ 2 ^ 20 - 1 := by
@@ -530,6 +536,10 @@ end Expr
 
 namespace Literal
 open Expr in
+@[simp] theorem natVal_toConstructor (n : Nat) :
+    (Literal.natVal n).toConstructor = Expr.natLitToConstructor n := rfl
+
+open Expr in
 theorem toConstructor_hasLevelParam :
     (Literal.toConstructor l).hasLevelParam' = false := by
   cases l with simp [Literal.toConstructor]
@@ -830,6 +840,32 @@ theorem instantiate1'_eq_self : e.looseBVarRange' ≤ k → instantiate1' e a k 
   induction e generalizing k <;>
     simp +contextual [*, looseBVarRange', instantiate1', Nat.max_le]
   omega
+
+/- Lean 4.31's `brecOn` reduction exposes implementation thunks when these
+equations are obtained by delta-reducing `instantiate1'`.  Named simp
+equations keep downstream expression calculations at the constructor level. -/
+@[simp] theorem instantiate1'_const (n : Name) (ls : List Level)
+    (a : Expr) (d : Nat) : (Expr.const n ls).instantiate1' a d = .const n ls := rfl
+
+@[simp] theorem instantiate1'_lit (l : Literal) (a : Expr) (d : Nat) :
+    (Expr.lit l).instantiate1' a d = .lit l := rfl
+
+@[simp] theorem instantiate1'_app (f a subst : Expr) (d : Nat) :
+    (f.app a).instantiate1' subst d =
+      (f.instantiate1' subst d).app (a.instantiate1' subst d) := rfl
+
+@[simp] theorem instantiate1'_bvar (i : Nat) (subst : Expr) (d : Nat) :
+    (Expr.bvar i).instantiate1' subst d =
+      if i < d then .bvar i else if i = d then subst.liftLooseBVars' 0 d
+      else .bvar (i - 1) := rfl
+
+@[simp] theorem instantiate1'_lam (n : Name) (ty body subst : Expr)
+    (bi : BinderInfo) (d : Nat) :
+    (Expr.lam n ty body bi).instantiate1' subst d =
+      .lam n (ty.instantiate1' subst d) (body.instantiate1' subst (d + 1)) bi := rfl
+
+@[simp] theorem liftLooseBVars'_lit (l : Literal) (s d : Nat) :
+    (Expr.lit l).liftLooseBVars' s d = .lit l := rfl
 
 theorem instantiate1_eq_self (H : e.looseBVarRange' = 0) : instantiate1' e a = e := by
   simpa using instantiate1'_eq_self (e := e) (Nat.le_zero.2 H)

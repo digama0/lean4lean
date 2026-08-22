@@ -7,15 +7,9 @@ namespace Lean4Lean
 
 def VDefVal.WF (env : VEnv) (ci : VDefVal) : Prop := env.HasType ci.uvars [] ci.value ci.type
 
-/-- Add a block of constants, without their defining equations. -/
-def VEnv.addConsts (env : VEnv) (cis : List VDefVal) : Option VEnv :=
-  cis.foldlM (fun env ci => env.addConst ci.name ci.toVConstant) env
-
-/-- Add the defining equations of a block, after all of its constants. -/
-def VEnv.addDefEqs (env : VEnv) (cis : List VDefVal) : VEnv :=
-  cis.foldl (fun env ci => env.addDefEq ci.toDefEq) env
-
 inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
+  | block :
+    VDecl.WF env (.block n) env
   | axiom :
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
@@ -24,15 +18,23 @@ inductive VDecl.WF : VEnv → VDecl → VEnv → Prop where
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
     VDecl.WF env (.def ci) (env'.addDefEq ci.toDefEq)
-  | mutualDef :
-    (∀ ci ∈ cis, ci.toVConstant.WF env) →
-    env.addConsts cis = some env' →
-    (∀ ci ∈ cis, ci.WF env') →
-    VDecl.WF env (.mutualDef cis) (env'.addDefEqs cis)
+  /-- Unsafe definitions may be recursive: their header is checked before the
+  constant is added, and their body is checked in the extended environment. -/
+  | unsafeDef :
+    ci.toVConstant.WF env →
+    env.addConst ci.name ci.toVConstant = some env' →
+    ci.WF env' →
+    VDecl.WF env (.def ci) (env'.addDefEq ci.toDefEq)
   | opaque :
     ci.WF env →
     env.addConst ci.name ci.toVConstant = some env' →
     VDecl.WF env (.opaque ci) env'
+  | mutual :
+    (∀ ci ∈ cis, ci.toVConstant.WF env) →
+    env.addMutualHeaders cis = some headers →
+    (∀ ci ∈ cis, headers.constants ci.name = some ci.toVConstant) →
+    (∀ ci ∈ cis, ci.WF headers) →
+    VDecl.WF env (.mutual cis) (headers.addMutualDefEqs cis)
   | example :
     ci.WF env →
     VDecl.WF env (.example ci) env
