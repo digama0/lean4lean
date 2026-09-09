@@ -450,14 +450,6 @@ def unfoldDefinition (e : Expr) : RecM (Option Expr) := do
   else
     unfoldDefinitionCore e
 
-def reduceNative (_env : Environment) (e : Expr) : Except Exception (Option Expr) := do
-  let .app f (.const c _) := e | return none
-  if f == .const ``reduceBool [] then
-    throw <| .other s!"lean4lean does not support 'reduceBool {c}' reduction"
-  else if f == .const ``reduceNat [] then
-    throw <| .other s!"lean4lean does not support 'reduceNat {c}' reduction"
-  return none
-
 def rawNatLitExt? (e : Expr) : Option Nat := if e == .natZero then some 0 else e.rawNatLit?
 
 /-- Reduces the application `f a b` to a Nat literal if `a` and `b` can be reduced to Nat literals.
@@ -531,9 +523,7 @@ def whnf' (e : Expr) : RecM Expr := do
   let rec loop t
   | 0 => throw .deterministicTimeout
   | fuel+1 => do
-    let env ← getEnv
     let t ← whnfCore' t
-    if let some t ← reduceNative env t then return t
     if let some t ← reduceNat t then return t
     let some t ← unfoldDefinition t | return t
     loop t fuel
@@ -784,11 +774,6 @@ where
         return .bool tn' sn (← isDefEqCore tn' sn)
       else if let some sn' ← reduceNat sn then
         return .bool tn sn' (← isDefEqCore tn sn')
-    let env ← getEnv
-    if let some tn' ← reduceNative env tn then
-      return .bool tn' sn (← isDefEqCore tn' sn)
-    else if let some sn' ← reduceNative env sn then
-      return .bool tn sn' (← isDefEqCore tn sn')
     match ← lazyDeltaReductionStep tn sn with
     | .continue tn sn => loop tn sn fuel
     | r => return r
