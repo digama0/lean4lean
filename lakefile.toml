@@ -33,4 +33,3 @@ globs = ["Lean4Lean.Experimental.+"]
 [[lean_exe]]
 name = "lean4lean"
 root = "Main"
-supportInterpreter = true
