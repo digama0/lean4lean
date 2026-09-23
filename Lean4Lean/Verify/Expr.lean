@@ -742,6 +742,20 @@ theorem mkAppList_getAppArgsList (e) :
     mkAppList e.getAppFn (getAppArgsList e) = e := by
   rw [← mkAppRevList_reverse, getAppArgsList_reverse, mkAppRevList_getAppArgsRevList]
 
+@[simp] theorem getAppFn_mkAppList : ∀ (es) (e : Expr), (mkAppList e es).getAppFn = e.getAppFn
+  | [], _ => rfl
+  | _ :: es, e => by rw [mkAppList, getAppFn_mkAppList es]; rfl
+
+theorem getAppArgsRevList_mkAppList : ∀ (es) (e : Expr),
+    getAppArgsRevList (mkAppList e es) = es.reverse ++ getAppArgsRevList e
+  | [], _ => rfl
+  | _ :: es, e => by rw [mkAppList, getAppArgsRevList_mkAppList es]; simp [getAppArgsRevList]
+
+theorem getAppArgsList_mkAppList (es) (e : Expr) :
+    getAppArgsList (mkAppList e es) = getAppArgsList e ++ es := by
+  rw [← getAppArgsRevList_reverse, getAppArgsRevList_mkAppList, ← getAppArgsRevList_reverse]
+  simp
+
 theorem mkAppRange_eq (h1 : args.toList = l₁ ++ l₂ ++ l₃)
     (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
     mkAppRange e i j args = mkAppList e l₂ := loop h1 h2 h3 where

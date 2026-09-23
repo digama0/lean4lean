@@ -50,3 +50,17 @@ inductive VEnv.WF' : List VDecl → VEnv → Prop where
   | decl {env} : VDecl.WF env d env' → env.WF' ds → env'.WF' (d::ds)
 
 def VEnv.WF (env : VEnv) : Prop := ∃ ds, VEnv.WF' ds env
+
+/-- `env₀` is the environment reached by a prefix of `env`'s declaration list: `env` extends
+`env₀` by a run of well-formed declarations. The environments the strengthening argument
+walks through (`VEnv.WF.strong`) are these and their extensions by constants alone. -/
+inductive VEnv.WFPrefix : VEnv → VEnv → Prop where
+  | rfl : VEnv.WFPrefix env env
+  | decl {d} : VDecl.WF env d env' → VEnv.WFPrefix env env₀ → VEnv.WFPrefix env' env₀
+
+/-- A prefix of a prefix is a prefix. -/
+theorem VEnv.WFPrefix.trans {env env₁ env₂ : VEnv}
+    (h₁ : env.WFPrefix env₁) (h₂ : env₁.WFPrefix env₂) : env.WFPrefix env₂ := by
+  induction h₁ with
+  | rfl => exact h₂
+  | decl hd _ ih => exact .decl hd (ih h₂)

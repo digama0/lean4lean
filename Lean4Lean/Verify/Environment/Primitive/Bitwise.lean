@@ -38,7 +38,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_
   simp at h1; specialize hnat h1.1.1
   have hbool : (ves.venv .safe).contains ``Bool := VContext.contains_primitive rfl h1.1.2
-  have hE := ctx.Ewf.ordered
+  have hE := ctx.Ewf.orderedStrong
   have hlp : ctx.lparams.length = 0 := congrArg List.length (hok h1.2).2
   have tyeq := P.mkTyEqBitwise hnat hbool h2
   -- the two conditions the equation body is built out of: `n = 0`/`m = 0` on the one hand, and
@@ -83,7 +83,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
   · intro m' cwf2; refine ⟨?_, fun hcl rhsv hrhs E γ ih hγ hihT g x y hx hy hfg IH => ?_⟩
     · -- the equation body mentions only the probe's own variables and the packer, so unfolding
       -- the conditional builders leaves nothing but those memberships
-      have hpk := PB.hpack.weakFV hE
+      have hpk := PB.hpack.weakFV hE.ordered
         (.skip_fvar _ _ (.skip_fvar _ _ (.skip_fvar _ _ .refl))) cwf2.wf.tr.wf |>.fvarsIn
       simp only [Condition.dite, Condition.ite, Condition.decide, Condition.natEq, Condition.bool,
         mkApp4, mkAppN, Expr.lam0, add, div, mod, one, two, zero, succ]
@@ -147,9 +147,9 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           if g ba bb then t'.subst ((γ.cons ih).cons pf) else e'.subst ((γ.cons ih).cons pf) := by
       cases TrExprS.unique (by simp [TrExprS.IsUnique]) hα trNatS
       obtain ⟨_, hPa, rfl⟩ :=
-        TrExprS.app1_nil_inv hE (by simp [Condition.bool, noProj]) wb.hprop0 hPb
+        TrExprS.app1_nil_inv hE.ordered (by simp [Condition.bool, noProj]) wb.hprop0 hPb
       obtain ⟨_, hDa, rfl⟩ :=
-        TrExprS.app1_nil_inv hE (by simp [Condition.bool, noProj]) wb.hdec0 hDb
+        TrExprS.app1_nil_inv hE.ordered (by simp [Condition.bool, noProj]) wb.hdec0 hDb
       cases TrExprS.unique (noProj.isUnique (by simp [noProj, hua, hub])) hDa hPa
       obtain ⟨_, _, _, hf, ha2, hb2, rfl⟩ := hPa.app2_inv
       cases TrExprS.fvar_lift_uniq hfΔ.trS hf
@@ -179,7 +179,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
     cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hP0z (zerob hnat).trS
     cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hD0z (zerob hnat).trS
     subst hshape0
-    have hwfr0 : E.WF₀ _ := E.monoW (hrhs.wf hE cwf2.wf.tr.wf) |>.subst E.wf hclS
+    have hwfr0 : E.WF₀ _ := E.monoW (hrhs.wf hE.ordered cwf2.wf.tr.wf) |>.subst E.wf hclS
     simp only [diteApp, VExpr.subst, wc.propC.subst_eq', wc.decC.subst_eq', hxs, zerob,
       TrTerm.natZero, TrTerm.of] at hwfr0 ⊢
     obtain ⟨pf0, hev0⟩ := wc.natEq_diteEval (hcdite rfl).2.1 wf.hasPrimitives hnat E.cast
@@ -200,7 +200,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) a a' ∧
           TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) b b' ∧
           r = wb.prop'.app ((f'.app a').app b') := by
-      obtain ⟨_, hab, rfl⟩ := TrExprS.app1_nil_inv hE (by simp [Condition.bool, noProj]) wb.hprop0 h
+      obtain ⟨_, hab, rfl⟩ := TrExprS.app1_nil_inv hE.ordered (by simp [Condition.bool, noProj]) wb.hprop0 h
       obtain ⟨_, _, _, _, ha, hb, rfl⟩ := hab.app2_inv
       exact ⟨_, _, _, ha, hb, rfl⟩
     -- `natEq.decide #[mod v two, one]` at a closing: the `Nat.mod` evaluates and the reflected
@@ -311,7 +311,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           (hunoProj (by simp [noProj])) (hunoProj (by simp [noProj]))
           hα4 hP4 hD4 hb1 hb2' hval1 hval2 hwfif2 |>.trans E.wf trivial ?_
         -- the recursive call: `ih` at the packer's value on the two halves
-        have hpk := PB.hpack.weakFV hE
+        have hpk := PB.hpack.weakFV hE.ordered
           (.skip_fvar _ _ (.skip_fvar _ _ (.skip_fvar _ _ .refl))) cwf2.wf.tr.wf
         have hrval {pfe r'}
             (hr' : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx)
@@ -358,7 +358,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
   have hlp : ctx.lparams.length = 0 := congrArg List.length (hok h1.2).2
   have hvalT : env'.HasType 0 [] ci'.value (.forallE .boolOp2 .natOp2) := by
     rw [← tyeq, ← P.uvars_eq (hok h1.2)]; exact P.hci.mono hle
-  have hvalC : ci'.value.ClosedN := (P.hci.closedN' hE.closed trivial).1
+  have hvalC : ci'.value.ClosedN := (P.hci.closedN' hE.ordered.closed trivial).1
   refine ⟨by simpa [VExpr.natOp2, VExpr.inst] using VEnv.HasType.app hvalT hfg.1, fun x y => ?_⟩
   -- the closing that instantiates the operator, and the recursion read at it
   have hγ : (VContext.Ext.cast (⟨env', hle, hwf''⟩ : (ctx.withMLC mf (wf := cwff)).Ext)).Closing

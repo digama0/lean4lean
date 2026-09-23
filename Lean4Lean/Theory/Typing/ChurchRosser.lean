@@ -27,6 +27,9 @@ class Params where
   extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
     df.rhs.instL ls = r.1.apply m1 m2
+  /-- Every registered reduction rule of the environment (`IsDefEq.pat`) is a `Pat` rule,
+  as every definitional axiom is realised by one (`extra_pat`). -/
+  pat_env : env.pats p r → Pat p r
 
 variable [Params]
 open Params
@@ -1384,3 +1387,8 @@ theorem IsDefEq.church_rosser
     have ⟨_, _, _, _, a1, a2, a3, a4⟩ := extra_pat h1 h2 h3 (Γ := Γ)
     refine have h := .extra h1 h2 h3; mk h (.tail .rfl (.extra a1 a2 a3 fun _ => .rfl)) .rfl ?_
     exact a4 ▸ .refl h.hasType.2
+  | pat hp hm he hr hall =>
+    have hok := hr.toOK (defeq := IsDefEqU env univs _) fun t ht => ⟨_, hall t ht⟩
+    refine have h := .pat hp hm he hr hall
+      mk h (.tail .rfl (.extra (pat_env hp) hm hok fun _ => .rfl)) .rfl ?_
+    exact .refl h.hasType.2

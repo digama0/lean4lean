@@ -3,6 +3,147 @@ import Lean4Lean.Verify.TypeChecker.Reduce
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 
+/-- The ι step of recursor reduction, refined against the ι rules registered for the recursor:
+on a redex whose major premise is the saturated constructor application `ctorName cls cargs`,
+the reduct `inductiveReduceRecCore` builds translates to the redex's own translation.
+
+The translated redex matches the rule's ι pattern, whose reduct `SimplePattern.iotaRHS` is the
+rule's template applied to the same two slices the kernel takes — the recursor's parameters,
+motives and minor premises, and the constructor's fields — with the arguments after the major
+re-applied on both sides. Saturation of the major (`hsat`) is what makes the two slicings
+agree, the kernel taking the *last* `rule.nfields` arguments of the major and the pattern the
+ones past the constructor's parameters; it is a consequence of the redex being well-typed, and
+is left to the caller. -/
+theorem inductiveReduceRecCore.WF {c : VContext} {recName ctorName : Name}
+    {rval : RecursorVal} {rule : RecursorRule} {cval : ConstructorVal}
+    {ls cls : List Level} {as cargs : List Expr} {e' : VExpr} {e₁ : Expr}
+    (hrec : c.env.find? recName = some (.recInfo rval))
+    (hrule : rval.rules.find? (·.ctor == ctorName) = some rule)
+    (hctor : c.env.find? ctorName = some (.ctorInfo cval))
+    (hsat : cargs.length = cval.numParams + rule.nfields)
+    (hmaj : as[rval.getMajorIdx]? = some (Expr.mkAppList (.const ctorName cls) cargs))
+    (he : c.TrExprS (Expr.mkAppList (.const recName ls) as) e')
+    (heq : inductiveReduceRecCore rval ls as.toArray
+      (Expr.mkAppList (.const ctorName cls) cargs) = some e₁) :
+    c.FVarsBelow (Expr.mkAppList (.const recName ls) as) e₁ ∧ c.TrExpr e₁ e' := by
+  have hKM : rval.getFirstIndexIdx + rval.numIndices = rval.getMajorIdx := rfl
+  obtain ⟨hM, hasM⟩ := List.getElem?_eq_some_iff.1 hmaj
+  -- the recursor's arguments split into the rule's prefix, the indices, the major and the rest
+  obtain ⟨p1, idx, post, hp1len, hidxlen, rfl⟩ :
+      ∃ p1 idx post, p1.length = rval.getFirstIndexIdx ∧ idx.length = rval.numIndices ∧
+        as = p1 ++ idx ++ (Expr.mkAppList (.const ctorName cls) cargs) :: post := by
+    refine ⟨as.take rval.getFirstIndexIdx, (as.take rval.getMajorIdx).drop rval.getFirstIndexIdx,
+      as.drop (rval.getMajorIdx + 1), by simp; omega, by simp; omega, ?_⟩
+    have h3 : as.take rval.getFirstIndexIdx ++
+        (as.take rval.getMajorIdx).drop rval.getFirstIndexIdx = as.take rval.getMajorIdx := by
+      conv => rhs; rw [← List.take_append_drop rval.getFirstIndexIdx (as.take rval.getMajorIdx)]
+      rw [List.take_take, Nat.min_eq_left (by omega)]
+    rw [h3, ← hasM, ← List.drop_eq_getElem_cons hM, List.take_append_drop]
+  obtain ⟨cpar, cfld, hcparlen, hcfldlen, rfl⟩ :
+      ∃ cpar cfld, cpar.length = cval.numParams ∧ cfld.length = rule.nfields ∧
+        cargs = cpar ++ cfld := by
+    refine ⟨cargs.take cval.numParams, cargs.drop cval.numParams, by simp; omega, by simp; omega,
+      (List.take_append_drop ..).symm⟩
+  -- the kernel's reduct: the rule's template applied to the prefix, the fields and the rest
+  have hargs : (Expr.mkAppList (.const ctorName cls) (cpar ++ cfld)).getAppArgs
+      = (cpar ++ cfld).toArray := by
+    simp [Expr.getAppArgs_eq, Expr.getAppArgsList_mkAppList]; rfl
+  have hgrr : getRecRuleFor rval (Expr.mkAppList (.const ctorName cls) (cpar ++ cfld))
+      = some rule := by simp [getRecRuleFor, Expr.getAppFn, hrule]
+  rw [inductiveReduceRecCore, hgrr] at heq
+  simp only [hargs, List.size_toArray] at heq
+  split at heq
+  · rename_i h; simp at h; omega
+  split at heq
+  · exact absurd heq nofun
+  rename_i hlp
+  simp only [bne_iff_ne, ne_eq, Decidable.not_not] at hlp
+  have hr1 : mkAppRange (rule.rhs.instantiateLevelParams rval.levelParams ls) 0
+      rval.getFirstIndexIdx
+      (p1 ++ idx ++ (Expr.mkAppList (.const ctorName cls) (cpar ++ cfld)) :: post).toArray
+      = (rule.rhs.instantiateLevelParams rval.levelParams ls).mkAppList p1 :=
+    Expr.mkAppRange_eq (l₁ := []) (l₂ := p1)
+      (l₃ := idx ++ (Expr.mkAppList (.const ctorName cls) (cpar ++ cfld)) :: post)
+      (by simp) rfl (by simp [hp1len])
+  have hr2 : ∀ f, mkAppRange f ((cpar ++ cfld).length - rule.nfields) (cpar ++ cfld).length
+      (cpar ++ cfld).toArray = f.mkAppList cfld := fun _ =>
+    Expr.mkAppRange_eq (l₁ := cpar) (l₂ := cfld) (l₃ := []) (by simp) (by simp; omega) (by simp)
+  have hr3 : ∀ f, mkAppRange f (rval.getMajorIdx + 1)
+      (p1 ++ idx ++ (Expr.mkAppList (.const ctorName cls) (cpar ++ cfld)) :: post).length
+      (p1 ++ idx ++ (Expr.mkAppList (.const ctorName cls) (cpar ++ cfld)) :: post).toArray
+      = f.mkAppList post := fun _ =>
+    Expr.mkAppRange_eq (l₁ := p1 ++ idx ++ [Expr.mkAppList (.const ctorName cls) (cpar ++ cfld)])
+      (l₂ := post) (l₃ := []) (by simp) (by simp; omega) (by simp)
+  rw [hr1, hr2] at heq
+  have heq1 : e₁ = (((rule.rhs.instantiateLevelParams rval.levelParams ls).mkAppList p1).mkAppList
+      cfld).mkAppList post := by
+    split at heq
+    · rw [hr3] at heq; exact (Option.some.inj heq).symm
+    · rename_i h; simp at h
+      rw [show post = [] from List.eq_nil_of_length_eq_zero (by omega)]
+      exact (Option.some.inj heq).symm
+  -- take the redex's translation apart along the same split
+  simp only [Expr.mkAppList_append, Expr.mkAppList] at he
+  obtain ⟨e₀', post', hE₀, -, rfl⟩ := TrExprS.mkAppList_inv he
+  have hE₀c := hE₀
+  cases hE₀ with | app _ _ hfun hmajT => ?_
+  obtain ⟨_, idx', hfun2, hidxT, rfl⟩ := TrExprS.mkAppList_inv hfun
+  obtain ⟨g', p1', hconst, hp1T, rfl⟩ := TrExprS.mkAppList_inv hfun2
+  obtain ⟨_, cfld', hmaj2, hcfldT, rfl⟩ := TrExprS.mkAppList_inv hmajT
+  obtain ⟨h₂', cpar', hcconst, hcparT, rfl⟩ := TrExprS.mkAppList_inv hmaj2
+  obtain ⟨us', hc1, hc2, rfl⟩ : ∃ us', (∃ ci, c.venv.constants recName = some ci) ∧
+      ls.mapM (VLevel.ofLevel c.lparams) = some us' ∧ g' = .const recName us' := by
+    cases hconst with | const h1 h2 _ => exact ⟨_, ⟨_, h1⟩, h2, rfl⟩
+  obtain ⟨cus', rfl⟩ : ∃ cus', h₂' = .const ctorName cus' := by
+    cases hcconst with | const _ _ _ => exact ⟨_, rfl⟩
+  have hp1'len : p1'.length = rval.numParams + rval.numMotives + rval.numMinors := by
+    rw [← List.Forall₂.length_eq hp1T, hp1len]; rfl
+  have hidx'len : idx'.length = rval.numIndices := by
+    rw [← List.Forall₂.length_eq hidxT, hidxlen]
+  have hcpar'len : cpar'.length = cval.numParams := by
+    rw [← List.Forall₂.length_eq hcparT, hcparlen]
+  have hcfld'len : cfld'.length = rule.nfields := by
+    rw [← List.Forall₂.length_eq hcfldT, hcfldlen]
+  -- the redex matches the recursor's ι pattern for this constructor, so the ι rule fires
+  obtain ⟨g1, hm1, hg1⟩ := Pattern.matches_varN_const (c := recName) (ls := us')
+    (rval.numParams + rval.numMotives + rval.numMinors + rval.numIndices) (p1' ++ idx')
+    (by simp [hp1'len, hidx'len])
+  obtain ⟨g2, hm2, hg2⟩ := Pattern.matches_varN_const (c := ctorName) (ls := cus')
+    (cval.numParams + rule.nfields) (cpar' ++ cfld') (by simp [hcpar'len, hcfld'len])
+  rw [VExpr.mkApps_append] at hm1 hm2
+  have hsafe : c.safety ≤ (ConstantInfo.recInfo rval).safety := by
+    obtain ⟨_, h1, h2⟩ := c.trenv.find?_iff.2 hc1
+    rw [hrec] at h1; cases h1; exact h2
+  obtain ⟨A₀, hty⟩ := hE₀c.wf c.Ewf c.Δwf
+  obtain ⟨rhs, hclosed, htr, hdefeq⟩ :=
+    c.trenv.iota_rec hrec hrule hsafe hctor (hm1.app hm2) hty
+  simp only [SimplePattern.iotaRHS] at hdefeq
+  rw [SimplePattern.iotaRHS'_apply _ _ _ _ _ _ _ _ _ (Sum.elim g1 g2)
+      (by simp [hp1'len, hidx'len]) (by simp [hcpar'len, hcfld'len]) hg1 hg2,
+    List.take_left' hp1'len, List.drop_left' hcpar'len] at hdefeq
+  -- the kernel's reduct translates to that ι reduct, hence to the redex's translation
+  have c1 := htr.instL (Δ := []) c.Ewf trivial hc2 hlp.symm
+  have htmpl : c.TrExpr (rule.rhs.instantiateLevelParams rval.levelParams ls) (rhs.instL us') := by
+    have c2 := c1.weakFV c.Ewf (.from_nil c.mlctx.noBV) c.Δwf
+    rwa [(c1.wf.closedN c.Ewf trivial).liftN_eq (Nat.zero_le _)] at c2
+  have hredty : c.HasType ((rhs.instL us').mkApps (p1' ++ cfld')) A₀ :=
+    (hdefeq.of_l c.Ewf c.Δwf hty).hasType.2
+  have hred := TrExpr.mkAppList c.Ewf c.Δwf
+    (List.Forall₂.append (List.Forall₂.imp (fun _ _ h => h.trExpr c.Ewf c.Δwf) hp1T)
+      (List.Forall₂.imp (fun _ _ h => h.trExpr c.Ewf c.Δwf) hcfldT)) htmpl hredty
+  have hfinal := (hred.defeq c.Ewf c.Δwf hdefeq.symm).rebuild_mkAppList c.Ewf c.Δwf hE₀c he
+  rw [Expr.mkAppList_append] at hfinal
+  subst heq1
+  refine ⟨fun P _ hfv => ?_, hfinal⟩
+  obtain ⟨-, hfv⟩ := FVarsIn.mkAppList.1 hfv
+  have hmajfv :=
+    (FVarsIn.mkAppList.1 (hfv _ (List.mem_append_right _ (List.mem_cons_self ..)))).2
+  simp only [FVarsIn.mkAppList]
+  exact ⟨⟨⟨c1.fvarsIn.mono nofun,
+      fun a ha => hfv a (List.mem_append_left _ (List.mem_append_left _ ha))⟩,
+    fun a ha => hmajfv a (List.mem_append_right _ ha)⟩,
+    fun a ha => hfv a (List.mem_append_right _ (List.mem_cons_of_mem _ ha))⟩
+
 theorem reduceRecursor.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (reduceRecursor e) fun oe _ =>
       ∀ e₁, oe = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := sorry

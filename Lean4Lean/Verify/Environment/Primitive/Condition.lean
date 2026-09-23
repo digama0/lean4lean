@@ -418,7 +418,7 @@ are built rather than read off anything: `isDefEq.WF` relates the *translations*
 expressions it was given, so a caller has to name the translation it expects on the right. -/
 
 /-- `Bool → Prop`, the type the predicate is checked against. -/
-theorem TrExprS.boolProp (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem TrExprS.boolProp (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hbool : env.contains ``Bool) (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
     TrExprS env Us Δ (.forallE n q(Bool) q(Prop) bi) vexpr(Bool → Prop) :=
   (TrTy.forallE (.of (hprim.trBool henv hbool) (hprim.boolIsType henv hbool hΔ))
@@ -741,7 +741,7 @@ theorem TrExprS.polyIteType : TrExprS env Us Δ
     (.forallE vexpr(Type) (.forallE (.bvar 0) (.forallE (.bvar 1) (.bvar 2)))) :=
   (TrTy.polyIteType (Us := Us) (Δ := Δ)).trS
 
-theorem TrExprS.propBoolProp (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem TrExprS.propBoolProp (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hbool : env.contains ``Bool) (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
     TrExprS env Us Δ
       (.forallE n₁ q(Prop) (.forallE n₂ q(Bool) q(Prop) bi₂) bi₁) vexpr(Prop → Bool → Prop) :=
@@ -751,7 +751,7 @@ theorem TrExprS.propBoolProp (henv : env.Ordered) (hprim : env.HasPrimitives)
       (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩))).trS
 
 /-- `Bool → Nat → Nat → Nat`, the type the conditional is checked against. -/
-theorem TrExprS.boolNat3 {env : VEnv} {Us : List Name} (henv : env.Ordered)
+theorem TrExprS.boolNat3 {env : VEnv} {Us : List Name} (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) (hbool : env.contains ``Bool)
     {Δ : VLCtx} {n₁ n₂ n₃ bi₁ bi₂ bi₃}
     (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
@@ -768,7 +768,7 @@ theorem TrExprS.boolNat3 {env : VEnv} {Us : List Name} (henv : env.Ordered)
         (.of (hprim.trNat henv hnat) (hprim.natIsType' henv hnat ⟨⟨⟨hΔ, hb⟩, h1⟩, h2⟩))))).trS
 
 /-- `Nat → Nat → Prop`, the type the `≤` that the fuel recursions guard on is checked against. -/
-theorem TrExprS.natNatProp {env : VEnv} {Us : List Name} (henv : env.Ordered)
+theorem TrExprS.natNatProp {env : VEnv} {Us : List Name} (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Δ : VLCtx} {n₁ n₂ bi₁ bi₂}
     (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
     TrExprS env Us Δ
@@ -783,7 +783,7 @@ theorem TrExprS.natNatProp {env : VEnv} {Us : List Name} (henv : env.Ordered)
 /-- `∀ y, 1 ≤ y → ∀ fuel x, succ x ≤ fuel → Nat`: the type of the fuel-driven `go` that
 `Nat.div` and `Nat.mod` recurse through. `≤` is a parameter, since the checker checks it
 separately and this is where the two are joined. -/
-theorem TrExprS.divGoType {env : VEnv} {Us : List Name} (henv : env.Ordered)
+theorem TrExprS.divGoType {env : VEnv} {Us : List Name} (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat)
     {leSrc : Expr} {le' : VExpr}
     (hleTr : ∀ {Δ}, TrExprS env Us Δ leSrc le')
@@ -852,7 +852,7 @@ theorem TrExprS.divGoType {env : VEnv} {Us : List Name} (henv : env.Ordered)
 
 /-- `fun a _ : Nat => a` and `fun _ a : Nat => a`, the two branches the conditional collapses to.
 Indexed by the branch so the two `isDefEq` checks are consumed by one lemma. -/
-theorem TrExprS.natProj {env : VEnv} {Us : List Name} (henv : env.Ordered)
+theorem TrExprS.natProj {env : VEnv} {Us : List Name} (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Δ : VLCtx} {n₁ n₂ bi₁ bi₂}
     (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) {i : Nat} (hi : i = 0 ∨ i = 1) :
     TrExprS env Us Δ
@@ -1253,7 +1253,7 @@ theorem Reflection.WF.genTeleT {c : VContext} (E : c.Ext)
     simpa using Ctx.LiftN.right (VEnv.CtxWF.closed E.wf hAs) Γ
   have hX' := VEnv.HasType.weakN E.wf hW (E.monoT hX)
   rw [hXc.liftN_eq (Nat.le_refl _), hAc.liftN_eq (Nat.le_refl _)] at hX'
-  exact hX'.subst E.wf.ordered
+  exact hX'.subst E.wf.orderedStrong
     (VExpr.ArgsTyped.substEq (OnCtx.append_right E.wf hAs hΓ) (.id E.wf hΓ) hargs)
 
 /-- An equation the checker verified under `p : Prop` and `H : type p b`, moved to arbitrary such
@@ -1296,7 +1296,7 @@ theorem Reflection.WF.genPH (w : Reflection.WF c r) (E : c.Ext)
   have hXY' := (E.mono hXY).weakN E.wf hW
   rw [hXc.liftN_eq (Nat.le_refl _), hYc.liftN_eq (Nat.le_refl _)] at hXY'
   -- and close the two binders
-  refine hXY'.subst E.wf.ordered
+  refine hXY'.subst E.wf.orderedStrong
     (VEnv.Ctx.SubstEq.cons (VEnv.Ctx.SubstEq.cons (.id E.wf hΓ) hPT ?_) hHT ?_) hΓ
   · exact hp
   · show E.venv.HasType _ _ _ _
@@ -1445,7 +1445,7 @@ theorem Reflection.checkITE.WF {fail : ∀ {α}, M α}
     have hiteT'' := VEnv.HasType.weak0 (Γ := (c.withMLC _ (wf := cwfH)).vlctx.toCtx)
       c.Ewf hiteT'
     rw [hshape] at hiteTrH hiteT'' ⊢
-    obtain ⟨hΓ1, hb1⟩ := VExpr.WF.lam_inv' c.Ewf.ordered hΓH ⟨_, hiteT''⟩
+    obtain ⟨hΓ1, hb1⟩ := VExpr.WF.lam_inv' c.Ewf.orderedStrong hΓH ⟨_, hiteT''⟩
     obtain ⟨hΓ2, hb2⟩ := VExpr.WF.lam_inv' c.Ewf hΓ1 hb1
     obtain ⟨hΓ3, hb3⟩ := VExpr.WF.lam_inv' c.Ewf hΓ2 hb2
     have hargs : VExpr.ArgsTyped c.venv c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
@@ -1463,7 +1463,7 @@ theorem Reflection.checkITE.WF {fail : ∀ {α}, M α}
         hc.subst_eq', hbc.subst_eq'] using h
     have hwf := (VExpr.lams_appN' c.Ewf hΓH (by simpa using hΓ3) (.id c.Ewf hΓH) hargs hb3).1
     simp only [VExpr.subst_id, VExpr.appN] at hwf
-    exact TrExprS.appN c.Ewf.ordered hΓH hiteTrH
+    exact TrExprS.appN c.Ewf.orderedStrong hΓH hiteTrH
       (.cons hp' (.cons (hlit b).1 (.cons hH' .nil))) hwf
   -- each check, generalized away from the two binders it was run under
   have hgen (b : Bool) (idH : FVarId)
@@ -1789,7 +1789,7 @@ theorem Reflection.checkNatDITE.WF {c : VContext} {s : VState} {r : Reflection}
           .bvar (.succ .zero)
         simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift] using h
     have hd5 := VEnv.HasType.appN_forallEs hargs (by simpa using hdTH)
-    exact TrExprS.appN c.Ewf.ordered hΓH hdTrH
+    exact TrExprS.appN c.Ewf.orderedStrong hΓH hdTrH
       (.cons hp3 (.cons (hlit bb).1 (.cons hH0 (.cons ha2 (.cons hb1 .nil))))) ⟨_, hd5⟩
   -- the context the two checks are run in, as a telescope over `[]`
   have hAsCtx bb : OnCtx [(w.type'.app (.bvar 2)).app (.boolLit bb),
@@ -1847,7 +1847,7 @@ theorem Reflection.checkNatDITE.WF {c : VContext} {s : VState} {r : Reflection}
     have hofTH := hofT.weak0 (Γ := (c.withMLC _ (wf := cwfH)).vlctx.toCtx) c.Ewf
     have hap := VEnv.HasType.appN_forallEs hargs2 (by simpa using hofTH)
     refine ⟨?_, hap⟩
-    exact TrExprS.appN c.Ewf.ordered hΓH
+    exact TrExprS.appN c.Ewf.orderedStrong hΓH
       (TrExprS.of_nil_any c.Ewf.ordered hofOK (by rw [← hnil]; exact hofTr))
       (.cons hp3 (.cons hH0 .nil)) ⟨_, hap⟩
   -- each check, generalized away from the four binders it was run under
@@ -2034,7 +2034,7 @@ theorem Condition.WF.reflect_dite {prop dec asBool proof : Expr}
         (c.withMLC m).TrExprS xs x ∧ (c.withMLC m).TrExprS ys y := by
       cases hargs with | cons h1 h2; cases h2 with | cons h3 h4; cases h4; exact ⟨_, _, rfl, h1, h3⟩
     rw [Expr.mkAppN_eq, hal]
-    exact TrExprS.appN c.Ewf.ordered hΓm hpropTrΓ (.cons hxTr (.cons hyTr .nil)) ⟨_, hpT⟩
+    exact TrExprS.appN c.Ewf.orderedStrong hΓm hpropTrΓ (.cons hxTr (.cons hyTr .nil)) ⟨_, hpT⟩
   have hPeq : (c.withMLC m).IsDefEqU P ((prop'.app x).app y) :=
     hP.uniq c.Ewf (.refl c.Ewf (c.withMLC m).Δwf) hpropApp
   -- the evidence and the decision, at the consumer's own condition
@@ -2063,7 +2063,7 @@ theorem Condition.WF.reflect_dite {prop dec asBool proof : Expr}
       (.lam (vexpr(Not).app P) e')
       (.forallE (vexpr(Not).app P) .nat) := .lam hNotP heT
   have hd3 := hDT c.self hΓm hPT hblT hHT'
-  obtain ⟨A₀, B₀, hf₀, ha₀⟩ := hd3.app_inv c.Ewf.ordered hΓm
+  obtain ⟨A₀, B₀, hf₀, ha₀⟩ := hd3.app_inv c.Ewf.orderedStrong hΓm
   have hd3' : c.venv.HasType c.lparams.length (c.withMLC m).vlctx.toCtx
       ((((VExpr.const ``dite [.succ .zero]).app .nat).app P).app ((dec'.app x).app y))
       (.forallE (.forallE P .nat)
@@ -2085,14 +2085,14 @@ theorem Condition.WF.reflect_dite {prop dec asBool proof : Expr}
         ((dec'.app x).app y) := by
       obtain ⟨_, h⟩ := hToDecT c.self hΓm hpT hblT hHT
       exact ⟨_, VEnv.HasType.defeqU_l c.Ewf hΓm hdecEq.symm h⟩
-    exact TrExprS.appN c.Ewf.ordered hΓm hdecTrΓ (.cons hxTr (.cons hyTr .nil)) hdecT'
-  obtain ⟨_, _, hf₁, -⟩ := hf₀.app_inv c.Ewf.ordered hΓm
-  obtain ⟨_, _, hf₂, -⟩ := hf₁.app_inv c.Ewf.ordered hΓm
-  obtain ⟨ci, hci, -, hlen⟩ := hf₂.const_inv c.Ewf.ordered hΓm
+    exact TrExprS.appN c.Ewf.orderedStrong hΓm hdecTrΓ (.cons hxTr (.cons hyTr .nil)) hdecT'
+  obtain ⟨_, _, hf₁, -⟩ := hf₀.app_inv c.Ewf.orderedStrong hΓm
+  obtain ⟨_, _, hf₂, -⟩ := hf₁.app_inv c.Ewf.orderedStrong hΓm
+  obtain ⟨ci, hci, -, hlen⟩ := hf₂.const_inv c.Ewf.orderedStrong hΓm
   have hdCTr : (c.withMLC m).TrExprS (.const ``dite [.succ .zero])
       (.const ``dite [.succ .zero]) := .const hci rfl hlen
   rw [show w'.dec' = dec' from hw'dec]
-  refine TrExprS.appN c.Ewf.ordered hΓm hdCTr (
+  refine TrExprS.appN c.Ewf.orderedStrong hΓm hdCTr (
     .cons (c.hasPrimitives.trNat c.Ewf hnat) <|
     .cons hP <| .cons hdecApp <| .cons (.lam ⟨_, hPT⟩ hP ht) <|
     .cons (.lam ⟨_, hNotP⟩ (.app hNotT hPT hNotTr hP) he) .nil) ⟨_, hd5⟩
@@ -2730,7 +2730,7 @@ theorem Condition.WF.reflect_ite {c : VContext} {prop dec asBool proof : Expr}
       ((dec'.app x).app y) := ⟨_, VEnv.HasType.defeqU_l c.Ewf hΓm hdecEq.symm htdT⟩
   -- the conditional at the reflection's decision, then at the condition's own
   have hiteT := hIT c.self hΓm hpT hblT hHT hαT'
-  obtain ⟨A₀, B₀, hf₀, ha₀⟩ := hiteT.app_inv c.Ewf.ordered hΓm
+  obtain ⟨A₀, B₀, hf₀, ha₀⟩ := hiteT.app_inv c.Ewf.orderedStrong hΓm
   have hiteT' : c.venv.HasType c.lparams.length (c.withMLC m).vlctx.toCtx
       (((vexpr(@ite.{1}).app α').app ((prop'.app x).app y)).app ((dec'.app x).app y))
       (.forallE α' (.forallE α'.lift α'.lift.lift)) :=
@@ -2744,17 +2744,17 @@ theorem Condition.WF.reflect_ite {c : VContext} {prop dec asBool proof : Expr}
       (c.withMLC m).TrExprS xs x ∧ (c.withMLC m).TrExprS ys y := by
     cases hargs with | cons h1 h2; cases h2 with | cons h3 h4; cases h4; exact ⟨_, _, rfl, h1, h3⟩
   have hpropApp : (c.withMLC m).TrExprS (prop.appN [xs, ys]) ((prop'.app x).app y) :=
-    TrExprS.appN c.Ewf.ordered hΓm hpropTrΓ (.cons hxTr (.cons hyTr .nil)) ⟨_, hpT⟩
+    TrExprS.appN c.Ewf.orderedStrong hΓm hpropTrΓ (.cons hxTr (.cons hyTr .nil)) ⟨_, hpT⟩
   have hdecApp : (c.withMLC m).TrExprS (dec.appN [xs, ys]) ((dec'.app x).app y) :=
-    TrExprS.appN c.Ewf.ordered hΓm hdecTrΓ (.cons hxTr (.cons hyTr .nil)) hdecT
+    TrExprS.appN c.Ewf.orderedStrong hΓm hdecTrΓ (.cons hxTr (.cons hyTr .nil)) hdecT
   -- `ite` itself translates, since the conditional it heads is well typed
-  obtain ⟨_, _, hf₁, -⟩ := hf₀.app_inv c.Ewf.ordered hΓm
-  obtain ⟨_, _, hf₂, -⟩ := hf₁.app_inv c.Ewf.ordered hΓm
-  obtain ⟨ci, hci, -, hlen⟩ := hf₂.const_inv c.Ewf.ordered hΓm
+  obtain ⟨_, _, hf₁, -⟩ := hf₀.app_inv c.Ewf.orderedStrong hΓm
+  obtain ⟨_, _, hf₂, -⟩ := hf₁.app_inv c.Ewf.orderedStrong hΓm
+  obtain ⟨ci, hci, -, hlen⟩ := hf₂.const_inv c.Ewf.orderedStrong hΓm
   have hiteCTr : (c.withMLC m).TrExprS q(@ite.{1}) vexpr(@ite.{1}) := .const hci rfl hlen
   simp only [Condition.ite, Expr.mkAppN_eq, hal, mkApp5, mkApp4, mkApp, mkAppB, Expr.appN,
     iteApp, VExpr.appN, hw'prop, hw'dec]
-  exact TrExprS.appN c.Ewf.ordered hΓm hiteCTr
+  exact TrExprS.appN c.Ewf.orderedStrong hΓm hiteCTr
     (.cons hα (.cons hpropApp (.cons hdecApp (.cons ht (.cons he .nil))))) ⟨_, hiteT3⟩
 
 /-- Verification boundary for `Condition.check`. The flags select which of the three parts
@@ -2910,7 +2910,7 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
       -- its type, read off the conditional's own: the beta step is what carries it
       have hlamwf : VExpr.WF c.venv c.lparams.length (c.withMLC m).vlctx.toCtx
           (.lam (.const ``Bool []) body') := ⟨_, hniteTM⟩
-      obtain ⟨-, B₀, hbodyT⟩ := hlamwf.lam_inv c.Ewf.ordered hΓm
+      obtain ⟨-, B₀, hbodyT⟩ := hlamwf.lam_inv c.Ewf.orderedStrong hΓm
       have hbeta := VEnv.IsDefEq.beta hbodyT hbT
       have hXT := VEnv.HasType.defeqU_l c.Ewf hΓm ⟨_, hbeta⟩
         (VEnv.HasType.app hniteTM hbT)

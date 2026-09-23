@@ -32,3 +32,14 @@ theorem IsDefEqU.forallE_inv (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U)
 
 theorem IsDefEqU.sort_forallE_inv (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U)) :
     ¬env.IsDefEqU U Γ (.sort u) (.forallE A B) := sorry
+
+/-- An application headed by a type former of a declared inductive block is defeq to
+neither a sort nor a Π-type: the same root as `sort_inv` and `sort_forallE_inv`, open
+until that root lands. -/
+theorem IsDefEqU.const_arity_inv {ds : List VDecl} {env : VEnv} {U : Nat} {Γ : List VExpr}
+    (henv : env.WF' ds) (hΓ : OnCtx Γ (env.IsType U))
+    {decl : VInductDecl} {t : VInductiveType} {us : List VLevel} {args : List VExpr}
+    (hdecl : VDecl.induct decl ∈ ds) (htype : t ∈ decl.types)
+    (hty : ∃ V, env.HasType U Γ ((VExpr.const t.name us).mkApps args) V) :
+    (∀ u, ¬ env.IsDefEqU U Γ ((VExpr.const t.name us).mkApps args) (.sort u)) ∧
+    (∀ A B, ¬ env.IsDefEqU U Γ ((VExpr.const t.name us).mkApps args) (.forallE A B)) := sorry

@@ -54,6 +54,14 @@ inductive IsDefEq : List VExpr → VExpr → VExpr → VExpr → Prop where
   | extra :
     env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     Γ ⊢ df.lhs.instL ls ≡ df.rhs.instL ls : df.type.instL ls
+  /-- ι reduction: the reduct is asserted at the redex's type, with no typing premise on
+  the reduct — the thesis's regularity theorem for ι taken as a rule, as `Params.pat_wf`
+  states it. `VEnv.WF.patsStrong` is where the strong system repays that. -/
+  | pat {p : Pattern} {r : p.RHS × p.Check} {m1 m2 chk} :
+    env.pats p r → p.Matches e m1 m2 → Γ ⊢ e : A →
+    r.2.Realizes m1 m2 chk →
+    (∀ t ∈ chk, Γ ⊢ t.1 ≡ t.2.1 : t.2.2) →
+    Γ ⊢ e ≡ r.1.apply m1 m2 : A
 
 end
 
@@ -74,3 +82,24 @@ def VConstant.WF (env : VEnv) (ci : VConstant) : Prop := env.IsType ci.uvars [] 
 
 def VDefEq.WF (env : VEnv) (df : VDefEq) : Prop :=
   env.HasType df.uvars [] df.lhs df.type ∧ env.HasType df.uvars [] df.rhs df.type
+
+/-- The typing of a reduction rule `(p, r)`: the `VDefEq.WF` of a schematic rule (thesis
+§2.6.4). A *generic* instance of the redex — at the identity level instantiation
+`VLevel.params U`, with the holes the reduct uses being exactly the variables of a context
+`Γ` (`Pattern.RHS.Generic`) and the remaining holes arbitrary terms over `Γ` — and the
+corresponding reduct are typed at a common type `B` in `Γ`. The side conditions `r.2` are
+not assumed: a rule must be typed without them. -/
+def VEnv.PatTyped (env : VEnv) (p : Pattern) (r : p.RHS × p.Check) : Prop :=
+  ∃ U Γ e m2 B, p.Matches e (VLevel.params U) m2 ∧ r.1.Generic m2 Γ.length ∧
+    env.HasType U Γ e B ∧ env.HasType U Γ (r.1.apply (VLevel.params U) m2) B
+
+/-- Well-formedness of a reduction rule `(p, r)`: it is typed (`VEnv.PatTyped`) and it
+computes — its reduct is a closed λ-template applied to arguments
+(`Pattern.RHS.TemplateHeaded`, the head shape of every ι reduct, `SimplePattern.iotaRHS`).
+The shape is what makes a `pats` entry a *reduction* rule rather than a definitional axiom
+(`VEnv.defeqs`, whose sides are arbitrary closed terms): the head of a reduct is fixed by
+the rule, so no instance of it is a sort, a Π-type or a bare hole. This is the monotone
+(`PatWF.mono`) condition under which a rule may be registered (`Ordered.pat`). It does not
+give subject reduction, which is false under `Ordered` and is `VEnv.PatsStrongOn`. -/
+def VEnv.PatWF (env : VEnv) (p : Pattern) (r : p.RHS × p.Check) : Prop :=
+  env.PatTyped p r ∧ r.1.TemplateHeaded

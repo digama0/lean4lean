@@ -377,7 +377,7 @@ theorem ProbeBundle.probe.WF {c : VContext} {m mp : MLCtx} [cwf : c.MLCWF m] [cw
       W (c.withMLC mp).Δwf.toCtx hτlen hτnat
   obtain ⟨hdomTr, hdomTy, hFpackTr, resTy, hFpackT⟩ :=
     P.applied W cwfp.wf.tr.wf
-      (Expr.mkAppN_eq _ _ ▸ TrExprS.appN c.Ewf.ordered (c.withMLC mp).Δwf.toCtx
+      (Expr.mkAppN_eq _ _ ▸ TrExprS.appN c.Ewf.orderedStrong (c.withMLC mp).Δwf.toCtx
         (P.hpack.weakFV c.Ewf.ordered W cwfp.wf.tr.wf) hτ ⟨_, hpackT⟩) hpackT
   unfold Probe.probe
   refine M.WF.withLocalDecl hdomTr hdomTy .rfl ?_

@@ -21,7 +21,7 @@ theorem checkNatGcd.WF {ves : VEnvs} (wf : ves.WF env)
   -- `eager` gadget's conditional needs
   have hmod := VContext.contains_primitive rfl h1.1.1
   have hbool := VContext.contains_primitive rfl h1.1.2
-  have hE := ctx.Ewf.ordered
+  have hE := ctx.Ewf.orderedStrong
   have hΔ := ctx.Δwf.toCtx
   have hnat := wf.hasPrimitives.natOfMod hE hmod
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
@@ -92,12 +92,12 @@ theorem checkNatGcd.WF {ves : VEnvs} (wf : ves.WF env)
     have hΔ2 := (ctx.withMLC _ (wf := cwf2)).Δwf.toCtx
     have Wc := hcl E γ ih hγ hihT
     have hc := (E.mono <| VEnv.IsDefEqU.app_fun' ctx.Ewf hΔ2
-      (.app_fun' ctx.Ewf hΔ2 hhd hpT haT2) hfT haT).subst E.wf.ordered Wc
-    have hpT3 := (E.monoT (hhd.of_l ctx.Ewf hΔ2 hpT).hasType.2).subst E.wf.ordered Wc
+      (.app_fun' ctx.Ewf hΔ2 hhd hpT haT2) hfT haT).subst E.wf.orderedStrong Wc
+    have hpT3 := (E.monoT (hhd.of_l ctx.Ewf hΔ2 hpT).hasType.2).subst E.wf.orderedStrong Wc
     have hfT3 := (E.monoT <| (VEnv.IsDefEqU.app_fun' ctx.Ewf hΔ2 hhd hpT haT2
-      |>.of_l ctx.Ewf hΔ2 hfT).hasType.2).subst E.wf.ordered Wc
-    have haT3 := (E.monoT haT2).subst E.wf.ordered Wc
-    have haT3' := (E.monoT haT).subst E.wf.ordered Wc
+      |>.of_l ctx.Ewf hΔ2 hfT).hasType.2).subst E.wf.orderedStrong Wc
+    have haT3 := (E.monoT haT2).subst E.wf.orderedStrong Wc
+    have haT3' := (E.monoT haT).subst E.wf.orderedStrong Wc
     -- and finally the first argument evaluates: this is what the branch's `Nat.mod` guard buys
     have hmodeq := E.mono (ctx.natBinLit wf.hasPrimitives.natMod hmod a (b+1))
     have hΔ0 : OnCtx [] (E.venv.IsType ctx.lparams.length) := trivial

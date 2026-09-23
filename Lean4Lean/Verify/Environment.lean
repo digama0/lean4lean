@@ -1,4 +1,5 @@
 import Lean4Lean.Verify.Environment.Extension
+import Lean4Lean.Verify.Environment.Quot
 
 namespace Lean4Lean
 open Lean4Lean
@@ -110,34 +111,6 @@ theorem addOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : Op
     exact .opaque (ci' := ci') ⟨⟨htr, hname⟩, hvalue.mono hto⟩
       (by rwa [← old.map_wf.find?'_eq_find?]) (hci.mono hto) hadd old
 
-theorem checkEqType.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
-    (checkEqType env).WF fun _ => False := by
-  -- `AddInduct` currently has no constructors, so the unsafe translation cannot contain
-  -- the inductive `Eq` declaration required by quotient initialization. This case becomes
-  -- constructive when the inductive-declaration verification boundary is implemented.
-  intro _ h
-  unfold checkEqType at h
-  simp only [Environment.get] at h
-  split at h <;> try contradiction
-  rename_i ci hfind
-  cases ci with
-  | inductInfo info =>
-    have hfind' : env.constants.find? ``Eq = some (.inductInfo info) := by
-      rw [← (wf.tr (safety := .unsafe)).map_wf.find?'_eq_find?]
-      exact hfind
-    exact False.elim <| (wf.tr (safety := .unsafe)).no_inductInfo hfind'
-  | _ => simp_all [( · >>= · ), Except.bind, pure, Pure.pure, Except.pure]
-
-/-- This is currently vacuous in the non-initialized case: `TrEnv` cannot contain the
-inductive `Eq` declaration until `AddInduct` is implemented. -/
-theorem addQuot.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) :
-    (Environment.addQuot env).WF fun env' =>
-      ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
-  unfold Environment.addQuot
-  split
-  · exact .pure ⟨ves, wf, fun _ => VEnv.LE.rfl⟩
-  · exact (checkEqType.WF wf).bind fun _ h => False.elim h
-
 private theorem Except.WF.throw' {e : ε} {Q : α → Prop} : (throw e : Except ε α).WF Q :=
   fun _ h => nomatch h
 
@@ -219,8 +192,8 @@ theorem addMutual.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   · obtain ⟨v, -, h⟩ := hbody.forall_exists_r ci hc; exact h.2
 
 /-- Successful checked addition preserves well-formedness and extends every safety-indexed
-abstract environment. The only declaration form still outstanding is inductives, which need a
-constructive `AddInduct` model. -/
+abstract environment. Still outstanding: inductives, which need the `AddInduct` witness to be
+constructed from `Environment.addInductive`. -/
 theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration) :
     (addDecl env decl (check := true) (fuel := {})).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by

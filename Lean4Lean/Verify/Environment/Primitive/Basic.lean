@@ -69,8 +69,8 @@ theorem TypeChecker.M.WF.withNatProbe {c : VContext} {m : MLCtx} [cwf : c.MLCWF 
           .fvar (VLCtx.find?_vlam_self (ty := .nat)) (.bvar .zero)
         M.WF (c.withMLC m' (wf := cwf')) s' (f (.fvar id)) Q) :
     (withLocalDecl name .default q(Nat) f).WF (c.withMLC m) s Q :=
-  .withLocalDecl (hprim.trNat c.Ewf.ordered hnat)
-    (hprim.natIsType c.Ewf.ordered hnat (c.withMLC m).Δwf.toCtx) hs H
+  .withLocalDecl (hprim.trNat c.Ewf.orderedStrong hnat)
+    (hprim.natIsType c.Ewf.orderedStrong hnat (c.withMLC m).Δwf.toCtx) hs H
 
 /-- The `Bool` counterpart, for the operator the bitwise operations probe. -/
 theorem TypeChecker.M.WF.withBoolProbe {c : VContext} {m : MLCtx} [cwf : c.MLCWF m]
@@ -82,8 +82,8 @@ theorem TypeChecker.M.WF.withBoolProbe {c : VContext} {m : MLCtx} [cwf : c.MLCWF
           .fvar (VLCtx.find?_vlam_self (ty := .bool)) (.bvar .zero)
         M.WF (c.withMLC m' (wf := cwf')) s' (f (.fvar id)) Q) :
     (withLocalDecl name .default q(Bool) f).WF (c.withMLC m) s Q :=
-  .withLocalDecl (hprim.trBool c.Ewf.ordered hbool)
-    (hprim.boolIsType c.Ewf.ordered hbool (c.withMLC m).Δwf.toCtx) hs H
+  .withLocalDecl (hprim.trBool c.Ewf.orderedStrong hbool)
+    (hprim.boolIsType c.Ewf.orderedStrong hbool (c.withMLC m).Δwf.toCtx) hs H
 
 /-- Application to a list of arguments, leftmost-first: the order `fvs` and a lambda telescope
 already use. Everything the recognizer hands back is closed and abstracted over its telescope, so
@@ -155,12 +155,12 @@ def VLCtx.ofCtx : List VExpr → VLCtx
   | [] => rfl
   | A :: Γ => congrArg (A :: ·) (VLCtx.toCtx_ofCtx Γ)
 
-theorem VEnv.HasPrimitives.boolIsType' {env : VEnv} (henv : env.Ordered)
+theorem VEnv.HasPrimitives.boolIsType' {env : VEnv} (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hbool : env.contains ``Bool) {Us : List Name} {Γ : List VExpr}
     (hΓ : OnCtx Γ (env.IsType Us.length)) : env.IsType Us.length Γ VExpr.bool :=
   VLCtx.toCtx_ofCtx Γ ▸ hprim.boolIsType (Δ := VLCtx.ofCtx Γ) henv hbool (by simpa using hΓ)
 
-theorem VEnv.HasPrimitives.natIsType' {env : VEnv} (henv : env.Ordered)
+theorem VEnv.HasPrimitives.natIsType' {env : VEnv} (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Us : List Name} {Γ : List VExpr}
     (hΓ : OnCtx Γ (env.IsType Us.length)) : env.IsType Us.length Γ VExpr.nat :=
   VLCtx.toCtx_ofCtx Γ ▸ hprim.natIsType (Δ := VLCtx.ofCtx Γ) henv hnat (by simpa using hΓ)
@@ -428,11 +428,11 @@ theorem OnCtx.of_append : ∀ {l Γ : List VExpr}, OnCtx (l ++ Γ) P → OnCtx �
 
 /-- Both halves of an application are well formed. `app_inv` gives the typings, which is more
 than a caller peeling a spine apart wants to name: this is the form that chains. -/
-theorem VExpr.WF.app_inv₂ (henv : VEnv.Ordered env) (hΓ : OnCtx Γ (env.IsType U)) {f a : VExpr}
+theorem VExpr.WF.app_inv₂ (henv : VEnv.OrderedStrong env) (hΓ : OnCtx Γ (env.IsType U)) {f a : VExpr}
     (H : VExpr.WF env U Γ (f.app a)) : VExpr.WF env U Γ f ∧ VExpr.WF env U Γ a :=
   let ⟨_, _, hf, ha⟩ := H.app_inv henv hΓ; ⟨⟨_, hf⟩, ⟨_, ha⟩⟩
 
-variable! (henv : VEnv.Ordered env) (hΓ : OnCtx Γ (env.IsType U)) in
+variable! (henv : VEnv.OrderedStrong env) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem VExpr.WF.appN_inv : ∀ {vs : List VExpr} {e},
     VExpr.WF env U Γ (e.appN vs) → VExpr.WF env U Γ e
   | [], _, h => h
@@ -451,7 +451,7 @@ theorem VEnv.IsDefEqU.appN {env : VEnv} (henv : VEnv.WF env) (hΓ : OnCtx Γ (en
   | cons v vs ih =>
     intro f g h hwf
     obtain ⟨A, B, hf, hv⟩ :=
-      (VExpr.WF.appN_inv henv.ordered hΓ (vs := vs) (e := f.app v) hwf).app_inv henv.ordered hΓ
+      (VExpr.WF.appN_inv henv.orderedStrong hΓ (vs := vs) (e := f.app v) hwf).app_inv henv.orderedStrong hΓ
     exact ih ⟨_, (h.of_l henv hΓ hf).appDF hv⟩ hwf
 
 /-- The arguments a lambda telescope is closed at, each typed at its own binder's domain under
@@ -575,7 +575,7 @@ theorem VEnv.IsDefEqU.appN' {env : VEnv} {U Γ} (henv : VEnv.WF env)
 arguments', *given* that the result is well typed. The typings `TrExprS.app` needs at each step
 are exactly what `app_inv` reads back off that -- so a caller who knows only that the application
 typechecks gets the translation for free. -/
-theorem TrExprS.appN {env : VEnv} {Us Δ} (henv : VEnv.Ordered env)
+theorem TrExprS.appN {env : VEnv} {Us Δ} (henv : VEnv.OrderedStrong env)
     (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
     ∀ {as : List Expr} {xs : List VExpr} {f f'},
     TrExprS env Us Δ f f' → as.Forall₂ (TrExprS env Us Δ) xs →
@@ -598,7 +598,7 @@ theorem VEnv.IsDefEqU.app_arg {env : VEnv} {U Γ} (henv : VEnv.WF env)
 
 /-- A well-typed lambda telescope's domains are types in their own contexts -- the `OnCtx` that
 closing it asks for. Read off the telescope itself rather than carried alongside it. -/
-theorem VExpr.lams_ctx {env : VEnv} {U Γ} (henv : VEnv.Ordered env) :
+theorem VExpr.lams_ctx {env : VEnv} {U Γ} (henv : VEnv.OrderedStrong env) :
     ∀ {As : List VExpr} {e}, OnCtx Γ (env.IsType U) → VExpr.WF env U Γ (VExpr.lams As e) →
       OnCtx (As.reverse ++ Γ) (env.IsType U)
   | [], _, hΓ, _ => hΓ
@@ -630,8 +630,8 @@ theorem VExpr.lams_appN {env : VEnv} {U} {Γ₀ : List VExpr} (henv : VEnv.WF en
   obtain ⟨u, hAu⟩ : env.IsType U Γ A := (OnCtx.of_append hctx).2
   -- the head binder: invert the application, then read the domain off the lambda itself
   obtain ⟨A', B', hf, hv⟩ :=
-    (VExpr.WF.appN_inv henv.ordered hΓ₀ (vs := vs) hwf).app_inv henv.ordered hΓ₀
-  obtain ⟨⟨u₀, hAσ⟩, B₀, hX⟩ := hf.lam_inv henv.ordered hΓ₀
+    (VExpr.WF.appN_inv henv.orderedStrong hΓ₀ (vs := vs) hwf).app_inv henv.orderedStrong hΓ₀
+  obtain ⟨⟨u₀, hAσ⟩, B₀, hX⟩ := hf.lam_inv henv.orderedStrong hΓ₀
   obtain ⟨⟨u₁, hAA'⟩, -⟩ := (hf.uniqU henv hΓ₀ (hAσ.lam hX)).forallE_inv henv hΓ₀
   have hv' : env.HasType U Γ₀ v (A.subst σ) := .defeqDF hAA' hv
   have hbeta : env.IsDefEq U Γ₀ ((VExpr.lams (A :: As) e).subst σ |>.app v)
@@ -658,13 +658,13 @@ theorem VExpr.lams_appN' {env : VEnv} {U} {Γ₀ : List VExpr} (henv : VEnv.WF e
     VExpr.WF env U Γ₀ (((VExpr.lams As e).subst σ).appN vs) ∧
     env.IsDefEqU U Γ₀ (((VExpr.lams As e).subst σ).appN vs) (e.subst (σ.consN vs)) := by
   induction hargs generalizing Γ with
-  | nil => exact ⟨.subst henv.ordered hσ hwf, .subst henv.ordered hσ hwf⟩
+  | nil => exact ⟨.subst henv.orderedStrong hσ hwf, .subst henv.orderedStrong hσ hwf⟩
   | @cons v As vs A σ hv' hargs ih
   have hlamwf : VExpr.WF env U Γ₀ ((VExpr.lams (A :: As) e).subst σ) :=
-    .subst henv.ordered hσ (VExpr.wf_lams henv hctx hwf)
+    .subst henv.orderedStrong hσ (VExpr.wf_lams henv hctx hwf)
   simp only [List.reverse_cons, List.append_assoc, List.singleton_append] at hctx hwf
   obtain ⟨u, hAu⟩ : env.IsType U Γ A := (OnCtx.of_append hctx).2
-  obtain ⟨⟨u₀, hAσ⟩, B₀, hX⟩ := hlamwf.lam_inv henv.ordered hΓ₀
+  obtain ⟨⟨u₀, hAσ⟩, B₀, hX⟩ := hlamwf.lam_inv henv.orderedStrong hΓ₀
   have hbeta := VEnv.IsDefEq.beta hX hv'
   rw [VExpr.inst_eq, VExpr.subst_subst, VExpr.Subst.lift_comp_one] at hbeta
   have hσ' : VEnv.Ctx.SubstEq env U Γ₀ (σ.cons v) (σ.cons v) (A :: Γ) := .cons hσ hAu hv'
@@ -769,7 +769,7 @@ theorem TypeChecker.VContext.Ext.natBinLitTr {c : VContext} (E : c.Ext) {Δ : VL
   have hlit := E.mono (hrefl.applyLit c.Ewf.ordered hcont a b (U := c.lparams.length) (Γ := []))
   simp only [VExpr.subst] at hwf ⊢
   have pk : ∀ {f x : VExpr}, E.WF₀ (f.app x) → E.WF₀ f ∧ E.WF₀ x :=
-    fun h => h.app_inv₂ E.wf.ordered trivial
+    fun h => h.app_inv₂ E.wf.orderedStrong trivial
   refine .trans E.wf trivial ?_ hlit
   exact (VEnv.IsDefEqU.appN' E.wf trivial (xs := [_, _])
     (ys := [VExpr.natLit a, VExpr.natLit b]) ⟨_, ((pk (pk hwf).1).1).choose_spec⟩
@@ -985,14 +985,14 @@ theorem _root_.Lean4Lean.VExpr.WF.app_inv' {env : VEnv} {U Γ} (henv : env.WF)
     (hΓ : OnCtx Γ (env.IsType U)) {f a A B : VExpr}
     (hf : env.HasType U Γ f (.forallE A B)) (H : VExpr.WF env U Γ (.app f a)) :
     env.HasType U Γ a A ∧ env.HasType U Γ (.app f a) (B.inst a) := by
-  obtain ⟨A', B', hf', ha⟩ := H.app_inv henv.ordered hΓ
+  obtain ⟨A', B', hf', ha⟩ := H.app_inv henv.orderedStrong hΓ
   obtain ⟨⟨_, hdom⟩, -⟩ := (hf.uniqU henv hΓ hf').forallE_inv henv hΓ
   have ha' := VEnv.HasType.defeqU_r henv hΓ ⟨_, hdom.symm⟩ ha
   exact ⟨ha', hf.app ha'⟩
 
 /-- Peeling one binder off a well formed lambda: the body, in the context the binder extends.
 A telescope is peeled by iterating this, which is what the conditional builders' shapes need. -/
-theorem _root_.Lean4Lean.VExpr.WF.lam_inv' {env : VEnv} (henv : env.Ordered)
+theorem _root_.Lean4Lean.VExpr.WF.lam_inv' {env : VEnv} (henv : env.OrderedStrong)
     (hΓ : OnCtx Γ (env.IsType U)) (H : VExpr.WF env U Γ (.lam A body)) :
     OnCtx (A :: Γ) (env.IsType U) ∧ VExpr.WF env U (A :: Γ) body :=
   let ⟨hA, _, hb⟩ := VExpr.WF.lam_inv henv hΓ H; ⟨⟨hΓ, hA⟩, _, hb⟩
@@ -1005,8 +1005,8 @@ theorem _root_.Lean4Lean.VExpr.WF.betaU {env : VEnv} (henv : env.WF)
     (hΓ : OnCtx Γ (env.IsType U)) {A body v : VExpr}
     (H : VExpr.WF env U Γ ((VExpr.lam A body).app v)) :
     env.HasType U Γ v A ∧ env.IsDefEqU U Γ ((VExpr.lam A body).app v) (body.inst v) := by
-  obtain ⟨A', B', hf, ha⟩ := H.app_inv henv.ordered hΓ
-  obtain ⟨⟨u, hA⟩, B0, hbody⟩ := VExpr.WF.lam_inv henv.ordered hΓ ⟨_, hf⟩
+  obtain ⟨A', B', hf, ha⟩ := H.app_inv henv.orderedStrong hΓ
+  obtain ⟨⟨u, hA⟩, B0, hbody⟩ := VExpr.WF.lam_inv henv.orderedStrong hΓ ⟨_, hf⟩
   have hlam : env.HasType U Γ (.lam A body) (.forallE A B0) := .lam hA hbody
   obtain ⟨⟨_, hdom⟩, -⟩ := (hlam.uniqU henv hΓ hf).forallE_inv henv hΓ
   have ha' := VEnv.HasType.defeqU_r henv hΓ ⟨_, hdom.symm⟩ ha
@@ -1069,57 +1069,57 @@ def boolb (h : c.venv.contains ``Bool) (b : Bool) :
 theorem hNatT (h : c.venv.contains ``Nat) {{Δ : VLCtx}}
     (hΔ : OnCtx Δ.toCtx (c.venv.IsType c.lparams.length)) :
     c.venv.IsType c.lparams.length Δ.toCtx VExpr.nat :=
-  c.hasPrimitives.natIsType c.Ewf.ordered h hΔ
+  c.hasPrimitives.natIsType c.Ewf.orderedStrong h hΔ
 
 def trNat (hΔ : OnCtx Δ.toCtx (c.venv.IsType c.lparams.length))
     (h : c.venv.contains ``Nat) : TrTy c.venv c.lparams Δ q(Nat) :=
-  .of (c.hasPrimitives.trNat c.Ewf.ordered h) (hNatT h hΔ)
+  .of (c.hasPrimitives.trNat c.Ewf.orderedStrong h) (hNatT h hΔ)
 
 /-- The primitives that appear as *operators* in someone else's recurrence: `Nat.pred` in
 `Nat.sub`'s, `Nat.add` in `Nat.mul`'s, and so on. Their typings come from the reflection
 `HasPrimitives` records, since they are not constructors. -/
 def predb (h : c.venv.contains ``Nat.pred) :
     TrTerm c.venv c.lparams Δ q(Nat.pred) vexpr(Nat → Nat) :=
-  .ofConst c.Ewf.ordered (c.hasPrimitives.natPred h).1
+  .ofConst c.Ewf.orderedStrong (c.hasPrimitives.natPred h).1
 
 def addb (h : c.venv.contains ``Nat.add) :
     TrTerm c.venv c.lparams Δ q(Nat.add) vexpr(Nat → Nat → Nat) :=
-  .ofConst c.Ewf.ordered (c.hasPrimitives.natAdd h).1
+  .ofConst c.Ewf.orderedStrong (c.hasPrimitives.natAdd h).1
 
 def divb (h : c.venv.contains ``Nat.div) :
     TrTerm c.venv c.lparams Δ q(Nat.div) vexpr(Nat → Nat → Nat) :=
-  .ofConst c.Ewf.ordered (c.hasPrimitives.natDiv h).1
+  .ofConst c.Ewf.orderedStrong (c.hasPrimitives.natDiv h).1
 
 def modb (h : c.venv.contains ``Nat.mod) :
     TrTerm c.venv c.lparams Δ q(Nat.mod) vexpr(Nat → Nat → Nat) :=
-  .ofConst c.Ewf.ordered (c.hasPrimitives.natMod h).1
+  .ofConst c.Ewf.orderedStrong (c.hasPrimitives.natMod h).1
 
 def mulb (h : c.venv.contains ``Nat.mul) :
     TrTerm c.venv c.lparams Δ q(Nat.mul) vexpr(Nat → Nat → Nat) :=
-  .ofConst c.Ewf.ordered (c.hasPrimitives.natMul h).1
+  .ofConst c.Ewf.orderedStrong (c.hasPrimitives.natMul h).1
 
 /-- The codomain bundles, at the depth an arrow's body sits: two binders for the binary
 primitives, one for `Nat.pred`. -/
 def natCod (h : c.venv.contains ``Nat) :
     TrTy c.venv c.lparams [(none, .vlam .nat), (none, .vlam .nat)] q(Nat) :=
-  .of (c.hasPrimitives.trNat c.Ewf.ordered h)
+  .of (c.hasPrimitives.trNat c.Ewf.orderedStrong h)
     (have := ⟨trivial, hNatT h trivial⟩; hNatT h ⟨this, hNatT h this⟩)
 
 def natCod1 (h : c.venv.contains ``Nat) :
     TrTy c.venv c.lparams [(none, .vlam .nat)] q(Nat) :=
-  .of (c.hasPrimitives.trNat c.Ewf.ordered h) (hNatT h ⟨trivial, hNatT h trivial⟩)
+  .of (c.hasPrimitives.trNat c.Ewf.orderedStrong h) (hNatT h ⟨trivial, hNatT h trivial⟩)
 
 def boolCod (h : c.venv.contains ``Nat) (hb : c.venv.contains ``Bool) :
     TrTy c.venv c.lparams [(none, .vlam .nat), (none, .vlam .nat)] q(Bool) :=
-  .of (c.hasPrimitives.trBool c.Ewf.ordered hb)
+  .of (c.hasPrimitives.trBool c.Ewf.orderedStrong hb)
     (have := ⟨trivial, hNatT h trivial⟩;
-      c.hasPrimitives.boolIsType c.Ewf.ordered hb ⟨this, hNatT h this⟩)
+      c.hasPrimitives.boolIsType c.Ewf.orderedStrong hb ⟨this, hNatT h this⟩)
 
 /-- `Bool` as a type bundle, the counterpart of `trNat`. -/
 def trBool (hΔ : OnCtx Δ.toCtx (c.venv.IsType c.lparams.length))
     (hb : c.venv.contains ``Bool) : TrTy c.venv c.lparams Δ q(Bool) :=
-  .of (c.hasPrimitives.trBool c.Ewf.ordered hb)
-    (c.hasPrimitives.boolIsType c.Ewf.ordered hb hΔ)
+  .of (c.hasPrimitives.trBool c.Ewf.orderedStrong hb)
+    (c.hasPrimitives.boolIsType c.Ewf.orderedStrong hb hΔ)
 
 /-- `Bool → Bool → Bool`, the type of `Nat.bitwise`'s operator argument. -/
 def boolOp2Ty (hb : c.venv.contains ``Bool) :
@@ -1180,7 +1180,7 @@ theorem Data.mkTyEq (P : Data v ci' c) (hnat : c.venv.contains ``Nat) {codSrc : 
       (.forallE n₂ (.mdata d₂ q(Nat)) codSrc bi₂) bi₁) :
     ci'.type = .forallE .nat (.forallE .nat hcod.tgt) :=
   (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
-    (.natArrow2 c.Ewf.ordered c.hasPrimitives hnat hcod)
+    (.natArrow2 c.Ewf.orderedStrong c.hasPrimitives hnat hcod)
 
 /-- The unary version, for `Nat.pred`. -/
 theorem Data.mkTyEq1 (P : Data v ci' c) (hnat : c.venv.contains ``Nat) {codSrc : Expr}
@@ -1190,7 +1190,7 @@ theorem Data.mkTyEq1 (P : Data v ci' c) (hnat : c.venv.contains ``Nat) {codSrc :
     (h2 : v.type == Expr.forallE n₁ (.mdata d₁ q(Nat)) codSrc bi₁) :
     ci'.type = .forallE .nat hcod.tgt :=
   (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
-    (.natArrow1 c.Ewf.ordered c.hasPrimitives hnat hcod)
+    (.natArrow1 c.Ewf.orderedStrong c.hasPrimitives hnat hcod)
 
 theorem Data.uvars_eq (P : Data v ci' c) (hok' : v.safety = .safe ∧ v.levelParams = []) :
     ci'.uvars = 0 := by rw [← P.hu, P.lparams, hok'.2]; rfl
@@ -1283,7 +1283,7 @@ theorem Data.mkResultBitwise (P : Data v ci' c) (hok' : v.safety = .safe ∧ v.l
   have hcT := hvT.defeqU_l hwf'' trivial hcf'.symm
   refine VEnv.ReflectsNatNatNat'.congr_head hwf'' (fun k Γ => ?_) hr
     (hcf'.app_fun' hwf'' trivial hcT hfg.1) ?_
-  · exact (c.hasPrimitives.natLitT c.Ewf.ordered hnat k Γ).mono (hle.trans (hleE.trans hle''))
+  · exact (c.hasPrimitives.natLitT c.Ewf.orderedStrong hnat k Γ).mono (hle.trans (hleE.trans hle''))
   · simpa [VExpr.natOp2, VExpr.nat, VExpr.inst] using VEnv.HasType.app hcT hfg.1
 
 /-- `Char.ofNat` records only its type, so its whole obligation is `ci'`'s recorded constant. -/
@@ -1329,10 +1329,10 @@ theorem goArgs {c : VContext} {go' le' : VExpr}
     c.HasType₀ pf' ((le'.app (VExpr.natSucc.app x)).app f) ∧
     c.HasType₀ (natGoCall go' bb pf f x pf') .nat := by
   simp only [natGoCall] at hwf ⊢
-  obtain ⟨_, _, h4, -⟩ := hwf.app_inv c.Ewf.ordered trivial
-  obtain ⟨_, _, h3, -⟩ := VExpr.WF.app_inv c.Ewf.ordered trivial ⟨_, h4⟩
-  obtain ⟨_, _, h2, -⟩ := VExpr.WF.app_inv c.Ewf.ordered trivial ⟨_, h3⟩
-  obtain ⟨_, _, h1, -⟩ := VExpr.WF.app_inv c.Ewf.ordered trivial ⟨_, h2⟩
+  obtain ⟨_, _, h4, -⟩ := hwf.app_inv c.Ewf.orderedStrong trivial
+  obtain ⟨_, _, h3, -⟩ := VExpr.WF.app_inv c.Ewf.orderedStrong trivial ⟨_, h4⟩
+  obtain ⟨_, _, h2, -⟩ := VExpr.WF.app_inv c.Ewf.orderedStrong trivial ⟨_, h3⟩
+  obtain ⟨_, _, h1, -⟩ := VExpr.WF.app_inv c.Ewf.orderedStrong trivial ⟨_, h2⟩
   obtain ⟨hbbT, k1⟩ := VExpr.WF.app_inv' c.Ewf trivial (hgoT (Γ := [])) ⟨_, h1⟩
   simp [VExpr.inst, VExpr.instVar, VExpr.natLit, VExpr.natSucc, VExpr.natZero,
     VExpr.nat, VExpr.liftN_zero,

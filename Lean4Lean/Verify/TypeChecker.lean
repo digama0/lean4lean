@@ -76,31 +76,102 @@ def VContext.mk' {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (safety : DefinitionSafety := .safe) (lparams : List Name := [])
     (fuel : FuelConfig := {}) : VContext := .mk1 (wf.toVEnvAt safety) lparams fuel
 
-theorem VState.WF.empty1 {env : Environment} {safety : DefinitionSafety} {venv : VEnv}
-    {wf : VEnvAt env safety venv} {lparams : List Name} {fuel : FuelConfig} :
-    VState.WF (.mk1 wf lparams fuel) {} where
-  trctx := .nil
-  ngen_wf := nofun
-  ectx := ⟨[], .refl, trivial, .refl, .empty, nofun⟩
+/-- `VContext.mk1` at an ambient local context: the checker runs in `m.lctx` rather than in
+the empty one. -/
+def VContext.ofMLCtx1 {env : Environment} {safety : DefinitionSafety} {venv : VEnv}
+    (wf : VEnvAt env safety venv) (lparams : List Name) (m : MLCtx) (mwf : m.WF venv lparams)
+    (fuel : FuelConfig := {}) : VContext where
+  env; safety; lparams; fuel; venv
+  lctx := m.lctx
+  hasPrimitives := wf.hasPrimitives
+  safePrimitives := wf.safePrimitives
+  trenv := wf.tr
+  mlctx := m
+  mlctx_wf := mwf
+  lctx_eq := rfl
+
+/-- `VContext.mk'` at an ambient local context. -/
+def VContext.ofMLCtx {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (safety : DefinitionSafety) (lparams : List Name) (m : MLCtx)
+    (mwf : m.WF (ves.venv safety) lparams) (fuel : FuelConfig := {}) : VContext :=
+  .ofMLCtx1 (wf.toVEnvAt safety) lparams m mwf fuel
+
+section
+variable {env : Environment} {safety : DefinitionSafety} {venv : VEnv}
+  {wf : VEnvAt env safety venv} {lparams : List Name} {fuel : FuelConfig}
+
+@[simp] theorem VContext.ofMLCtx1_venv {m : MLCtx} {mwf : m.WF venv lparams} :
+    (VContext.ofMLCtx1 wf lparams m mwf fuel).venv = venv := rfl
+
+@[simp] theorem VContext.ofMLCtx1_lparams {m : MLCtx} {mwf : m.WF venv lparams} :
+    (VContext.ofMLCtx1 wf lparams m mwf fuel).lparams = lparams := rfl
+
+@[simp] theorem VContext.ofMLCtx1_mlctx {m : MLCtx} {mwf : m.WF venv lparams} :
+    (VContext.ofMLCtx1 wf lparams m mwf fuel).mlctx = m := rfl
+
+@[simp] theorem VContext.ofMLCtx1_lctx {m : MLCtx} {mwf : m.WF venv lparams} :
+    (VContext.ofMLCtx1 wf lparams m mwf fuel).lctx = m.lctx := rfl
+
+/-- The empty local context is the `nil` instance of the ambient one. -/
+theorem VContext.mk1_eq_ofMLCtx1 :
+    VContext.mk1 wf lparams fuel = .ofMLCtx1 wf lparams .nil trivial fuel := rfl
+
+end
+
+/-- The initial state is well formed in an ambient local context whose free variables the
+initial name generator will never produce. -/
+theorem VState.WF.initial1 {env : Environment} {safety : DefinitionSafety} {venv : VEnv}
+    {wf : VEnvAt env safety venv} {lparams : List Name} {fuel : FuelConfig}
+    {m : MLCtx} {mwf : m.WF venv lparams}
+    (hfresh : ∀ fv ∈ m.vlctx.fvars, ({} : State).ngen.Reserves fv) :
+    VState.WF (.ofMLCtx1 wf lparams m mwf fuel) {} where
+  trctx := (VContext.ofMLCtx1 wf lparams m mwf fuel).trlctx
+  ngen_wf := hfresh
+  ectx := ⟨_, .refl, (VContext.ofMLCtx1 wf lparams m mwf fuel).Δwf, .refl, .empty, hfresh⟩
   inferTypeI_wf := .empty
   inferTypeC_wf := .empty
   whnfCore_wf := .empty
   whnf_wf := .empty
   unfold_wf _ := by simp
 
+theorem VState.WF.initial {env : Environment} {ves : VEnvs} {wf : ves.WF env}
+    {safety : DefinitionSafety} {lparams : List Name} {fuel : FuelConfig}
+    {m : MLCtx} {mwf : m.WF (ves.venv safety) lparams}
+    (hfresh : ∀ fv ∈ m.vlctx.fvars, ({} : State).ngen.Reserves fv) :
+    VState.WF (.ofMLCtx wf safety lparams m mwf fuel) {} := by
+  unfold VContext.ofMLCtx; exact .initial1 hfresh
+
+theorem VState.WF.empty1 {env : Environment} {safety : DefinitionSafety} {venv : VEnv}
+    {wf : VEnvAt env safety venv} {lparams : List Name} {fuel : FuelConfig} :
+    VState.WF (.mk1 wf lparams fuel) {} := .initial1 (wf := wf) (m := .nil) nofun
+
 theorem VState.WF.empty {env : Environment} {ves : VEnvs} {wf : ves.WF env}
     {safety : DefinitionSafety} {lparams : List Name} {fuel : FuelConfig} :
     VState.WF (.mk' wf safety lparams fuel) {} := by
   unfold VContext.mk'; exact .empty1
 
-theorem M.WF.run1 {env : Environment} {venv : VEnv} (wf : VEnvAt env safety venv)
-    {x : M α} {Q} (H : x.WF (.mk1 wf lparams fuel) {} fun a _ => Q a) :
-    (M.run env safety {} lparams fuel x).WF Q := by
+/-- A computation verified in an ambient local context is sound when run in that context. -/
+theorem M.WF.run1' {env : Environment} {venv : VEnv} (wf : VEnvAt env safety venv)
+    {lparams : List Name} {fuel : FuelConfig} {m : MLCtx} (mwf : m.WF venv lparams)
+    (hfresh : ∀ fv ∈ m.vlctx.fvars, ({} : State).ngen.Reserves fv)
+    {x : M α} {Q} (H : x.WF (.ofMLCtx1 wf lparams m mwf fuel) {} fun a _ => Q a) :
+    (M.run env safety m.lctx lparams fuel x).WF Q := by
   intro a eq
   simp [M.run, Functor.map, Except.map] at eq
   split at eq <;> cases eq; rename_i eq
-  let ⟨_, _, _, _, H⟩ := H .empty1 _ _ eq
+  let ⟨_, _, _, _, H⟩ := H (.initial1 hfresh) _ _ eq
   exact H
+
+theorem M.WF.run' {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    {lparams : List Name} {fuel : FuelConfig} {m : MLCtx} (mwf : m.WF (ves.venv safety) lparams)
+    (hfresh : ∀ fv ∈ m.vlctx.fvars, ({} : State).ngen.Reserves fv)
+    {x : M α} {Q} (H : x.WF (.ofMLCtx wf safety lparams m mwf fuel) {} fun a _ => Q a) :
+    (M.run env safety m.lctx lparams fuel x).WF Q := by
+  unfold VContext.ofMLCtx at H; exact M.WF.run1' _ mwf hfresh H
+
+theorem M.WF.run1 {env : Environment} {venv : VEnv} (wf : VEnvAt env safety venv)
+    {x : M α} {Q} (H : x.WF (.mk1 wf lparams fuel) {} fun a _ => Q a) :
+    (M.run env safety {} lparams fuel x).WF Q := M.WF.run1' wf (m := .nil) trivial nofun H
 
 theorem M.WF.run {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     {x : M α} {Q} (H : x.WF (.mk' wf safety lparams fuel) {} fun a _ => Q a) :

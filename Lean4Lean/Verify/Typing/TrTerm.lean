@@ -101,14 +101,14 @@ so the typing comes from the typing clause of the primitive's reflection rather 
 presence; the translation then reads the arity off the recorded type, as `trNat` does for `Nat`.
 `instL` moves the typing to the level context the probes run in, which is only propositionally
 empty, and the `by simp` default discharges it for the closed arrow types the primitives use. -/
-theorem TrExprS.ofConst (henv : env.Ordered) (hT : env.HasType 0 [] (.const c []) A)
+theorem TrExprS.ofConst (henv : env.OrderedStrong) (hT : env.HasType 0 [] (.const c []) A)
     (hA : A.instL [] = A := by simp [VExpr.instL, VExpr.nat]) :
     TrExprS env Us Δ (.const c []) (.const c []) ∧
     env.HasType Us.length Δ.toCtx (.const c []) A := by
   obtain ⟨_, hci, -, hlen⟩ := hT.const_inv henv trivial
   exact ⟨.const hci rfl hlen, (hA ▸ hT.instL (ls := []) nofun).weak0 henv⟩
 
-def TrTerm.ofConst (henv : env.Ordered) (hT : env.HasType 0 [] (.const c []) A)
+def TrTerm.ofConst (henv : env.OrderedStrong) (hT : env.HasType 0 [] (.const c []) A)
     (hA : A.instL [] = A := by simp [VExpr.instL, VExpr.nat]) :
     TrTerm env Us Δ (.const c []) A :=
   .of (TrExprS.ofConst henv hT hA).1 (TrExprS.ofConst henv hT hA).2

@@ -116,6 +116,57 @@ theorem List.Forall₂.append_of_right {l₁ l₂ r₁ r₂} (H : length r₁ = 
 theorem List.Forall₂.reverse : Forall₂ R l.reverse l'.reverse ↔ Forall₂ R l l' := by
   induction l generalizing l' <;> cases l' <;> simp [List.Forall₂.append_of_right, and_comm, *]
 
+theorem List.Forall₂.map_eq {R : α → β → Prop} {f : α → γ} {g : β → γ}
+    (H : ∀ a b, R a b → f a = g b) : ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → l₁.map f = l₂.map g
+  | _, _, .nil => rfl
+  | _, _, .cons h₁ h₂ => by simp only [List.map_cons, H _ _ h₁, List.Forall₂.map_eq H h₂]
+
+theorem List.Forall₂.append {R : α → β → Prop} {l₁ l₂ r₁ r₂}
+    (h₁ : Forall₂ R l₁ l₂) (h₂ : Forall₂ R r₁ r₂) : Forall₂ R (l₁ ++ r₁) (l₂ ++ r₂) :=
+  (append_of_left h₁.length_eq).2 ⟨h₁, h₂⟩
+
+theorem List.Forall₂.flatMap {R : α → β → Prop} {S : γ → δ → Prop}
+    {f : α → List γ} {g : β → List δ} (H : ∀ a b, R a b → Forall₂ S (f a) (g b)) :
+    ∀ {l₁ l₂}, Forall₂ R l₁ l₂ → Forall₂ S (l₁.flatMap f) (l₂.flatMap g)
+  | _, _, .nil => .nil
+  | _, _, .cons h₁ h₂ => by
+    simp only [List.flatMap_cons]; exact (H _ _ h₁).append (List.Forall₂.flatMap H h₂)
+
+/-- A permutation of the left list of a `Forall₂` is matched by one of the right list. -/
+theorem List.Forall₂.perm_left {R : α → β → Prop} {l₁ l₁' : List α} (hp : l₁'.Perm l₁) :
+    ∀ {l₂ : List β}, Forall₂ R l₁ l₂ → ∃ l₂', l₂'.Perm l₂ ∧ Forall₂ R l₁' l₂' := by
+  induction hp with
+  | nil => exact fun h => ⟨_, .refl _, h⟩
+  | cons x _ ih =>
+    intro l₂ h
+    cases h with
+    | cons hx h =>
+      obtain ⟨l₂', hp', h'⟩ := ih h
+      exact ⟨_ :: l₂', hp'.cons _, .cons hx h'⟩
+  | swap x y l =>
+    intro l₂ h
+    cases h with
+    | cons hx h =>
+      cases h with
+      | cons hy h => exact ⟨_ :: _ :: _, .swap .., .cons hy (.cons hx h)⟩
+  | trans _ _ ih1 ih2 =>
+    intro l₂ h
+    obtain ⟨l₂', hp', h'⟩ := ih2 h
+    obtain ⟨l₂'', hp'', h''⟩ := ih1 h'
+    exact ⟨l₂'', hp''.trans hp', h''⟩
+
+/-- `find?` keyed by an injective-on-the-list projection returns the element itself. -/
+theorem List.find?_eq_of_nodup_map [BEq β] [LawfulBEq β] {f : α → β} :
+    ∀ {l : List α}, (l.map f).Nodup → ∀ a ∈ l, l.find? (fun x => f x == f a) = some a
+  | [], _, _, ha => by cases ha
+  | b :: bs, h, a, ha => by
+    rw [List.map_cons, List.nodup_cons] at h
+    rcases List.mem_cons.1 ha with rfl | ha'
+    · simp
+    · rw [List.find?_cons_of_neg, List.find?_eq_of_nodup_map h.2 a ha']
+      simp only [beq_iff_eq]; intro hab
+      exact h.1 (hab ▸ List.mem_map_of_mem ha')
+
 theorem List.map_id''' {f : α → α} (l : List α) (h : ∀ x ∈ l, f x = x) : map f l = l := by
   induction l <;> simp_all
 

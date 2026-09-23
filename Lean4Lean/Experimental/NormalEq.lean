@@ -94,6 +94,7 @@ structure Typing where
   extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEqU Γ) m1 m2 ∧
     df.rhs.instL ls = r.1.apply m1 m2
+  pat_env : env.pats p r → Pat p r
   pat_onArgs : Pat p r → p.Matches e m1 m2 → Γ ⊢ e : A → r.2.OK (IsDefEqU Γ) m1 m2 →
     p.OnArgs fun a => (∀ A B, ¬Γ ⊢ a : .forallE A B) ∧ (∀ p, Γ ⊢ a : p → ¬Γ ⊢ p : .sort .zero)
 

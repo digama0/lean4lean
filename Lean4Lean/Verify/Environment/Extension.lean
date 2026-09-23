@@ -15,51 +15,20 @@ theorem TrEnv.exists_addConst (H : TrEnv safety env venv) (hn : env.find? name =
   | none => simp
   | some ci => obtain ⟨ci, hci, _⟩ := H.find?_iff.2 ⟨ci, hfind⟩; cases hn ▸ hci
 
-theorem TrEnv'.no_inductInfo (H : TrEnv' .unsafe C Q venv) :
-    C.find? name ≠ some (.inductInfo info) := by
-  induction H with
-  | empty => simp [SMap.find?]
-  | ignore hn hhidden H ih =>
-    rename_i C' Q' env' ci
-    exact False.elim <| hhidden (by cases ci.safety <;> rfl)
-  | «axiom» _ _ _ _ H ih => rw [H.map_wf.find?_insert]; split <;> [simp; exact ih]
-  | defn _ _ _ _ H ih => rw [H.map_wf.find?_insert]; split <;> [simp; exact ih]
-  | thm _ _ _ _ _ H ih => rw [H.map_wf.find?_insert]; split <;> [simp; exact ih]
-  | «opaque» _ _ _ _ H ih => rw [H.map_wf.find?_insert]; split <;> [simp; exact ih]
-  | mutualDef _ hnd hfr _ _ _ H ih =>
-    intro h
-    obtain h | ⟨_, _, _, h2⟩ := insertDefs_find? H.map_wf hfr hnd h <;> [exact ih h; cases h2]
-  | quot hready hadd H ih =>
-    obtain ⟨lp₁, ty₁, env₁, _, hn₁, _,
-      lp₂, ty₂, env₂, _, hn₂, _,
-      lp₃, ty₃, env₃, _, hn₃, _,
-      lp₄, ty₄, env₄, _, hn₄, _, rfl, _⟩ := hadd
-    have wf₀ := H.map_wf
-    have wf₁ := wf₀.insert ``Quot
-      (.quotInfo { name := ``Quot, kind := .type, levelParams := lp₁, type := ty₁ }) hn₁
-    have wf₂ := wf₁.insert ``Quot.mk
-      (.quotInfo { name := ``Quot.mk, kind := .ctor, levelParams := lp₂, type := ty₂ }) hn₂
-    have wf₃ := wf₂.insert ``Quot.lift
-      (.quotInfo { name := ``Quot.lift, kind := .lift, levelParams := lp₃, type := ty₃ }) hn₃
-    rw [wf₃.find?_insert]; split <;> [simp; skip]
-    rw [wf₂.find?_insert]; split <;> [simp; skip]
-    rw [wf₁.find?_insert]; split <;> [simp; skip]
-    rw [wf₀.find?_insert]; split <;> [simp; exact ih]
-  | induct _ hadd => cases hadd
-
 theorem VEnv.addConst_mono {env₁ env₂ env₁' env₂' : VEnv} (H : env₁ ≤ env₂)
     (h₁ : env₁.addConst name ci = some env₁') (h₂ : env₂.addConst name ci = some env₂') :
     env₁' ≤ env₂' := by
   unfold VEnv.addConst at h₁ h₂
   split at h₁ <;> cases h₁
   split at h₂ <;> cases h₂
-  refine { constants {n a} := ?_, defeqs := H.defeqs }
+  refine { constants {n a} := ?_, defeqs := H.defeqs, pats := H.pats }
   dsimp; split <;> [exact id; exact H.constants]
 
 theorem VEnv.addDefEq_mono {env₁ env₂ : VEnv} (H : env₁ ≤ env₂) :
     env₁.addDefEq df ≤ env₂.addDefEq df where
   constants := H.constants
   defeqs := by rintro d (rfl | hd) <;> [exact .inl rfl; exact .inr (H.defeqs hd)]
+  pats := H.pats
 
 theorem VEnv.addConsts_mono {env₁ env₂ env₁' env₂' : VEnv} (H : env₁ ≤ env₂) :
     ∀ {cis}, env₁.addConsts cis = some env₁' → env₂.addConsts cis = some env₂' → env₁' ≤ env₂'
@@ -132,16 +101,6 @@ theorem TrEnv.exists_addConsts (H : TrEnv safety env venv) {cis : List VDefVal}
     (hfresh : ∀ ci ∈ cis, env.find? ci.name = none)
     (hnd : (cis.map (·.name)).Nodup) : ∃ venv', venv.addConsts cis = some venv' :=
   VEnv.exists_addConsts (fun ci hci => H.constants_eq_none (hfresh ci hci)) hnd
-
-theorem insertDefs_wf : ∀ {cis : List DefinitionVal} {C : ConstMap}, C.WF →
-    (∀ d ∈ cis, C.find? d.name = none) → (cis.map (·.name)).Nodup → (insertDefs C cis).WF
-  | [], _, hC, _, _ => hC
-  | d :: ds, C, hC, hfr, hnd => by
-    rw [List.map_cons, List.nodup_cons] at hnd
-    refine insertDefs_wf (cis := ds) (hC.insert _ _ (hfr _ (.head _))) (fun e he => ?_) hnd.2
-    rw [hC.find?_insert, if_neg]; · exact hfr e (.tail _ he)
-    simp only [beq_iff_eq]; intro hh
-    exact hnd.1 (List.mem_map.2 ⟨e, he, hh.symm⟩)
 
 theorem Environment.constants_addDefs : ∀ {vs : List DefinitionVal} {env : Environment},
     (vs.foldl (fun e v => Lean.Kernel.Environment.add e (.defnInfo v)) env).constants =

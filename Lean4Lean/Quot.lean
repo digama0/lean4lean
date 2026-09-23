@@ -21,6 +21,7 @@ def checkEqType (env : Environment) : Except Exception Unit := do
   let fail {α} (s : String) : Except Exception α :=
     throw <| .other s!"failed to initialize quot module, {s}"
   let .inductInfo info ← env.get ``Eq | fail "environment does not have 'Eq' type"
+  if info.isUnsafe then fail "'Eq' type is unsafe"
   let [u] := info.levelParams | fail "unexpected number of universe params at 'Eq' type"
   let [eqRefl] := info.ctors | fail "unexpected number of constructors for 'Eq' type"
   ExprBuildT.run do

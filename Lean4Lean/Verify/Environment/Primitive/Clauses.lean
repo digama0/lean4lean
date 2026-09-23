@@ -50,8 +50,8 @@ theorem checkNatAdd.WF {ves : VEnvs} (wf : ves.WF env)
   exact .pure <| P.mkResult (hok h1.2) hnat (by simp [primSpecs, hname]) tyeq fun hvT =>
     .of_unary_step_equations (F := Nat.add) (congrArg List.length (hok h1.2).2)
       ctx.Ewf wf.hasPrimitives hnat Nat.succ
-      (wf.hasPrimitives.natSuccT ctx.Ewf.ordered hnat []) trivial
-      (fun k => ⟨_, wf.hasPrimitives.natLitT ctx.Ewf.ordered hnat (k + 1) []⟩)
+      (wf.hasPrimitives.natSuccT ctx.Ewf.orderedStrong hnat []) trivial
+      (fun k => ⟨_, wf.hasPrimitives.natLitT ctx.Ewf.orderedStrong hnat (k + 1) []⟩)
       (fun _ => rfl) (fun _ _ => rfl) hvT hb' hb2'
 
 /-- `Nat.pred`: `pred 0 ≡ 0`, checked outright, and `pred (succ x) ≡ x` under one probe. -/
@@ -86,7 +86,7 @@ theorem checkNatSub.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_
   simp at h1
   have hpred := VContext.contains_primitive rfl h1.1
-  have hnat := wf.hasPrimitives.natOfPred ctx.Ewf.ordered hpred
+  have hnat := wf.hasPrimitives.natOfPred ctx.Ewf.orderedStrong hpred
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   refine .withNatProbe wf.hasPrimitives hnat .rfl ?_; intro idx m _ _ _ hres hx
   -- the first probe: `v.value x 0 ≡ x`
@@ -102,7 +102,7 @@ theorem checkNatSub.WF {ves : VEnvs} (wf : ves.WF env)
   exact .pure <| P.mkResult (hok h1.2) hnat (by simp [primSpecs, hname]) tyeq fun hvT =>
     .of_unary_step_equations (F := Nat.sub) (congrArg List.length (hok h1.2).2)
       ctx.Ewf wf.hasPrimitives hnat Nat.pred
-      (wf.hasPrimitives.natPredT ctx.Ewf.ordered hpred []) trivial
+      (wf.hasPrimitives.natPredT ctx.Ewf.orderedStrong hpred []) trivial
       (wf.hasPrimitives.natPred hpred).2 (fun _ => rfl) (fun _ _ => rfl) hvT hb' hb2'
 
 /-- `Nat.mul`: `mul x 0 ≡ 0` and `mul x (succ y) ≡ Nat.add (mul x y) x`. The guard names
@@ -115,7 +115,7 @@ theorem checkNatMul.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_
   simp at h1
   have hadd := VContext.contains_primitive rfl h1.1
-  have hnat := wf.hasPrimitives.natOfAdd ctx.Ewf.ordered hadd
+  have hnat := wf.hasPrimitives.natOfAdd ctx.Ewf.orderedStrong hadd
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   refine .withNatProbe wf.hasPrimitives hnat .rfl ?_; intro idx m _ _ _ hres hx
   -- the first probe: `v.value x 0 ≡ 0` -- a literal base, not `x`
@@ -145,7 +145,7 @@ theorem checkNatPow.WF {ves : VEnvs} (wf : ves.WF env)
   refine elseFail fun h1 => elseFail fun h2 => ?_
   simp at h1
   have hmul := VContext.contains_primitive rfl h1.1
-  have hnat := wf.hasPrimitives.natOfMul ctx.Ewf.ordered hmul
+  have hnat := wf.hasPrimitives.natOfMul ctx.Ewf.orderedStrong hmul
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   refine .withNatProbe wf.hasPrimitives hnat .rfl ?_; intro idx m _ _ _ hres hx
   -- the first probe: `v.value x 0 ≡ succ 0`; the base is `one`, spelled as a constructor
@@ -230,7 +230,7 @@ theorem checkNatLAnd.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_; simp at h1
   have hbw := VContext.contains_primitive rfl h1.1
   have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eqv h2)
-  have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.ordered hbw
+  have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.orderedStrong hbw
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   split <;> [rename_i opSrc heq; exact .throw]
   obtain ⟨op, hVeq, hop, hopT⟩ := TrExprS.bitwiseOperand ctx.Ewf wf.hasPrimitives (heq ▸ P.hvalue)
@@ -257,7 +257,7 @@ theorem checkNatLOr.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_; simp at h1
   have hbw := VContext.contains_primitive rfl h1.1
   have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eqv h2)
-  have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.ordered hbw
+  have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.orderedStrong hbw
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   split <;> [rename_i opSrc heq; exact .throw]
   obtain ⟨op, hVeq, hop, hopT⟩ := (heq ▸ P.hvalue).bitwiseOperand ctx.Ewf wf.hasPrimitives
@@ -285,7 +285,7 @@ theorem checkNatXor.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_; simp at h1
   have hbw := VContext.contains_primitive rfl h1.1
   have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eqv h2)
-  have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.ordered hbw
+  have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.orderedStrong hbw
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   split <;> [rename_i opSrc heq; exact .throw]
   obtain ⟨op, hVeq, hop, hopT⟩ := TrExprS.bitwiseOperand ctx.Ewf wf.hasPrimitives (heq ▸ P.hvalue)
@@ -318,7 +318,7 @@ theorem checkNatShiftLeft.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_
   simp at h1
   have hmul := VContext.contains_primitive rfl h1.1
-  have hnat := wf.hasPrimitives.natOfMul ctx.Ewf.ordered hmul
+  have hnat := wf.hasPrimitives.natOfMul ctx.Ewf.orderedStrong hmul
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   refine .withNatProbe wf.hasPrimitives hnat .rfl ?_; intro idx m _ _ _ hres hx
   refine .bind (isDefEq.WF (TrTerm.natBinApp (P.hv tyeq m) hx (zerob hnat)).trS hx.trS)
@@ -346,7 +346,7 @@ theorem checkNatShiftRight.WF {ves : VEnvs} (wf : ves.WF env)
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_
   simp at h1
   have hdiv := VContext.contains_primitive rfl h1.1
-  have hnat := wf.hasPrimitives.natOfDiv ctx.Ewf.ordered hdiv
+  have hnat := wf.hasPrimitives.natOfDiv ctx.Ewf.orderedStrong hdiv
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   refine .withNatProbe wf.hasPrimitives hnat .rfl ?_; intro idx m _ _ _ hres hx
   refine .bind (isDefEq.WF (TrTerm.natBinApp (P.hv tyeq m) hx (zerob hnat)).trS hx.trS)
@@ -386,7 +386,7 @@ theorem checkCharOfNat.WF {ves : VEnvs} (wf : ves.WF env)
   refine P.mkResultTypeEq (T := .forallE .nat .char) (hok h1.2) (by simp [primSpecs, hname]) ?_
   exact TrExprS.unique (by simp [TrExprS.IsUnique]) (P.htype.eqv h2)
     (TrTy.forallE
-      (.of (wf.hasPrimitives.trNat ctx.Ewf.ordered hnat) (hNatT hnat (Δ := []) trivial))
+      (.of (wf.hasPrimitives.trNat ctx.Ewf.orderedStrong hnat) (hNatT hnat (Δ := []) trivial))
       (.of hchAny ⟨_, hchT.weak0 ctx.Ewf.ordered⟩)).trS
 
 /-- `String.ofList`: the recorded type is `List Char → String`, and the two `checkType`
@@ -401,8 +401,8 @@ theorem checkStringOfList.WF {ves : VEnvs} (wf : ves.WF env)
   -- `ensureType` can stay in the cheap mode: its obligation is discharged from this one
   refine .bind (ensureType.WF' (by simp [FVarsIn, Level.hasMVar']) nofun)
     fun _ _ _ ⟨lc, hlc, _, _, _, _, hlcT⟩ => ?_
-  cases hlc.appChar_inv' (Δ' := []) ctx.Ewf.ordered |>.1
-  have hchAny {Δ} := (hlc.appChar_inv' (Δ' := Δ) ctx.Ewf.ordered).2
+  cases hlc.appChar_inv' (Δ' := []) ctx.Ewf.orderedStrong |>.1
+  have hchAny {Δ} := (hlc.appChar_inv' (Δ' := Δ) ctx.Ewf.orderedStrong).2
   refine .bind (ensureType.WF' nofun fun _ => ⟨_, hchAny.2⟩)
     fun _ _ _ ⟨ch, hch, _, _, _, _, hchT⟩ => ?_
   cases hch.const0_inv (Us' := v.levelParams) (Δ' := []) |>.1

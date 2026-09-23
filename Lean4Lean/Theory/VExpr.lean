@@ -105,6 +105,13 @@ def ClosedN : VExpr → (k :_:= 0) → Prop
 
 abbrev Closed := ClosedN
 
+instance decClosedN : ∀ (e : VExpr) (k : Nat), Decidable (e.ClosedN k)
+  | .bvar _, _ => inferInstanceAs (Decidable (_ < _))
+  | .sort .., _ | .const .., _ => .isTrue trivial
+  | .app f a, k => @instDecidableAnd _ _ (decClosedN f k) (decClosedN a k)
+  | .lam t b, k => @instDecidableAnd _ _ (decClosedN t k) (decClosedN b (k+1))
+  | .forallE t b, k => @instDecidableAnd _ _ (decClosedN t k) (decClosedN b (k+1))
+
 @[simp] theorem ClosedN.default : ClosedN default k := trivial
 
 theorem ClosedN.mono (h : k ≤ k') (self : ClosedN e k) : ClosedN e k' := by
@@ -941,3 +948,203 @@ theorem inst_lift_cons {e : VExpr} {σ : Subst} :
     (e.subst σ.lift).inst x = e.subst (σ.cons x) := by
   rw [inst_eq, subst_subst, Subst.one]; congr 1
   funext i; obtain _|i := i <;> simp [Subst.comp, Subst.lift, Subst.cons]
+
+/-! ### Syntactic helpers for recursor and constructor shapes
+
+Total functions reading the Π/λ telescope and the application spine of a `VExpr`,
+with their decidability. They pin the shapes of recursor types, constructor types
+and ι-rule reducts (`RecShape`, `CtorShape`, `RuleShape` in `Theory/Inductive.lean`). -/
+
+/-- Left fold of applications: `f.mkApps [a₀, …, aₙ] = f a₀ … aₙ`. -/
+def mkApps (f : VExpr) : List VExpr → VExpr := List.foldl .app f
+
+@[simp] theorem mkApps_nil (f : VExpr) : f.mkApps [] = f := rfl
+@[simp] theorem mkApps_cons (f a : VExpr) (l : List VExpr) :
+    f.mkApps (a :: l) = (f.app a).mkApps l := rfl
+theorem mkApps_append (f : VExpr) (l₁ l₂ : List VExpr) :
+    f.mkApps (l₁ ++ l₂) = (f.mkApps l₁).mkApps l₂ := List.foldl_append ..
+
+/-- `[bvar (lo+n-1), …, bvar (lo+1), bvar lo]`: `n` consecutive de Bruijn variables,
+descending, as an argument list. -/
+def bvarsDesc (lo n : Nat) : List VExpr := (List.range n).reverse.map fun i => .bvar (lo + i)
+
+@[simp] theorem bvarsDesc_length (lo n : Nat) : (bvarsDesc lo n).length = n := by simp [bvarsDesc]
+
+/-- Number of leading Π-binders. -/
+def piArity : VExpr → Nat
+  | .forallE _ B => B.piArity + 1
+  | _ => 0
+
+/-- The expression under all leading Π-binders. -/
+def piBody : VExpr → VExpr
+  | .forallE _ B => B.piBody
+  | e => e
+
+/-- The leading Π-binder types, outermost first (each in its own binder context). -/
+def piBinders : VExpr → List VExpr
+  | .forallE A B => A :: B.piBinders
+  | _ => []
+
+@[simp] theorem piBinders_length : ∀ e : VExpr, e.piBinders.length = e.piArity
+  | .forallE _ B => by simp [piBinders, piArity, piBinders_length B]
+  | .bvar _ | .sort _ | .const .. | .app .. | .lam .. => rfl
+
+/-- Number of leading λ-binders. -/
+def lamArity : VExpr → Nat
+  | .lam _ b => b.lamArity + 1
+  | _ => 0
+
+/-- The expression under all leading λ-binders. -/
+def lamBody : VExpr → VExpr
+  | .lam _ b => b.lamBody
+  | e => e
+
+/-- The head of an application spine. -/
+def getAppFn : VExpr → VExpr
+  | .app f _ => f.getAppFn
+  | e => e
+
+/-- The arguments of an application spine, first argument first. -/
+def getAppArgs : VExpr → List VExpr
+  | .app f a => f.getAppArgs ++ [a]
+  | _ => []
+
+@[simp] theorem getAppFn_app (f a : VExpr) : (f.app a).getAppFn = f.getAppFn := rfl
+@[simp] theorem getAppArgs_app (f a : VExpr) : (f.app a).getAppArgs = f.getAppArgs ++ [a] := rfl
+
+@[simp] theorem getAppFn_mkApps (f : VExpr) : ∀ l : List VExpr, (f.mkApps l).getAppFn = f.getAppFn
+  | [] => rfl
+  | a :: l => by rw [mkApps_cons, getAppFn_mkApps (f.app a) l, getAppFn_app]
+
+@[simp] theorem getAppArgs_mkApps (f : VExpr) :
+    ∀ l : List VExpr, (f.mkApps l).getAppArgs = f.getAppArgs ++ l
+  | [] => by simp
+  | a :: l => by rw [mkApps_cons, getAppArgs_mkApps (f.app a) l, getAppArgs_app]; simp
+
+@[simp] theorem mkApps_getAppFn_getAppArgs : ∀ e : VExpr, e.getAppFn.mkApps e.getAppArgs = e
+  | .app f a => by
+    rw [getAppFn_app, getAppArgs_app, mkApps_append, mkApps_getAppFn_getAppArgs f]; rfl
+  | .bvar _ | .sort _ | .const .. | .lam .. | .forallE .. => rfl
+
+/-- `e` is `f` applied to `pre` and then further arguments iff `e`'s spine has `f`'s
+head and `f`'s arguments followed by `pre` as a prefix of its arguments. -/
+theorem eq_mkApps_append_iff {e f : VExpr} {pre : List VExpr} :
+    (∃ rest, e = f.mkApps (pre ++ rest)) ↔
+      e.getAppFn = f.getAppFn ∧ (f.getAppArgs ++ pre) <+: e.getAppArgs := by
+  constructor
+  · rintro ⟨rest, rfl⟩
+    exact ⟨by simp, ⟨rest, by simp [List.append_assoc]⟩⟩
+  · rintro ⟨h1, rest, h2⟩
+    refine ⟨rest, ?_⟩
+    have h3 := mkApps_getAppFn_getAppArgs e
+    rw [h1, ← h2, List.append_assoc, mkApps_append, mkApps_getAppFn_getAppArgs] at h3
+    exact h3.symm
+
+/-- `eq_mkApps_append_iff` with the number of further arguments pinned. -/
+theorem eq_mkApps_append_length_iff {e f : VExpr} {pre : List VExpr} {n : Nat} :
+    (∃ rest, rest.length = n ∧ e = f.mkApps (pre ++ rest)) ↔
+      e.getAppFn = f.getAppFn ∧ (f.getAppArgs ++ pre) <+: e.getAppArgs ∧
+        e.getAppArgs.length = f.getAppArgs.length + pre.length + n := by
+  constructor
+  · rintro ⟨rest, rfl, rfl⟩
+    exact ⟨by simp, ⟨rest, by simp [List.append_assoc]⟩, by simp [Nat.add_assoc]⟩
+  · rintro ⟨h1, h2, h3⟩
+    obtain ⟨rest, rfl⟩ := eq_mkApps_append_iff.2 ⟨h1, h2⟩
+    refine ⟨rest, ?_, rfl⟩
+    simp at h3; omega
+
+/-- Head-constructor tests, with their reflections into existentials. -/
+def isSort : VExpr → Bool
+  | .sort _ => true
+  | _ => false
+def isBvar : VExpr → Bool
+  | .bvar _ => true
+  | _ => false
+def isConst : VExpr → Bool
+  | .const .. => true
+  | _ => false
+
+theorem isSort_iff {e : VExpr} : e.isSort = true ↔ ∃ u, e = .sort u := by cases e <;> simp [isSort]
+theorem isBvar_iff {e : VExpr} : e.isBvar = true ↔ ∃ k, e = .bvar k := by cases e <;> simp [isBvar]
+theorem isConst_iff {e : VExpr} : e.isConst = true ↔ ∃ I us, e = .const I us := by
+  cases e <;> simp [isConst]
+
+instance {e : VExpr} : Decidable (∃ u, e = .sort u) := decidable_of_iff _ isSort_iff
+instance {e : VExpr} : Decidable (∃ k, e = .bvar k) := decidable_of_iff _ isBvar_iff
+instance {e : VExpr} : Decidable (∃ I us, e = .const I us) := decidable_of_iff _ isConst_iff
+
+/-- The Π-body of `ty` is headed by a bound variable: the shape of a recursor's type and of
+a minor premise, whose targets are applications of a motive binder (for the recursor's own
+body `VExpr.RecShape` pins which motive; for a minor, `VExpr.MinorHeaded` pins only that the
+head is one of the motives). -/
+def RecHeaded (ty : VExpr) : Prop := ∃ k, ty.piBody.getAppFn = .bvar k
+
+/-- The Π-body of `ty` is headed by a constant: the shape of a constructor's type,
+whose target is a type-former application. -/
+def CtorHeaded (ty : VExpr) : Prop := ∃ I us, ty.piBody.getAppFn = .const I us
+
+instance {ty : VExpr} : Decidable ty.RecHeaded := decidable_of_iff _ isBvar_iff
+instance {ty : VExpr} : Decidable ty.CtorHeaded := decidable_of_iff _ isConst_iff
+
+/-- A bound variable is not a constant: recursors and constructors have distinct
+head shapes, so the same constant cannot be both. -/
+theorem RecHeaded.not_ctorHeaded {ty : VExpr} (h : ty.RecHeaded) : ¬ ty.CtorHeaded := by
+  rintro ⟨I, us, h'⟩; obtain ⟨k, h⟩ := h; rw [h] at h'; cases h'
+
+/-- The head constant of an application spine, if any. -/
+def headConst? (e : VExpr) : Option Name :=
+  match e.getAppFn with
+  | .const I _ => some I
+  | _ => none
+
+/-- The type former a motive `∀ a::α. P a → U` ranges over: the head constant of its last
+Π-binder. -/
+def motiveFormer? (A : VExpr) : Option Name := A.piBinders.getLast?.bind headConst?
+
+/-- `e.headConst?` names `c` exactly when `e`'s spine head is the constant `c`. -/
+theorem headConst?_eq_some {e : VExpr} {c : Name} :
+    e.headConst? = some c ↔ ∃ us, e.getAppFn = .const c us := by
+  simp only [headConst?]
+  cases hf : e.getAppFn <;> simp
+
+/-- The spine data of a constant application. -/
+theorem const_mkApps_spine {c : Name} {us : List VLevel} {args : List VExpr} :
+    ((VExpr.const c us).mkApps args).getAppFn = .const c us ∧
+      ((VExpr.const c us).mkApps args).getAppArgs = args :=
+  ⟨by rw [getAppFn_mkApps]; rfl, by rw [getAppArgs_mkApps]; rfl⟩
+
+/-- An expression is its spine head applied to its spine arguments. -/
+theorem eq_const_mkApps_of_spine {e : VExpr} {c : Name} {us : List VLevel} {args : List VExpr}
+    (hf : e.getAppFn = .const c us) (ha : e.getAppArgs = args) :
+    e = (VExpr.const c us).mkApps args := by
+  have h := mkApps_getAppFn_getAppArgs e; rw [hf, ha] at h; exact h.symm
+
+/-- `e` is the constant `c` applied to exactly `args`. -/
+theorem eq_const_mkApps_iff {e : VExpr} {c : Name} {args : List VExpr} :
+    (∃ us, e = (VExpr.const c us).mkApps args) ↔
+      e.headConst? = some c ∧ e.getAppArgs = args := by
+  constructor
+  · rintro ⟨us, rfl⟩
+    exact ⟨headConst?_eq_some.2 ⟨us, const_mkApps_spine.1⟩, const_mkApps_spine.2⟩
+  · rintro ⟨h1, h2⟩
+    obtain ⟨us, hf⟩ := headConst?_eq_some.1 h1
+    exact ⟨us, eq_const_mkApps_of_spine hf h2⟩
+
+/-- `e` is the constant `c` applied to `pre` and then further arguments satisfying `P`; those
+further arguments are `e.getAppArgs.drop pre.length`. -/
+theorem eq_const_mkApps_append_iff {e : VExpr} {c : Name} {pre : List VExpr}
+    {P : List VExpr → Prop} :
+    (∃ us rest, e = (VExpr.const c us).mkApps (pre ++ rest) ∧ P rest) ↔
+      e.headConst? = some c ∧ pre <+: e.getAppArgs ∧ P (e.getAppArgs.drop pre.length) := by
+  constructor
+  · rintro ⟨us, rest, rfl, hP⟩
+    refine ⟨headConst?_eq_some.2 ⟨us, const_mkApps_spine.1⟩, ?_, ?_⟩ <;>
+      rw [const_mkApps_spine.2]
+    · exact ⟨rest, rfl⟩
+    · simpa using hP
+  · rintro ⟨h1, ⟨rest, h2⟩, hP⟩
+    obtain ⟨us, hf⟩ := headConst?_eq_some.1 h1
+    refine ⟨us, rest, eq_const_mkApps_of_spine hf h2.symm, ?_⟩
+    rw [← h2] at hP; simpa using hP
+
+end VExpr

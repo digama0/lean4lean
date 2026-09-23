@@ -227,9 +227,9 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
   have hga := goArgs hgoTΓ hleC hwf
   have hpfT := hga.2.1
   have hpf'T := hga.2.2.2.2.1
-  have hc2 := heq2.subst c.Ewf.ordered (hγ5 x bb f' pf pf' hpfT hpf'T)
+  have hc2 := heq2.subst c.Ewf.orderedStrong (hγ5 x bb f' pf pf' hpfT hpf'T)
   rw [hshape2] at hc2 he2T
-  have hwf2 := he2T.subst c.Ewf.ordered (hγ5 x bb f' pf pf' hpfT hpf'T)
+  have hwf2 := he2T.subst c.Ewf.orderedStrong (hγ5 x bb f' pf pf' hpfT hpf'T)
   simp [diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift, TrTerm.app,
     hP2eq, hD2eq, hHsubst, hdecC'.subst_eq', hgoC.subst_eq', hpropC'.subst_eq',
     hy5, hy4, hy3, hy, hx5, hx4, hx3, hx2, hx, hf5, hf, hhy5, hhy3, hhh5, gob5, lhs5,
@@ -287,13 +287,13 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   -- the condition's decision procedure evaluates through
   have hsub := VContext.contains_primitive rfl h1.1.1
   have hbool := VContext.contains_primitive rfl h1.1.2
-  have hnat := VEnv.contains_nat_of_hasType ctx.Ewf.ordered (wf.hasPrimitives.natSub hsub).1
+  have hnat := VEnv.contains_nat_of_hasType ctx.Ewf.orderedStrong (wf.hasPrimitives.natSub hsub).1
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   have hlp : ctx.lparams.length = 0 := congrArg List.length (hok h1.2).2
   obtain ⟨natU, hnatTy⟩ : ctx.venv.IsType ctx.lparams.length [] .nat :=
-    wf.hasPrimitives.natIsType' ctx.Ewf.ordered hnat trivial
+    wf.hasPrimitives.natIsType' ctx.Ewf.orderedStrong hnat trivial
   have hlitT (k : Nat) (Γ : List VExpr) : ctx.venv.HasType ctx.lparams.length Γ (.natLit k) .nat :=
-    wf.hasPrimitives.natLitT ctx.Ewf.ordered hnat k Γ
+    wf.hasPrimitives.natLitT ctx.Ewf.orderedStrong hnat k Γ
   -- the base equation `mod 0 x ≡ 0`. Its probe is gone by the time the rest of the checks run,
   -- so it is closed off here rather than carried
   refine .bind ?_ fun _ _ _ (hbase : ∀ a : Nat,
@@ -305,7 +305,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
     refine .pure fun a => ?_
     have hγ0 : (ctx.withMLC m0).Closing (VExpr.Subst.id.cons (.natLit a)) :=
       .cons .nil hnatTy (hlitT a [])
-    have h := heq0.subst ctx.Ewf.ordered hγ0
+    have h := heq0.subst ctx.Ewf.orderedStrong hγ0
     have hvalC : ci'.value.ClosedN := (P.hci.closedN' ctx.Ewf.ordered.closed trivial).1
     simpa [TrTerm.natBinApp, TrTerm.app', TrTerm.of, TrTerm.of_nil', TrTerm.wk, TrTerm.fvar,
       TrTerm.natZero, zerob, hx0, Data.hv, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id,
@@ -387,9 +387,9 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
     simpa [VExpr.natLit, VExpr.natZero] using hbase b
   | succ k
   -- the top equation at `x := k`, `y := b`, closed off at literals
-  have hc1 := heq1.subst ctx.Ewf.ordered (hγ2 k b)
+  have hc1 := heq1.subst ctx.Ewf.orderedStrong (hγ2 k b)
   rw [hshapei1, hshape1] at hc1 he1T
-  have hwf1 := he1T.subst ctx.Ewf.ordered (hγ2 k b)
+  have hwf1 := he1T.subst ctx.Ewf.orderedStrong (hγ2 k b)
   simp [iteApp, diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift, TrTerm.app', TrTerm.of,
     TrTerm.natUnApp, TrTerm.of_nil', Data.hv, VExpr.liftN, sxb2, hxs, hys, hPi1eq, hDi1eq,
     hP1eq, hD1eq, hdecC'.subst_eq', hgoC.subst_eq', hvalC.subst_eq', hpropC'.subst_eq'] at hc1 hwf1
@@ -449,17 +449,17 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
   simp at h1
   have hsub := VContext.contains_primitive rfl h1.1.1
   have hbool := VContext.contains_primitive rfl h1.1.2
-  have hnat := VEnv.contains_nat_of_hasType ctx.Ewf.ordered (wf.hasPrimitives.natSub hsub).1
+  have hnat := VEnv.contains_nat_of_hasType ctx.Ewf.orderedStrong (wf.hasPrimitives.natSub hsub).1
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   have hlp : ctx.lparams.length = 0 := congrArg List.length (hok h1.2).2
   have hlitT (k : Nat) (Γ : List VExpr) : ctx.venv.HasType ctx.lparams.length Γ (.natLit k) .nat :=
-    wf.hasPrimitives.natLitT ctx.Ewf.ordered hnat k Γ
+    wf.hasPrimitives.natLitT ctx.Ewf.orderedStrong hnat k Γ
   refine checkNatFuelRec.WF (F := fun x bb => x / bb) (hF := (· + 1)) (lhsB := id)
     (H' := fun e => VExpr.natSucc.app e) (E := fun _ => 0) (hFlt := fun _ _ => Nat.div_eq_of_lt)
     (hHFV := (⟨nofun, ·⟩)) (helsFV := fun _ => nofun) (hHlit := fun _ => rfl)
     (hHsubst := rfl) (hHinst := rfl) wf.hasPrimitives hnat hbool hsub rfl hlp
     (fun m inst => haveI : ctx.MLCWF m := ⟨inst.wf⟩; P.hv tyeq m)
-    (hHwf := fun hwf => have ⟨_, _, _, ha⟩ := hwf.app_inv ctx.Ewf.ordered trivial; ⟨_, ha⟩)
+    (hHwf := fun hwf => have ⟨_, _, _, ha⟩ := hwf.app_inv ctx.Ewf.orderedStrong trivial; ⟨_, ha⟩)
     (hHcong := fun hT h => .app_arg ctx.Ewf trivial (succb (Δ := []) hnat).hasType hT h)
     (htopFV := fun hx hy => ?_) (hHtr := fun (.app _ _ hc ha) => ?_)
     (hels := ?_) (hFstep := fun bb x hbb hle => ?_) ?_
@@ -516,9 +516,9 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
     Option.some.injEq, Prod.mk.injEq,
     VContext.vlctx, VContext.withMLC_mlctx, hfindy, hfindx] at hfy1 hfpf1 hfx1 hfsx1
   cases hfy1.1; cases hfpf1.1; cases hfx1.1; cases hfsx1.1
-  have hc1 := heq1.subst ctx.Ewf.ordered (hγ2 a b)
+  have hc1 := heq1.subst ctx.Ewf.orderedStrong (hγ2 a b)
   rw [hshape1] at hc1 he1T
-  have hwf1 := he1T.subst ctx.Ewf.ordered (hγ2 a b)
+  have hwf1 := he1T.subst ctx.Ewf.orderedStrong (hγ2 a b)
   simp [diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift,
     hxs, hys, hP1eq, hD1eq, hdecC'.subst_eq', hgoC.subst_eq', hvalC.subst_eq', hpropC'.subst_eq',
     TrTerm.of, TrTerm.of_nil', VExpr.liftN, Data.hv, id] at hc1 hwf1

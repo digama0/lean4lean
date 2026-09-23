@@ -25,12 +25,59 @@ protected nonrec theorem WF.insert [LawfulBEq α] [LawfulHashable α] {s : SMap 
     · simp_all [find?]
     · exact h.disjoint ∘ by simp [PersistentHashMap.find?_isSome]
 
-variable [LawfulBEq α] [LawfulHashable α] in
-theorem WF.find?_insert {s : SMap α β} (h : s.WF) :
+/-- Lookup after an insertion needs only the persistent stage's well-formedness: the
+`stage` and `disjoint` components of `WF` play no role, so this holds along any chain of
+insertions (`insert_map₂` below), fresh or not. -/
+theorem find?_insert_of_map₂ [LawfulBEq α] [LawfulHashable α] {s : SMap α β} (h : s.map₂.WF) :
     (s.insert k v).find? x = if k == x then some v else s.find? x := by
   unfold insert; split <;> simp [find?]
   · exact Std.HashMap.getElem?_insert (α := α)
-  · rw [h.map₂.find?_insert]; split <;> rfl
+  · rw [h.find?_insert]; split <;> rfl
+
+variable [LawfulBEq α] [LawfulHashable α] in
+theorem WF.find?_insert {s : SMap α β} (h : s.WF) :
+    (s.insert k v).find? x = if k == x then some v else s.find? x :=
+  find?_insert_of_map₂ h.map₂
+
+/-- Any insertion preserves the persistent stage's well-formedness. -/
+theorem insert_map₂ {s : SMap α β} (h : s.map₂.WF) : (s.insert k v).map₂.WF := by
+  unfold insert; split
+  · exact h
+  · exact h.insert ..
+
+section
+variable [LawfulBEq α] [LawfulHashable α]
+
+/-- A lookup that succeeds survives the insertion of any other key. -/
+theorem find?_insert_of_ne {s : SMap α β} {k x : α} {v w : β} (h : s.map₂.WF)
+    (hne : k ≠ x) (hx : s.find? x = some w) : (s.insert k v).find? x = some w := by
+  rw [find?_insert_of_map₂ h, if_neg]; · exact hx
+  simpa using hne
+
+/-- A lookup that succeeds survives the insertion of a key absent from the map: absent
+and found keys are distinct. -/
+theorem find?_insert_of_fresh {s : SMap α β} {k x : α} {v w : β} (h : s.map₂.WF)
+    (hfr : s.find? k = none) (hx : s.find? x = some w) : (s.insert k v).find? x = some w :=
+  find?_insert_of_ne h (fun e => by rw [e, hx] at hfr; cases hfr) hx
+
+/-- A lookup that fails still fails after the insertion of any other key. -/
+theorem find?_insert_none {s : SMap α β} {k x : α} {v : β} (h : s.map₂.WF)
+    (hne : k ≠ x) (hx : s.find? x = none) : (s.insert k v).find? x = none := by
+  rw [find?_insert_of_map₂ h, if_neg]; · exact hx
+  simpa using hne
+
+/-- A lookup that succeeds survives a fold of insertions, provided none of the inserted
+keys is the one looked up. -/
+theorem insertList_find?_mono {γ} {nm : γ → α} {val : γ → β} :
+    ∀ {l : List γ} {s : SMap α β} {x w}, s.map₂.WF → (∀ a ∈ l, nm a ≠ x) →
+      s.find? x = some w → (l.foldl (fun s a => s.insert (nm a) (val a)) s).find? x = some w
+  | [], _, _, _, _, _, h => h
+  | a :: l, s, x, w, wf, hne, h => by
+    show (l.foldl (fun s a => s.insert (nm a) (val a)) (s.insert (nm a) (val a))).find? x = some w
+    exact insertList_find?_mono (insert_map₂ wf) (fun b hb => hne b (.tail _ hb))
+      (find?_insert_of_ne wf (hne a (.head _)) h)
+
+end
 
 noncomputable def toList' [BEq α] [Hashable α] (m : SMap α β) :
     List (α × β) := m.map₂.toList' ++ m.map₁.toList
