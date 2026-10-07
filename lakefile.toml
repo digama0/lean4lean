@@ -4,12 +4,12 @@ defaultTargets = ["Lean4Lean", "lean4lean", "Lean4Lean.Theory", "Lean4Lean.Verif
 [[require]]
 name = "batteries"
 git = "https://github.com/leanprover-community/batteries"
-rev = "v4.33.0-rc2"
+rev = "v4.35.0-rc3"
 
 [[require]]
-scope = "leanprover"
 name = "lean4export"
-rev = "v4.30.0"
+git = "https://github.com/leanprover/lean4export"
+rev = "v4.35.0-rc3"
 
 [[lean_lib]]
 name = "Lean4Lean"
@@ -33,4 +33,3 @@ globs = ["Lean4Lean.Experimental.+"]
 [[lean_exe]]
 name = "lean4lean"
 root = "Main"
-supportInterpreter = true

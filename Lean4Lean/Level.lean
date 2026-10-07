@@ -1,4 +1,4 @@
-import Lean
+import Lean.Level
 import Lean4Lean.List
 
 namespace Lean.Level

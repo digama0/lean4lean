@@ -4,11 +4,6 @@ namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 open Kernel
 
-theorem reduceNative.WF :
-    (reduceNative env e).WF fun oe => ∀ e₁, oe = some e₁ → False := by
-  unfold reduceNative; split <;> [skip; exact .pure nofun]
-  split <;> [exact .throw; skip]; split <;> [exact .throw; exact .pure nofun]
-
 theorem rawNatLitExt?.WF {c : VContext} (H : rawNatLitExt? e = some n) (he : c.TrExprS e e') :
     c.venv.contains ``Nat ∧ e' = .natLit n := by
   have : c.TrExprS (.lit (.natVal n)) e' := by
