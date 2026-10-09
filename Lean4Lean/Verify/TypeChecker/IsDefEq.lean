@@ -1,12 +1,43 @@
 import Lean4Lean.Verify.TypeChecker.Reduce
 import Lean4Lean.Verify.EquivManager
+import Lean4Lean.Theory.Typing.ProjectionFamilyArity
 
 open Lean4Lean
 
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 
-theorem isDefEqLambda.WF {c : VContext} {s : VState}
+/-- A body that mentions no bound variable, translated under a binder, is translated outside it,
+to a term whose lift is its translation under the binder. This is strengthening of the binder; it
+is used only in the global cache mode, where `isDefEqLambda` and `isDefEqForall` compare such
+bodies outside the binder, as the C++ kernel does. -/
+theorem lowerClosedBody {c : VContext} {s : State} {m} [mwf : c.MLCWF m]
+    (wf : s.WF (c.withMLC m)) (hs : c.venv.Strengthening)
+    (b1 : c.venv.IsType c.lparams.length (c.withMLC m).vlctx.toCtx t₂') {fvs : List Expr}
+    {bᵢ : Expr} {bᵢ'} (h : bᵢ.looseBVarRange' = 0)
+    (a3 : TrExprS c.venv c.lparams ((none, .vlam t₂') :: (c.withMLC m).vlctx)
+      (bᵢ.instantiateList fvs 1) bᵢ') :
+    ∃ e', (c.withMLC m).TrExprS (bᵢ.instantiateList (default :: fvs)) e' ∧
+      c.venv.IsDefEqU c.lparams.length (t₂' :: (c.withMLC m).vlctx.toCtx) bᵢ' e'.lift := by
+  have e1 : bᵢ.instantiateList fvs 1 = bᵢ :=
+    Expr.instantiateList'_eq_self (by rw [h]; exact Nat.zero_le _)
+  have e2 : bᵢ.instantiateList (default :: fvs) = bᵢ :=
+    Expr.instantiateList'_eq_self (by rw [h]; exact Nat.zero_le _)
+  rw [e1] at a3; rw [e2]
+  let v : FVarId := ⟨s.ngen.curr⟩
+  have hΔ : VLCtx.WF c.venv c.lparams.length ((some (v, []), .vlam t₂') :: m.vlctx) := by
+    refine ⟨mwf.1.tr.wf, ?_, b1⟩
+    rintro _ _ ⟨⟩; simp; exact fun h => s.ngen.not_reserves_self (wf.ngen_wf _ h)
+  have hw := a3.wf c.Ewf.ordered
+    (show VLCtx.WF c.venv c.lparams.length ((none, .vlam t₂') :: m.vlctx) from
+      ⟨mwf.1.tr.wf, nofun, b1⟩)
+  have := a3.inst_fvar c.Ewf.ordered hΔ
+  rw [Expr.instantiate1'_eq_self (by rw [h]; exact Nat.zero_le _)] at this
+  obtain ⟨e₀, he, rfl⟩ := this.restrictFV_inv c.Ewf hs (.skip_fvar _ _ .refl) hΔ
+    (by simpa using a3.fvarsIn)
+  exact ⟨e₀, he, hw⟩
+
+theorem isDefEqLambda.WF {c : VContext} {s : State}
     {m} [mwf : c.MLCWF m]
     {fvs : List Expr} (hsubst : subst.toList.reverse = fvs)
     (he₁ : (c.withMLC m).TrExprS (e₁.instantiateList fvs) ei₁')
@@ -35,48 +66,35 @@ theorem isDefEqLambda.WF {c : VContext} {s : VState}
   intros x s hx tt
   have tt' := tt.of_l c'.Ewf c'.Δwf a1
   have ⟨b₁'', a3', eq⟩ := a3.defeqDFC' c'.Ewf <| .cons (.refl c'.Ewf c'.Δwf) (by nofun) (.vlam tt')
-  unfold F; split <;> rename_i h
-  · extract_lets d₂'
-    have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst]; exact hx]
-    clear_value d₂'; subst this
-    refine .withLocalDecl b2 b1 .rfl fun v mwf' _ _ _ => ?_
-    have b3' := b3.inst_fvar c.Ewf mwf'.1.tr.wf
-    have a3'' := a3'.inst_fvar c.Ewf mwf'.1.tr.wf
-    rw [Expr.instantiateList_instantiate1_comm (by rfl), ← Expr.instantiateList] at a3'' b3'
-    refine isDefEqLambda.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst]) a3'' b3'
-      |>.mono fun _ _ _ h hb => ?_
-    have ⟨_, bb⟩ := eq.symm.trans c'.Ewf mwf'.1.tr.wf.toCtx (h hb)
-    exact ⟨_, .symm <| .lamDF tt'.symm <| bb.symm⟩
-  · simp [Expr.hasLooseBVars] at h
+  unfold F
+  refine RecM.WF.readThe ?_
+  split <;> rename_i hg
+  · simp only [Bool.and_eq_true, Bool.not_eq_true', Expr.hasLooseBVars] at hg
+    obtain ⟨⟨hgl, h1⟩, h2⟩ := hg
+    simp at h1 h2
     refine .stateWF fun wf => ?_
-    have {bᵢ : Expr} {bᵢ'} (h : bᵢ.looseBVarRange' = 0)
-        (a3 : TrExprS c'.venv c'.lparams ((none, .vlam t₂') :: c'.vlctx)
-          (bᵢ.instantiateList fvs 1) bᵢ') :
-        ∃ e', (c.withMLC m).TrExprS (bᵢ.instantiateList (default :: fvs)) e' ∧
-          c'.venv.IsDefEqU c'.lparams.length (t₂' :: c'.vlctx.toCtx) bᵢ' e'.lift := by
-      simp; rw [← Expr.instantiateList_instantiate1_comm (by rfl)]
-      let v : FVarId := ⟨s.ngen.curr⟩
-      have hΔ : VLCtx.WF c'.venv c.lparams.length ((some (v, []), .vlam t₂') :: m.vlctx) := by
-        refine ⟨mwf.1.tr.wf, ?_, b1⟩
-        rintro _ _ ⟨⟩; simp; exact fun h => s.ngen.not_reserves_self (wf.ngen_wf _ h)
-      have := a3.inst_fvar c.Ewf.ordered hΔ
-      have eq {e} (hb : bᵢ.looseBVarRange' = 0) (he : e.looseBVarRange' = 0) :
-          (bᵢ.instantiateList fvs 1).instantiate1' e = bᵢ.instantiateList fvs 1 := by
-        rw [Expr.instantiate1'_eq_self]; rw [Expr.instantiateList'_eq_self] <;> simp [*]
-      rw [eq h rfl, ← eq (e := .fvar v) h rfl]
-      let ⟨_, H⟩ := this.weakFV_inv c.Ewf (.skip_fvar _ _ .refl) (.refl c.Ewf hΔ)
-        (m.noBV ▸ this.closed) (by rw [eq h rfl]; exact a3.fvarsIn)
-      refine ⟨_, H, this.uniq c'.Ewf (.refl c'.Ewf hΔ) <| H.weakFV c'.Ewf (.skip_fvar _ _ .refl) hΔ⟩
-    let ⟨_, a4, a5⟩ := this h.1 a3'
-    let ⟨_, b4, b5⟩ := this h.2 b3
+    have hs := wf.strengthening_of_isGlobal hgl
+    let ⟨_, a4, a5⟩ := lowerClosedBody wf hs b1 h1 a3'
+    let ⟨_, b4, b5⟩ := lowerClosedBody wf hs b1 h2 b3
     exact isDefEqLambda.WF (fvs := default :: fvs) (by simp [hsubst]) a4 b4
       |>.mono fun _ _ _ h hb =>
       have hΓ := ⟨c'.Δwf, b1⟩
       have ⟨_, bb⟩ := eq.symm.trans c'.Ewf hΓ a5
         |>.trans c'.Ewf hΓ ((h hb).weak c'.Ewf (B := t₂')) |>.trans c'.Ewf hΓ b5.symm
       ⟨_, .symm <| .lamDF tt'.symm bb.symm⟩
+  extract_lets d₂'
+  have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst]; exact hx]
+  clear_value d₂'; subst this
+  refine .withLocalDecl b2 b1 .rfl fun v mwf' _ _ _ => ?_
+  have b3' := b3.inst_fvar c.Ewf mwf'.1.tr.wf
+  have a3'' := a3'.inst_fvar c.Ewf mwf'.1.tr.wf
+  rw [Expr.instantiateList_instantiate1_comm (by rfl), ← Expr.instantiateList] at a3'' b3'
+  refine isDefEqLambda.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst]) a3'' b3'
+    |>.mono fun _ _ _ h hb => ?_
+  have ⟨_, bb⟩ := eq.symm.trans c'.Ewf mwf'.1.tr.wf.toCtx (h hb)
+  exact ⟨_, .symm <| .lamDF tt'.symm <| bb.symm⟩
 
-theorem isDefEqForall.WF {c : VContext} {s : VState}
+theorem isDefEqForall.WF {c : VContext} {s : State}
     {m} [mwf : c.MLCWF m]
     {fvs : List Expr} (hsubst : subst.toList.reverse = fvs)
     (he₁ : (c.withMLC m).TrExprS (e₁.instantiateList fvs) ei₁')
@@ -105,48 +123,35 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
   intros x s hx tt
   have tt' := tt.of_l c'.Ewf c'.Δwf a1
   have ⟨b₁'', a3', eq⟩ := a3.defeqDFC' c'.Ewf <| .cons (.refl c'.Ewf c'.Δwf) (by nofun) (.vlam tt')
-  unfold F; split <;> rename_i h
-  · extract_lets d₂'
-    have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst]; exact hx]
-    clear_value d₂'; subst this
-    refine .withLocalDecl b2 b1 .rfl fun v mwf' _ _ _ => ?_
-    have b3' := b3.inst_fvar c.Ewf mwf'.1.tr.wf
-    have a3'' := a3'.inst_fvar c.Ewf mwf'.1.tr.wf
-    rw [Expr.instantiateList_instantiate1_comm (by rfl), ← Expr.instantiateList] at a3'' b3'
-    refine isDefEqForall.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst]) a3'' b3'
-      |>.mono fun _ _ _ h hb => ?_
-    have bb := eq.symm.trans c'.Ewf mwf'.1.tr.wf.toCtx (h hb) |>.of_r c'.Ewf mwf'.1.tr.wf.toCtx bT
-    exact ⟨_, .symm <| .forallEDF tt'.symm <| bb.symm⟩
-  · simp [Expr.hasLooseBVars] at h
+  unfold F
+  refine RecM.WF.readThe ?_
+  split <;> rename_i hg
+  · simp only [Bool.and_eq_true, Bool.not_eq_true', Expr.hasLooseBVars] at hg
+    obtain ⟨⟨hgl, h1⟩, h2⟩ := hg
+    simp at h1 h2
     refine .stateWF fun wf => ?_
-    have {bᵢ : Expr} {bᵢ'} (h : bᵢ.looseBVarRange' = 0)
-        (a3 : TrExprS c'.venv c'.lparams ((none, .vlam t₂') :: c'.vlctx)
-          (bᵢ.instantiateList fvs 1) bᵢ') :
-        ∃ e', (c.withMLC m).TrExprS (bᵢ.instantiateList (default :: fvs)) e' ∧
-          c'.venv.IsDefEqU c'.lparams.length (t₂' :: c'.vlctx.toCtx) bᵢ' e'.lift := by
-      simp; rw [← Expr.instantiateList_instantiate1_comm (by rfl)]
-      let v : FVarId := ⟨s.ngen.curr⟩
-      have hΔ : VLCtx.WF c'.venv c.lparams.length ((some (v, []), .vlam t₂') :: m.vlctx) := by
-        refine ⟨mwf.1.tr.wf, ?_, b1⟩
-        rintro _ _ ⟨⟩; simp; exact fun h => s.ngen.not_reserves_self (wf.ngen_wf _ h)
-      have := a3.inst_fvar c.Ewf.ordered hΔ
-      have eq {e} (hb : bᵢ.looseBVarRange' = 0) (he : e.looseBVarRange' = 0) :
-          (bᵢ.instantiateList fvs 1).instantiate1' e = bᵢ.instantiateList fvs 1 := by
-        rw [Expr.instantiate1'_eq_self]; rw [Expr.instantiateList'_eq_self] <;> simp [*]
-      rw [eq h rfl, ← eq (e := .fvar v) h rfl]
-      let ⟨_, H⟩ := this.weakFV_inv c.Ewf (.skip_fvar _ _ .refl) (.refl c.Ewf hΔ)
-        (m.noBV ▸ this.closed) (by rw [eq h rfl]; exact a3.fvarsIn)
-      refine ⟨_, H, this.uniq c'.Ewf (.refl c'.Ewf hΔ) <| H.weakFV c'.Ewf (.skip_fvar _ _ .refl) hΔ⟩
-    let ⟨_, a4, a5⟩ := this h.1 a3'
-    let ⟨_, b4, b5⟩ := this h.2 b3
+    have hs := wf.strengthening_of_isGlobal hgl
+    let ⟨_, a4, a5⟩ := lowerClosedBody wf hs b1 h1 a3'
+    let ⟨_, b4, b5⟩ := lowerClosedBody wf hs b1 h2 b3
     exact isDefEqForall.WF (fvs := default :: fvs) (by simp [hsubst]) a4 b4
       |>.mono fun _ _ _ h hb =>
       have hΓ := ⟨c'.Δwf, b1⟩
       have bb := eq.symm.trans c'.Ewf hΓ a5 |>.trans c'.Ewf hΓ ((h hb).weak c'.Ewf (B := t₂'))
         |>.trans c'.Ewf hΓ b5.symm |>.of_r c'.Ewf hΓ bT
       ⟨_, .symm <| .forallEDF tt'.symm bb.symm⟩
+  extract_lets d₂'
+  have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst]; exact hx]
+  clear_value d₂'; subst this
+  refine .withLocalDecl b2 b1 .rfl fun v mwf' _ _ _ => ?_
+  have b3' := b3.inst_fvar c.Ewf mwf'.1.tr.wf
+  have a3'' := a3'.inst_fvar c.Ewf mwf'.1.tr.wf
+  rw [Expr.instantiateList_instantiate1_comm (by rfl), ← Expr.instantiateList] at a3'' b3'
+  refine isDefEqForall.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst]) a3'' b3'
+    |>.mono fun _ _ _ h hb => ?_
+  have bb := eq.symm.trans c'.Ewf mwf'.1.tr.wf.toCtx (h hb) |>.of_r c'.Ewf mwf'.1.tr.wf.toCtx bT
+  exact ⟨_, .symm <| .forallEDF tt'.symm <| bb.symm⟩
 
-theorem quickIsDefEq.WF {c : VContext} {s : VState}
+theorem quickIsDefEq.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (quickIsDefEq e₁ e₂ useHash) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
   unfold quickIsDefEq
@@ -157,13 +162,10 @@ theorem quickIsDefEq.WF {c : VContext} {s : VState}
     split at eq; rename_i b _ b' m hm
     change let s' := _; (_, s') = _ at eq; extract_lets s' at eq
     injection eq; subst b' s₁
-    let ⟨_, _, a1, a2, ewf, a4⟩ := wf.ectx
-    have ⟨ewf, _, h1⟩ := EquivManager.isEquiv.WF ewf hm
-    refine let vs' := { s with toState := s' }; ⟨vs', rfl, .rfl, { wf with ectx := ?_ }, ?_⟩
-    · exact ⟨_, _, a1, a2, ewf, a4⟩
-    · intro h; apply (VEnv.IsDefEqU.weak'_iff c.Ewf a1 a2.toCtx).1
-      exact (h1 h).uniq c.Ewf (a2.bvars_eq.trans c.mlctx.noBV)
-        a1 (he₁.weakFV' c.Ewf a2 a1) (he₂.weakFV' c.Ewf a2 a1)
+    obtain ⟨Δ', hΔ', hm'⟩ := wf.ectx
+    have ⟨ewf, _, h1⟩ := EquivManager.isEquiv.WF hm' hm
+    refine let vs' := s'; ⟨vs', rfl, .rfl, { wf with ectx := ⟨Δ', hΔ', ewf⟩ }, ?_⟩
+    exact fun h => wf.eqv_uniq hΔ' (h1 h) he₁ he₂
   split <;> [exact .pure fun _ => h ‹_›; split]
   · exact .toLBoolM <| c.withMLC_self ▸
       isDefEqLambda.WF (subst := #[]) (fvs := []) rfl (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
@@ -179,7 +181,7 @@ theorem quickIsDefEq.WF {c : VContext} {s : VState}
     simp at h; subst h; exact he₁.uniq c.Ewf (.refl c.Ewf c.Δwf) he₂
   · exact .pure nofun
 
-theorem isDefEqArgs.WF {c : VContext} {s : VState}
+theorem isDefEqArgs.WF {c : VContext} {s : State}
     (H : ∃ e₁', c.TrExprS e₁.getAppFn e₁' ∧ ∃ e₂', c.TrExprS e₂.getAppFn e₂' ∧ c.IsDefEqU e₁' e₂')
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqArgs e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
@@ -199,7 +201,7 @@ theorem isDefEqArgs.WF {c : VContext} {s : VState}
     have a2 := he₂.uniq c.Ewf (.refl c.Ewf c.Δwf) h2
     exact a1.trans c.Ewf c.Δwf h3 |>.trans c.Ewf c.Δwf a2.symm
 
-theorem tryEtaExpansionCore.WF {c : VContext} {s : VState}
+theorem tryEtaExpansionCore.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (tryEtaExpansionCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
   unfold tryEtaExpansionCore; split <;> [skip; exact .pure nofun]
@@ -208,13 +210,12 @@ theorem tryEtaExpansionCore.WF {c : VContext} {s : VState}
   split <;> [skip; exact .pure nofun]
   let .forallE (ty' := ty') c1 c2 c3 c4 := b2
   replace a4 := a4.defeqU_r c.Ewf c.Δwf b3.symm
-  -- have := b2.uniq c.Ewf (.refl c.Ewf c.Δwf) (.forallE c1 c2 c3 c4)
   refine (isDefEq.WF he₁ (.lam c1 c3 (.app (a4.weak c.Ewf) (.bvar .zero) (
     Expr.liftLooseBVars_eq_self (c.mlctx.noBV ▸ a2.closed).looseBVarRange_le ▸
       a2.weakBV c.Ewf (.skip (.vlam ty') .refl)) (.bvar rfl)))).mono fun _ _ _ h hb => ?_
   exact (h hb).trans c.Ewf c.Δwf ⟨_, .eta a4⟩
 
-theorem tryEtaExpansion.WF {c : VContext} {s : VState}
+theorem tryEtaExpansion.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (tryEtaExpansion e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
   simp [tryEtaExpansion, orM, toBool]
@@ -222,11 +223,208 @@ theorem tryEtaExpansion.WF {c : VContext} {s : VState}
   split <;> [exact .pure fun _ => h rfl; skip]
   exact (tryEtaExpansionCore.WF he₂ he₁).mono fun _ _ _ h hb => (h hb).symm
 
-theorem tryEtaStructCore.WF {c : VContext} {s : VState}
+theorem tryEtaStructCore.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (tryEtaStructCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := sorry
+    RecM.WF c s (tryEtaStructCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
+  unfold tryEtaStructCore
+  split <;> [rename_i f ls hf; exact .pure nofun]
+  refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun ci _ _ hci => ?_
+  split <;> [rename_i fInfo; exact .pure nofun]
+  split <;> [rename_i harity; exact .pure nofun]
+  split <;> [rename_i hnonrec; exact .pure nofun]
+  -- the constructor is listed by its owner, which is a non-recursive structure
+  obtain ⟨sInfo, hfind, hmem, hunsafe⟩ := c.constructorOwners f fInfo hci
+  have hsingle : sInfo.ctors = [f] := by
+    revert hnonrec; unfold Lean.Kernel.Environment.isNonRecStructure; rw [hfind]
+    intro h; split at h
+    · rename_i heq; cases heq; simp only [List.mem_singleton] at hmem; subst hmem; rfl
+    · cases h
+  refine (inferType.WF he₁).bind fun tType _ _ ⟨tT', _, _, htT, htT'⟩ => ?_
+  refine (inferType.WF he₂).bind fun sType _ _ ⟨sT', _, _, hsT, hsT'⟩ => ?_
+  refine (isDefEq.WF htT hsT).bind fun b _ _ hb => ?_
+  split <;> [skip; exact .pure nofun]
+  have hb := hb ‹_›
+  refine (inferType.WF htT).bind fun tTT _ _ ⟨tTT', _, _, htTT, htTT'⟩ => ?_
+  refine (whnf.WF htTT).bind fun w _ _ ⟨_, w', hw, hwdefeq⟩ => ?_
+  split <;> [rename_i u; exact .pure nofun]
+  split <;> [rename_i hnz; exact .pure nofun]
+  have harity := beq_iff_eq.1 harity
+  -- the constructor application
+  have he₂'' : c.TrExprS ((Expr.const f ls).mkAppList e₂.getAppArgsList) e₂' := by
+    rw [← hf, e₂.mkAppList_getAppArgsList]; exact he₂
+  have ⟨fn', stk⟩ := AppStack.build he₂''
+  have ⟨args', hargs, hs'⟩ := stk.translatedArguments
+  have .const (us' := ls') hfc hls hlen := stk.tr
+  have hceq := he₂''.uniq c.Ewf (.refl c.Ewf c.Δwf) hs'
+  have hargsLen : args'.length = e₂.getAppArgsList.length :=
+    (Lean4Lean.List.Forall₂.length_eq hargs).symm
+  -- registry facts
+  obtain ⟨_, habstract⟩ := c.familyConstant hfind hci hunsafe hfc
+  obtain ⟨info, hinfo, hname, decl, doms, result, hwf, hctor, hshape, hvalid, hhead, hdn, hdu, hle,
+    hnp, hnf, hnf', hsp, hsi, hidxs, -, hsort, -⟩ :=
+    VContext.registryShape hfind habstract hsingle hci rfl
+  subst hname
+  have hnindices : info.nindices = 0 := by
+    rw [← hsi]
+    revert hnonrec; unfold Lean.Kernel.Environment.isNonRecStructure; rw [hfind]
+    intro h; split at h
+    · rename_i heq; cases heq; rfl
+    · cases h
+  have hlenArgs : args'.length = doms.length := by
+    rw [hargsLen, ← List.length_reverse, Expr.getAppArgsList_reverse, ← Expr.getAppNumArgs_eq,
+      harity, hnp, hnf]; omega
+  -- typing of the constructor application against its telescope
+  have ⟨_, hcw⟩ := (TrExprS.const hfc hls hlen).wf c.Ewf c.Δwf
+  have ⟨ci', hci', hlsWF, hlen'⟩ := VEnv.HasType.const_inv c.Ewf.ordered c.Δwf.toCtx hcw
+  rw [hctor] at hci'; cases Option.some.inj hci'
+  have hconst : c.HasType (.const info.ctorName ls') (info.ctorType.instL ls') :=
+    VEnv.HasType.const hctor hlsWF hlen'
+  have hf' : c.HasType (.const info.ctorName ls')
+      (VExpr.wrapForalls (doms.map (·.instL ls')) (result.instL ls')) := by
+    rwa [hshape, VExpr.instL_wrapForalls] at hconst
+  have hs'wf : VExpr.WF c.venv c.lparams.length c.vlctx.toCtx (VExpr.mkApps (.const info.ctorName ls') args') :=
+    hs'.wf c.Ewf c.Δwf
+  have ⟨hargsTy, hsTy⟩ := VEnv.HasType.mkApps_wrapForalls c.Ewf c.Δwf.toCtx hf' hs'wf (by simp [hlenArgs])
+  obtain ⟨res, Hw, -⟩ := VEnv.HasType.mkApps_telescope c.Ewf c.Δwf.toCtx hconst hs'wf (by
+    rw [hshape, VExpr.instL_wrapForalls, show args'.length = (doms.map (·.instL ls')).length by simp [hlenArgs]]
+    exact VExpr.takeForalls_wrapForalls _ _)
+  rw [hshape, VExpr.instL_wrapForalls] at Hw
+  -- the canonical type of the constructor application: no indices
+  have hhead' : (result.instL ls').getAppFnArgs.1 = .const fInfo.induct ls' := by
+    rw [VExpr.getAppFnArgs_instL]
+    show (result.getAppFnArgs.1.instL ls') = _
+    rw [hhead]
+    simp [VExpr.instL, VLevel.params_map_inst ls' (hlen'.trans hdu.symm)]
+  obtain ⟨idx', hresEq, type, htype, hname, hidxLen⟩ :=
+    (hvalid.instL ls').instOuter hhead' args' (by omega)
+  have hidx' : idx' = [] := by
+    rw [hidxs type htype hname, hnindices] at hidxLen; exact List.eq_nil_of_length_eq_zero hidxLen
+  subst hidx'
+  rw [hresEq, List.append_nil] at hsTy
+  -- `t` has the structure type
+  have htS : c.HasType e₁' (VExpr.mkApps (.const fInfo.induct ls') (args'.take info.nparams)) := by
+    have h1 : c.HasType e₂' sT' := hsT'
+    have h2 := (hceq.of_l c.Ewf c.Δwf h1).hasType.2
+    have h3 := h2.uniqU c.Ewf c.Δwf hsTy
+    rw [hdn] at h3
+    exact (htT'.defeqU_r c.Ewf c.Δwf hb).defeqU_r c.Ewf c.Δwf h3
+  rw [hdn] at hsTy hresEq
+  have hP'len : (args'.take info.nparams).length = info.nparams := by simp; omega
+  -- the sort of the structure type is never zero
+  have .sort (u' := u') hu' := hw
+  have hguard : (info.resultLevel.inst ls').IsNeverZero := by
+    have h1 : c.HasType tT' (.sort u') := htTT'.defeqU_r c.Ewf c.Δwf hwdefeq.symm
+    have h2 : c.HasType (VExpr.mkApps (.const fInfo.induct ls') (args'.take info.nparams)) (.sort u') := by
+      have h3 : c.HasType e₂' sT' := hsT'
+      have h4 := (hceq.of_l c.Ewf c.Δwf h3).hasType.2
+      have h5 := h4.uniqU c.Ewf c.Δwf hsTy
+      exact h1.defeqU_l c.Ewf c.Δwf (hb.trans c.Ewf c.Δwf h5)
+    have h6 := hsort ls' _ hlen' (by omega) ⟨_, h2⟩
+    have h7 := h2.uniqU c.Ewf c.Δwf h6
+    exact (ofLevel_isNeverZero hu' hnz).of_equiv (h7.sort_inv c.Ewf c.Δwf)
+  have hclosed : info.ctorType.Closed := by
+    have ⟨_, h⟩ := hwf
+    exact VExpr.WF.closedN c.Ewf.ordered ⟨_, h⟩ trivial
+  have hTwf : c.IsDefEqU (VExpr.wrapForalls (doms.map (·.instL ls')) (result.instL ls'))
+      (VExpr.wrapForalls (doms.map (·.instL ls')) (result.instL ls')) :=
+    let ⟨_, h⟩ := VEnv.IsDefEq.isType c.Ewf.ordered c.Δwf.toCtx hf'; ⟨_, h⟩
+  have hdl : (doms.map (·.instL ls')).length = doms.length := by simp
+  -- the loop invariant: the projections of `t` processed so far are the constructor's arguments
+  let inv (k : Nat) : Prop := ∀ j (hj : j < k) (hj' : info.nparams + j < doms.length),
+    c.venv.IsDefEq c.lparams.length c.vlctx.toCtx (.proj fInfo.induct j e₁')
+      (args'[info.nparams + j]'(by omega))
+      ((doms[info.nparams + j].instL ls').instOuter (args'.take (info.nparams + j)))
+  have hsize : e₂.getAppArgs.size = args'.length := by
+    rw [hargsLen, ← Expr.getAppArgs_toList, Array.length_toList]
+  have hargsGet : ∀ i (hi : i < e₂.getAppArgs.size),
+      c.TrExprS e₂.getAppArgs[i] (args'[i]'(by omega)) := by
+    intro i hi
+    have := Lean4Lean.List.forall₂_getElem hargs i (by rw [← hargsLen]; omega) (by omega)
+    simpa [← Expr.getAppArgs_toList] using this
+  have loopWF : ∀ (m : Nat) {s : State} (i : Nat), m = args'.length - i → info.nparams ≤ i →
+      inv (i - info.nparams) →
+      RecM.WF c s (tryEtaStructCore.loop e₁ fInfo e₂.getAppArgs i) fun b _ =>
+        b = true → inv (args'.length - info.nparams) := by
+    intro m
+    induction m with
+    | zero =>
+      intro s i hm hni hinv
+      unfold tryEtaStructCore.loop
+      rw [dif_neg (by omega)]
+      refine .pure fun _ j hj hj' => hinv j (by omega) hj'
+    | succ m ih =>
+      intro s i hm hni hinv
+      unfold tryEtaStructCore.loop
+      have hi : i < e₂.getAppArgs.size := by omega
+      rw [dif_pos hi]
+      have hk : info.nparams + (i - fInfo.numParams) = i := by omega
+      have hkd : info.nparams + (i - fInfo.numParams) < doms.length := by omega
+      -- the field type of the current projection is definitionally the constructor's domain
+      have hbs : List.Forall₂ (c.venv.IsDefEqU c.lparams.length c.vlctx.toCtx)
+          (args'.take info.nparams ++
+            (List.range (i - fInfo.numParams)).map fun j => VExpr.proj fInfo.induct j e₁')
+          (args'.take (info.nparams + (i - fInfo.numParams))) := by
+        rw [List.take_add]
+        refine List.Forall₂.append' (List.forall₂_of_getElem rfl fun j hj hj' => ?_)
+          (List.forall₂_of_getElem (by simp; omega) fun j hj hj' => ?_)
+        · simp only [List.getElem_take]
+          exact ⟨_, hargsTy j (by simp at hj; omega) (by simp at hj; omega)⟩
+        · simp only [List.getElem_map, List.getElem_range, List.getElem_take, List.getElem_drop]
+          exact ⟨_, hinv j (by simp at hj; omega) (by simp at hj; omega)⟩
+      have hDeq := VEnv.InstForallsC.domain_defeq c.Ewf c.Δwf.toCtx Hw (by simpa using hlenArgs) rfl
+        (by simpa using hkd) hTwf (by simp; omega) hbs
+      simp only [List.getElem_map] at hDeq
+      have hfieldk := VProjectionInfo.fieldType_eq_instOuter info hshape hlen' hP'len hkd
+        (typeName := fInfo.induct) (major := e₁')
+      have hDty := VEnv.IsDefEq.isType c.Ewf.ordered c.Δwf.toCtx
+        (hargsTy (info.nparams + (i - fInfo.numParams)) (by omega) (by simpa using hkd))
+      simp only [List.getElem_map] at hDty
+      have ⟨fl, hFty⟩ : c.venv.IsType c.lparams.length c.vlctx.toCtx
+          ((doms[info.nparams + (i - fInfo.numParams)].instL ls').instOuter
+            (args'.take info.nparams ++
+              (List.range (i - fInfo.numParams)).map fun j => VExpr.proj fInfo.induct j e₁')) :=
+        hDty.imp fun _ h => h.defeqU_l c.Ewf c.Δwf hDeq.symm
+      have hprojk : c.HasType (.proj fInfo.induct (i - fInfo.numParams) e₁') _ :=
+        VEnv.IsDefEq.projDF hinfo hlsWF hlen' hP'len (indexArgs := []) (by simp [hnindices]) hfieldk hFty
+          (by rw [List.append_nil]; exact htS) (by rw [List.append_nil]; exact htS) hclosed
+          (Or.inl hguard)
+      have hprojTr : c.TrExprS (.proj fInfo.induct (i - fInfo.numParams) e₁)
+          (.proj fInfo.induct (i - fInfo.numParams) e₁') :=
+        .proj he₁ ⟨_, hprojk⟩
+      refine (isDefEq.WF hprojTr (hargsGet i hi)).bind fun b _ _ hb => ?_
+      split <;> [skip; exact .pure nofun]
+      have hb := hb ‹_›
+      refine ih (i + 1) (by omega) (by omega) fun j hj hj' => ?_
+      by_cases hji : j = i - fInfo.numParams
+      · subst hji
+        simp only [hk]
+        have h2 := hargsTy i (by omega) (by omega)
+        simp only [List.getElem_map] at h2
+        exact hb.of_r c.Ewf c.Δwf h2
+      · exact hinv j (by omega) hj'
+  refine (loopWF (args'.length - fInfo.numParams) fInfo.numParams rfl (by omega)
+    (fun j hj _ => by omega)).mono fun b _ _ H hb => ?_
+  have hinv := H hb
+  -- congruence along the constructor spine: the arguments are the projections of `t`
+  have hnumF : info.numFields = args'.length - info.nparams := by rw [hnf', hnf, hlenArgs]
+  have hcongr := VEnv.IsDefEq.mkApps_congr (args := args')
+    (args' := args'.take info.nparams ++
+      (List.range info.numFields).map fun j => VExpr.proj fInfo.induct j e₁') hf'
+    (by simp [hlenArgs]) (by simp [hnumF]; omega) fun j hj hj' hj'' => by
+      by_cases hjn : j < info.nparams
+      · rw [List.getElem_append_left (by simp; omega), List.getElem_take]
+        exact hargsTy j hj hj'
+      · rw [List.getElem_append_right (by simp; omega)]
+        simp only [List.getElem_map, List.getElem_range, List.length_take]
+        have hjn' : info.nparams + (j - min info.nparams args'.length) = j := by omega
+        have := (hinv (j - min info.nparams args'.length) (by omega) (by omega)).symm
+        simp only [hjn'] at this ⊢
+        exact this
+  rw [hresEq, List.append_nil] at hcongr
+  have heta := VEnv.IsDefEq.structEta hinfo hP'len hnindices htS hcongr.hasType.2
+  exact VEnv.IsDefEqU.trans c.Ewf c.Δwf ⟨_, heta.symm.trans hcongr.symm⟩ hceq.symm
 
-theorem tryEtaStruct.WF {c : VContext} {s : VState}
+theorem tryEtaStruct.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (tryEtaStruct e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
   simp [tryEtaStruct, orM, toBool]
@@ -234,7 +432,7 @@ theorem tryEtaStruct.WF {c : VContext} {s : VState}
   split <;> [exact .pure fun _ => h rfl; skip]
   exact (tryEtaStructCore.WF he₂ he₁).mono fun _ _ _ h hb => (h hb).symm
 
-theorem isDefEqApp.WF {c : VContext} {s : VState}
+theorem isDefEqApp.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqApp e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
   unfold isDefEqApp; split <;> [skip; exact .pure nofun]
@@ -294,7 +492,7 @@ theorem isProp.WF
   exact h.defeqU_r c.Ewf c.Δwf
     ⟨_, .sortDF (.of_ofLevel hu) trivial (ofLevel_isAlwaysZero hu H)⟩
 
-theorem isDefEqProofIrrel.WF {c : VContext} {s : VState}
+theorem isDefEqProofIrrel.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqProofIrrel e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
   unfold isDefEqProofIrrel
@@ -306,12 +504,12 @@ theorem isDefEqProofIrrel.WF {c : VContext} {s : VState}
   refine (isDefEq.WF a3 b3).mono fun _ _ _ h2 hb => ?_
   exact ⟨_, .proofIrrel (h1 h) a4 (b4.defeqU_r c.Ewf c.Δwf (h2 hb).symm)⟩
 
-theorem cacheFailure.WF {c : VContext} {s : VState} :
+theorem cacheFailure.WF {c : VContext} {s : State} :
     (cacheFailure e₁ e₂).WF c s fun _ _ => True := by
   rintro wf _ _ ⟨⟩
-  exact ⟨{ s with toState := _ }, rfl, .rfl, { wf with }, ⟨⟩⟩
+  exact ⟨_, rfl, .rfl, { wf with }, ⟨⟩⟩
 
-theorem tryUnfoldProjApp.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
+theorem tryUnfoldProjApp.WF {c : VContext} {s : State} (he : c.TrExprS e e') :
     (tryUnfoldProjApp e).WF c s fun oe _ =>
     ∀ e₁, oe = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := by
   unfold tryUnfoldProjApp; extract_lets f
@@ -343,7 +541,7 @@ theorem _root_.Lean4Lean.TypeChecker.ReductionStatus.WF.defeq
     ⟨a2.defeq c.Ewf c.Δwf h1, a3.defeq c.Ewf c.Δwf h2⟩
   | .true, h => h1.symm.trans c.Ewf c.Δwf h |>.trans c.Ewf c.Δwf h2
 
-theorem lazyDeltaReductionStep.WF {c : VContext} {s : VState}
+theorem lazyDeltaReductionStep.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     (lazyDeltaReductionStep e₁ e₂).WF c s fun r _ => r.WF c e₁' e₂' true := by
   unfold lazyDeltaReductionStep
@@ -406,7 +604,7 @@ theorem isNatZero_wf {c : VContext} (H : isNatZero e) (h : c.TrExprS e e') : e' 
     · have := h.eqv H; exact .lit (this.nat_of_natZero c.Ewf c.hasPrimitives) this
     · split at H <;> [exact h; cases H]
   have := TrExprS.lit_has_type (l := .natVal 0) h1
-  exact h1.unique (by trivial) (TrExprS.natLit c.hasPrimitives this 0).1
+  exact h1.unique (TrExprS.natLit c.hasPrimitives this 0).1
 
 theorem isNatSuccOf?_wf {c : VContext} (H : isNatSuccOf? e = some e₁)
     (h : c.TrExprS e e') : ∃ x, c.TrExprS e₁ x ∧ e' = .app .natSucc x := by
@@ -414,14 +612,14 @@ theorem isNatSuccOf?_wf {c : VContext} (H : isNatSuccOf? e = some e₁)
   · rename_i n
     have := TrExprS.lit_has_type (l := .natVal (n+1)) h
     refine ⟨_, (TrExprS.natLit c.hasPrimitives this n).1, ?_⟩
-    exact h.unique (by trivial) (TrExprS.natLit c.hasPrimitives this (n+1)).1
+    exact h.unique (TrExprS.natLit c.hasPrimitives this (n+1)).1
   · let .app a1 a2 a3 a4 := h
     let .const b1 b2 b3 := a3
     cases c.hasPrimitives.natSucc b1
     simp at b3; subst b3; simp at b2; subst b2
     exact ⟨_, a4, rfl⟩
 
-theorem isDefEqOffset.WF {c : VContext} {s : VState}
+theorem isDefEqOffset.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     (isDefEqOffset e₁ e₂).WF c s fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
   unfold isDefEqOffset; split
@@ -436,7 +634,7 @@ theorem isDefEqOffset.WF {c : VContext} {s : VState}
     let ⟨_, _, c1, c2⟩ := de'.hasType.1.app_inv c.Ewf c.Δwf
     exact ⟨_, c1.appDF <| (h hb).of_l c.Ewf c.Δwf c2⟩
 
-theorem lazyDeltaReduction.loop.WF {c : VContext} {s : VState}
+theorem lazyDeltaReduction.loop.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     (lazyDeltaReduction.loop e₁ e₂ n).WF c s fun r _ => r.WF c e₁' e₂' := by
   induction n generalizing s e₁ e₂ e₁' e₂' with | zero => exact .throw | succ n ih
@@ -469,63 +667,102 @@ theorem lazyDeltaReduction.loop.WF {c : VContext} {s : VState}
     exact (ih a1 b1).mono fun _ _ _ h => h.defeq a2 b2
   | _ => exact .pure h
 
-theorem tryStringLitExpansionCore.WF {c : VContext} {s : VState}
+theorem tryStringLitExpansionCore.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (tryStringLitExpansionCore e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
   unfold tryStringLitExpansionCore; iterate 3 split <;> [skip; exact .pure nofun]
   let .lit _ he₁ := he₁
   exact .toLBoolM <| isDefEqCore.WF he₁ he₂
 
-theorem tryStringLitExpansion.WF {c : VContext} {s : VState}
+theorem tryStringLitExpansion.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (tryStringLitExpansion e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
   refine (tryStringLitExpansionCore.WF he₁ he₂).bind fun _ _ _ h => ?_
   split <;> [skip; exact .pure h]
   exact (tryStringLitExpansionCore.WF he₂ he₁).mono fun _ _ _ h hb => (h hb).symm
 
-theorem isDefEqUnitLike.WF {c : VContext} {s : VState}
+theorem isDefEqUnitLike.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (isDefEqUnitLike e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := sorry
+    RecM.WF c s (isDefEqUnitLike e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
+  unfold isDefEqUnitLike
+  refine (inferType.WF he₁).bind fun ty _ _ ⟨ty', _, _, hty, hty'⟩ => ?_
+  refine (whnf.WF hty).bind fun tType _ _ ⟨_, tT', htT, hdefeq⟩ => ?_
+  split <;> [rename_i I ls hI; exact .pure nofun]
+  refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun ci _ _ hci => ?_
+  split <;> [rename_i I_val hval; exact .pure nofun]
+  refine (M.WF.liftExcept envGet.WF).lift.bind fun cci _ _ hcci => ?_
+  split <;> [rename_i cval hcval; exact .pure nofun]
+  refine (inferType.WF he₂).bind fun sty _ _ ⟨sty', _, _, hsty, hsty'⟩ => ?_
+  refine (isDefEqCore.WF htT hsty).mono fun b _ _ h hb => ?_
+  have hb := h (by simpa using hb)
+  -- the whnf of the type of `e₁` is an application of `I`
+  have htT' : c.TrExprS ((Expr.const I ls).mkAppList tType.getAppArgsList) tT' := by
+    rw [← hI, tType.mkAppList_getAppArgsList]; exact htT
+  have ⟨fn', stk⟩ := AppStack.build htT'
+  have ⟨args', hargs, htT''⟩ := stk.translatedArguments
+  have .const hfc hls hlen := stk.tr
+  have heq := htT'.uniq c.Ewf (.refl c.Ewf c.Δwf) htT''
+  obtain ⟨info, hinfo, -, decl, doms, result, -, -, -, -, -, -, -, -, -, -, hnf, hnp, hni, -, ⟨_, hfam⟩, -, -⟩ :=
+    VContext.registryShape hci hfc rfl hcci (by
+      -- the listed constant is a constructor of the structure
+      obtain ⟨info, hinfoEq, hinfoInduct, -⟩ :=
+        c.listedConstructors I _ hci _ (by simp) _ hcci
+      rw [ConstantInfo.ctorInfo.inj hinfoEq]
+      exact hinfoInduct)
+  -- the type is an application of the structure at a sort, so it supplies exactly the
+  -- parameters (the structure has no indices)
+  have hlenP : args'.length = info.nparams := by
+    have ⟨_, hsort⟩ := hty'.isType c.Ewf.ordered c.Δwf.toCtx
+    have hsort := (hsort.defeqU_l c.Ewf c.Δwf hdefeq.symm).defeqU_l c.Ewf c.Δwf heq
+    rw [VEnv.HasType.projectionFamily_arity c.Ewf c.Δwf.toCtx hinfo hfam hsort, ← hni]; rfl
+  have hfields : info.numFields = 0 := hnf
+  have ht : c.HasType e₁' (VExpr.mkApps (.const I _) args') :=
+    (hty'.defeqU_r c.Ewf c.Δwf hdefeq.symm).defeqU_r c.Ewf c.Δwf heq
+  have hs : c.HasType e₂' (VExpr.mkApps (.const I _) args') :=
+    (hsty'.defeqU_r c.Ewf c.Δwf hb.symm).defeqU_r c.Ewf c.Δwf heq
+  exact ⟨_, .unitLike hinfo hlenP hni.symm hfields ht hs⟩
 
-theorem lazyDeltaProjReduction.finish.WF {c : VContext} {s : VState}
-    (he₁ : c.TrExprS (.proj n₁ i e₁) e₁') (he₂ : c.TrExprS (.proj n₂ i e₂) e₂') :
-    (finish i e₁ e₂).WF c s fun r _ => r → c.IsDefEqU e₁' e₂' := by
+theorem lazyDeltaProjReduction.finish.WF {c : VContext} {s : State}
+    (he₁ : c.TrExprS (.proj structName i e₁) e₁')
+    (he₂ : c.TrExprS (.proj structName i e₂) e₂') :
+    (finish structName i e₁ e₂).WF c s fun r _ => r → c.IsDefEqU e₁' e₂' := by
   unfold finish
   refine (reduceProjCore.WF he₁).bind fun _ _ _ h1 => ?_; extract_lets F
   have hF {s} : (F ⟨⟩).WF c s fun r _ => r → c.IsDefEqU e₁' e₂' := by
     have .proj a1 a2 := he₁; have .proj b1 b2 := he₂
     refine (isDefEqCore.WF a1 b1).mono fun _ _ _ h hb => ?_
-    exact a2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 (h hb)
+    exact a2.proj_uniq c.Ewf (.refl c.Δwf.toCtx) (h hb)
   split <;> [have ⟨a1, _, a2, a3⟩ := h1 _ rfl; exact .pureBind hF]
   refine (reduceProjCore.WF he₂).bind fun _ _ _ h2 => ?_
   split <;> [have ⟨b1, _, b2, b3⟩ := h2 _ rfl; exact .pureBind hF]
   exact (isDefEqCore.WF a2 b2).mono fun _ _ _ h hb =>
     a3.symm.trans c.Ewf c.Δwf <| (h hb).trans c.Ewf c.Δwf b3
 
-theorem lazyDeltaProjReduction.loop.WF {c : VContext} {s : VState}
-    (he₁ : c.TrExprS (.proj n₁ i e₁) e₁') (he₂ : c.TrExprS (.proj n₂ i e₂) e₂') :
-    (loop i e₁ e₂ n).WF c s fun r _ => r → c.IsDefEqU e₁' e₂' := by
+theorem lazyDeltaProjReduction.loop.WF {c : VContext} {s : State}
+    (he₁ : c.TrExprS (.proj structName i e₁) e₁')
+    (he₂ : c.TrExprS (.proj structName i e₂) e₂') :
+    (loop structName i e₁ e₂ n).WF c s fun r _ => r → c.IsDefEqU e₁' e₂' := by
   induction n generalizing s e₁ e₂ e₁' e₂' with | zero => exact .throw | succ n ih
   unfold loop; have .proj a1 a2 := he₁; have .proj b1 b2 := he₂
   refine (lazyDeltaReductionStep.WF a1 b1).bind fun _ _ _ h => ?_; split
   · have ⟨_, ⟨_, c1, c2⟩, ⟨_, d1, d2⟩⟩ := h
-    have ⟨_, e1⟩ := a2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) c2.symm
-    have ⟨_, e2⟩ := b2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) d2.symm
+    have e1 := a2.proj_defeqDFC c.Ewf (.refl c.Δwf.toCtx) c2.symm
+    have e2 := b2.proj_defeqDFC c.Ewf (.refl c.Δwf.toCtx) d2.symm
     refine (ih (.proj c1 e1) (.proj d1 e2)).mono fun _ _ _ h hb => ?_
-    have f1 := e1.uniq c.Ewf (.refl c.Δwf.toCtx) a2 c2
-    have f2 := e2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 d2
+    have f1 := e1.proj_uniq c.Ewf (.refl c.Δwf.toCtx) c2
+    have f2 := e2.proj_uniq c.Ewf (.refl c.Δwf.toCtx) d2
     exact f1.symm.trans c.Ewf c.Δwf <| (h hb).trans c.Ewf c.Δwf f2
-  · exact .pure fun _ => a2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 h
+  · exact .pure fun _ => a2.proj_uniq c.Ewf (.refl c.Δwf.toCtx) h
   all_goals
     have ⟨⟨_, c1, c2⟩, ⟨_, d1, d2⟩⟩ := h
-    have ⟨_, e1⟩ := a2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) c2.symm
-    have ⟨_, e2⟩ := b2.defeqDFC c.Ewf (.refl c.Δwf.toCtx) d2.symm
+    have e1 := a2.proj_defeqDFC c.Ewf (.refl c.Δwf.toCtx) c2.symm
+    have e2 := b2.proj_defeqDFC c.Ewf (.refl c.Δwf.toCtx) d2.symm
     refine (finish.WF (.proj c1 e1) (.proj d1 e2)).mono fun _ _ _ h hb => ?_
-    have f1 := e1.uniq c.Ewf (.refl c.Δwf.toCtx) a2 c2
-    have f2 := e2.uniq c.Ewf (.refl c.Δwf.toCtx) b2 d2
+    have f1 := e1.proj_uniq c.Ewf (.refl c.Δwf.toCtx) c2
+    have f2 := e2.proj_uniq c.Ewf (.refl c.Δwf.toCtx) d2
     exact f1.symm.trans c.Ewf c.Δwf <| (h hb).trans c.Ewf c.Δwf f2
 
-theorem isDefEqCore'.WF {c : VContext} {s : VState}
+theorem isDefEqCore'.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqCore' e₁ e₂) fun b _ => b = true → c.IsDefEqU e₁' e₂' := by
   unfold isDefEqCore'; extract_lets F1
@@ -583,7 +820,9 @@ theorem isDefEqCore'.WF {c : VContext} {s : VState}
     · split <;> [rename_i h; exact this]
       simp at h; subst h
       exact .pure fun _ => c1.uniq c.Ewf (.refl c.Ewf c.Δwf) d1
-    · split <;> [rename_i h2; exact this]; simp at h2; subst h2
+    · split <;> [rename_i h2; exact this]
+      simp at h2
+      rcases h2 with ⟨rfl, rfl⟩
       refine (lazyDeltaProjReduction.loop.WF c1 d1).bind fun _ _ _ h => ?_
       split <;> [refine .pure fun _ => h ‹_›; exact this]
     · exact this

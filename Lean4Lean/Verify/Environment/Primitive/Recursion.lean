@@ -342,7 +342,7 @@ closing of the probe's own context (`hcl`) to discharge it with, since that is t
 cannot build without naming the binder's type. Both hypotheses are plain propositions about
 `mkRhs (.fvar id)`: `mkRhs` is a function, so nothing here is monadic. -/
 theorem ProbeBundle.probe.WF {c : VContext} {m mp : MLCtx} [cwf : c.MLCWF m] [cwfp : c.MLCWF mp]
-    {P : ProbeBundle (c.withMLC m)} {s : VState} {fail : ∀ {α}, M α}
+    {P : ProbeBundle (c.withMLC m)} {s : State} {fail : ∀ {α}, M α}
     {subst : Array Expr} {mkRhs : Expr → Expr}
     {R : (c.withMLC m).Ext → VExpr.Subst → VExpr → VExpr → Prop}
     {τ : List VExpr} {dk n k}
@@ -412,20 +412,6 @@ theorem ProbeBundle.probe.WF {c : VContext} {m mp : MLCtx} [cwf : c.MLCWF m] [cw
   simp [plhs, parg, pγ, VExpr.Subst.cons, VExpr.liftN_subst, VExpr.subst_appN] at hsub ⊢
   exact hsub
 
--- def ProbeBundle.probe.WF (a₀ F dom : Expr) (fail : ∀ {α}, M α) (fvs : Array Expr) : Prop :=
---   ∀ subst mkRhs τ, subst.toList.Forall₂ c.TrExprS τ →
---     ∀ {β}, ∀ σ' : β → α,
---     (∀ b, c.IsDefEqU (F (σ' b) ih)) →
---     ∀ τn : List (α → Nat),
---     (∀ a ih ih', c.TrExprS lhs (f.app a |>.app ih') → c.TrExprS ih ih' →
---       (∀ {β}, ∀ σ' : β → List VExpr, ∀ τn : List (α → Nat),
---         τ.Forall₂ (fun x n => ∀ a, c.IsDefEqU (x.insts (σ a)) (.natLit (n a))) τn →
---         True) →
---       (mkRhs lhs ih).WF (c.withMLC m' (wf := cwf')) s'' fun rhs _ =>
---         ∃ rhsv, (c.withMLC m' (wf := cwf')).TrExprS rhs rhsv ∧
---         ((c.withMLC m' (wf := cwf')).IsDefEqU (.app (.app H.F aV) (.bvar 0)) rhsv → Q)) →
---     (r.1 subst mkRhs).WF (c.withMLC m) s' fun _ _ => Q)
-
 /-! ### The `go` step equation, one telescope at a time
 
 `go α motive f F (succ t) x hfuel ≡ F x fun y hy => go α motive f F t y pf` is checked with every
@@ -476,9 +462,10 @@ def unfoldNatWellFounded.Step (c : VContext) (m : MLCtx) [cwf : c.MLCWF m] (gohv
     -- the recursor does not mention the fuel variable -- the recognizer's
     -- `!natRec.containsFVar t.fvarId!`. Without this, closing the telescope at two different
     -- fuels would give two unrelated recursors, and `step` relates fuel `t+1` on one side to
-    -- `succ t` on the other. `lift` says it exactly: substituting a `cons` into a lifted term
-    -- ignores the head, so the closing is independent of what the fuel is closed at.
-    (∃ nrv₀ : VExpr, (@VContext.withMLC c m2 cwf2).IsDefEqU nrv nrv₀.lift) ∧
+    -- `succ t` on the other. It is stated in the telescope's own context: the recursor is the
+    -- same with the fuel (`bvar 0`) replaced by its successor, so the closing at `t` and the
+    -- closing at `t+1` agree on it.
+    (@VContext.withMLC c m2 cwf2).IsDefEqU nrv ((nrv.liftN 1 1).inst (.app .natSucc (.bvar 0))) ∧
     -- the body is well typed where it stands, which is what closing it at the *lower* fuel needs:
     -- there the application `step` is handed says nothing, being at `t+1`
     VExpr.WF c.venv c.lparams.length (@VContext.withMLC c m2 cwf2).vlctx.toCtx (.app nrv tgv') ∧
@@ -550,7 +537,66 @@ def unfoldNatWellFounded.BlockQ (c : VContext) (m : MLCtx) [cwf : c.MLCWF m]
     -- and the fuel's head is the eager gadget
     Eager c m eagerFn)
 
+/-- Abstracting a variable an expression does not mention does nothing to a closed expression. -/
+theorem _root_.Lean.Expr.abstract1_eq_self_of_fvarsIn {e : Expr} {v : FVarId}
+    (h : FVarsIn (· ≠ v) e) (hc : e.looseBVarRange' = 0) : e.abstract1 v 0 = e := by
+  have : ∀ {e : Expr} k, FVarsIn (· ≠ v) e → e.abstract1 v k = e.liftLooseBVars' k 1 := by
+    intro e k h
+    induction e generalizing k with
+    | fvar v' => simp only [FVarsIn] at h; simp [Expr.abstract1, Expr.liftLooseBVars', Ne.symm h]
+    | _ => simp_all [FVarsIn, Expr.abstract1, Expr.liftLooseBVars']
+  rw [this 0 h, Expr.liftLooseBVars_eq_self (by omega)]
+
+/-- Instantiating the head of a substitution, after a binder has been inserted below it: the
+inserted binder takes the substitution's head, and the instantiated value is read under it. -/
+theorem _root_.Lean4Lean.VExpr.liftN_one_one_inst_subst_cons {e u k : VExpr} {B : VExpr.Subst} :
+    ((e.liftN 1 1).inst u).subst (B.cons k) = e.subst (B.cons (u.subst (B.cons k))) := by
+  rw [VExpr.inst_eq, VExpr.subst_subst, VExpr.liftN_subst]
+  congr 1; funext i; cases i <;>
+    simp [VExpr.Subst.lift_l, VExpr.Subst.comp, VExpr.Subst.cons, Lift.consN, Lift.skipN,
+      Lift.liftVar, VExpr.Subst.id]
+
 set_option maxHeartbeats 1000000 in
+/-- Counting the binders of `m` above its first `n` entries: each of them adds at most one. -/
+theorem MLCtx.toCtx_length_le_dropN : ∀ (n) (m : MLCtx) (hn : n ≤ m.length),
+    m.vlctx.toCtx.length ≤ n + (m.dropN n hn).vlctx.toCtx.length
+  | 0, _, _ => by simp
+  | n+1, .vlam .., hn => by
+    have := MLCtx.toCtx_length_le_dropN n _ (Nat.le_of_succ_le_succ hn)
+    simp [VLCtx.toCtx] at this ⊢; omega
+  | n+1, .vlet .., hn => by
+    have := MLCtx.toCtx_length_le_dropN n _ (Nat.le_of_succ_le_succ hn)
+    simp [VLCtx.toCtx] at this ⊢; omega
+
+/-- A closed term that mentions none of the top `n` variables of `m`, each a `Nat` binder, has a
+translation in the context below them as well. Each binder is inhabited there by `Nat.zero`, and
+substituting it for the (abstracted) variable leaves the term alone; no strengthening is needed.
+This is how a term found under the measure telescope of `unfoldNatWellFounded` is read in the
+context the telescope was entered at. -/
+theorem MLCtx.trExprS_dropN_nat {env : VEnv} {Us : List Name} (henv : env.Ordered)
+    (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) :
+    ∀ (n) (m : MLCtx) (hn : n ≤ m.length) {e : Expr} {e' : VExpr},
+    m.vlctx.toCtx = List.replicate n .nat ++ (m.dropN n hn).vlctx.toCtx →
+    Closed e → FVarsIn (· ∉ m.fvarRevList n hn) e →
+    TrExprS env Us m.vlctx e e' → ∃ e₀, TrExprS env Us (m.dropN n hn).vlctx e e₀
+  | 0, _, _, _, _, _, _, _, H => ⟨_, H⟩
+  | n+1, .vlam id _ _ _ _ m, hn, e, e', hctx, hcl, hfv, H => by
+    simp only [MLCtx.vlctx, VLCtx.toCtx, MLCtx.dropN, List.replicate_succ, List.cons_append,
+      List.cons.injEq] at hctx
+    obtain ⟨rfl, hctx⟩ := hctx
+    simp only [MLCtx.fvarRevList] at hfv
+    have h1 := H.abstract (v₀ := id) .zero
+    rw [FVarsIn.abstract_eq_self (hfv.mono fun _ h e => h (e ▸ List.mem_cons_self ..)) hcl] at h1
+    obtain ⟨hz, hzT⟩ := TrExprS.natZero (Us := Us) (Δ := m.vlctx) hprim hnat
+    have h2 := TrExprS.inst henv hzT h1 hz
+    rw [Expr.instantiate1_eq_self hcl.looseBVarRange_zero] at h2
+    exact MLCtx.trExprS_dropN_nat henv hprim hnat n m _ hctx hcl
+      (hfv.mono fun _ h e => h (List.mem_cons_of_mem _ e)) h2
+  | n+1, .vlet _ _ _ _ _ _ m, hn, e, e', hctx, _, _, _ => by
+    have := MLCtx.toCtx_length_le_dropN n m (Nat.le_of_succ_le_succ hn)
+    have := congrArg List.length hctx
+    simp [VLCtx.toCtx] at this; omega
+
 /-- The recognizer's own half: it returns a bundle, and the unfolding facts hold of it. This is
 the plumbing -- tracking translations through `lambdaTelescope`, `whnfCore`, `unfoldDefinition`
 and the `withApp` destructuring, and turning the checked defeq tests into the fields of
@@ -584,7 +630,7 @@ every argument of `go` still bound. `entry` at `a` fixes the base point to `a`, 
 `reflects` runs the induction at. `lambdaTelescope.Inv` supplies the closing (its domains and
 `VExpr.lams_appN`), and `hσm` supplies the arguments' typing, which is what makes that closing a
 `VEnv.Ctx.SubstEq`. -/
-theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : VState}
+theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : State}
     {e meas : Expr} {fail : ∀ {α}, M α} {ev mv : VExpr}
     (hev : (c.withMLC m₀).TrExprS e ev) (hmv : (c.withMLC m₀).TrExprS meas mv)
     (hnat : c.venv.contains ``Nat) (hsafe : c.safety = .safe)
@@ -606,8 +652,88 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
   have hfailb : ∀ {α β} {k : α → M β} {c s Q}, (fail >>= k).WF c s Q :=
     .bind (hfail (Q := fun _ _ => False)) fun _ _ _ h => h.elim
   unfold unfoldNatWellFounded
-  -- the measure's telescope: `fvs` are the recursion variables, `body` the measure at them
-  refine lambdaTelescope.WF hmv ?_
+  -- The recognizer reads `F`'s type twice: under the measure's telescope, where its domain is
+  -- compared with the packed argument's type, and again in `c` itself, where the bundle's typings
+  -- of `F` and `dom` come from. The telescope's postcondition is therefore stated relative to that
+  -- second reading, which is supplied after the telescope is closed; the telescope exports the
+  -- translation of `F` in `c` that it runs on (`MLCtx.trExprS_dropN_nat`).
+  refine .bind (Q := fun r _ => (∃ F₀, (c.withMLC m₀).TrExprS r.1 F₀) ∧
+      ∀ (dom : Expr) (F' Aty X dom' : VExpr),
+        (c.withMLC m₀).TrExprS r.1 F' → (c.withMLC m₀).HasType F' (.forallE Aty X) →
+        (c.withMLC m₀).TrExprS dom dom' →
+        (∃ u, (c.withMLC m₀).HasType dom' (.forallE Aty (.sort u))) →
+        (∃ resTy, (c.withMLC m₀).HasType F'
+          (.forallE Aty (.forallE ((dom'.lift).app (.bvar 0)) resTy))) →
+        ∃ P : ProbeBundle (c.withMLC m₀), ({ F := r.1, dom, pack := r.2 } : Probe) = P.toProbe ∧
+          P.packAs.length = meas.lambdaArity ∧
+          ((∀ a, (σ a).length = meas.lambdaArity) →
+            ∀ (E : (c.withMLC m₀).Ext) γ, E.Closing γ →
+              Nonempty (P.NatFixUnfold E γ σ σm ev)))
+    (lambdaTelescope.WF hmv ?_) fun r _ _ hr => ?_
+  rotate_left
+  · -- `F` read in `c`: its type reduces to a pi, whose domain is the `Aty` of the bundle, and the
+    -- `ih` binder's type is read off the codomain under a binder of that type
+    obtain ⟨F, pack⟩ := r
+    obtain ⟨⟨F', hFS⟩, hr⟩ := hr
+    have hΓ0 := (c.withMLC m₀).Δwf.toCtx
+    refine .bind (inferType.WF hFS) fun _ _ _ ⟨_, _, _, hTS, hFT⟩ => ?_
+    refine .bind (whnf.WF hTS) fun _ _ _ h1 => ?_
+    obtain ⟨hw1b, _, hw1S, hw1eq⟩ := h1
+    split <;> try exact hfail
+    rename_i _ Adom cod _
+    let .forallE (ty' := Aty) (body' := codv) hAty hcodTy hAS hBS := hw1S
+    have hFT' : (c.withMLC m₀).HasType F' (.forallE Aty codv) :=
+      hFT.defeqU_r c.Ewf hΓ0 hw1eq.symm
+    refine .bind (Q := fun d _ => ∃ d', (c.withMLC m₀).TrExprS d d' ∧
+        (∃ u, (c.withMLC m₀).HasType d' (.forallE Aty (.sort u))) ∧
+        ∃ resTy u, c.venv.IsDefEq c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx) codv
+          (.forallE ((d'.lift).app (.bvar 0)) resTy) (.sort u))
+      (M.WF.withLocalDecl hAS hAty .rfl ?_)
+      fun dom _ _ ⟨dom', hdomBase, hdomT, resTy, _, hcodDefEq⟩ => ?_
+    · intro idd cwfd sd hsd hresd
+      -- `hBS` translates `cod` under the `none`-tagged `vlam` the `forallE` rule produces, and
+      -- `inst_fvar` turns that binder into `idd`'s -- exactly the substitution the code performs
+      simp only [Expr.instantiate1_eq]
+      refine .bind (whnf.WF (hBS.inst_fvar c.Ewf.ordered cwfd.wf.tr.wf)) fun _ _ _ h2 => ?_
+      obtain ⟨hw2b, _, hw2S, hw2eq⟩ := h2
+      split <;> try exact hfail
+      rename_i bn dAE restE bi2
+      let .forallE (ty' := dAv) (body' := restv) hdA hrest hdAS hrestS := hw2S
+      -- abstracting the opened variable retags its binder as the plain `bvar` binder of `Aty`,
+      -- leaving the translation untouched
+      have hw2A := (TrExprS.forallE (name := bn) (bi := bi2) hdA hrest hdAS hrestS).abstract
+        (v₀ := idd) .zero
+      let .forallE hdAty hrestTy hdAS₀ _ := hw2A
+      obtain ⟨u1, hdAT⟩ : ∃ u, c.venv.HasType c.lparams.length
+        (Aty :: (c.withMLC m₀).vlctx.toCtx) dAv (.sort u) := hdAty
+      have hΓc : OnCtx (Aty :: (c.withMLC m₀).vlctx.toCtx) (c.venv.IsType c.lparams.length) :=
+        ⟨hΓ0, hAty⟩
+      have hcodbase : c.venv.IsDefEqU c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx) codv
+          (.forallE dAv restv) := hw2eq.symm
+      -- one beta step: the `lam` this block returns, lifted over the binder and applied to its
+      -- variable, is the `forallE`'s domain back again
+      let ⟨_, hcodvT⟩ := hcodTy
+      let ⟨_, hrestvT⟩ := hrestTy
+      have hbeta : c.venv.IsDefEq c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx)
+          (((VExpr.lam Aty dAv).lift).app (.bvar 0)) dAv (.sort u1) := by
+        have := VEnv.IsDefEq.beta (hdAT.weakN c.Ewf (.succ .one)) (.bvar .zero)
+        simpa [VExpr.inst_liftN_bvar, VExpr.inst, VExpr.lift, VExpr.liftN,
+          VLCtx.toCtx] using this
+      obtain ⟨_, hT⟩ : c.venv.IsDefEqU c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx) codv
+          (.forallE (((VExpr.lam Aty dAv).lift).app (.bvar 0)) restv) :=
+        .trans c.Ewf hΓc hcodbase ⟨_, .forallEDF hbeta.symm hrestvT⟩
+      have hsorted := VEnv.IsDefEqU.defeqDF c.Ewf hΓc (hT.hasType.1.uniqU c.Ewf hΓc hcodvT) hT
+      have hlamS : (c.withMLC m₀).TrExprS (.lam `a Adom (dAE.abstract #[.fvar idd]) .default)
+          (.lam Aty dAv) := by
+        have hdAcl : Closed dAE := by simpa [VLCtx.bvars, MLCtx.noBV] using hdAS.closed
+        rw [show (#[Expr.fvar idd] : Array Expr) = ⟨[idd].map .fvar⟩ from rfl,
+          Expr.abstractN_eq, Expr.abstractN_singleton hdAcl.looseBVarRange_le]
+        exact .lam hAty hAS hdAS₀
+      exact .pure ⟨.lam Aty dAv, hlamS, ⟨_, .lam hAty.choose_spec hdAT⟩, restv, _, hsorted⟩
+    -- and `F`'s own typing, with its codomain turned into the pi at `dom` applied
+    obtain ⟨_, hAtyT⟩ := hAty
+    have hFTfinal := hFT'.defeqU_r c.Ewf hΓ0 ⟨_, .forallEDF hAtyT hcodDefEq⟩
+    exact .pure (hr dom F' Aty codv dom' hFS hFT' hdomBase hdomT ⟨resTy, hFTfinal⟩)
   intro fvs m' _ s' body body' n hn As hs hdrop harr hlam hinv harity hbody
   -- The value at the recursion variables, weakened over the telescope. Its *typing* is what the
   -- `checkType` in the recognizer buys: nothing relates the measure's telescope to the value's,
@@ -687,7 +813,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     -- `f` has a pi type -- that `checkType (f.app a)` succeeded is how we know -- and its domain
     -- is the binder's type, so `f` also applies to the packed argument
     let .app hfT haT hfS haS := hfaS
-    cases TrExprS.unique (by simp [TrExprS.IsUnique]) haS hida
+    cases TrExprS.unique haS hida
     have hdom := (VEnv.HasType.bvar .zero).uniqU c.Ewf
       (c.withMLC _ (wf := cwfa)).Δwf.toCtx haT
     have ha₀T := VEnv.HasType.defeqU_r c.Ewf (c.withMLC _ (wf := cwfa)).Δwf.toCtx hdom
@@ -809,7 +935,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
       obtain ⟨T, hgen⟩ := heager ‹_›
       have hinst := VEnv.IsDefEq.instDF c.Ewf.ordered (c.withMLC _ (wf := cwfa)).Δwf.toCtx
         hgen hlit.2
-      simp [VExpr.inst, VExpr.instVar, VLocalDecl.depth, VExpr.inst_lift] at hinst
+      simp [VExpr.inst, VExpr.instVar, VLocalDecl.depth] at hinst
       refine VEnv.IsDefEqU.trans c.Ewf (c.withMLC _ (wf := cwfa)).Δwf.toCtx ⟨_, hinst⟩ ?_
       have hrI := TrExprS.instN (henv := c.Ewf.ordered) (h₀ := hlit.1) (W := .zero)
         (H := hrS.abstract (v₀ := idx) .zero) hlit.2
@@ -938,33 +1064,55 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
       (hlist2 ▸ e5.mkAppList_getAppArgsList ▸ he5S).eqv <| BEq.symm <| by
         simp only [Expr.mkAppList]; simp_all [(· == ·), Expr.eqv']
     -- the recursor is independent of the fuel variable, which is what the recognizer's
-    -- `containsFVar` guard says
-    have hnrlift : ∀ nrv : VExpr, (c.withMLC m2).TrExprS natRec nrv →
-        ∃ nrv₀ : VExpr, (c.withMLC m2).IsDefEqU nrv nrv₀.lift := by
-      intro nrv hnr
+    -- `containsFVar` guard says. This is read without leaving the telescope's context: the fuel
+    -- is abstracted, a binder of its type is put back below the abstracted one, and that one is
+    -- instantiated at `succ t`, which `checkType (succ t)` typed. Since the recursor does not
+    -- mention the fuel, the result is the recursor again, read with the fuel replaced by its
+    -- successor.
+    have hnrsucc : ∀ nrv tv : VExpr, (c.withMLC m2).TrExprS natRec nrv →
+        (c.withMLC m2).TrExprS tg tv → (c.withMLC m2).HasType tv .nat →
+        (c.withMLC m2).IsDefEqU nrv ((nrv.liftN 1 1).inst (.app .natSucc (.bvar 0))) := by
+      intro nrv tv hnr htv htvT
       have hn25 : n2 = 5 := by simpa using hinv2.vars.length_eq.symm
       subst hn25
       obtain ⟨x, nm2, ty2, tyv2, bi2, m2', rfl⟩ :=
         MLCtx.head_vlam (n := 4) (m := m2) (hn := hn2) (Bs := As2.reverse)
           (by simpa using hinv2.len) (by rw [hdrop2]; exact hinv2.toCtx)
-      -- the fuel variable is that head, and the guard says `natRec` avoids it, so it translates
-      -- one binder down -- the same `abstract`-then-`weakFV_inv` route `F` takes
       have htgx : tg = Expr.fvar x := by
         simp [MLCtx.fvarRevList] at harr2; exact harr2.1
       have hnc' : natRec.containsFVar' x = false := by
         rw [htgx] at hnc; simpa [Expr.containsFVar_eq, Expr.fvarId!] using hnc
       have cwf2b : c.MLCWF (MLCtx.vlam x nm2 ty2 tyv2 bi2 m2') := ‹_›
-      have cwf2' : c.MLCWF m2' := ⟨cwf2b.wf.1⟩
-      have hnrfv : FVarsIn (· ∈ (c.withMLC m2' (wf := cwf2')).vlctx.fvars) natRec := by
-        refine (FVarsIn.of_containsFVar' hnr.fvarsIn hnc').mono fun fv h => ?_
-        simp only [VContext.vlctx, VContext.withMLC_mlctx, MLCtx.vlctx, VLCtx.fvars,
-          List.filterMap_cons, Option.map, List.mem_cons] at h ⊢
-        exact h.1.resolve_left h.2
-      obtain ⟨nrv₀, hnr₀⟩ := TrExprS.weakFV_inv c.Ewf (.skip_fvar _ (.vlam tyv2) .refl)
-        (.refl c.Ewf (c.withMLC _ (wf := cwf2b)).Δwf) hnr (m2'.noBV ▸ hnr.closed) hnrfv
-      exact ⟨nrv₀, ((hnr₀.weakFV c.Ewf.ordered (.skip_fvar _ _ .refl)
-        (c.withMLC _ (wf := cwf2b)).Δwf).uniq c.Ewf
-        (.refl c.Ewf (c.withMLC _ (wf := cwf2b)).Δwf) hnr).symm⟩
+      have hΔ := (c.withMLC _ (wf := cwf2b)).Δwf
+      have hΓ := hΔ.toCtx
+      subst htgx
+      cases TrExprS.fvar_uniq htv (.fvar VLCtx.find?_vlam_self)
+      -- the fuel's declared type is `Nat`, so `succ t` has it
+      have hT1 : (c.withMLC _ (wf := cwf2b)).HasType (.bvar 0) tyv2.lift := .bvar .zero
+      have hTeq := hT1.uniqU c.Ewf hΓ htvT
+      have hsuccT : (c.withMLC _ (wf := cwf2b)).HasType (.app .natSucc (.bvar 0)) tyv2.lift :=
+        (VEnv.HasType.app (TrExprS.natSucc c.hasPrimitives hnat).2 htvT).defeqU_r c.Ewf hΓ
+          hTeq.symm
+      have hsuccS : (c.withMLC _ (wf := cwf2b)).TrExprS (.app (.const ``Nat.succ []) (.fvar x))
+          (.app .natSucc (.bvar 0)) :=
+        .app (TrExprS.natSucc c.hasPrimitives hnat).2 htvT (TrExprS.natSucc c.hasPrimitives hnat).1
+          htv
+      have hcl : Closed natRec := by simpa [VLCtx.bvars, MLCtx.noBV] using hnr.closed
+      have habs : natRec.abstract1 x 0 = natRec :=
+        Expr.abstract1_eq_self_of_fvarsIn
+          ((FVarsIn.of_containsFVar' hnr.fvarsIn hnc').mono fun _ h => h.2)
+          hcl.looseBVarRange_zero
+      have h1 := hnr.abstract (v₀ := x) .zero
+      rw [habs] at h1
+      have hΔ' : VLCtx.WF c.venv c.lparams.length
+          ((none, .vlam tyv2.lift) :: (c.withMLC _ (wf := cwf2b)).vlctx) :=
+        ⟨hΔ, nofun, hT1.isType c.Ewf.ordered hΓ⟩
+      have h2 := h1.weakFV c.Ewf.ordered
+        (.cons_bvar (.vlam tyv2) (.skip_fvar _ (.vlam tyv2) .refl)) hΔ'
+      have h3 := TrExprS.inst c.Ewf.ordered hsuccT h2 hsuccS
+      rw [Expr.instantiate1'_eq_self (by rw [hcl.looseBVarRange_zero]; exact Nat.zero_le _)]
+        at h3
+      exact hnr.uniq c.Ewf (.refl c.Ewf hΔ) h3
     refine .pure ⟨ida, cwfa, ?_, ?_⟩
     · exact ⟨_, _, hfS, ha₀w, _, hbodyw, (hfa₀ ‹_›).symm⟩
     have hihApp : (c.withMLC m4).TrExprS (.app (.app (.app natRec tg) yg) iharg) ih4' :=
@@ -974,7 +1122,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
         (VEnv.IsDefEqU.trans c.Ewf (c.withMLC _ (wf := cwfa)).Δwf.toCtx he5eq he4eq).symm⟩,
       hfuelN, .app hfT haT hfS hida, hfuelEq ‹_›, ⟨_, _, _, rfl⟩, hfixGoS,
       ⟨m2, ‹_›, n2, hn2, _, _, _, _, _, natRec, As2, _, _, _, _, _, he6eq, hdrop2, hinv2, hnrS,
-        hnrlift _ hnrS, ⟨_, VEnv.HasType.app hnrT htgT⟩, hargS, htgeq, hgoreq,
+        hnrsucc _ _ hnrS hargS htgTnat, ⟨_, VEnv.HasType.app hnrT htgT⟩, hargS, htgeq, hgoreq,
         m3, ‹_›, n3, hn3, _, _, As3, _, _, hdrop3, hinv3, hFxS.eqv (BEq.symm hFx),
         m4, ‹_›, n4, hn4, _, _, _, As4, _, hdrop4, hinv4, hihApp⟩,
       heagerQ⟩
@@ -992,10 +1140,14 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     have hfvs : fvs = ⟨List.map Expr.fvar (m'.fvarRevList n hn).reverse⟩ := by
       have := congrArg List.reverse harr; simp at this
       exact Array.toList_inj.1 (by simpa using this)
+    have hFclosed : Closed F := m'.noBV ▸ hFF.closed
+    have hndFvs : ((m'.fvarRevList n hn).reverse).Nodup :=
+      List.nodup_reverse.2 (‹c.MLCWF m'›.wf.fvarRevList_nodup n hn)
     have hFlb : (F.abstractList (m'.fvarRevList n hn).reverse).looseBVarRange' = 0 := by
-      simp only [Fa, hfvs, Expr.abstract_eq] at hF; simpa [Expr.hasLooseBVars] using hF
+      simp only [Fa, hfvs, Expr.abstract_eq_of_closed _ _ hndFvs hFclosed.looseBVarRange_zero] at hF
+      simpa [Expr.hasLooseBVars] using hF
     have hFaF : Fa = F := by
-      simp only [Fa, hfvs, Expr.abstract_eq]
+      simp only [Fa, hfvs, Expr.abstract_eq_of_closed _ _ hndFvs hFclosed.looseBVarRange_zero]
       exact Expr.abstractList_eq_self (Nat.le_of_eq hFlb)
     obtain ⟨Fv, hFaS⟩ : ∃ Fv, (c.withMLC m').TrExprS Fa Fv := ⟨_, hFaF ▸ hFF⟩
     -- and the same guard read on the variables rather than the term: `F` mentions none of the
@@ -1007,11 +1159,6 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
       simp only [VContext.vlctx, VContext.withMLC_mlctx, this, hdrop, List.mem_append,
         List.mem_reverse] at h ⊢
       exact h.1.resolve_left h.2
-    -- so `F` translates in `c` itself, which is the form the bundle stores
-    obtain ⟨F', hFbase⟩ : ∃ F', (c.withMLC m₀).TrExprS F F' :=
-      TrExprS.weakFV_inv (c.withMLC m₀).Ewf hinv.lift
-        (.refl (c.withMLC m₀).Ewf (c.withMLC m').Δwf) hFF
-        (m'.noBV ▸ hFF.closed) hFfv
     -- `pack` gets there a different way: it *binds* the telescope rather than avoiding it, and
     -- `mkLambda_eq` says the `LocalContext` form the recognizer builds is `MLCtx.mkLambda`, whose
     -- translation lands in the dropped context -- which `hdrop` says is `c`
@@ -1029,145 +1176,48 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
           c.venv.HasType c.lparams.length (c.withMLC m₀).vlctx.toCtx pack' packTy ∧
           c.venv.HasType c.lparams.length (As.reverse ++ (c.withMLC m₀).vlctx.toCtx) a₀' tyv ∧
           (c.withMLC m').TrExprS a₀ a₀' := by
-      rw [show (c.withMLC m').lctx' = m'.lctx from rfl, hwf'.mkLambda_eq n hn harr]
+      rw [show (c.withMLC m').lctx' = m'.lctx from rfl,
+        hwf'.mkLambda_eq n hn harr (m'.noBV ▸ ha₀.closed)]
       refine ⟨_, _, _, hdrop ▸ (hwf'.mkLambda_trS c.Ewf ha₀ hty n hn).1, hmk _,
         hdrop ▸ (hwf'.mkLambda_trS c.Ewf ha₀ hty n hn).2, ?_⟩
       refine ⟨?_, ha₀⟩
       have h := hty
       rwa [show (c.withMLC m').vlctx = m'.vlctx from rfl, hinv.toCtx] at h
-    -- the telescope's own variables are fresh, so "lives in `c`" is an up-set for `m'` and the
-    -- `FVarsBelow`s that `inferType` and `whnf` hand out can be read as staying in `c`
-    have hup : IsFVarUpSet (· ∈ (c.withMLC m₀).vlctx.fvars) (c.withMLC m').vlctx := by
-      have := hwf'.isFVarUpSet_dropN n hn; rwa [hdrop] at this
-    refine .bind (inferType.WF hFaS) fun _ _ _ ⟨_, hFTb, _, hFTS, hFT⟩ => ?_
+    -- `F`'s type here, and its domain compared with the packed argument's type
+    refine .bind (inferType.WF hFaS) fun _ _ _ ⟨_, _, _, hFTS, hFT⟩ => ?_
     refine .bind (whnf.WF hFTS) fun _ _ _ h1 => ?_
     obtain ⟨hw1b, _, hw1S, hw1eq⟩ := h1
-    have hw1fv := hw1b _ hup (hFTb _ hup (hFaF ▸ hFfv))
     split <;> try exact hfail
     rename_i _ Adom cod _
-    obtain ⟨hAdomfv, hcodfv⟩ : FVarsIn _ Adom ∧ FVarsIn _ cod := hw1fv
-    -- `F`'s type avoids the telescope, so the whole `forallE` translates at `c` too -- and because
-    -- `TrExprS` is syntax-directed, that base translation *is* a `forallE`, whose domain is the
-    -- `Aty` the bundle records and whose body is `F`'s codomain there. Identifying it with the
-    -- telescope's translation and running `forallE_inv` hands the component defeqs back already
-    -- *sorted*, which is what the congruences below need and what `uniq` on its own would not give.
-    obtain ⟨_, hw1Base⟩ := TrExprS.weakFV_inv c.Ewf hinv.lift
-      (.refl c.Ewf (c.withMLC m').Δwf) hw1S (m'.noBV ▸ hw1S.closed) ⟨hAdomfv, hcodfv⟩
-    let .forallE (ty' := Aty) (body' := codv₀) hAty hcodTy hAtyS hcodS := hw1Base
-    have hw1uniq := ((TrExprS.forallE hAty hcodTy hAtyS hcodS).weakFV c.Ewf hinv.lift
-      hwf'.tr.wf).uniq c.Ewf (.refl c.Ewf (c.withMLC m').Δwf) hw1S
-    simp only [VExpr.liftN] at hw1uniq
-    -- `cod` is that `forallE`'s body, so the recognizer now opens a binder before reducing it.
-    -- `hw1S`'s own `forallE` gives both halves this needs -- the domain's translation and typing
-    -- for the `withLocalDecl`, and `cod`'s translation already in the extended context.
-    let .forallE (ty' := Adomv) (body' := codv) hA hB hAS hBS := hw1S
-    obtain ⟨⟨_, hAdefeq⟩, _, hcoddefeq⟩ :=
-      VEnv.IsDefEqU.forallE_inv c.Ewf (c.withMLC m').Δwf.toCtx hw1uniq
-    -- the block hands back the `ih` binder's type as a `lam` over the binder it opened, so what
-    -- it has to establish is that that `lam` translates back in `m'` -- one `TrExprS.abstract`
-    -- closing the variable it just opened.
-    --
-    -- It also owes the two typings the bundle records, and for the same reason: they are read off
-    -- the `forallE` this block reduces to, so they are only available while its binder is open.
-    -- `dom : Adom → Sort u` is that `forallE`'s domain being a type, and `F`'s codomain being a
-    -- `forallE` at `dom` applied is the reduction itself, one beta step from the `lam` returned.
-    -- the new check: the packed argument's type is `F`'s domain
+    let .forallE (ty' := Adomv) (body' := codv) _ _ hAS _ := hw1S
     refine .bind (isDefEq.WF htyS hAS) fun _ _ _ htyA => ?_
     split <;> [skip; exact hfailb]
-    refine .bind (Q := fun d _ => ∃ d', (c.withMLC m₀).TrExprS d d' ∧
-        (∃ u, (c.withMLC m₀).HasType d' (.forallE Aty (.sort u))) ∧
-        ∃ resTy u, c.venv.IsDefEq c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx) codv₀
-          (.forallE ((d'.lift).app (.bvar 0)) resTy) (.sort u))
-      (M.WF.withLocalDecl hAS hA .rfl ?_)
-      fun _ _ _ ⟨dom', hdomBase, hdomT, hcodeq⟩ => ?_
-    · intro idd cwfd sd hsd hresd
-      -- the opened variable is fresh, so adding it to "lives in `c`" keeps that an up-set, and
-      -- its own dependencies are `Adom`'s, which are already `c`'s
-      have hidd : idd ∉ (c.withMLC m').vlctx.fvars := hwf'.tr.find?_eq_none.1 cwfd.wf.2.1
-      have hupd : IsFVarUpSet (fun fv => fv ∈ (c.withMLC m₀).vlctx.fvars ∨ fv = idd)
-          (c.withMLC _ (wf := cwfd)).vlctx :=
-        ⟨(IsFVarUpSet.congr hwf'.tr.wf.fvwf fun _ h =>
-            (or_iff_left (by rintro rfl; exact hidd h)).symm).1 hup,
-         fun _ _ hfv' => .inl ((fvarsIn_iff.1 hAdomfv).1 _ hfv')⟩
-      -- `hBS` translates `cod` under the `none`-tagged `vlam` the `forallE` rule produces, and
-      -- `inst_fvar` turns that binder into `idd`'s -- exactly the substitution the code performs
-      simp only [Expr.instantiate1_eq]
-      refine .bind (whnf.WF (hBS.inst_fvar c.Ewf.ordered cwfd.wf.tr.wf)) fun _ _ _ h2 => ?_
-      obtain ⟨hw2b, _, hw2S, hw2eq⟩ := h2
-      have hw2fv := hw2b _ hupd ((hcodfv.mono fun _ => .inl).instantiate1 (.inr rfl))
-      split <;> try exact hfail
-      rename_i bn dAE restE bi2
-      let .forallE (ty' := dAv) (body' := restv) hdA hrest hdAS hrestS := hw2S
-      -- `whnf`'s result mentions the opened variable, so nothing about it descends to `c` as it
-      -- stands. Abstracting it first is what fixes that: `TrExprS.abstract` retags the `idd`
-      -- binder as the plain `bvar` binder `FVLift.cons_bvar` understands, leaving the translation
-      -- untouched, and now the whole `forallE` lives one binder above the base context. Its
-      -- binder's type there is `Aty`, not `Adomv`, which is why `weakFV_inv` is handed the
-      -- *defeq* context `hΔdefeq` rather than a reflexivity.
-      have hΔdefeq : VLCtx.IsDefEq c.venv c.lparams.length
-          ((none, .vlam (Aty.liftN n 0)) :: (c.withMLC m').vlctx)
-          ((none, .vlam Adomv) :: (c.withMLC m').vlctx) :=
-        .cons (.refl c.Ewf hwf'.tr.wf) nofun (.vlam hAdefeq)
-      have hw2A := (TrExprS.forallE (name := bn) (bi := bi2) hdA hrest hdAS hrestS).abstract
-        (v₀ := idd) .zero
-      have hw2Afv := FVarsIn.abstract1_erase (k := 0) (P := (· ∈ (c.withMLC m₀).vlctx.fvars)) hw2fv
-      obtain ⟨_, hw2Base⟩ := TrExprS.weakFV_inv c.Ewf
-        (Δ := (none, .vlam Aty) :: (c.withMLC m₀).vlctx) (.cons_bvar (.vlam Aty) hinv.lift)
-        (hΔdefeq.symm c.Ewf) hw2A (by simpa [VLCtx.bvars, m'.noBV] using hw2A.closed) hw2Afv
-      let .forallE (ty' := dAv₀) (body' := restv₀) hdAty hrestTy hdAS₀ hrestS₀ := hw2Base
-      have hw2uniq := ((TrExprS.forallE (name := bn) (bi := bi2) hdAty hrestTy hdAS₀
-        hrestS₀).weakFV c.Ewf (.cons_bvar (.vlam Aty) hinv.lift) hΔdefeq.wf).uniq
-        c.Ewf hΔdefeq hw2A
-      -- the binder type's typing is read straight off the base translation
-      obtain ⟨u1, hdAT⟩ : ∃ u, c.venv.HasType c.lparams.length
-        (Aty :: (c.withMLC m₀).vlctx.toCtx) dAv₀ (.sort u) := hdAty
-      have hΓc : OnCtx (Aty :: (c.withMLC m₀).vlctx.toCtx) (c.venv.IsType c.lparams.length) :=
-        ⟨(c.withMLC m₀).Δwf.toCtx, hAty⟩
-      -- `cod` and the reduct are now both lifts of base terms, so the reduction descends too
-      have hctx : c.venv.IsDefEqCtx c.lparams.length (c.withMLC m').vlctx.toCtx
-          (Adomv :: (c.withMLC m').vlctx.toCtx) ((Aty.liftN n 0) :: (c.withMLC m').vlctx.toCtx) :=
-        .succ .zero hAdefeq.symm
-      have hcodbase : c.venv.IsDefEqU c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx) codv₀
-          (.forallE dAv₀ restv₀) :=
-        (VEnv.IsDefEqU.weakN_iff c.Ewf hΔdefeq.wf.toCtx (.succ hinv.lift.toCtx)
-          (e1 := codv₀) (e2 := .forallE dAv₀ restv₀)).1 <|
-        .trans c.Ewf hΔdefeq.wf.toCtx ⟨_, hcoddefeq⟩ <|
-        .trans c.Ewf hΔdefeq.wf.toCtx
-          (VEnv.IsDefEqU.defeqDFC c.Ewf hctx hw2eq.symm) hw2uniq.symm
-      -- one beta step: the `lam` this block returns, lifted over the binder and applied to its
-      -- variable, is the `forallE`'s domain back again -- `inst_liftN_bvar` is the lift the
-      -- application introduced being consumed by the substitution
-      let ⟨_, hcodv₀T⟩ := hcodTy
-      let ⟨_, hrestv₀⟩ := hrestTy
-      have hbeta : c.venv.IsDefEq c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx)
-          (((VExpr.lam Aty dAv₀).lift).app (.bvar 0)) dAv₀ (.sort u1) := by
-        have := VEnv.IsDefEq.beta (hdAT.weakN c.Ewf (.succ .one)) (.bvar .zero)
-        simpa [VExpr.inst_liftN_bvar, VExpr.inst, VExpr.lift, VExpr.liftN,
-          VLCtx.toCtx] using this
-      obtain ⟨_, hT⟩ : c.venv.IsDefEqU c.lparams.length (Aty :: (c.withMLC m₀).vlctx.toCtx) codv₀
-          (.forallE (((VExpr.lam Aty dAv₀).lift).app (.bvar 0)) restv₀) :=
-        .trans c.Ewf hΓc hcodbase ⟨_, .forallEDF hbeta.symm hrestv₀⟩
-      have hsorted := VEnv.IsDefEqU.defeqDF c.Ewf hΓc (hT.hasType.1.uniqU c.Ewf hΓc hcodv₀T) hT
-      have hlamS : (c.withMLC m₀).TrExprS (.lam `a Adom (dAE.abstract #[.fvar idd]) .default)
-          (.lam Aty dAv₀) := by
-        simp only [show (#[Expr.fvar idd] : Array Expr) = ⟨[idd].map .fvar⟩ from rfl,
-          Expr.abstract_eq, Expr.abstractList]
-        exact .lam hAty hAtyS hdAS₀
-      exact .pure ⟨.lam Aty dAv₀, hlamS, ⟨_, .lam hAty.choose_spec hdAT⟩, restv₀, _, hsorted⟩
-    -- `F`'s own typing comes down the same way: `inferType`'s judgement is transported onto the
-    -- lifted base term and the lifted base type, and then `weakN_iff` -- sound exactly because
-    -- neither mentions the telescope -- drops the whole judgement to `c`
-    have hFw := hFbase.weakFV c.Ewf hinv.lift hwf'.tr.wf
+    have hAsNat : As = List.replicate As.length VExpr.nat := by
+      have h := (MLCtx.mkLambda_natBinderTypes (Bs := As.reverse) hwf'
+        (by simpa using hinv.len) (by rw [hdrop]; exact hinv.toCtx) (hlam ▸ hnd)).1
+      simpa [hinv.len] using congrArg List.reverse h
+    -- `F` read in `c`: it mentions none of the telescope's variables, each a `Nat` binder, so
+    -- instantiating them with `Nat.zero` brings its reading here down to `c`
+    have hF₀ : ∃ F₀, (c.withMLC m₀).TrExprS Fa F₀ := by
+      rw [hFaF]
+      show ∃ F₀, TrExprS c.venv c.lparams m₀.vlctx F F₀
+      rw [← hdrop]
+      refine MLCtx.trExprS_dropN_nat c.Ewf.ordered c.hasPrimitives hnat n m' hn ?_ hFclosed ?_ hFF
+      · have h := hinv.toCtx
+        rw [hAsNat, hinv.len, List.reverse_replicate, ← hdrop] at h; exact h
+      · exact (FVarsIn.of_abstractList hFF.fvarsIn (Nat.le_of_eq hFlb)).mono fun _ h =>
+          by simpa using h.2
+    refine .pure ⟨hF₀, ?_⟩
+    intro dom F' Aty X dom' hFbase hFX hdomBase udom hdomT resTy hFTfinal
+    -- `F`'s reading in `c`, weakened over the telescope, is a reading here too; so the type found
+    -- here is that one's, and its domain is `Aty` lifted
+    have hΓm' := (c.withMLC m').Δwf.toCtx
+    have hFw := (hFaF ▸ hFbase).weakFV c.Ewf hinv.lift hwf'.tr.wf
     have hFeq := hFw.uniq c.Ewf (.refl c.Ewf (c.withMLC m').Δwf) (hFaF ▸ hFaS)
-    have hFTm := ((hFT.defeqU_r c.Ewf (c.withMLC m').Δwf.toCtx hw1eq.symm).defeqU_r c.Ewf
-      (c.withMLC m').Δwf.toCtx hw1uniq.symm).defeqU_l c.Ewf (c.withMLC m').Δwf.toCtx hFeq.symm
-    have hFTc : (c.withMLC m₀).HasType F' (.forallE Aty codv₀) :=
-      (VEnv.HasType.weakN_iff c.Ewf (c.withMLC m').Δwf.toCtx hinv.lift.toCtx
-        (A := .forallE Aty codv₀)).1 hFTm
-    -- and the block's defeq turns that codomain into the pi at `dom` applied that the bundle
-    -- records; the domain is untouched, so the congruence needs nothing but `Aty`'s own typing
-    obtain ⟨_, hAtyT⟩ := hAty
-    obtain ⟨resTy, _, hcodDefEq⟩ := hcodeq
+    have hFin := (hFT.defeqU_r c.Ewf hΓm' hw1eq.symm).defeqU_l c.Ewf hΓm' hFeq.symm
+    have huq := (hFX.weakN c.Ewf.ordered hinv.lift.toCtx).uniqU c.Ewf hΓm' hFin
+    simp only [VExpr.liftN] at huq
+    obtain ⟨⟨_, hAdefeq⟩, -⟩ := VEnv.IsDefEqU.forallE_inv c.Ewf hΓm' huq
     -- The telescope's own domains, which is the form `lams_appN` closes: `Inv.lams` is stated
     -- with `mkLambda'`, and the binders it counts are all `vlam` because a `vlet` would leave the
     -- context an entry short of the `As` it also records.
@@ -1193,14 +1243,9 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
       hpackeq ▸ VEnv.HasType.lams c.Ewf hctxAs' ha₀Aty
     have ha₀Aty' : c.venv.HasType c.lparams.length (As.reverse ++ (c.withMLC m₀).vlctx.toCtx) a₀'
         (Aty.liftN As.length 0) := by rw [hinv.len]; exact ha₀Aty
-    have hAsNat : As = List.replicate As.length VExpr.nat := by
-      have h := (MLCtx.mkLambda_natBinderTypes (Bs := As.reverse) hwf'
-        (by simpa using hinv.len) (by rw [hdrop]; exact hinv.toCtx) (hlam ▸ hnd)).1
-      simpa [hinv.len] using congrArg List.reverse h
-    have hFTfinal := hFTc.defeqU_r c.Ewf (c.withMLC m₀).Δwf.toCtx ⟨_, .forallEDF hAtyT hcodDefEq⟩
-    refine .pure ⟨⟨⟨_, _, _⟩, F', hFaF ▸ hFbase, _, hpackS, dom', hdomBase, Aty,
+    refine ⟨⟨⟨_, _, _⟩, F', hFbase, _, hpackS, dom', hdomBase, Aty,
       As, a₀', hpackeq, hctxAs', ha₀Aty', hAsNat,
-      hdomT, resTy, hFTfinal⟩, rfl, by rw [hinv.len, harity],
+      ⟨udom, hdomT⟩, resTy, hFTfinal⟩, rfl, by rw [hinv.len, harity],
       fun hlen E γ hγ => ?_⟩
     -- the recognizer's checks, as `BlockQ` exported them: the fixpoint's own measure agreeing
     -- with the caller's, and the entry equation at the binder standing for the packed argument
@@ -1296,12 +1341,12 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
             ((pack'.subst γ).appN (σ a))) := fun a F₂ hF₂ => by
       have he3S' := e3.mkAppList_getAppArgsList ▸ he3S
       rw [hlist] at he3S'
-      have hch := VEnv.IsDefEqU.trans c.Ewf (c.withMLC m').Δwf.toCtx
+      have htels := VEnv.IsDefEqU.trans c.Ewf (c.withMLC m').Δwf.toCtx
         (((VEnv.IsDefEqU.trans c.Ewf (c.withMLC m').Δwf.toCtx he3eq he2eq).trans
           c.Ewf (c.withMLC m').Δwf.toCtx he1eq).symm)
         ((AppStack.tr stk).uniq c.Ewf (.refl c.Ewf (c.withMLC m').Δwf) he3S').symm
-      rw [hΓm] at hch
-      have h1 := VEnv.IsDefEqU.subst E.wf (hclose a).1 (E.mono hch)
+      rw [hΓm] at htels
+      have h1 := VEnv.IsDefEqU.subst E.wf (hclose a).1 (E.mono htels)
       refine VEnv.IsDefEqU.trans E.wf trivial
         (VEnv.IsDefEqU.trans E.wf trivial (hevclosed a).symm h1) ?_
       -- the argument: the value chain ends at `a₀`, the recognizer's checks at the binder, and
@@ -1438,7 +1483,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     -- closing it at the four the recognizer never inspected plus the fuel turns `goFn b` applied
     -- to the fuel into the `Nat.rec` the recognizer found underneath.
     obtain ⟨m2, cwf2, n2, hn2, a1, a2, a3, Fg, tg, natRec, As2, goh2, nrv, tgv, tgv', gorv,
-      he6eq, hdrop2, hinv2, hnrS, ⟨nrv₀, hnrv₀⟩, hbodyT2, htgS, htgeq, hgoreq, hbranch⟩ := hstep
+      he6eq, hdrop2, hinv2, hnrS, hnrsucc, hbodyT2, htgS, htgeq, hgoreq, hbranch⟩ := hstep
     have hmk2 : ∀ X : VExpr, m2.mkLambda' n2 hn2 X = VExpr.lams As2 X := fun X => by
       rw [MLCtx.mkLambda'_eq_lams (Bs := As2.reverse) (by simpa using hinv2.len)
         (by rw [hdrop2]; exact hinv2.toCtx), List.reverse_reverse]
@@ -1515,15 +1560,15 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     have hgoreqc := E.mono hgoreq' |>.subst E.wf hcl2t
     -- fuel-independence in action: the recursor is the same under both closings, because they
     -- differ only in the head, which a lifted term ignores
-    have hnrv₀' : c.venv.IsDefEqU c.lparams.length
-        (As2.reverse ++ (tyv :: (As.reverse ++ (c.withMLC m₀).vlctx.toCtx))) nrv nrv₀.lift := by
-      exact hΓa ▸ hinv2.toCtx ▸ hnrv₀
+    have hnrsucc' : c.venv.IsDefEqU c.lparams.length
+        (As2.reverse ++ (tyv :: (As.reverse ++ (c.withMLC m₀).vlctx.toCtx))) nrv
+        ((nrv.liftN 1 1).inst (.app .natSucc (.bvar 0))) := by
+      exact hΓa ▸ hinv2.toCtx ▸ hnrsucc
     have hnrsame := by
-      have hA := E.mono hnrv₀' |>.subst E.wf hcl2
-      have hB := E.mono hnrv₀' |>.subst E.wf hcl2t
-      simp only [VExpr.Subst.consN_append_singleton, VExpr.lift_subst,
-        VExpr.Subst.tail_cons] at hA hB
-      exact hA.trans E.wf trivial hB.symm
+      have hB := E.mono hnrsucc' |>.subst E.wf hcl2t
+      simp only [VExpr.Subst.consN_append_singleton, VExpr.liftN_one_one_inst_subst_cons,
+        VExpr.subst_app, VExpr.subst_natSucc, VExpr.subst_bvar, VExpr.Subst.cons] at hB
+      exact hB.symm
     -- the fuel variable's translation is `bvar 0`, so it closes to whichever numeral the
     -- telescope was closed at
     let .cons htg0 (.cons hFg0 _) := hinv2.vars
@@ -1720,7 +1765,7 @@ contexts are built on top of `c` and are the business of `probe.WF`.
 `R` is quantified after `γ`, which is what lets the answer depend on the closing: `Nat.bitwise`
 is checked with its operator still a variable of `c`, and only a closing says which `Bool`
 operation that variable stands for. -/
-theorem unfoldNatWellFounded.WF {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : VState}
+theorem unfoldNatWellFounded.WF {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : State}
     {e meas : Expr} {fail : ∀ {α}, M α} {ev mv : VExpr}
     (hev : (c.withMLC m₀).TrExprS e ev) (hmv : (c.withMLC m₀).TrExprS meas mv)
     (hnat : c.venv.contains ``Nat) (hsafe : c.safety = .safe)
@@ -1747,7 +1792,7 @@ first, which is what `fun m _ => m` measures.
 The measure being fixed, so are its translation and what it is worth at the recursion's
 arguments -- that is `natFstLamApp`, and it is a closed term, so no closing reaches it -- and all
 that is left of `unfoldNatWellFounded.WF` for the caller is the value being unfolded. -/
-theorem unfoldNatWellFounded.WF₂ {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : VState}
+theorem unfoldNatWellFounded.WF₂ {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : State}
     {e : Expr} {fail : ∀ {α}, M α} {ev : VExpr}
     (hev : (c.withMLC m₀).TrExprS e ev)
     (hnat : c.venv.contains ``Nat) (hsafe : c.safety = .safe)

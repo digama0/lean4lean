@@ -21,7 +21,8 @@ inductive RelevantEq : Expr → Expr → Prop
     RelevantEq (.letE _ t₁ v₁ b₁ _) (.letE _ t₂ v₂ b₂ _)
   | lit : RelevantEq (.lit l) (.lit l)
   | mdata : RelevantEq e₁ e₂ → RelevantEq (.mdata _ e₁) (.mdata _ e₂)
-  | proj : RelevantEq e₁ e₂ → RelevantEq (.proj _ i e₁) (.proj _ i e₂)
+  | proj : RelevantEq e₁ e₂ →
+      RelevantEq (.proj typeName i e₁) (.proj typeName i e₂)
 
 theorem RelevantEq.rfl : RelevantEq e e := by
   induction e with
@@ -113,8 +114,8 @@ theorem RelevantEq.uniq (eq : RelevantEq e₁ e₂)
   | lit _ _ ih1 => cases eq; let .lit _ r2 := H2; exact ih1 hΔ .rfl r2
   | mdata _ ih1 => let .mdata eq := eq; let .mdata r1 := H2; exact ih1 hΔ eq r1
   | proj _ l2 ih1 =>
-    let .proj eq := eq; let .proj r1 r2 := H2
-    exact l2.uniq henv hΔ.defeqCtx r2 (ih1 hΔ eq r1)
+    let .proj eq := eq; let .proj r1 _ := H2
+    exact l2.proj_uniq henv hΔ.defeqCtx (ih1 hΔ eq r1)
 
 theorem IsDefEqE.trExpr
     (henv : env.WF) (noBV : Δ.NoBV) (H1 : IsDefEqE env Us Δ r₁ r₂) (hΔ : Δ'.WF env Us.length)
@@ -300,7 +301,9 @@ theorem isEquiv.WF :
   · exact .bind (.andM isEquiv.WF isEquiv.WF) fun _ _ le H =>
       this le fun hb => .forallE (H hb).1 (H hb).2
   · exact .bind (.andM (.pure id) isEquiv.WF) fun _ _ le H =>
-      this le fun hb => (by simpa using (H hb).1) ▸ .proj (H hb).2
+      this le fun hb => by
+        rcases (by simpa using (H hb).1) with ⟨rfl, rfl⟩
+        exact .proj (H hb).2
   · exact .bind (.andM isEquiv.WF <| .andM isEquiv.WF isEquiv.WF) fun _ _ le H =>
       this le fun hb => .letE (H hb).1 (H hb).2.1 (H hb).2.2
   · exact .pure nofun
@@ -309,20 +312,33 @@ end EquivManager
 
 namespace TypeChecker.Inner
 
+/-- A fact recorded by the equivalence manager, between two terms translated in the current
+context, is a definitional equality there. In the global cache mode this is where strengthening
+is used: the fact holds in an extension of the current context by variables of closed binders. -/
+theorem _root_.Lean4Lean.TypeChecker.State.WF.eqv_uniq {c : VContext} {s : State} (wf : s.WF c)
+    (hΔ' : EqvScope c s.ngen Δ') (H : EquivManager.IsDefEqE c.venv c.lparams Δ' e₁ e₂)
+    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') : c.IsDefEqU e₁' e₂' := by
+  rcases hΔ' with rfl | ⟨hs, hwf, ⟨l, W⟩, -⟩
+  · exact H.uniq c.Ewf c.mlctx.noBV c.Δwf he₁ he₂
+  · have noBV : Δ'.NoBV := by
+      show Δ'.bvars = 0; rw [W.bvars_eq]; exact c.mlctx.noBV
+    have := H.uniq c.Ewf noBV hwf (he₁.weakFV' c.Ewf.ordered W hwf)
+      (he₂.weakFV' c.Ewf.ordered W hwf)
+    exact (VEnv.IsDefEqU.weak'_iff c.Ewf hs hwf.toCtx W.toCtx).1 this
+
 open EquivManager in
-theorem addEquiv.WF {c : VContext} {s : VState} (he₁ : c.TrExprS e₁ e') (he₂ : c.TrExpr e₂ e') :
+theorem addEquiv.WF {c : VContext} {s : State} (he₁ : c.TrExprS e₁ e') (he₂ : c.TrExpr e₂ e') :
     RecM.WF c s (modify fun st => { st with eqvManager := st.eqvManager.addEquiv e₁ e₂ })
       fun _ _ => True := by
   rintro _ mwf wf _ _ ⟨⟩
-  let ⟨_, _, a1, a2, ewf, a4⟩ := wf.ectx
-  refine ⟨{ s with toState := _ }, rfl, .rfl, { wf with ectx := ⟨_, _, a1, a2, ?_, a4⟩ }, trivial⟩
+  obtain ⟨Δ', hΔ', hm⟩ := wf.ectx
+  refine ⟨_, rfl, .rfl, { wf with ectx := ⟨Δ', hΔ', ?_⟩ }, trivial⟩
   simp [addEquiv]; split; rename_i h1; split; rename_i h2
-  have ⟨ewf, b2, b3⟩ := toNode.WF ewf h1
+  have ⟨ewf, b2, b3⟩ := toNode.WF hm h1
   have ⟨ewf, c2, c3⟩ := toNode.WF ewf h2
-  refine (merge.WF ewf ?_ (c2.toNodeMap b3) c3).1
-  exact .defeq (he₁.weakFV' c.Ewf a2 a1) (he₂.weakFV' c.Ewf a2 a1)
+  exact (merge.WF ewf (State.WF.eqv_defeq hΔ' he₁ he₂) (c2.toNodeMap b3) c3).1
 
-theorem isDefEq.WF {c : VContext} {s : VState}
+theorem isDefEq.WF {c : VContext} {s : State}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEq e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
   refine (isDefEqCore.WF he₁ he₂).bind fun b _ _ hb => ?_

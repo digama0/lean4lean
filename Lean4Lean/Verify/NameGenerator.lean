@@ -25,4 +25,11 @@ theorem LE.trans {ngen₁ ngen₂ ngen₃ : NameGenerator} : ngen₁ ≤ ngen₂
 theorem Reserves.mono : ngen ≤ ngen' → Reserves ngen fv → Reserves ngen' fv
   | ⟨h₁⟩ => fun H _ hi => Nat.lt_of_lt_of_le (H _ hi) h₁
 
+theorem Reserves.num_of_prefix_ne {ngen : NameGenerator} {pfx : Name} {i : Nat}
+    (h : pfx ≠ ngen.namePrefix) : ngen.Reserves ⟨Name.num pfx i⟩ := by
+  intro j eq
+  have en : Name.num pfx i = Name.num ngen.namePrefix j :=
+    congrArg FVarId.name eq
+  cases e₁ : pfx <;> cases e₂ : ngen.namePrefix <;> simp_all
+
 theorem LE.next {ngen : NameGenerator} : ngen ≤ ngen.next := ⟨Nat.le_succ _⟩

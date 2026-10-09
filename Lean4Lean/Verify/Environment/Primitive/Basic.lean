@@ -61,26 +61,26 @@ theorem TypeChecker.VContext.natBinLitBool {c : VContext} {fc : Name} {f : Nat �
 /-- Introduce a `Nat`-typed probe variable. Every primitive branch does this once or twice, and
 its two side conditions -- `Nat`'s translation, and that it is a type -- are always the same. -/
 theorem TypeChecker.M.WF.withNatProbe {c : VContext} {m : MLCtx} [cwf : c.MLCWF m]
-    {s₀ s : VState} {α} {f : Expr → M α} {Q} {name : Name}
+    {s₀ s : State} {α} {f : Expr → M α} {Q} {name : Name}
     (hprim : c.venv.HasPrimitives) (hnat : c.venv.contains ``Nat) (hs : s₀ ≤ s)
     (H : ∀ id, let m' := m.vlam id name q(Nat) .nat .default
       ∀ cwf' s', s₀ ≤ s' → ¬s.ngen.Reserves id →
         let : TrTerm c.venv c.lparams m'.vlctx (.fvar id) .nat :=
           .fvar (VLCtx.find?_vlam_self (ty := .nat)) (.bvar .zero)
-        M.WF (c.withMLC m' (wf := cwf')) s' (f (.fvar id)) Q) :
+        M.WF (c.withMLC m' (wf := cwf')) s' (f (.fvar id)) fun a s'' => Q a (s.exitScope c.fuel.cacheMode s'')) :
     (withLocalDecl name .default q(Nat) f).WF (c.withMLC m) s Q :=
   .withLocalDecl (hprim.trNat c.Ewf.ordered hnat)
     (hprim.natIsType c.Ewf.ordered hnat (c.withMLC m).Δwf.toCtx) hs H
 
 /-- The `Bool` counterpart, for the operator the bitwise operations probe. -/
 theorem TypeChecker.M.WF.withBoolProbe {c : VContext} {m : MLCtx} [cwf : c.MLCWF m]
-    {s₀ s : VState} {α} {f : Expr → M α} {Q} {name : Name}
+    {s₀ s : State} {α} {f : Expr → M α} {Q} {name : Name}
     (hprim : c.venv.HasPrimitives) (hbool : c.venv.contains ``Bool) (hs : s₀ ≤ s)
     (H : ∀ id, let m' := m.vlam id name q(Bool) .bool .default
       ∀ cwf' s', s₀ ≤ s' → ¬s.ngen.Reserves id →
         let : TrTerm c.venv c.lparams m'.vlctx (.fvar id) .bool :=
           .fvar (VLCtx.find?_vlam_self (ty := .bool)) (.bvar .zero)
-        M.WF (c.withMLC m' (wf := cwf')) s' (f (.fvar id)) Q) :
+        M.WF (c.withMLC m' (wf := cwf')) s' (f (.fvar id)) fun a s'' => Q a (s.exitScope c.fuel.cacheMode s'')) :
     (withLocalDecl name .default q(Bool) f).WF (c.withMLC m) s Q :=
   .withLocalDecl (hprim.trBool c.Ewf.ordered hbool)
     (hprim.boolIsType c.Ewf.ordered hbool (c.withMLC m).Δwf.toCtx) hs H
@@ -166,7 +166,7 @@ theorem VEnv.HasPrimitives.natIsType' {env : VEnv} (henv : env.Ordered)
   VLCtx.toCtx_ofCtx Γ ▸ hprim.natIsType (Δ := VLCtx.ofCtx Γ) henv hnat (by simpa using hΓ)
 
 /-- A substitution does not touch a closed term, at the depth the recognizer works at. -/
-theorem _root_.Lean4Lean.VExpr.ClosedN.subst_eq' {e : VExpr} {σ : VExpr.Subst}
+theorem _root_.Lean4Lean.VExpr.ClosedN.subst_eq_of_closed {e : VExpr} {σ : VExpr.Subst}
     (h : e.ClosedN) : e.subst σ = e := h.subst_eq .zero
 
 /-- The context an all-`Nat` telescope opens is well formed. -/
@@ -421,10 +421,6 @@ place: this is the one-binder step of `lams_appN`. -/
 theorem VExpr.Subst.lift_comp_one {σ : VExpr.Subst} {v} : σ.lift.comp (.one v) = σ.cons v := by
   funext i; cases i <;>
     simp [VExpr.Subst.comp, VExpr.Subst.lift, VExpr.Subst.cons, VExpr.Subst.one, VExpr.lift_subst]
-
-theorem OnCtx.of_append : ∀ {l Γ : List VExpr}, OnCtx (l ++ Γ) P → OnCtx Γ P
-  | [], _, h => h
-  | _ :: l, _, h => OnCtx.of_append (l := l) h.1
 
 /-- Both halves of an application are well formed. `app_inv` gives the typings, which is more
 than a caller peeling a spine apart wants to name: this is the form that chains. -/
@@ -895,13 +891,14 @@ theorem MLCtx.mkLambda_natBinderTypes {env : VEnv} {Us : List Name} :
     rw [hctx] at this; simp [hlen] at this; omega
 
 theorem lambdaTelescope.loop.WF {c : VContext} {α} {k : Array Expr → Expr → M α}
-    {Q : α → VState → Prop} {s₀ : VState} {m₀ : MLCtx} [c.MLCWF m₀] {e₀ : Expr} {e₀' : VExpr}
-    (H : ∀ (fvs : Array Expr) {m' : MLCtx} [c.MLCWF m'] {s' : VState} {body} body'
+    {Q : α → State → Prop} {s₀ : State} {m₀ : MLCtx} [c.MLCWF m₀] {e₀ : Expr} {e₀' : VExpr}
+    (H : ∀ (fvs : Array Expr) {m' : MLCtx} [c.MLCWF m'] {s' : State} {body} body'
       {n} (hn : n ≤ m'.length) {As}, s₀ ≤ s' → m'.dropN n hn = m₀ →
       fvs.toList.reverse = (m'.fvarRevList n hn).map .fvar → e₀ = m'.mkLambda n hn body →
       lambdaTelescope.Inv c m₀ m' fvs n hn As e₀' body' → e₀.lambdaArity = n →
       (c.withMLC m').TrExprS body body' → (k fvs body).WF (c.withMLC m') s' Q)
-    (e : Expr) (arr : Array Expr) (m : MLCtx) [c.MLCWF m] (s : VState) (e' : VExpr)
+    (hQ : ∀ a (saved s' : State), Q a s' → Q a (saved.exitScope c.fuel.cacheMode s'))
+    (e : Expr) (arr : Array Expr) (m : MLCtx) [c.MLCWF m] (s : State) (e' : VExpr)
     {n} (hn : n ≤ m.length) (harity : e₀.lambdaArity = n + e.lambdaArity)
     (hdrop : m.dropN n hn = m₀)
     (harr : arr.toList.reverse = (m.fvarRevList n hn).map .fvar)
@@ -921,7 +918,8 @@ theorem lambdaTelescope.loop.WF {c : VContext} {α} {k : Array Expr → Expr →
       rw [show (arr.push (Expr.fvar fv)).toList.reverse
         = Expr.fvar fv :: arr.toList.reverse from by simp]
       exact (Expr.instantiateList_instantiate1_comm (a := .fvar fv) (by trivial)).symm
-    refine lambdaTelescope.loop.WF H _ (arr.push (.fvar fv)) _ s' body'
+    refine M.WF.le (Q := Q) ?_ fun _ _ _ h => hQ _ _ _ h
+    refine lambdaTelescope.loop.WF H hQ _ (arr.push (.fvar fv)) _ s' body'
       (Nat.succ_le_succ hn) (by simp only [Expr.lambdaArity] at harity ⊢; omega)
       (by simp [hdrop]) (by simp [harr]) ?_ (As := As ++ [domv]) ⟨?_, ?_, ?_, ?_, ?_⟩ hs' ?_
     · -- the abstraction the new binder adds cancels the instantiation, because the body's
@@ -965,15 +963,17 @@ them, and the re-abstraction because `unfoldNatWellFounded` returns
 `lambdaTelescope.Inv` adds the translation side, which is what a caller that closes the
 telescope off again needs: the domains, the lift over them, and the variables' translations. -/
 theorem lambdaTelescope.WF {c : VContext} {α} {k : Array Expr → Expr → M α}
-    {Q : α → VState → Prop} {m : MLCtx} [c.MLCWF m] {s : VState} {e : Expr} {e' : VExpr}
+    {Q : α → State → Prop} {m : MLCtx} [c.MLCWF m] {s : State} {e : Expr} {e' : VExpr}
     (he : (c.withMLC m).TrExprS e e')
     (H : ∀ (fvs : Array Expr) {m'} [c.MLCWF m'] {s' body} body' {n} (hn : n ≤ m'.length) {As},
       s ≤ s' → m'.dropN n hn = m → fvs.toList.reverse = (m'.fvarRevList n hn).map .fvar →
       e = m'.mkLambda n hn body → lambdaTelescope.Inv c m m' fvs n hn As e' body' →
       e.lambdaArity = n →
-      (c.withMLC m').TrExprS body body' → (k fvs body).WF (c.withMLC m') s' Q) :
+      (c.withMLC m').TrExprS body body' → (k fvs body).WF (c.withMLC m') s' Q)
+    (hQ : ∀ a (saved s' : State), Q a s' → Q a (saved.exitScope c.fuel.cacheMode s') := by
+      intros; assumption) :
     (lambdaTelescope e k).WF (c.withMLC m) s Q :=
-  lambdaTelescope.loop.WF H e #[] m s e' (n := 0) (Nat.zero_le _) (by simp) rfl (by simp) (by simp)
+  lambdaTelescope.loop.WF H hQ e #[] m s e' (n := 0) (Nat.zero_le _) (by simp) rfl (by simp) (by simp)
     (As := []) ⟨rfl, by simp, .refl, by simp, rfl⟩ .rfl he
 
 namespace Primitive
@@ -981,7 +981,7 @@ namespace Primitive
 /-- Peel one argument off an application whose head has a known `forallE` type. `app_inv` only
 returns the domain up to defeq, so this is where `forallE_inv` moves the argument's typing onto
 the head's recorded domain -- which is what makes the argument usable in a substitution. -/
-theorem _root_.Lean4Lean.VExpr.WF.app_inv' {env : VEnv} {U Γ} (henv : env.WF)
+theorem _root_.Lean4Lean.VExpr.WF.app_inv_of_hasType {env : VEnv} {U Γ} (henv : env.WF)
     (hΓ : OnCtx Γ (env.IsType U)) {f a A B : VExpr}
     (hf : env.HasType U Γ f (.forallE A B)) (H : VExpr.WF env U Γ (.app f a)) :
     env.HasType U Γ a A ∧ env.HasType U Γ (.app f a) (B.inst a) := by
@@ -992,7 +992,7 @@ theorem _root_.Lean4Lean.VExpr.WF.app_inv' {env : VEnv} {U Γ} (henv : env.WF)
 
 /-- Peeling one binder off a well formed lambda: the body, in the context the binder extends.
 A telescope is peeled by iterating this, which is what the conditional builders' shapes need. -/
-theorem _root_.Lean4Lean.VExpr.WF.lam_inv' {env : VEnv} (henv : env.Ordered)
+theorem _root_.Lean4Lean.VExpr.WF.lam_inv_onCtx {env : VEnv} (henv : env.Ordered)
     (hΓ : OnCtx Γ (env.IsType U)) (H : VExpr.WF env U Γ (.lam A body)) :
     OnCtx (A :: Γ) (env.IsType U) ∧ VExpr.WF env U (A :: Γ) body :=
   let ⟨hA, _, hb⟩ := VExpr.WF.lam_inv henv hΓ H; ⟨⟨hΓ, hA⟩, _, hb⟩
@@ -1162,7 +1162,7 @@ theorem Data.mkTyEqBitwise (P : Data v ci' c) (hnat : c.venv.contains ``Nat)
     (hb : c.venv.contains ``Bool)
     (h2 : v.type == q((Bool → Bool → Bool) → Nat → Nat → Nat)) :
     ci'.type = .forallE .boolOp2 .natOp2 :=
-  (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique]) (bitwiseTy hnat hb).trS
+  (P.htype.eqv h2).unique (bitwiseTy hnat hb).trS
 
 /-- The definition's value as a bundle, at whatever local context the probes have built up. -/
 def Data.hv (P : Data v ci' c) {T} (eq : ci'.type = T) (m : MLCtx) [cwf : c.MLCWF m] :
@@ -1173,23 +1173,21 @@ def Data.hv (P : Data v ci' c) {T} (eq : ci'.type = T) (m : MLCtx) [cwf : c.MLCW
 checker compared against, and `unique` quotes determinism against the arrow `natArrow2` builds.
 Generic in the codomain, so `Nat.beq`/`Nat.ble` pass a `Bool` bundle instead. -/
 theorem Data.mkTyEq (P : Data v ci' c) (hnat : c.venv.contains ``Nat) {codSrc : Expr}
-    (hcodU : TrExprS.IsUnique codSrc)
     (hcod : TrTy c.venv c.lparams [(none, .vlam .nat), (none, .vlam .nat)] codSrc)
     {n₁ n₂ : Name} {d₁ d₂ : MData} {bi₁ bi₂ : BinderInfo}
     (h2 : v.type == Expr.forallE n₁ (.mdata d₁ q(Nat))
       (.forallE n₂ (.mdata d₂ q(Nat)) codSrc bi₂) bi₁) :
     ci'.type = .forallE .nat (.forallE .nat hcod.tgt) :=
-  (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
+  (P.htype.eqv h2).unique
     (.natArrow2 c.Ewf.ordered c.hasPrimitives hnat hcod)
 
 /-- The unary version, for `Nat.pred`. -/
 theorem Data.mkTyEq1 (P : Data v ci' c) (hnat : c.venv.contains ``Nat) {codSrc : Expr}
-    (hcodU : TrExprS.IsUnique codSrc)
     (hcod : TrTy c.venv c.lparams [(none, .vlam .nat)] codSrc)
     {n₁ : Name} {d₁ : MData} {bi₁ : BinderInfo}
     (h2 : v.type == Expr.forallE n₁ (.mdata d₁ q(Nat)) codSrc bi₁) :
     ci'.type = .forallE .nat hcod.tgt :=
-  (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
+  (P.htype.eqv h2).unique
     (.natArrow1 c.Ewf.ordered c.hasPrimitives hnat hcod)
 
 theorem Data.uvars_eq (P : Data v ci' c) (hok' : v.safety = .safe ∧ v.levelParams = []) :
@@ -1333,18 +1331,17 @@ theorem goArgs {c : VContext} {go' le' : VExpr}
   obtain ⟨_, _, h3, -⟩ := VExpr.WF.app_inv c.Ewf.ordered trivial ⟨_, h4⟩
   obtain ⟨_, _, h2, -⟩ := VExpr.WF.app_inv c.Ewf.ordered trivial ⟨_, h3⟩
   obtain ⟨_, _, h1, -⟩ := VExpr.WF.app_inv c.Ewf.ordered trivial ⟨_, h2⟩
-  obtain ⟨hbbT, k1⟩ := VExpr.WF.app_inv' c.Ewf trivial (hgoT (Γ := [])) ⟨_, h1⟩
+  obtain ⟨hbbT, k1⟩ := VExpr.WF.app_inv_of_hasType c.Ewf trivial (hgoT (Γ := [])) ⟨_, h1⟩
   simp [VExpr.inst, VExpr.instVar, VExpr.natLit, VExpr.natSucc, VExpr.natZero,
     VExpr.nat, VExpr.liftN_zero,
     hleC.instN_eq (Nat.zero_le _)] at k1
-  obtain ⟨hpfT, k2⟩ := VExpr.WF.app_inv' c.Ewf trivial k1 ⟨_, h2⟩
+  obtain ⟨hpfT, k2⟩ := VExpr.WF.app_inv_of_hasType c.Ewf trivial k1 ⟨_, h2⟩
   simp [VExpr.inst, VExpr.instVar, hleC.instN_eq (Nat.zero_le _)] at k2
-  obtain ⟨hfT, k3⟩ := VExpr.WF.app_inv' c.Ewf trivial k2 ⟨_, h3⟩
+  obtain ⟨hfT, k3⟩ := VExpr.WF.app_inv_of_hasType c.Ewf trivial k2 ⟨_, h3⟩
   simp [VExpr.inst, VExpr.instVar, hleC.instN_eq (Nat.zero_le _)] at k3
-  obtain ⟨hxT, k4⟩ := VExpr.WF.app_inv' c.Ewf trivial k3 ⟨_, h4⟩
-  simp [VExpr.inst, VExpr.instVar, VExpr.liftN_zero, VExpr.inst_lift,
-    hleC.instN_eq (Nat.zero_le _)] at k4
-  obtain ⟨hpf'T, hcallT⟩ := VExpr.WF.app_inv' c.Ewf trivial k4 hwf
+  obtain ⟨hxT, k4⟩ := VExpr.WF.app_inv_of_hasType c.Ewf trivial k3 ⟨_, h4⟩
+  simp [VExpr.inst, VExpr.instVar, VExpr.liftN_zero, hleC.instN_eq (Nat.zero_le _)] at k4
+  obtain ⟨hpf'T, hcallT⟩ := VExpr.WF.app_inv_of_hasType c.Ewf trivial k4 hwf
   simp [VExpr.inst] at hcallT
   exact ⟨hbbT, hpfT, hfT, hxT, hpf'T, hcallT⟩
 

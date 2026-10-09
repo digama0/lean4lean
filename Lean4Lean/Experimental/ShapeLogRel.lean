@@ -5051,8 +5051,8 @@ theorem LE_Interp.build_spine {m1 : p.Path → TShape} {m2} (a2 : p.MatchesS LHS
         Const.indTy (rargs := .replicate args.length .bot) (List.length_replicate ▸ hI) .rfl
           |>.lift k'.le_succ .mono
 
-theorem LE_Interp.strongSound (H : Γ ⊢ M ≡ N : A) : StrongSoundEq Γ M N A := by
-  replace H := H.strong
+theorem LE_Interp.strongSound' [Params.PatternRegistry] (H : IsDefEqStrong Γ M N A) :
+    StrongSoundEq Γ M N A := by
   induction H with
   | @bvar _ i A _ h h2 ih =>
     refine .rfl ⟨.bvar h, fun _ _ W _ h => ?_, .bvar h, .rfl⟩; clear h2 ih
@@ -5258,9 +5258,18 @@ theorem LE_Interp.strongSound (H : Γ ⊢ M ≡ N : A) : StrongSoundEq Γ M N A 
       exact .mono hm_le_typed <| h_foldr_eq ▸ apps_realize W h_m_typed_HT.T ha
         (h_foldr_eq ▸ ih1.left) h_per_arg (.pat a1 hMatch (hRHS.mono_l hbnd))
 
-theorem LE_Interp.sound (H : Γ ⊢ M ≡ N : A) (W : Valuation.Fits Γ₀ Γ ρ) {m} :
+/-- Soundness of the interpretation, for a strong derivation. -/
+theorem LE_Interp.sound' [Params.PatternRegistry] (H : IsDefEqStrong Γ M N A)
+    (W : Valuation.Fits Γ₀ Γ ρ) {m} :
     (LE_Interp ρ m M ↔ LE_Interp ρ m N) ∧ (LE_Interp ρ m M → InterpTyped ρ m M A) :=
-  ⟨(strongSound H).sound W, (strongSound H).left.sound W⟩
+  ⟨(strongSound' H).sound W, (strongSound' H).left.sound W⟩
+
+/-- Soundness of the interpretation. It goes through `IsDefEq.strong`, hence the hypotheses
+`⊢ Γ` and `Params.TypedEnv`. -/
+theorem LE_Interp.sound [Params.PatternRegistry] [Params.TypedEnv] (hΓ : ⊢ Γ)
+    (H : Γ ⊢ M ≡ N : A) (W : Valuation.Fits Γ₀ Γ ρ) {m} :
+    (LE_Interp ρ m M ↔ LE_Interp ρ m N) ∧ (LE_Interp ρ m M → InterpTyped ρ m M A) :=
+  sound' (H.strong hΓ) W
 
 structure LogRelBase (Γ : List SExpr) (n : Nat) where
   /-- Term validity: `M ≡ N : A` at element-shape `m` and type-shape `a`. -/
@@ -6068,7 +6077,7 @@ inductive LR.SubstWF (Γ₀ : List SExpr) : Subst → Subst → List SExpr → V
   | cons : LR.SubstWF Γ₀ σ.tail σ'.tail Γ ρ →
     (∀ {a}, LE_Interp ρ a A →
       ∃ a', a ≤ a' ∧ LE_Interp ρ a' A ∧ a'.HasType .type) →
-    LE_Interp ρ a A → x.HasType a → Γ ⊢ A : .sort u →
+    LE_Interp ρ a A → x.HasType a → IsDefEqStrong Γ A A (.sort u) →
     LR.Subst1 Γ₀ σ.head σ'.head A.lift (A.subst σ.tail) (A.subst σ'.tail) (ρ.push x) →
     LR.SubstWF Γ₀ σ σ' (A :: Γ) (ρ.push x)
 
@@ -6077,7 +6086,7 @@ theorem LR.SubstWF.fits : LR.SubstWF Γ₀ σ σ' Γ ρ → ρ.Fits Γ₀ Γ
   | .cons W h1 h2 h3 _ _ => .cons W.fits h1 h2 h3
 
 theorem LR.SubstWF.toSubstEq : LR.SubstWF Γ₀ σ σ' Γ ρ → Ctx.SubstEq Γ₀ σ σ' Γ
-  | .id => .nil
+  | .id => .id
   | .cons W _ _ _ hA h0 => .cons W.toSubstEq hA h0.1
 
 theorem LR.SubstWF.left (W : LR.SubstWF Γ₀ σ σ' Γ ρ) : LR.SubstWF Γ₀ σ σ Γ ρ := by

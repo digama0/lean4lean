@@ -18,22 +18,11 @@ namespace Lean4Lean
 open Lean hiding Environment Exception
 open Kernel
 
-theorem VEnv.addConst_eq_of_ne
-    {env env' : VEnv}
-    (hadd : env.addConst name ci = some env') (hne : name ≠ n) :
-    env'.constants n = env.constants n := by
-  unfold VEnv.addConst at hadd
-  split at hadd <;> cases hadd
-  simp [hne]
-
-/-- Adding a constant preserves any spec that does not look up that name: the spec's hypothesis
-is pulled back along `addConst_eq_of_ne`, and everything else it asserts is monotone. One case
-per shape. -/
-theorem PrimSpec.Holds.addConst {env env' : VEnv} {s : PrimSpec} {n : Name}
-    (H : s.Holds env n) (hne : name ≠ n)
-    (hadd : env.addConst name ci = some env') : s.Holds env' n := by
-  have le := VEnv.addConst_le hadd
-  have same : env'.constants n = env.constants n := VEnv.addConst_eq_of_ne hadd hne
+/-- Primitive specifications transport along an extension that preserves
+lookup of their own name. Their typing and equality conclusions are monotone. -/
+theorem PrimSpec.Holds.extend {env env' : VEnv} {s : PrimSpec} {n : Name}
+    (H : s.Holds env n) (le : env ≤ env')
+    (same : env'.constants n = env.constants n) : s.Holds env' n := by
   have old : env'.contains n → env.contains n := fun ⟨_, h⟩ => ⟨_, same ▸ h⟩
   have new {m} : env.contains m → env'.contains m := fun ⟨_, h⟩ => ⟨_, le.constants h⟩
   cases s with
@@ -53,18 +42,30 @@ theorem PrimSpec.Holds.addConst {env env' : VEnv} {s : PrimSpec} {n : Name}
     obtain ⟨h1, h2, h3⟩ := H _ (same ▸ h)
     exact ⟨h1, h2.mono le, h3.mono le⟩
 
-/-- Adding a definitional equation preserves every spec: nothing any spec asserts is
-contravariant in the defeq set. -/
+theorem PrimSpec.Holds.addConst {env env' : VEnv} {s : PrimSpec} {n : Name}
+    (H : s.Holds env n) (hne : name ≠ n)
+    (hadd : env.addConst name ci = some env') : s.Holds env' n :=
+  H.extend (VEnv.addConst_le hadd) (VEnv.addConst_constants_of_ne hadd hne)
+
 theorem PrimSpec.Holds.addDefEq {env : VEnv} {s : PrimSpec} {n : Name}
-    (H : s.Holds env n) : s.Holds (env.addDefEq df) n := by
-  have le := VEnv.addDefEq_le (df := df) (env := env)
-  cases s with
-  | containsImplies | typeEq => exact H
-  | reflectsNatNat => exact fun h => ⟨(H h).1.mono le, fun a => ((H h).2 a).mono le⟩
-  | reflectsNatNatNat => exact fun h => ⟨(H h).1.mono le, fun a b => ((H h).2 a b).mono le⟩
-  | reflectsNatNatBool => exact fun h => ⟨(H h).1.mono le, fun a b => ((H h).2 a b).mono le⟩
-  | reflectsBitwise => exact fun h => ⟨(H h).1, fun env'' hle => (H h).2 env'' (le.trans hle)⟩
-  | stringOfList => intro _ h; obtain ⟨h1, h2, h3⟩ := H _ h; exact ⟨h1, h2.mono le, h3.mono le⟩
+    (H : s.Holds env n) : s.Holds (env.addDefEq df) n :=
+  H.extend VEnv.addDefEq_le rfl
+
+theorem PrimSpec.Holds.addProjections {env : VEnv} {s : PrimSpec} {n : Name}
+    (H : s.Holds env n) : s.Holds (env.addProjections entries) n :=
+  H.extend VEnv.addProjections_le (by simp)
+
+theorem PrimSpec.Holds.addEliminator {env : VEnv} {s : PrimSpec} {n : Name}
+    (H : s.Holds env n) : s.Holds (env.addEliminator block schema) n :=
+  H.extend VEnv.addEliminator_le rfl
+
+theorem VEnv.HasPrimitives.addEliminator {env : VEnv} (H : env.HasPrimitives) :
+    (env.addEliminator block schema).HasPrimitives :=
+  fun p hp => (H p hp).addEliminator
+
+theorem VEnv.HasPrimitives.addProjections {env : VEnv} (H : env.HasPrimitives) :
+    (env.addProjections entries).HasPrimitives :=
+  fun p hp => (H p hp).addProjections
 
 /-- The single environment-extension theorem for `HasPrimitives`. Every spec whose name differs
 from the one being added transfers by monotonicity; the one that matches -- at most one, since

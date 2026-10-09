@@ -42,6 +42,12 @@ structure Typing where
     Γ ⊢ A : .sort u → Γ ⊢ A ≡ A' →
     A::Γ ⊢ body : .sort v → A::Γ ⊢ body ≡ body' →
     Γ ⊢ .forallE A body ≡ .forallE A' body'
+  /-- Projection congruence in the major premise, as derived by
+  `NormalEqN.defeq` in `Theory/Typing/ChurchRosser.lean` from `IsDefEq.projDF`
+  and `HasType.proj_inv`. -/
+  projDF :
+    Γ ⊢ .proj typeName index major : A → Γ ⊢ major ≡ major' →
+    Γ ⊢ .proj typeName index major ≡ .proj typeName index major'
   const :
     env.constants c = some ci →
     (∀ l ∈ ls, l.WF univs) → ls.length = ci.uvars →
@@ -80,6 +86,9 @@ structure Typing where
     ∃ ci, env.constants c = some ci ∧ (∀ l ∈ ls, l.WF univs) ∧ ls.length = ci.uvars
   forallE_inv : Γ ⊢ .forallE A B : V → ∃ u v, Γ ⊢ A : .sort u ∧ A::Γ ⊢ B : .sort v
   app_inv : Γ ⊢ .app f a : V → ∃ A B, Γ ⊢ f : .forallE A B ∧ Γ ⊢ a : A
+  /-- The major premise of a well-typed projection is well-typed (a consequence
+  of `HasType.proj_inv` in `Theory/Typing`). -/
+  proj_inv : Γ ⊢ .proj typeName index major : V → ∃ A, Γ ⊢ major : A
   lam_inv : Γ ⊢ .lam A e : V → ∃ u B, Γ ⊢ A : .sort u ∧ A::Γ ⊢ e : B
   uniq : Γ ⊢ e : A₁ → Γ ⊢ e : A₂ → Γ ⊢ A₁ ≡ A₂
   defeq_l : Γ ⊢ e₁ ≡ e₂ → Γ ⊢ e₁ : A → Γ ⊢ e₂ : A
@@ -145,6 +154,8 @@ theorem Pattern.Matches.hasType {p : Pattern} {e : VExpr} {m1 m2}
     (H : p.Matches e m1 m2) (H2 : TY.HasType Γ e V) (a) : ∃ A, TY.HasType Γ (m2 a) A := by
   induction H generalizing V with
   | const => cases a
+  -- added for the elim/proj constructors of this branch
+  | elim => cases a
   | var _ ih =>
     have ⟨_, _, hf, ha⟩ := TY.app_inv H2
     exact a.rec ⟨_, ha⟩ (ih hf)
@@ -176,6 +187,10 @@ inductive NormalEq : List VExpr → VExpr → VExpr → Prop where
     Γ ⊢ a₁ : A → Γ ⊢ a₂ : A →
     Γ ⊢ f₁ ≡ₚ f₂ → Γ ⊢ a₁ ≡ₚ a₂ →
     Γ ⊢ .app f₁ a₁ ≡ₚ .app f₂ a₂
+  | projDF :
+    Γ ⊢ .proj typeName index major : resultType →
+    Γ ⊢ major ≡ₚ major' →
+    Γ ⊢ .proj typeName index major ≡ₚ .proj typeName index major'
   | lamDF :
     Γ ⊢ A : .sort u → Γ ⊢ A₁ ≡ A → Γ ⊢ A₂ ≡ A →
     A::Γ ⊢ body₁ ≡ₚ body₂ →
@@ -203,6 +218,7 @@ theorem NormalEq.defeq (H : NormalEq TY Γ e1 e2) : TY.IsDefEqU Γ e1 e2 := by
   | refl h => exact TY.refl h
   | sortDF h1 h2 h3 => exact TY.sortDF h1 h2 h3
   | appDF hf₁ _ ha₁ _ _ _ ih1 ih2 => exact TY.appDF hf₁ ih1 ha₁ ih2
+  | projDF h _ ih => exact TY.projDF h ih
   | constDF h1 h2 h3 h4 h5 => exact TY.constDF h1 h2 h3 h4 h5
   | lamDF hA hA₁ hA₂ _ ihB =>
     have ⟨_, hB⟩ := TY.has_type ihB
@@ -228,6 +244,7 @@ theorem NormalEq.symm (H : NormalEq TY Γ e1 e2) : NormalEq TY Γ e2 e1 := by
   | constDF h1 h2 h3 h4 h5 =>
     exact .constDF h1 h3 h2 (h5.length_eq.symm.trans h4) (h5.flip.imp (fun _ _ h => h.symm))
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 => exact .appDF h2 h1 h4 h3 ih1 ih2
+  | projDF h1 h2 ih => exact .projDF (TY.defeq_l (TY.projDF h1 h2.defeq) h1) ih
   | lamDF h1 h2 h3 _ ih1 => exact .lamDF h1 h3 h2 ih1
   | forallEDF h1 h2 _ h4 h5 ih1 ih2 =>
     exact .forallEDF h1 (TY.trans ih1.defeq h2) ih1 (TY.defeq_l h5.defeq h4) ih2
@@ -243,6 +260,7 @@ theorem NormalEq.weakN (W : Ctx.LiftN n k Γ Γ') (H : NormalEq TY Γ e1 e2) :
   | constDF h1 h2 h3 h4 h5 => exact .constDF h1 h2 h3 h4 h5
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
     exact .appDF (h1.weakN W) (h2.weakN W) (h3.weakN W) (h4.weakN W) (ih1 W) (ih2 W)
+  | projDF h1 _ ih => exact .projDF (h1.weakN W) (ih W)
   | lamDF h1 h2 h3 _ ih1 => exact .lamDF (h1.weakN W) (h2.weakN W) (h3.weakN W) (ih1 W.succ)
   | forallEDF h1 h2 _ h4 _ ih1 ih2 =>
     exact .forallEDF (h1.weakN W) (h2.weakN W) (ih1 W) (h4.weakN W.succ) (ih2 W.succ)
@@ -266,6 +284,7 @@ theorem NormalEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : NormalEq 
   | constDF h1 h2 h3 h4 h5 => exact .constDF h1 h2 h3 h4 h5
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
     exact .appDF (h1.instN W h₀) (h2.instN W h₀) (h3.instN W h₀) (h4.instN W h₀) (ih1 W) (ih2 W)
+  | projDF h1 _ ih => exact .projDF (h1.instN W h₀) (ih W)
   | lamDF h1 h2 h3 _ ih1 =>
     exact .lamDF (h1.instN W h₀) (h2.instN W h₀) (h3.instN W h₀) (ih1 W.succ)
   | forallEDF h1 h2 _ h4 _ ih1 ih2 =>
@@ -297,11 +316,16 @@ theorem NormalEq.instN_r (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : Typing.
   | const =>
     let ⟨_, h1, h2, h3⟩ := TY.const_inv H
     exact .refl (TY.const h1 h2 h3)
+  -- added for the elim/proj constructors of this branch
+  | elim => exact .refl (H.instN W h₀)
   | app fn arg ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := TY.app_inv H
     specialize ih1 W h1; have hf := h1.instN W h₀
     specialize ih2 W h2; have ha := h2.instN W h₀
     exact .appDF hf (TY.defeq_l ih1.defeq hf) ha (TY.defeq_l ih2.defeq ha) ih1 ih2
+  | proj _ _ major ih =>
+    let ⟨_, h1⟩ := TY.proj_inv H
+    exact .projDF (H.instN W h₀) (ih W h1)
   | lam A body ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := TY.lam_inv H
     have hA := h1.instN W h₀
@@ -321,6 +345,7 @@ theorem NormalEq.defeqDFC (W : IsDefEqCtx TY.IsDefEqU Γ₀ Γ₁ Γ₂)
   | appDF h1 h2 h3 h4 _ _ ih1 ih2 =>
     exact .appDF (TY.isDefEq_DFC W h1) (TY.isDefEq_DFC W h2)
       (TY.isDefEq_DFC W h3) (TY.isDefEq_DFC W h4) (ih1 W) (ih2 W)
+  | projDF h1 _ ih => exact .projDF (TY.isDefEq_DFC W h1) (ih W)
   | lamDF h1 h2 h3 _ ih1 =>
     exact .lamDF (TY.isDefEq_DFC W h1) (TY.isDefEqU_DFC W h2) (TY.isDefEqU_DFC W h3)
       (ih1 (W.succ (TY.refl h1)))
@@ -374,6 +399,11 @@ theorem NormalEq.weakN_inv_DFC (W : Ctx.LiftN n k Γ Γ₂) (W₂ : IsDefEqCtx T
       (TY.trans (TY.uniq (l1.weakN W) h1) (TY.uniq h2 (r1.weakN W)))
     exact .appDF (TY.defeq_r this l1) r1
       (TY.defeq_r (TY.forallE_defInv this).1 l2) r2 (ih1 W W₂ rfl rfl) (ih2 W W₂ rfl rfl)
+  | projDF h1 _ ih =>
+    cases e1 <;> cases eq1
+    cases e2 <;> cases eq2
+    have ⟨_, h⟩ := TY.isDefEq_weakN_inv W (TY.isDefEq_DFC W₂ h1) (e1 := .proj ..) (e2 := .proj ..)
+    exact .projDF h (ih W W₂ rfl rfl)
   | lamDF h1 h2 h3 _ ih1 =>
     cases e1 <;> cases eq1
     cases e2 <;> cases eq2
@@ -398,7 +428,7 @@ theorem NormalEq.weakN_inv_DFC (W : Ctx.LiftN n k Γ Γ₂) (W₂ : IsDefEqCtx T
     have hA' := TY.isDefEq_DFC W₂ hA
     have hB' := TY.isDefEq_DFC (W₂.succ (TY.refl hA)) hB
     have := TY.app (h1'.weakN .one) (TY.bvar .zero)
-    rw [instN_bvar0, ← lift, lift_liftN',
+    rw [VExpr.inst_liftN_bvar, ← lift, lift_liftN',
       ← show liftN n (.bvar 0) (k+1) = bvar 0 by simp [liftN],
       ← liftN] at this
     have ⟨C, hC⟩ := TY.isDefEq_weakN_inv W.succ this
@@ -413,7 +443,7 @@ theorem NormalEq.weakN_inv_DFC (W : Ctx.LiftN n k Γ Γ₂) (W₂ : IsDefEqCtx T
     have hA' := TY.isDefEq_DFC W₂ hA
     have hB' := TY.isDefEq_DFC (W₂.succ (TY.refl hA)) hB
     have := TY.app (h1'.weakN .one) (TY.bvar .zero)
-    rw [instN_bvar0, ← lift, lift_liftN',
+    rw [VExpr.inst_liftN_bvar, ← lift, lift_liftN',
       ← show liftN n (.bvar 0) (k+1) = bvar 0 by simp [liftN],
       ← liftN] at this
     have ⟨C, hC⟩ := TY.isDefEq_weakN_inv W.succ this
@@ -440,6 +470,10 @@ private def meas : VExpr → Nat
   | .app f a
   | .forallE f a => meas f + meas a + 1
   | .bvar _ | .const .. | .sort _ => 0
+  -- added for the elim/proj constructors of this branch
+  | .elim .. => 0
+  -- added for the elim/proj constructors of this branch
+  | .proj _ _ e => meas e + 1
   | .lam A e => meas A + meas e + 3
 
 private theorem meas_liftN : meas (e.liftN n k) = meas e := by
@@ -454,6 +488,7 @@ theorem NormalEq.trans : NormalEq TY Γ e1 e2 → NormalEq TY Γ e2 e3 → Norma
   | .appDF l1 l2 l3 l4 l5 l6, .appDF r1 r2 r3 r4 r5 r6 =>
     .appDF l1 (TY.defeq_r (TY.uniq r1 l2) r2) l3
       (TY.defeq_r (TY.uniq r3 l4) r4) (NormalEq.trans l5 r5) (NormalEq.trans l6 r6)
+  | .projDF l1 l2, .projDF _ r2 => .projDF l1 (NormalEq.trans l2 r2)
   | .lamDF l1 l2 l3 l4, .lamDF _ r2 r3 r4 =>
     have aa := TY.trans (TY.symm r2) l3
     .lamDF l1 l2 (TY.trans r3 aa) (NormalEq.trans l4 (r4.defeq_l aa))

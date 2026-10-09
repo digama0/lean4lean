@@ -50,7 +50,23 @@ def bvars : VLCtx → Nat
   | (none, _) :: Δ => bvars Δ + 1
   | (some _, _) :: Δ => bvars Δ
 
+@[simp] theorem bvars_append (left right : VLCtx) :
+    (left ++ right).bvars = left.bvars + right.bvars := by
+  induction left with
+  | nil => simp [bvars]
+  | cons entry left ih =>
+    rcases entry with ⟨ofv, d⟩
+    cases ofv <;>
+      simp [bvars, ih, Nat.add_comm, Nat.add_left_comm]
+
 abbrev NoBV (Δ : VLCtx) : Prop := Δ.bvars = 0
+
+theorem NoBV.leftOfAppend (left right : VLCtx)
+    (H : (left ++ right).NoBV) : left.NoBV := by
+  change (left ++ right).bvars = 0 at H
+  change left.bvars = 0
+  rw [bvars_append] at H
+  exact Nat.eq_zero_of_add_eq_zero_right H
 
 def next : Option (FVarId × List FVarId) → Nat ⊕ FVarId → Option (Nat ⊕ FVarId)
   | none, .inl 0 => none
@@ -87,10 +103,43 @@ def fvars (Δ : VLCtx) : List FVarId := Δ.filterMap (·.1.map (·.1))
 @[simp] theorem fvars_cons_some {Δ : VLCtx} :
     fvars ((some fv, d) :: Δ) = fv.1 :: fvars Δ := rfl
 
+@[simp] theorem fvars_append (left right : VLCtx) :
+    fvars (left ++ right) = fvars left ++ fvars right := by
+  simp [fvars, List.filterMap_append]
+
 def toCtx : VLCtx → List VExpr
   | [] => []
   | (_, .vlam ty) :: Δ => ty :: VLCtx.toCtx Δ
   | (_, .vlet _ _) :: Δ => VLCtx.toCtx Δ
+
+@[simp] theorem toCtx_append (left right : VLCtx) :
+    toCtx (left ++ right) = toCtx left ++ toCtx right := by
+  induction left with
+  | nil => rfl
+  | cons entry left ih =>
+    rcases entry with ⟨ofv, decl⟩
+    cases decl <;> simp [toCtx, ih]
+
+@[simp] theorem toCtx_map_anonymousLams (types : List VExpr) :
+    VLCtx.toCtx (types.map fun type =>
+      ((none, .vlam type) :
+        Option (FVarId × List FVarId) × VLocalDecl)) = types := by
+  induction types with
+  | nil => rfl
+  | cons type types ih => simp [VLCtx.toCtx, ih]
+
+/-- A context made only of `vlam` entries named by a list of free variables has one typing-context
+entry per declaration. -/
+theorem toCtx_length_of_forall₂_vlam {fvars : List FVarId} {scope : VLCtx}
+    (H : List.Forall₂
+      (fun fv entry => ∃ deps type,
+        entry = (some (fv, deps), .vlam type)) fvars scope) :
+    scope.toCtx.length = scope.length := by
+  induction H with
+  | nil => rfl
+  | cons h _ ih =>
+    rcases h with ⟨deps, type, rfl⟩
+    simp [VLCtx.toCtx, ih]
 
 def instL (Δ : VLCtx) (ls : List VLevel) : VLCtx :=
   match Δ with

@@ -17,6 +17,15 @@ def ExprBuildT.run [Monad m] (x : ExprBuildT m α) : m α := x {} {}
 instance : MonadLocalNameGenerator (ExprBuildT m) where
   withFreshId x c ngen := x ngen.curr c ngen.next
 
+/-- The exact concrete family arity accepted by quotient initialization for
+`Eq`.  Keeping this syntax explicit lets the verification theorem use the
+successful comparison performed by `checkEqType`, instead of assuming that
+every inductive declaration whose name is `Eq` denotes abstract equality. -/
+def expectedEqType (u : Name) : Expr :=
+  .forallE `α (.sort (.param u))
+    (.forallE .anonymous (.bvar 0)
+      (.forallE .anonymous (.bvar 1) .prop .default) .default) .implicit
+
 def checkEqType (env : Environment) : Except Exception Unit := do
   let fail {α} (s : String) : Except Exception α :=
     throw <| .other s!"failed to initialize quot module, {s}"
@@ -24,9 +33,8 @@ def checkEqType (env : Environment) : Except Exception Unit := do
   let [u] := info.levelParams | fail "unexpected number of universe params at 'Eq' type"
   let [eqRefl] := info.ctors | fail "unexpected number of constructors for 'Eq' type"
   ExprBuildT.run do
-    withLocalDecl `α .implicit (.sort (.param u)) fun α => do
-      if info.type != ((← read).mkForall #[α] <| .arrow α <| .arrow α .prop) then
-        fail "'Eq' has an expected type"
+    if info.type != expectedEqType u then
+      fail "'Eq' has an expected type"
     let info ← env.get eqRefl
     let [u] := info.levelParams
       | fail "unexpected number of universe params at 'Eq' type constructor"
@@ -76,7 +84,7 @@ def Environment.addQuot (env : Environment) : Except Exception Environment := do
   let quotMk_a := mkApp3 (.const ``Quot.mk [u]) α r a
   withLocalDecl `β .implicit (.arrow quot_r .prop) fun β => do
   let all_quot := (← read).mkForall #[a] <| .app β quotMk_a
-  withLocalDecl `q .implicit quot_r fun q => do
+  withLocalDecl `q .default quot_r fun q => do
   -- constant Quot.ind.{u} {α : Sort u} {r : α → α → Prop} {β : @Quot.{u} α r → Prop} :
   --   (∀ a : α, β (@Quot.mk.{u} α r a)) → ∀ q : @Quot.{u} α r, β q
   let env := env.add <| .quotInfo {
@@ -85,6 +93,21 @@ def Environment.addQuot (env : Environment) : Except Exception Environment := do
       .forallE `mk all_quot ((← read).mkForall #[q] <| .app β q) .default
   }
   return markQuotInit env
+
+/-- Reduce a quotient eliminator application whose `Quot.mk` argument sits at position `mkPos`
+and whose function argument sits at position `argPos`. -/
+def quotReduceRecCont [Monad m] (e : Expr) (whnf : Expr → m Expr) (mkPos argPos : Nat) :
+    m (Option Expr) := do
+  let args := e.getAppArgs
+  if h : mkPos < args.size then
+    let mk ← whnf args[mkPos]
+    if !mk.isAppOfArity ``Quot.mk 3 then return none
+    let mut r := Expr.app args[argPos]! mk.appArg!
+    let elimArity := mkPos + 1
+    if elimArity < args.size then
+      r := mkAppRange r elimArity args.size args
+    return some r
+  else return none
 
 /-- Reduces the head application of a quotient eliminator as follows:
 
@@ -104,17 +127,6 @@ Quot.ind p (Quot.mk r a) ... ⟶ p a ...
 -/
 def quotReduceRec [Monad m] (e : Expr) (whnf : Expr → m Expr) : m (Option Expr) := do
   let .const fn _ := e.getAppFn | return none
-  let cont mkPos argPos := do
-    let args := e.getAppArgs
-    if h : mkPos < args.size then
-      let mk ← whnf args[mkPos]
-      if !mk.isAppOfArity ``Quot.mk 3 then return none
-      let mut r := Expr.app args[argPos]! mk.appArg!
-      let elimArity := mkPos + 1
-      if elimArity < args.size then
-        r := mkAppRange r elimArity args.size args
-      return some r
-    else return none
-  if fn == ``Quot.lift then cont 5 3
-  else if fn == ``Quot.ind then cont 4 3
+  if fn == ``Quot.lift then quotReduceRecCont e whnf 5 3
+  else if fn == ``Quot.ind then quotReduceRecCont e whnf 4 3
   else return none

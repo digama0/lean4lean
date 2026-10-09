@@ -1,4 +1,4 @@
-import Lean4Lean.Std.Basic
+import Lean4Lean.Std.List
 
 namespace Lean4Lean
 open Lean4Lean
@@ -62,6 +62,10 @@ instance : HasEquiv VLevel := ⟨VLevel.Equiv⟩
 theorem equiv_def' {a b : VLevel} : a ≈ b ↔ a.eval = b.eval := .rfl
 theorem equiv_def {a b : VLevel} : a ≈ b ↔ ∀ ls, a.eval ls = b.eval ls := funext_iff
 
+theorem forall₂_equiv_refl : ∀ (ls : List VLevel), List.Forall₂ (· ≈ ·) ls ls
+  | [] => .nil
+  | _ :: ls => .cons rfl (forall₂_equiv_refl ls)
+
 theorem equiv_congr_left {a b c : VLevel} (h : a ≈ b) : a ≈ c ↔ b ≈ c :=
   iff_of_eq (congrArg (· = _) h)
 
@@ -108,6 +112,9 @@ theorem imax_eq_zero : imax a b ≈ zero ↔ b ≈ zero := by
 
 def IsNeverZero (a : VLevel) : Prop := ∀ ls, a.eval ls ≠ 0
 
+theorem IsNeverZero.of_equiv {a b : VLevel} (H : IsNeverZero a) (h : a ≈ b) : IsNeverZero b :=
+  fun ls => equiv_def.1 h ls ▸ H ls
+
 theorem IsNeverZero.imax_eq_max (h : IsNeverZero b) : imax a b ≈ max a b := by
   simp_all [equiv_def, eval, Lean.Nat.imax, IsNeverZero]
 
@@ -139,6 +146,12 @@ theorem inst_map_id (h : ls.length = n) : (params n).map (inst ls) = ls := by
 theorem eval_inst {l : VLevel} : (l.inst ls).eval ns = l.eval (ls.map (eval ns)) := by
   induction l <;> simp [eval, inst, *, List.getD_eq_getElem?_getD]
   case param n => cases ls[n]? <;> simp [eval]
+
+theorem IsNeverZero.inst {l : VLevel} (H : IsNeverZero l) :
+    IsNeverZero (l.inst ls) := by
+  intro ns
+  rw [eval_inst]
+  exact H _
 
 theorem WF.inst {l : VLevel} (H : ∀ l ∈ ls, l.WF n) : (l.inst ls).WF n := by
   induction l with
@@ -186,3 +199,57 @@ theorem WF.of_mapM_ofLevel (h : List.mapM (VLevel.ofLevel Us) us = some us')
     (a) (hl : a ∈ us') : VLevel.WF Us.length a := by
   rw [List.mapM_eq_some] at h
   have ⟨_, _, h⟩ := h.forall_exists_r _ hl; exact .of_ofLevel h
+
+/-- Substitution which shifts every existing abstract universe parameter by
+one position, making room for a freshly prepended concrete parameter. -/
+def prependShift (n : Nat) : List VLevel :=
+  (List.range n).map fun i => .param (i + 1)
+
+@[simp] theorem prependShift_length : (prependShift n).length = n := by
+  simp [prependShift]
+
+theorem prependShift_wf :
+    ∀ level ∈ prependShift n, level.WF (n + 1) := by
+  simp [prependShift, VLevel.WF]
+
+/-- Translating the same concrete level after prepending a genuinely fresh
+universe name shifts precisely the old abstract parameter positions. -/
+theorem ofLevel_fresh_cons
+    (hfresh : fresh ∉ Us)
+    (H : VLevel.ofLevel Us level = some target) :
+    VLevel.ofLevel (fresh :: Us) level =
+      some (target.inst (prependShift Us.length)) := by
+  induction level generalizing target with
+    simp [VLevel.ofLevel, bind] at H ⊢
+  | zero => cases H; rfl
+  | succ _ ih =>
+    obtain ⟨inner, hinner, ⟨⟩⟩ := H
+    simp [VLevel.inst, ih hinner]
+  | max _ _ ihLeft ihRight | imax _ _ ihLeft ihRight =>
+    obtain ⟨leftTarget, hleft, rightTarget, hright, ⟨⟩⟩ := H
+    simp [VLevel.inst, ihLeft hleft, ihRight hright]
+  | param name =>
+    have hold : Us.idxOf name < Us.length := H.1
+    have hmem : name ∈ Us := List.idxOf_lt_length_iff.mp hold
+    have hne : fresh ≠ name := fun heq => hfresh (heq ▸ hmem)
+    have hbeq : (fresh == name) = false := by
+      apply Bool.eq_false_iff.mpr
+      exact fun heq => hne (LawfulBEq.eq_of_beq heq)
+    rw [← H.2]
+    rw [List.idxOf_cons]
+    simp [hbeq, hold, VLevel.inst, prependShift,
+      List.getD_eq_getElem?_getD]
+
+theorem mapM_ofLevel_fresh_cons
+    {levels : List Lean.Level} {targets : List VLevel}
+    (hfresh : fresh ∉ Us)
+    (H : levels.mapM (VLevel.ofLevel Us) = some targets) :
+    levels.mapM (VLevel.ofLevel (fresh :: Us)) =
+      some (targets.map (VLevel.inst (prependShift Us.length))) := by
+  induction levels generalizing targets with
+  | nil => simpa using H
+  | cons level levels ih =>
+    simp [List.mapM_cons] at H ⊢
+    rcases H with ⟨target, htarget, tail, htail, rfl⟩
+    exact ⟨_, ofLevel_fresh_cons hfresh htarget,
+      _, ih htail, rfl⟩

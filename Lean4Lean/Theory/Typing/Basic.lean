@@ -29,10 +29,39 @@ inductive IsDefEq : List VExpr → VExpr → VExpr → VExpr → Prop where
     ls.length = ci.uvars →
     List.Forall₂ (· ≈ ·) ls ls' →
     Γ ⊢ .const c ls ≡ .const c ls' : ci.type.instL ls
+  /-- Abstract case symbols are typed from their declaration-derived schema,
+  with permission checked at the occurrence's specialized universes. -/
+  | elimDF {schema : InductiveSignature.CaseSchema}
+      {owner : Fin schema.signature.families.size} :
+    env.eliminators block schema →
+    schema.genericType owner = some type →
+    type.Closed →
+    schema.Permission uvars owner levels target →
+    (∀ level ∈ target' :: levels', level.WF uvars) →
+    List.Forall₂ (· ≈ ·) (target :: levels) (target' :: levels') →
+    Γ ⊢ type.instL (target :: levels) : .sort typeLevel →
+    Γ ⊢ .elim block owner.val (target :: levels) ≡
+      .elim block owner.val (target' :: levels') : type.instL (target :: levels)
   | appDF :
     Γ ⊢ f ≡ f' : .forallE A B →
     Γ ⊢ a ≡ a' : A →
     Γ ⊢ .app f a ≡ .app f' a' : B.inst a
+  | projDF :
+    env.projections typeName info →
+    (∀ l ∈ levels, l.WF uvars) →
+    levels.length = info.uvars →
+    params.length = info.nparams →
+    indexArgs.length = info.nindices →
+    info.fieldType typeName levels params index sourceMajor = some fieldType →
+    Γ ⊢ fieldType : .sort fieldLevel →
+    Γ ⊢ sourceMajor ≡ major :
+      VExpr.mkApps (.const typeName levels) (params ++ indexArgs) →
+    Γ ⊢ sourceMajor ≡ major' :
+      VExpr.mkApps (.const typeName levels) (params ++ indexArgs) →
+    info.ctorType.Closed →
+    (info.resultLevel.inst levels).IsNeverZero ∨ fieldLevel ≈ .zero →
+    Γ ⊢ .proj typeName index major ≡
+      .proj typeName index major' : fieldType
   | lamDF :
     Γ ⊢ A ≡ A' : .sort u →
     A::Γ ⊢ body ≡ body' : B →
@@ -54,6 +83,45 @@ inductive IsDefEq : List VExpr → VExpr → VExpr → VExpr → Prop where
   | extra :
     env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     Γ ⊢ df.lhs.instL ls ≡ df.rhs.instL ls : df.type.instL ls
+  /-- Only the same schema's generated case equations may reduce an abstract
+  eliminator. Their endpoints retain explicit typing premises. -/
+  | elimIota {schema : InductiveSignature.CaseSchema}
+      {owner : Fin schema.signature.families.size} :
+    env.eliminators block schema →
+    schema.genericEquations block owner = some rules →
+    df ∈ rules →
+    InductiveSignature.CaseSchema.RuleClosed df →
+    schema.Permission uvars owner levels target →
+    Γ ⊢ df.lhs.instL (target :: levels) : df.type.instL (target :: levels) →
+    Γ ⊢ df.rhs.instL (target :: levels) : df.type.instL (target :: levels) →
+    Γ ⊢ df.lhs.instL (target :: levels) ≡ df.rhs.instL (target :: levels) :
+      df.type.instL (target :: levels)
+  | projIota :
+    env.projections typeName info →
+    Γ ⊢ .proj typeName index (VExpr.mkApps (.const info.ctorName levels) args) : fieldType →
+    args[info.nparams + index]? = some field →
+    Γ ⊢ field : fieldType →
+    Γ ⊢ .proj typeName index (VExpr.mkApps (.const info.ctorName levels) args) ≡ field :
+      fieldType
+  | structEta :
+    env.projections typeName info →
+    params.length = info.nparams →
+    info.nindices = 0 →
+    Γ ⊢ e : VExpr.mkApps (.const typeName levels) params →
+    Γ ⊢ VExpr.mkApps (.const info.ctorName levels)
+        (params ++ (List.range info.numFields).map fun index => .proj typeName index e) :
+      VExpr.mkApps (.const typeName levels) params →
+    Γ ⊢ VExpr.mkApps (.const info.ctorName levels)
+        (params ++ (List.range info.numFields).map fun index => .proj typeName index e) ≡ e :
+      VExpr.mkApps (.const typeName levels) params
+  | unitLike :
+    env.projections typeName info →
+    params.length = info.nparams →
+    info.nindices = 0 →
+    info.numFields = 0 →
+    Γ ⊢ e : VExpr.mkApps (.const typeName levels) params →
+    Γ ⊢ e' : VExpr.mkApps (.const typeName levels) params →
+    Γ ⊢ e ≡ e' : VExpr.mkApps (.const typeName levels) params
 
 end
 
@@ -65,6 +133,13 @@ def IsType (env : VEnv) (U : Nat) (Γ : List VExpr) (A : VExpr) : Prop :=
 
 def IsDefEqU (env : VEnv) (U : Nat) (Γ : List VExpr) (e₁ e₂ : VExpr) :=
   ∃ A, env.IsDefEq U Γ e₁ e₂ A
+
+variable (env : VEnv) (U : Nat) (Γ₀ : List VExpr) in
+/-- Pointwise definitional equality of two local contexts over a common
+base `Γ₀`. -/
+inductive IsDefEqCtx : List VExpr → List VExpr → Prop
+  | zero : IsDefEqCtx Γ₀ Γ₀
+  | succ :  IsDefEqCtx Γ₁ Γ₂ → env.IsDefEq U Γ₁ A₁ A₂ (.sort u) → IsDefEqCtx (A₁ :: Γ₁) (A₂ :: Γ₂)
 
 end VEnv
 

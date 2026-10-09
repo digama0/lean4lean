@@ -83,6 +83,20 @@ as it was at the beginning of the file, using the kernel to check them.
 You can also use `lake exe lean4lean --fresh Mathlib.Data.Nat.Basic` to replay all the constants
 (both imported and defined in that file) into a fresh environment,
 but this can only be used on a single file.
+
+`--exact` matches each target module name exactly instead of as a prefix, so that e.g.
+`lake exe lean4lean --fresh --exact Init` replays the module `Init` and all its imports.
+
+`--differential` also sends every declaration to the C++ kernel (`Kernel.Environment.addDecl`)
+on the same environment, compares the two decisions and, when both accept, the constants the
+declaration adds; it prints the counts per module and fails on any disagreement
+(`Lean4Lean.Replay.replayDifferential`). `--compare` (unchanged) only times the C++ kernel on
+declarations that take lean4lean over a second.
+
+Both modes run the replay core `Lean4Lean.Replay.replayCore` (through `replay`), whose results are
+covered by `replayFresh.WF` and `replayPure.WF_fromImports` in `Lean4Lean/Verify/Replay.lean`. Those
+theorems are stated for the default fuel `{}`, which is the configuration used here when no
+`--config` flag is given.
 -/
 unsafe def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
@@ -90,6 +104,8 @@ unsafe def main (args : List String) : IO UInt32 := do
   let verbose := "-v" ∈ flags || "--verbose" ∈ flags
   let fresh : Bool := "--fresh" ∈ flags
   let compare : Bool := "--compare" ∈ flags
+  let differential : Bool := "--differential" ∈ flags
+  let exact : Bool := "--exact" ∈ flags
   let mut fuel : Lean4Lean.FuelConfig := {}
   for flag in flags do
     if let some path := flag.dropPrefix? "--config=" then
@@ -115,7 +131,7 @@ unsafe def main (args : List String) : IO UInt32 := do
     let mut found := false
     for path in (← SearchPath.findAllWithExt sp "olean") do
       if let some m := (← searchModuleNameOfFileName path sp) then
-        if target.isPrefixOf m then
+        if if exact then target == m else target.isPrefixOf m then
           targetModules := targetModules.insert m
           found := true
     if not found then
@@ -130,11 +146,12 @@ unsafe def main (args : List String) : IO UInt32 := do
         {targetModules}"
     for m in targetModules do
       if verbose then IO.println s!"replaying {m} with --fresh"
-      n := n + (← replayFromFresh m verbose compare (fuel := fuel))
+      n := n + (← replayFromFresh m verbose compare (fuel := fuel) (differential := differential))
   else
     let mut tasks := #[]
     for m in targetModules do
-      tasks := tasks.push (m, ← IO.asTask (replayFromImports m verbose compare (fuel := fuel)))
+      tasks := tasks.push (m, ← IO.asTask
+        (replayFromImports m verbose compare (fuel := fuel) (differential := differential)))
     let mut err := false
     for (m, t) in tasks do
       if verbose then IO.println s!"replaying {m}"

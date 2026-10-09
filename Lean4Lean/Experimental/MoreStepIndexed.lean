@@ -417,7 +417,11 @@ theorem pull_exists {a : Prop} {p : α → Prop} (z : α) : (a → ∃ b, p b) �
   refine ⟨fun H => ?_, fun ⟨_, h⟩ a => ⟨_, h a⟩⟩
   by_cases h : a <;> simp [h] <;> [exact H h; exact ⟨z, trivial⟩]
 
-#exit
+end SExpr
+end Lean4Lean
+
+/- Unfinished continuation, retained as notes outside the compiled module.
+
 def TypeEqS (IH : ∀ Γ A B, LogRel Γ A B n) : LogRel Γ A B (n + 1) := by
   refine {
     TypeEq'
@@ -487,3 +491,4 @@ termination_by n
 -- decreasing_by all_goals sorry
 
 -- theorem TypeEq.mono : k ≤ k' → TypeEq k' Γ A B ≤ TypeEq k Γ A B := sorry
+-/

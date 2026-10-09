@@ -138,8 +138,10 @@ def Condition.check (cond : Condition) (fail : ∀ {α}, M α)
     -- this way -- rather than `mkApp3 reflect.toDec …`, which it beta-reduces to -- the one
     -- `checkType` below does for all three: the arguments are checked against the binders, so
     -- `prop x y : Prop`, `asBool x y : Bool` and `proof x y : type (prop x y) (asBool x y)`,
-    -- which is everything a consumer needs and consistent by construction. Nothing else checks
-    -- any of the three, and `toDec`'s own type is checked nowhere.
+    -- which is everything a consumer needs and consistent by construction. The four closed
+    -- pieces are read only here, under the gadget's binders; those binders are inhabited (by
+    -- `Nat.zero`, and then by the arguments at it), which is how the verification brings the
+    -- readings out of them.
     let e := .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3
       (.lam0 q(Prop) <| .lam0 q(Bool) <| .lam0 (mkApp2 reflect.type (.bvar 1) (.bvar 0)) <|
         mkApp3 reflect.toDec (.bvar 2) (.bvar 1) (.bvar 0))
@@ -231,60 +233,66 @@ the *caller* is in when it calls them, so different probes can bind different va
 correspond to the variables of a pattern, not to the arguments of the function. -/
 def unfoldNatWellFounded (e meas : Expr) (fail : ∀ {α}, M α) : M Probe := do
   let succ := mkApp q(Nat.succ)
-  lambdaTelescope meas fun fvs meas => do
-  _ ← checkType (mkAppN e fvs)
-  let e1 ← whnfCore (mkAppN e fvs) -- get _unary
-  let e1 ← unfoldDefinition e1 -- get fix
-  (← whnfCore e1).withApp fun fix args => do
-  let .const ``WellFounded.Nat.fix [_, _] := fix | fail
-  let #[α,motive,f,F,a₀] := args | fail
-  let fixFn := mkAppN fix #[α,motive,f,F]
-  let ty ← inferType a₀
-  withLocalDecl `a .default ty fun a => do
-    unless ← isDefEq (← checkType (.app f a)) q(Nat) do fail
-    -- prove |- f a₀ ≡ meas
-    unless ← isDefEq (.app f a₀) meas do fail
-    -- prove |- fix α motive f F a ≡ go α motive f F (eager (succ (f a))) a [proof]
-    let e1 ← unfoldDefinition (.app fixFn a) -- get fix.go
-    let e1 ← whnfCore e1
-    e1.withApp fun fixGo args => do
-    let #[α',motive',f',F',fuel,a',pf] := args | fail
-    unless (α, motive, f, F, a) == (α', motive', f', F', a') do fail
-    let .app eager n := fuel | fail
-    unless ← isProp (← inferType pf) do fail
-    unless ← isDefEq n (succ (.app f a)) do fail
-    -- prove |- eager n = if beq n n = true then n else n
-    unless (← getEnv).contains ``Nat.beq do fail
-    withLocalDecl `x .default q(Nat) fun x => do
-      unless ← isDefEq (mkApp eager x)
-        (Condition.bool.ite q(Nat) #[mkApp2 (.const ``Nat.beq []) x x] x x) do fail
-    -- prove |- go α motive f F (succ t) x hfuel ≡ F x fun y hy => go α motive f F t y [proof]
-    let go' ← unfoldDefinition fixGo -- get fix
-    lambdaTelescope go' fun fvs go' => do
-    let #[_,_,_,F,t] := fvs | fail
-    let .app natRec t' := go' | fail
-    unless !natRec.containsFVar t.fvarId! && t == t' do fail
-    _ ← checkType (succ t)
-    let gor ← whnfCore (.app natRec (succ t))
-    lambdaTelescope gor fun fvs gor => do
-    let #[x,_] := fvs | fail
-    let .app Fx ih := gor | fail
-    unless .app F x == Fx do fail
-    lambdaTelescope ih fun fvs ih => do
-    let #[y,_] := fvs | fail
-    let .app ih _ := ih | fail
-    unless ih == .app (.app natRec t) y do fail
-  -- ensure `F` does not depend on the `fvs`
-  let lctx ← getLCtx
-  let F := F.abstract fvs
-  if F.hasLooseBVars then fail
-  -- `F : (a : ty) → Dom a → motive a`, so the `ih` binder's type is `Dom` at the packed argument.
+  let (F, pack) ← lambdaTelescope meas fun fvs meas => do
+    _ ← checkType (mkAppN e fvs)
+    let e1 ← whnfCore (mkAppN e fvs) -- get _unary
+    let e1 ← unfoldDefinition e1 -- get fix
+    (← whnfCore e1).withApp fun fix args => do
+    let .const ``WellFounded.Nat.fix [_, _] := fix | fail
+    let #[α,motive,f,F,a₀] := args | fail
+    let fixFn := mkAppN fix #[α,motive,f,F]
+    let ty ← inferType a₀
+    withLocalDecl `a .default ty fun a => do
+      unless ← isDefEq (← checkType (.app f a)) q(Nat) do fail
+      -- prove |- f a₀ ≡ meas
+      unless ← isDefEq (.app f a₀) meas do fail
+      -- prove |- fix α motive f F a ≡ go α motive f F (eager (succ (f a))) a [proof]
+      let e1 ← unfoldDefinition (.app fixFn a) -- get fix.go
+      let e1 ← whnfCore e1
+      e1.withApp fun fixGo args => do
+      let #[α',motive',f',F',fuel,a',pf] := args | fail
+      unless (α, motive, f, F, a) == (α', motive', f', F', a') do fail
+      let .app eager n := fuel | fail
+      unless ← isProp (← inferType pf) do fail
+      unless ← isDefEq n (succ (.app f a)) do fail
+      -- prove |- eager n = if beq n n = true then n else n
+      unless (← getEnv).contains ``Nat.beq do fail
+      withLocalDecl `x .default q(Nat) fun x => do
+        unless ← isDefEq (mkApp eager x)
+          (Condition.bool.ite q(Nat) #[mkApp2 (.const ``Nat.beq []) x x] x x) do fail
+      -- prove |- go α motive f F (succ t) x hfuel ≡ F x fun y hy => go α motive f F t y [proof]
+      let go' ← unfoldDefinition fixGo -- get fix
+      lambdaTelescope go' fun fvs go' => do
+      let #[_,_,_,F,t] := fvs | fail
+      let .app natRec t' := go' | fail
+      unless !natRec.containsFVar t.fvarId! && t == t' do fail
+      _ ← checkType (succ t)
+      let gor ← whnfCore (.app natRec (succ t))
+      lambdaTelescope gor fun fvs gor => do
+      let #[x,_] := fvs | fail
+      let .app Fx ih := gor | fail
+      unless .app F x == Fx do fail
+      lambdaTelescope ih fun fvs ih => do
+      let #[y,_] := fvs | fail
+      let .app ih _ := ih | fail
+      unless ih == .app (.app natRec t) y do fail
+    -- ensure `F` does not depend on the `fvs`
+    let lctx ← getLCtx
+    let F := F.abstract fvs
+    if F.hasLooseBVars then fail
+    -- `F : (a : ty) → Dom a → motive a`: the packed argument's type is `F`'s domain.
+    let .forallE _ A _ _ ← whnf (← inferType F) | fail
+    unless ← isDefEq ty A do fail
+    return (F, lctx.mkLambda fvs a₀)
+  -- `F`'s type is read again here, in the context the probe is returned to, and the `ih` binder's
+  -- type `Dom` is computed from that reading: what was found about `F` under the measure's
+  -- binders is not carried out of them. (`F` itself is well typed here: it mentions none of those
+  -- binders, which are `Nat`s, so substituting `Nat.zero` for them leaves it alone.)
   let .forallE _ A cod _ ← whnf (← inferType F) | fail
-  unless ← isDefEq ty A do fail
   let dom ← withLocalDecl `a .default A fun a => do
     let .forallE _ dom _ _ ← whnf (cod.instantiate1 a) | fail
     return .lam `a A (dom.abstract #[a]) .default
-  return { F, dom, pack := lctx.mkLambda fvs a₀ }
+  return { F, dom, pack }
 
 /-! ### The recognizer's vocabulary
 

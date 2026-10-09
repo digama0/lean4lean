@@ -1,0 +1,48 @@
+{
+  "standardAxioms": [
+    "Classical.choice",
+    "Quot.sound",
+    "propext"
+  ],
+  "implementationAxioms": [
+    "Lean.Expr.Data.looseBVarRange_le._native.bv_decide.ax_1_7",
+    "Lean.Expr.abstractN_eq",
+    "Lean.Expr.abstractRange_eq",
+    "Lean.Expr.eqv_eq",
+    "Lean.Expr.hasLooseBVar_eq",
+    "Lean.Expr.instantiate1_eq",
+    "Lean.Expr.instantiateRange_eq",
+    "Lean.Expr.instantiateRevRange_eq",
+    "Lean.Expr.instantiateRev_eq",
+    "Lean.Expr.instantiate_eq",
+    "Lean.Expr.looseBVarRange_eq",
+    "Lean.Expr.lowerLooseBVars_eq",
+    "Lean.Expr.mkAppData_eq",
+    "Lean.Expr.mkData_eq",
+    "Lean.Expr.replace_eq",
+    "Lean.Level.hasMVar_eq",
+    "Lean.Level.hasParam_eq",
+    "Lean.Level.instLawfulBEqLevel",
+    "Lean.Level.isExplicitSubsumedAux_eq",
+    "Lean.Level.normalize_eq",
+    "Lean.PersistentArray.toList'_push",
+    "Lean.PersistentHashMap.WF.find?_eq",
+    "Lean.PersistentHashMap.WF.toList'_insert",
+    "Lean.PersistentHashMap.findAux_isSome",
+    "Lean.Syntax.structEq_eq",
+    "Lean4Lean.ptrEqConstantInfo_eq",
+    "Lean4Lean.ptrEqExpr_eq",
+    "Std.TreeMap.all_eq_all_toList",
+    "_private.Lean4Lean.Verify.Expr.0.Lean.Expr.mkData_flags._native.bv_decide.ax_1_12"
+  ],
+  "implementationSources": {
+    "Lean4Lean/Verify/Axioms.lean": "Opaque or partial runtime/stdlib operations and expression/level cache semantics; exact reachable names are listed above. `Lean.Expr.abstractN_eq` is the exact model of `Expr.abstract` (simultaneous abstraction, loose bound variables unshifted). The former axiom `Lean.Expr.abstract_eq` was false and has been removed; the sequential model `abstractList` is now used only where closedness and duplicate-freedom make it agree with the exact model (`abstract_eq_of_closed`, `abstractN_eq_abstractList`).",
+    "Lean4Lean/PtrEq.lean": "A successful pointer-equality comparison implies value equality.",
+    "Lean4Lean/Verify/Expr.lean": "The two explicitly listed native bv_decide axioms assert successful certificate checks for bitfield bounds/flags; they retain native-evaluation trust."
+  },
+  "nativeEvaluationAxioms": [
+    "Lean.Expr.Data.looseBVarRange_le._native.bv_decide.ax_1_7",
+    "_private.Lean4Lean.Verify.Expr.0.Lean.Expr.mkData_flags._native.bv_decide.ax_1_12"
+  ],
+  "openProofs": []
+}

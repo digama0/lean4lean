@@ -1,11 +1,13 @@
 import Lean.Data.Json.FromToJson
+import Lean4Lean.CacheMode
 
 namespace Lean4Lean
 
 /--
-Bounds for the various fixed-fuel loops inside the kernel.
+Configuration of a checker run: bounds for the various fixed-fuel loops inside the kernel, and
+the cache mode.
 
-Every field is a positive `Nat`; on exhaustion the corresponding loop throws
+Every bound is a positive `Nat`; on exhaustion the corresponding loop throws
 `.deterministicTimeout` (whnf-family) or `.deepRecursion` (structural /
 mutual-recursion loops).
 
@@ -28,4 +30,8 @@ structure FuelConfig where
   recDepth    : Nat := 50000
   /-- Shared fuel for the structural loops in `Inductive/Add.lean`. -/
   inductiveFuel : Nat := 1000
+  /-- Whether the checker's context-relative caches are restored when a binder is closed
+  (`.scoped`, the default) or kept for the whole run as in the C++ kernel (`.global`, which
+  needs a `GlobalCacheLicense`). See `Lean4Lean.CacheMode`. -/
+  cacheMode : CacheMode := .scoped
   deriving Repr, Inhabited, Lean.FromJson, Lean.ToJson

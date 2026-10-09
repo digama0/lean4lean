@@ -459,7 +459,7 @@ theorem IsDefEqStrong.defeqDF_l (henv : Ordered env) (hΓ : CtxStrong env U Γ)
     (h1 : env.IsDefEqStrong U Γ A A' (.sort u) (.succ u))
     (h2 : env.IsDefEqStrong U ((A, u)::Γ) e1 e2 B v) :
     env.IsDefEqStrong U ((A', u)::Γ) e1 e2 B v := by
-  simpa [instN_bvar0] using
+  simpa [VExpr.inst_liftN_bvar] using
     have hu := h1.out.sort_r henv.out hΓ.out
     have hΓ' := ⟨hΓ, h1.hasType.2⟩
     h1.weakN henv (.zero [(A', u)])

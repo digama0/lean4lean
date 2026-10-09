@@ -38,6 +38,37 @@ If you run this as is (with no additional arguments), it will check every olean 
 * `--verbose`: shows the name of each declaration before adding it to the environment. Useful to know if the kernel got stuck on something.
 * `--compare`: If lean4lean takes more than a second on a given definition, we also check the C++ kernel performance to see if it is also slow on the same definition and report if lean4lean is abnormally slow in comparison.
 
+## Verified inductive declarations
+
+`Lean4Lean.addDecl.WF_of_canonicalEq` (`Lean4Lean/Verify/Environment.lean`) states that the
+checked `addDecl` is sound for every declaration form, including ordinary, mutual and nested
+inductive declarations and quotient initialization: whenever it returns an environment, that
+environment is modelled at every safety level by a well-formed abstract environment
+(`VEnv.WF`, the generative specification of inductive types in `Lean4Lean/Theory/Inductive`)
+extending the previous model. The only hypotheses are the invariant being preserved and that
+`Eq`, `Eq.refl` and `Eq.rec` have the prelude's types and iota rule (`HasCanonicalEq`).
+`replayFresh.WF` (`Lean4Lean/Verify/Replay.lean`) lifts this to a whole `--fresh` replay,
+without hypotheses. The design notes posted on the pull request describe the
+statement, the specification, the structure of the proof and the changes to the executable.
+
+The checks:
+
+```
+lake build                                              # no "declaration uses `sorry`"
+lake build Lean4Lean.Tests                              # executable and specification tests
+lake build Lean4Lean.Experimental                       # prototypes; inherited `sorry`s only
+lake exe lean4lean --fresh Init.Prelude                 # replays 1975 declarations
+lake exe lean4lean --fresh Init.Core                    # replays 3953 declarations
+python3 scripts/check-inductive-audit.py --self-test    # tests the dependency auditor
+python3 scripts/check-inductive-audit.py --require-complete
+```
+
+The last command walks the dependency closure of the top-level theorems, including opaque
+bodies, and fails on any `sorry` or on any axiom not listed in
+`scripts/inductive-audit-inventory.json`. The tests in `Lean4Lean/Tests` compare the generated
+recursors, constructors and rules with Lean's kernel, check the specification on small
+examples, and pin the divergences listed in `divergences.md` (section 8 of the design document).
+
 ## More documentation
 
 * [bugs-found.md](bugs-found.md): A list of kernel bugs that the lean4lean project has uncovered.
@@ -68,7 +99,7 @@ If you run this as is (with no additional arguments), it will check every olean 
       * `Lemmas.lean`: theorems about the typing relation
       * `Meta.lean`: tactic for proving typing judgments
       * `Strong.lean`: proof that you can have all the inductive hypotheses
-      * `UniqueTyping.lean`: conjectures about the typing relation
+      * `UniqueTyping.lean`: uniqueness of types
       * `Env.lean`: typing for environments
   * `Verify`: relation between the metatheory and the kernel
     * `Axioms.lean`: theorems about upstream opaques that shouldn't be opaque

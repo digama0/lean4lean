@@ -77,7 +77,7 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
     VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx hle hleT
   rw [hnil] at hleT'
   have hleTrΓ {Δ} : TrExprS c.venv c.lparams Δ _ le' :=
-    TrExprS.of_nil_any c.Ewf (by simp [noProj]) (hnil ▸ hleTr)
+    TrExprS.of_nil_any c.Ewf (hnil ▸ hleTr)
   have hleTΓ {Γ} : c.venv.HasType c.lparams.length Γ le' vexpr(Nat → Nat → Prop) :=
     .weak0 c.Ewf hleT'
   have hleC : le'.ClosedN := (hleT'.closedN' c.Ewf.ordered.closed trivial).1
@@ -90,7 +90,7 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
     VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx hgo hgoT
   rw [hnil] at hgoT'
   have hgoTrΓ {Δ} : TrExprS c.venv c.lparams Δ _ go' :=
-    TrExprS.of_nil_any c.Ewf (by simp [noProj]) (hnil ▸ hgoTr)
+    TrExprS.of_nil_any c.Ewf (hnil ▸ hgoTr)
   have hgoTΓ {Γ} : c.venv.HasType c.lparams.length Γ go' (natGoType le') :=
     VEnv.HasType.weak0 c.Ewf hgoT'
   have hgoC : go'.ClosedN := (hgoT'.closedN' c.Ewf.ordered.closed trivial).1
@@ -153,7 +153,7 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
     simp [hyTy, leb2, oneb2, hy5, hy4, hy3, hhTy, leb4, hx5, hx4, hx3, hf5,
       TrTerm.natBinApp, TrTerm.app', TrTerm.of, TrTerm.natUnApp, TrTerm.wk, TrTerm.natZero,
       TrTerm.natSucc, succb, zerob, VExpr.inst, VExpr.instVar, VExpr.lift, VExpr.liftN,
-      VExpr.natLit, VExpr.inst_lift, hleC.liftN_eq (Nat.zero_le _), hleC.instN_eq (Nat.zero_le _)]
+      VExpr.natLit, hleC.liftN_eq (Nat.zero_le _), hleC.instN_eq (Nat.zero_le _)]
   refine .bind (checkType.WF ?_) fun _ _ _ ⟨e2', e2Ty', _, he2Tr, _, he2T⟩ => ?_
   · have hxf : Expr.FVarsIn (· ∈ _) (.fvar idx) := hx5.trS.fvarsIn
     have hyf : Expr.FVarsIn (· ∈ _) (.fvar idy) := hy5.trS.fvarsIn
@@ -171,21 +171,20 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
   -- the fuel equation, taken apart: the condition at `y` and `x`, the step at a `go` call, and
   -- the caller's own stopping value
   obtain ⟨P2, D2, t2', e2'', hP2, hD2, ht2, he2, hshape2⟩ :=
-    Condition.dite_tr_inv (cnd := Condition.natLE) (m := _)
-      (by simp [Condition.natLE, Expr.mkAppN_eq, Expr.appN, noProj]) he2Tr
+    Condition.dite_tr_inv (cnd := Condition.natLE) (m := _) he2Tr
   obtain ⟨_, _, hP2a, hP2b, hP2eq⟩ := w.prop_app2_inv hP2
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hP2a hy5.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hP2b hx5.trS
+  cases TrExprS.unique hP2a hy5.trS
+  cases TrExprS.unique hP2b hx5.trS
   obtain ⟨_, _, hD2a, hD2b, hD2eq⟩ := w.dec_app2_inv hD2
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hD2a hy5.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hD2b hx5.trS
+  cases TrExprS.unique hD2a hy5.trS
+  cases TrExprS.unique hD2b hx5.trS
   obtain ⟨t2g, ht2g, rfl⟩ := hHtr ht2
   cases ht2g with | app hgo5T2 hlem2T ht2f ht2lem
   cases ht2f with | app _ hsub2T ht2f2 ht2sub
   cases ht2f2 with | app _ hfuel2T ht2f3 ht2fuel
   cases ht2f3 with | app _ hpf2T ht2f4 ht2pf
   cases ht2f4 with | app _ hy2T ht2go ht2y
-  have hgo2 : _ = go' := TrExprS.unique (noProj.isUnique (by simp [noProj])) ht2go hgoTrΓ
+  have hgo2 : _ = go' := TrExprS.unique ht2go hgoTrΓ
   rw [hgo2] at hshape2
   cases ht2sub with | app _ _ ht2sf ht2sy
   cases ht2sf with | app _ _ ht2sc ht2sx
@@ -205,10 +204,10 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
       hyTy.hasType ?_) hnatTyΓ (hlitT f' [])) hhTy.hasType ?_
     · simp only [hyTy, leb2, oneb2, hy, TrTerm.natBinApp, TrTerm.app', TrTerm.of,
         TrTerm.natUnApp, TrTerm.natZero, TrTerm.natSucc, succb, zerob, TrTerm.fvar,
-        VExpr.subst, VExpr.Subst.id, VExpr.natSucc, VExpr.natZero, hleC.subst_eq']; exact hpfT
+        VExpr.subst, VExpr.Subst.id, VExpr.natSucc, VExpr.natZero, hleC.subst_eq_of_closed]; exact hpfT
     · simp only [hhTy, leb4, hx4, hx3, hx2, hx, hf, TrTerm.natBinApp, TrTerm.app', TrTerm.of,
         TrTerm.natUnApp, TrTerm.wk, TrTerm.natSucc, succb, TrTerm.fvar, VExpr.subst,
-        VExpr.Subst.id, VExpr.lift, VExpr.liftN, VExpr.natSucc, hleC.subst_eq']; exact hpf'T
+        VExpr.Subst.id, VExpr.lift, VExpr.liftN, VExpr.natSucc, hleC.subst_eq_of_closed]; exact hpf'T
   -- where the dividend lands under that closing, which is what the stopping value is read at
   have hx5s (xx bb f' : Nat) (pf pf' : VExpr) :
       hx5.tgt.subst (((((VExpr.Subst.id.cons (.natLit xx)).cons (.natLit bb)).cons pf).cons
@@ -231,7 +230,7 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
   rw [hshape2] at hc2 he2T
   have hwf2 := he2T.subst c.Ewf.ordered (hγ5 x bb f' pf pf' hpfT hpf'T)
   simp [diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift, TrTerm.app,
-    hP2eq, hD2eq, hHsubst, hdecC'.subst_eq', hgoC.subst_eq', hpropC'.subst_eq',
+    hP2eq, hD2eq, hHsubst, hdecC'.subst_eq_of_closed, hgoC.subst_eq_of_closed, hpropC'.subst_eq_of_closed,
     hy5, hy4, hy3, hy, hx5, hx4, hx3, hx2, hx, hf5, hf, hhy5, hhy3, hhh5, gob5, lhs5,
     TrTerm.of, TrTerm.wk, TrTerm.fvar, VExpr.liftN] at hc2 hwf2
   -- evaluate it: at literals the decision is `Nat.ble bb x`
@@ -276,9 +275,9 @@ by the time the rest of the checks run; the top equation `mod (succ x) y ≡ if 
 `else succ x`, with a conditional inside its `then`; and `go`'s own equation, which is the shared
 recursion's business. The step does nothing to the recursive call, and the recursion returns the
 dividend when it stops. -/
-theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
+theorem checkNatMod.WF {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
     (hname : v.name = ``Nat.mod) :
-    let c := .mk' wf .safe v.levelParams; Data v ci' c →
+    let c := .mk' wf .safe v.levelParams fuel; Data v ci' c →
     (checkNatMod v).WF c state fun _ _ => PrimitiveResult (ves.venv .safe) v ci' := by
   intro ctx P; rw [← ctx.withMLC_self]
   refine elseFail fun h1 => elseFail fun h2 => ?_
@@ -288,7 +287,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   have hsub := VContext.contains_primitive rfl h1.1.1
   have hbool := VContext.contains_primitive rfl h1.1.2
   have hnat := VEnv.contains_nat_of_hasType ctx.Ewf.ordered (wf.hasPrimitives.natSub hsub).1
-  have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
+  have tyeq := P.mkTyEq hnat (natCod hnat) h2
   have hlp : ctx.lparams.length = 0 := congrArg List.length (hok h1.2).2
   obtain ⟨natU, hnatTy⟩ : ctx.venv.IsType ctx.lparams.length [] .nat :=
     wf.hasPrimitives.natIsType' ctx.Ewf.ordered hnat trivial
@@ -309,7 +308,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
     have hvalC : ci'.value.ClosedN := (P.hci.closedN' ctx.Ewf.ordered.closed trivial).1
     simpa [TrTerm.natBinApp, TrTerm.app', TrTerm.of, TrTerm.of_nil', TrTerm.wk, TrTerm.fvar,
       TrTerm.natZero, zerob, hx0, Data.hv, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id,
-      VExpr.instVar, VExpr.natLit, VExpr.natZero, hvalC.subst_eq'] using h
+      VExpr.instVar, VExpr.natLit, VExpr.natZero, hvalC.subst_eq_of_closed] using h
   -- the recursion itself, which `Nat.div` runs too
   refine checkNatFuelRec.WF (F := (· % ·)) (hF := id)
     (lhsB := .natUnApp (succb hnat)) (hHFV := id) (helsFV := id) (hHtr := (⟨_, ·, rfl⟩))
@@ -329,8 +328,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   -- the top equation's two conditionals, taken apart
   have ⟨α1', Pi1, Di1, ti1', ei1', hα1, hPi1, hDi1, hti1, hei1, hshapei1⟩ :=
     Condition.ite_tr_inv he1Tr
-  have ⟨P1, D1, t1', e1'', hP1, hD1, ht1, he1, hshape1⟩ := Condition.dite_tr_inv (H := hti1) <| by
-    simp [Condition.natLE, Expr.mkAppN_eq, Expr.appN, noProj, one, zero, succ]
+  have ⟨P1, D1, t1', e1'', hP1, hD1, ht1, he1, hshape1⟩ := Condition.dite_tr_inv (H := hti1)
   let oneb2 : TrTerm ctx.venv ctx.lparams (ctx.withMLC m2).vlctx _ .nat :=
     .natUnApp (succb hnat) (zerob hnat)
   let sxb2 : TrTerm ctx.venv ctx.lparams (ctx.withMLC m2).vlctx _ .nat := .natUnApp (succb hnat) hx2
@@ -338,21 +336,21 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   -- condition's own `prop` or `dec`, which translates the one way it can, so all that is left is
   -- to pin the two arguments
   obtain ⟨_, _, hP1a, hP1b, hP1eq⟩ := w.prop_app2_inv hP1
-  cases TrExprS.unique (by simp [TrExprS.IsUnique, one, zero, succ]) hP1a oneb2.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hP1b hy.trS
+  cases TrExprS.unique hP1a oneb2.trS
+  cases TrExprS.unique hP1b hy.trS
   obtain ⟨_, _, hD1a, hD1b, hD1eq⟩ := w.dec_app2_inv hD1
-  cases TrExprS.unique (by simp [TrExprS.IsUnique, one, zero, succ]) hD1a oneb2.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hD1b hy.trS
+  cases TrExprS.unique hD1a oneb2.trS
+  cases TrExprS.unique hD1b hy.trS
   cases hα1.const0_inv (Us' := ctx.lparams) (Δ' := ctx.vlctx) |>.1
   obtain ⟨_, _, hPi1a, hPi1b, hPi1eq⟩ := w.prop_app2_inv hPi1
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hPi1a hy.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique, succ]) hPi1b sxb2.trS
+  cases TrExprS.unique hPi1a hy.trS
+  cases TrExprS.unique hPi1b sxb2.trS
   obtain ⟨_, _, hDi1a, hDi1b, hDi1eq⟩ := w.dec_app2_inv hDi1
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hDi1a hy.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique, succ]) hDi1b sxb2.trS
+  cases TrExprS.unique hDi1a hy.trS
+  cases TrExprS.unique hDi1b sxb2.trS
   -- the branches: both of the top equation's `else`s are `succ x`, and its `then` is a `go` call
   -- whose guard proof is the one the conditional itself produces
-  cases TrExprS.unique (noProj.isUnique <| by simp [noProj, succ]) hei1 sxb2.trS
+  cases TrExprS.unique hei1 sxb2.trS
   let .app _ _ he1c he1a := he1
   have he1xeq := TrExprS.fvar_lift_uniq hx2.trS he1a
   cases he1c.const0_inv (Us' := ctx.lparams) (Δ' := ctx.vlctx) |>.1
@@ -361,7 +359,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   let .app _ hssx1T ht1f3 ht1ssx := ht1f2
   let .app _ hbv1T ht1f4 ht1bv := ht1f3
   let .app _ hy1T ht1go ht1y := ht1f4
-  cases TrExprS.unique (noProj.isUnique <| by simp [noProj]) ht1go hgoTrΓ
+  cases TrExprS.unique ht1go hgoTrΓ
   -- the `go` call's arguments: `y`, the conditional's own proof, `succ (succ x)`, `succ x`
   have hy1eq := TrExprS.fvar_lift_uniq hy.trS ht1y
   let .app _ _ ht1sxc ht1sxa := ht1sx
@@ -392,7 +390,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   have hwf1 := he1T.subst ctx.Ewf.ordered (hγ2 k b)
   simp [iteApp, diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift, TrTerm.app', TrTerm.of,
     TrTerm.natUnApp, TrTerm.of_nil', Data.hv, VExpr.liftN, sxb2, hxs, hys, hPi1eq, hDi1eq,
-    hP1eq, hD1eq, hdecC'.subst_eq', hgoC.subst_eq', hvalC.subst_eq', hpropC'.subst_eq'] at hc1 hwf1
+    hP1eq, hD1eq, hdecC'.subst_eq_of_closed, hgoC.subst_eq_of_closed, hvalC.subst_eq_of_closed, hpropC'.subst_eq_of_closed] at hc1 hwf1
   -- evaluate the outer conditional: at literals the decision is `Nat.ble b (succ k)`
   have hev1 := (hite rfl).2 ctx.self (Γ := []) (args' := [.natLit b, .natLit (k+1)])
     (Nat.ble b (k+1)) nofun trivial (.cons (hlitT b []) (.cons (hlitT (k+1) []) .nil)) rfl
@@ -440,9 +438,9 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
 is covered by the top equation `div x y ≡ if 1 ≤ y then go y _ (succ x) x _ else 0`. The step
 counts, so the recursive call is wrapped in a `succ`, and the recursion returns `0` when it
 stops. -/
-theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
+theorem checkNatDiv.WF {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
     (hname : v.name = ``Nat.div) :
-    let c := .mk' wf .safe v.levelParams; Data v ci' c →
+    let c := .mk' wf .safe v.levelParams fuel; Data v ci' c →
     (checkNatDiv v).WF c state fun _ _ => PrimitiveResult (ves.venv .safe) v ci' := by
   intro ctx P; rw [← ctx.withMLC_self]
   refine elseFail fun h1 => elseFail fun h2 => ?_
@@ -450,7 +448,7 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
   have hsub := VContext.contains_primitive rfl h1.1.1
   have hbool := VContext.contains_primitive rfl h1.1.2
   have hnat := VEnv.contains_nat_of_hasType ctx.Ewf.ordered (wf.hasPrimitives.natSub hsub).1
-  have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
+  have tyeq := P.mkTyEq hnat (natCod hnat) h2
   have hlp : ctx.lparams.length = 0 := congrArg List.length (hok h1.2).2
   have hlitT (k : Nat) (Γ : List VExpr) : ctx.venv.HasType ctx.lparams.length Γ (.natLit k) .nat :=
     wf.hasPrimitives.natLitT ctx.Ewf.ordered hnat k Γ
@@ -468,7 +466,7 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
     exact ⟨⟨hy, hx⟩, hy⟩
   · cases hc.const0_inv (Us' := ctx.lparams) (Δ' := ctx.vlctx) |>.1; exact ⟨_, ha, rfl⟩
   · intro _ _ _ _ hX _ _ _ _
-    cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hX (zerob (c := ctx) hnat).trS
+    cases TrExprS.unique hX (zerob (c := ctx) hnat).trS
     simp only [zerob, TrTerm.natZero, TrTerm.of, VExpr.subst, VExpr.natZero]
     exact ⟨_, hlitT 0 []⟩
   · rw [Nat.div_eq x bb, if_pos ⟨hbb, hle⟩]
@@ -477,16 +475,15 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
   haveI : ctx.MLCWF m2 := cwf2
   refine P.mkResult (F := Nat.div) (hok h1.2) hnat (by simp [primSpecs, hname]) tyeq fun hvT => ?_
   -- the top conditional, taken apart: `dite_tr_inv` gives the pieces `checkType` produced
-  obtain ⟨P1, D1, t1', e1'', hP1, hD1, ht1, he1, hshape1⟩ := Condition.dite_tr_inv
-    (by simp [Condition.natLE, Expr.mkAppN_eq, Expr.appN, noProj, one, zero, succ]) he1Tr
+  obtain ⟨P1, D1, t1', e1'', hP1, hD1, ht1, he1, hshape1⟩ := Condition.dite_tr_inv he1Tr
   let oneb2 : TrTerm ctx.venv ctx.lparams (ctx.withMLC m2).vlctx _ .nat :=
     .natUnApp (succb hnat) (zerob hnat)
   obtain ⟨_, _, hP1a, hP1b, hP1eq⟩ := w.prop_app2_inv hP1
-  cases TrExprS.unique (by simp [TrExprS.IsUnique, one, zero, succ]) hP1a oneb2.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hP1b hy.trS
+  cases TrExprS.unique hP1a oneb2.trS
+  cases TrExprS.unique hP1b hy.trS
   obtain ⟨_, _, hD1a, hD1b, hD1eq⟩ := w.dec_app2_inv hD1
-  cases TrExprS.unique (by simp [TrExprS.IsUnique, one, zero, succ]) hD1a oneb2.trS
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) hD1b hy.trS
+  cases TrExprS.unique hD1a oneb2.trS
+  cases TrExprS.unique hD1b hy.trS
   -- the branches: the `else` is `0`, and the `then` is a `go` call whose guard proof is the one
   -- the conditional itself produces
   cases he1.const0_inv (Us' := ctx.lparams) (Δ' := ctx.vlctx) |>.1
@@ -495,7 +492,7 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
   let .app _ hsx1T ht1f3 ht1sx := ht1f2
   let .app _ hpf1T ht1f4 ht1pf := ht1f3
   let .app _ hy1T ht1go ht1y := ht1f4
-  cases TrExprS.unique (noProj.isUnique (by simp [noProj])) ht1go hgoTrΓ
+  cases TrExprS.unique ht1go hgoTrΓ
   have hvalC : ci'.value.ClosedN := (hvT.closedN' ctx.Ewf.ordered.closed trivial).1
   have hdecC' : w.dec'.ClosedN := w.decC
   have hpropC' : w.prop'.ClosedN := w.propC
@@ -520,7 +517,7 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
   rw [hshape1] at hc1 he1T
   have hwf1 := he1T.subst ctx.Ewf.ordered (hγ2 a b)
   simp [diteApp, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.lift,
-    hxs, hys, hP1eq, hD1eq, hdecC'.subst_eq', hgoC.subst_eq', hvalC.subst_eq', hpropC'.subst_eq',
+    hxs, hys, hP1eq, hD1eq, hdecC'.subst_eq_of_closed, hgoC.subst_eq_of_closed, hvalC.subst_eq_of_closed, hpropC'.subst_eq_of_closed,
     TrTerm.of, TrTerm.of_nil', VExpr.liftN, Data.hv, id] at hc1 hwf1
   -- evaluate it: at literals the decision is `Nat.ble 1 b`
   obtain ⟨pf1, hev1⟩ := hdite.2.1 ctx.self (Γ := []) (args' := [.natLit 1, .natLit b])
