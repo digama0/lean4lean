@@ -177,6 +177,7 @@ theorem Closed.abstract1 (h1 : Closed e k) :
   | bvar => omega
   | fvar => split <;> simp [Closed]
 
+
 theorem Closed.getAppFn {e} (h : Closed e) : Closed e.getAppFn := by
   unfold Expr.getAppFn; split
   · exact Closed.getAppFn h.1
@@ -198,6 +199,18 @@ theorem Closed.looseBVarRange_le : Closed e k → e.looseBVarRange' ≤ k := by
 
 theorem Closed.looseBVarRange_zero (H : Closed e) : e.looseBVarRange' = 0 := by
   simpa using H.looseBVarRange_le
+
+theorem Closed.instantiate1 : ∀ {e : Expr} {k},
+    Closed e (k+1) → Closed a → Closed (Expr.instantiate1' e a k) k := by
+  intro e
+  induction e <;> intro k he ha <;> simp_all [Closed, Expr.instantiate1']
+  rename_i i
+  split
+  · simpa [Closed]
+  · split
+    · rw [Expr.liftLooseBVars_eq_self (by simpa using ha.looseBVarRange_zero)]
+      exact ha.mono (Nat.zero_le _)
+    · simp [Closed]; omega
 
 /-- The converse of `Closed.looseBVarRange_le`, which is how a decidable closedness test is
 cashed in. The metavariable hypothesis is not optional: `looseBVarRange'` returns `0` on

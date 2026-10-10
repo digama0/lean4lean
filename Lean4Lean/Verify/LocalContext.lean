@@ -17,22 +17,22 @@ def mkBindingList1 (isLambda : Bool) (lctx : LocalContext)
     (xs : List FVarId) (x : FVarId) (b : Expr) : Expr :=
   match lctx.find? x with
   | some (.cdecl _ _ n ty bi _) =>
-    let ty := ty.abstractList xs
+    let ty := ty.abstractN xs
     if isLambda then
       .lam n ty b bi
     else
       .forallE n ty b bi
   | some (.ldecl _ _ n ty val nonDep _) =>
     if b.hasLooseBVar' 0 then
-      let ty  := ty.abstractList xs
-      let val := val.abstractList xs
+      let ty  := ty.abstractN xs
+      let val := val.abstractN xs
       .letE n ty val b nonDep
     else
       b.lowerLooseBVars' 1 1
   | none => panic! "unknown free variable"
 
 def mkBindingList (isLambda : Bool) (lctx : LocalContext) (xs : List FVarId) (b : Expr) : Expr :=
-  core (b.abstractList xs)
+  core (b.abstractN xs)
 where
   core := go xs.reverse
   go : List FVarId → Expr → Expr
@@ -42,14 +42,14 @@ where
 theorem mkBinding_eq :
     mkBinding isLambda lctx ⟨xs.map .fvar⟩ b = mkBindingList isLambda lctx xs b := by
   simp only [mkBinding, List.getElem_toArray, Expr.abstractRange_eq, Expr.hasLooseBVar_eq,
-    Expr.abstract_eq, ← Array.take_eq_extract, List.take_toArray, Bool.and_false,
+    Expr.abstractN_eq, ← Array.take_eq_extract, List.take_toArray, Bool.and_false,
     ← List.map_take, List.getElem_map, Expr.lowerLooseBVars_eq]
   dsimp only [Array.size]
   simp only [List.getElem_eq_getElem?_get, Option.get_eq_getD (fallback := default)]
   change Nat.foldRev _ (fun i x =>
     mkBindingList1 isLambda lctx (xs.take i) (xs[i]?.getD default)) .. = mkBindingList.go ..
   rw [List.length_map]; generalize eq : xs.length = n
-  generalize b.abstractList xs = b
+  generalize b.abstractN xs = b
   induction n generalizing xs b with
   | zero => let [] := xs; simp [mkBindingList.go]
   | succ n ih =>
@@ -59,25 +59,23 @@ theorem mkBinding_eq :
       List.getElem?_append_left, mkBindingList.go, ih]; simp
 
 theorem mkBindingList1_abstract {xs : List FVarId}
-    (hx : lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
-    (mkBindingList1 isLambda lctx xs x b).abstract1 a xs.length =
-    mkBindingList1 isLambda lctx (a :: xs) x (b.abstract1 a (xs.length + 1)) := by
-  have (e:_) := Nat.zero_add _ ▸ Expr.abstract1_abstractList' (k := 0) (e := e) nd
+    (hx : lctx.find? x = some decl) :
+    (mkBindingList1 isLambda lctx xs x b).abstractN [a] xs.length =
+    mkBindingList1 isLambda lctx (a :: xs) x (b.abstractN [a] (xs.length + 1)) := by
   simp [mkBindingList1, hx]; cases decl with simp
-  | cdecl _ _ _ ty => split <;> simp [Expr.abstract1, Expr.abstract1, this]
+  | cdecl _ _ _ ty => split <;> simp [Expr.abstractN, Expr.abstractN_cons (xs := xs)]
   | ldecl =>
-    have := Expr.abstract1_hasLooseBVar a b (xs.length + 1) 0
-    simp at this; simp [this]; clear this
+    rw [Expr.abstractN_hasLooseBVar_zero]
     split
-    · simp [Expr.abstract1, Expr.abstract1, this]
+    · simp [Expr.abstractN, Expr.abstractN_cons (xs := xs)]
     · rename_i h; simp at h
-      rw [Expr.abstract1_lower h (Nat.zero_le _)]
+      rw [Expr.abstractN_lower _ _ _ h]
 
 theorem mkBindingList_core_cons {xs : List FVarId} {b : Expr}
     (hx : ∀ x ∈ xs, ∃ decl, lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
-    mkBindingList.core isLambda lctx (a :: xs) (b.abstract1 a xs.length) =
+    mkBindingList.core isLambda lctx (a :: xs) (b.abstractN [a] xs.length) =
     mkBindingList1 isLambda lctx [] a
-      ((mkBindingList.core isLambda lctx xs b).abstract1 a) := by
+      ((mkBindingList.core isLambda lctx xs b).abstractN [a]) := by
   obtain ⟨xs, rfl⟩ : ∃ xs', List.reverse xs' = xs := ⟨_, List.reverse_reverse _⟩
   simp [mkBindingList.core] at *
   induction xs generalizing b with
@@ -86,23 +84,24 @@ theorem mkBindingList_core_cons {xs : List FVarId} {b : Expr}
     simp at hx nd ih
     let ⟨decl, eq⟩ := hx.1
     simp [mkBindingList.go]
-    rw [← xs.length_reverse, ← mkBindingList1_abstract eq (by simp [*])]
+    rw [← xs.length_reverse, ← mkBindingList1_abstract eq]
     simp [ih hx.2 nd.1.2 nd.2.2]
 
-@[simp] theorem mkBindingList_nil : mkBindingList isLambda lctx [] b = b := rfl
+@[simp] theorem mkBindingList_nil : mkBindingList isLambda lctx [] b = b := by
+  simp [mkBindingList, mkBindingList.core, mkBindingList.go, Expr.abstractN_nil]
 
 theorem mkBindingList_cons
     (hx : ∀ x ∈ xs, ∃ decl, lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
     mkBindingList isLambda lctx (a :: xs) b =
-    mkBindingList1 isLambda lctx [] a ((mkBindingList isLambda lctx xs b).abstract1 a) := by
-  simp [mkBindingList]
-  rw [← Expr.abstract1_abstractList' nd]
-  rw [Nat.zero_add, mkBindingList_core_cons hx nd]
+    mkBindingList1 isLambda lctx [] a ((mkBindingList isLambda lctx xs b).abstractN [a]) := by
+  simp only [mkBindingList]
+  rw [Expr.abstractN_cons, Nat.zero_add,
+    mkBindingList_core_cons hx nd]
 
 theorem mkBindingList_eq_fold
     (hx : ∀ x ∈ xs, ∃ decl, lctx.find? x = some decl) (nd : xs.Nodup) :
     mkBindingList isLambda lctx xs b =
-    xs.foldr (fun a e => mkBindingList1 isLambda lctx [] a (e.abstract1 a)) b := by
+    xs.foldr (fun a e => mkBindingList1 isLambda lctx [] a (e.abstractN [a])) b := by
   induction xs <;> simp_all [mkBindingList_cons]
 
 theorem mkBindingList1_congr (H : lctx₁.find? x = lctx₂.find? x) :
@@ -114,9 +113,10 @@ theorem mkBindingList_congr
     mkBindingList isLambda lctx₁ xs b = mkBindingList isLambda lctx₂ xs b := by
   obtain ⟨xs, rfl⟩ : ∃ xs', List.reverse xs' = xs := ⟨_, List.reverse_reverse _⟩
   simp [mkBindingList, mkBindingList.core] at *
-  generalize b.abstractList _ = b
+  generalize b.abstractN _ = b
   induction xs generalizing b <;> simp_all [mkBindingList.go]
   simp [mkBindingList1_congr H.1]
+
 
 inductive WF : LocalContext → Prop
   | nil : WF ⟨.empty, .empty, .empty⟩

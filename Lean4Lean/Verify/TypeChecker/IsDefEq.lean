@@ -9,12 +9,13 @@ open Lean hiding Environment Exception
 theorem isDefEqLambda.WF {c : VContext} {s : VState}
     {m} [mwf : c.MLCWF m]
     {fvs : List Expr} (hsubst : subst.toList.reverse = fvs)
+    (hfvs : ∀ a ∈ fvs, a.looseBVarRange' = 0)
     (he₁ : (c.withMLC m).TrExprS (e₁.instantiateList fvs) ei₁')
     (he₂ : (c.withMLC m).TrExprS (e₂.instantiateList fvs) ei₂') :
     RecM.WF (c.withMLC m) s (isDefEqLambda e₁ e₂ subst) fun b _ =>
       b → (c.withMLC m).IsDefEqU ei₁' ei₂' := by
   unfold isDefEqLambda; let c' := c.withMLC m
-  split <;> [rename_i n₁ d₁ b₁ bi₁ n₂ d₂ b₂ bi₂; (simp [hsubst]; exact isDefEq.WF he₁ he₂)]
+  split <;> [rename_i n₁ d₁ b₁ bi₁ n₂ d₂ b₂ bi₂; (simp [hsubst, Expr.instantiateN_eq_instantiateList hfvs]; exact isDefEq.WF he₁ he₂)]
   extract_lets F di₁ di₂; unfold di₁ di₂
   simp at he₁ he₂
   let .lam (ty' := t₁') (body' := b₁') ⟨_, a1⟩ a2 a3 := he₁
@@ -28,7 +29,7 @@ theorem isDefEqLambda.WF {c : VContext} {s : VState}
     split <;> rename_i h
     · refine .pureBind <| this ‹_› ?_
       exact a2.eqv (Expr.instantiateList_eqv h) |>.uniq c'.Ewf (.refl c'.Ewf c'.Δwf) b2
-    simp [hsubst]
+    simp [hsubst, Expr.instantiateN_eq_instantiateList hfvs]
     refine (isDefEq.WF a2 b2).bind fun b _ _ h1 => ?_
     split <;> [exact .pure nofun; rename_i h]
     simp at h; exact this rfl (h1 h)
@@ -37,13 +38,14 @@ theorem isDefEqLambda.WF {c : VContext} {s : VState}
   have ⟨b₁'', a3', eq⟩ := a3.defeqDFC' c'.Ewf <| .cons (.refl c'.Ewf c'.Δwf) (by nofun) (.vlam tt')
   unfold F; split <;> rename_i h
   · extract_lets d₂'
-    have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst]; exact hx]
+    have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst, Expr.instantiateN_eq_instantiateList hfvs]; exact hx]
     clear_value d₂'; subst this
     refine .withLocalDecl b2 b1 .rfl fun v mwf' _ _ _ => ?_
     have b3' := b3.inst_fvar c.Ewf mwf'.1.tr.wf
     have a3'' := a3'.inst_fvar c.Ewf mwf'.1.tr.wf
     rw [Expr.instantiateList_instantiate1_comm (by rfl), ← Expr.instantiateList] at a3'' b3'
-    refine isDefEqLambda.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst]) a3'' b3'
+    refine isDefEqLambda.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst])
+      (List.forall_mem_cons.2 ⟨rfl, hfvs⟩) a3'' b3'
       |>.mono fun _ _ _ h hb => ?_
     have ⟨_, bb⟩ := eq.symm.trans c'.Ewf mwf'.1.tr.wf.toCtx (h hb)
     exact ⟨_, .symm <| .lamDF tt'.symm <| bb.symm⟩
@@ -69,7 +71,8 @@ theorem isDefEqLambda.WF {c : VContext} {s : VState}
       refine ⟨_, H, this.uniq c'.Ewf (.refl c'.Ewf hΔ) <| H.weakFV c'.Ewf (.skip_fvar _ _ .refl) hΔ⟩
     let ⟨_, a4, a5⟩ := this h.1 a3'
     let ⟨_, b4, b5⟩ := this h.2 b3
-    exact isDefEqLambda.WF (fvs := default :: fvs) (by simp [hsubst]) a4 b4
+    exact isDefEqLambda.WF (fvs := default :: fvs) (by simp [hsubst])
+      (List.forall_mem_cons.2 ⟨rfl, hfvs⟩) a4 b4
       |>.mono fun _ _ _ h hb =>
       have hΓ := ⟨c'.Δwf, b1⟩
       have ⟨_, bb⟩ := eq.symm.trans c'.Ewf hΓ a5
@@ -79,12 +82,13 @@ theorem isDefEqLambda.WF {c : VContext} {s : VState}
 theorem isDefEqForall.WF {c : VContext} {s : VState}
     {m} [mwf : c.MLCWF m]
     {fvs : List Expr} (hsubst : subst.toList.reverse = fvs)
+    (hfvs : ∀ a ∈ fvs, a.looseBVarRange' = 0)
     (he₁ : (c.withMLC m).TrExprS (e₁.instantiateList fvs) ei₁')
     (he₂ : (c.withMLC m).TrExprS (e₂.instantiateList fvs) ei₂') :
     RecM.WF (c.withMLC m) s (isDefEqForall e₁ e₂ subst) fun b _ =>
       b → (c.withMLC m).IsDefEqU ei₁' ei₂' := by
   unfold isDefEqForall; let c' := c.withMLC m
-  split <;> [rename_i n₁ d₁ b₁ bi₁ n₂ d₂ b₂ bi₂; (simp [hsubst]; exact isDefEq.WF he₁ he₂)]
+  split <;> [rename_i n₁ d₁ b₁ bi₁ n₂ d₂ b₂ bi₂; (simp [hsubst, Expr.instantiateN_eq_instantiateList hfvs]; exact isDefEq.WF he₁ he₂)]
   extract_lets F di₁ di₂; unfold di₁ di₂
   simp at he₁ he₂
   let .forallE (ty' := t₁') (body' := b₁') ⟨_, a1⟩ _ a2 a3 := he₁
@@ -98,7 +102,7 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
     split <;> rename_i h
     · refine .pureBind <| this ‹_› ?_
       exact a2.eqv (Expr.instantiateList_eqv h) |>.uniq c'.Ewf (.refl c'.Ewf c'.Δwf) b2
-    simp [hsubst]
+    simp [hsubst, Expr.instantiateN_eq_instantiateList hfvs]
     refine (isDefEq.WF a2 b2).bind fun b _ _ h1 => ?_
     split <;> [exact .pure nofun; rename_i h]
     simp at h; exact this rfl (h1 h)
@@ -107,13 +111,14 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
   have ⟨b₁'', a3', eq⟩ := a3.defeqDFC' c'.Ewf <| .cons (.refl c'.Ewf c'.Δwf) (by nofun) (.vlam tt')
   unfold F; split <;> rename_i h
   · extract_lets d₂'
-    have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst]; exact hx]
+    have : d₂' = d₂.instantiateList fvs := by split at hx <;> [simp [d₂', hsubst, Expr.instantiateN_eq_instantiateList hfvs]; exact hx]
     clear_value d₂'; subst this
     refine .withLocalDecl b2 b1 .rfl fun v mwf' _ _ _ => ?_
     have b3' := b3.inst_fvar c.Ewf mwf'.1.tr.wf
     have a3'' := a3'.inst_fvar c.Ewf mwf'.1.tr.wf
     rw [Expr.instantiateList_instantiate1_comm (by rfl), ← Expr.instantiateList] at a3'' b3'
-    refine isDefEqForall.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst]) a3'' b3'
+    refine isDefEqForall.WF (mwf := mwf') (fvs := .fvar v :: fvs) (by simp [hsubst])
+      (List.forall_mem_cons.2 ⟨rfl, hfvs⟩) a3'' b3'
       |>.mono fun _ _ _ h hb => ?_
     have bb := eq.symm.trans c'.Ewf mwf'.1.tr.wf.toCtx (h hb) |>.of_r c'.Ewf mwf'.1.tr.wf.toCtx bT
     exact ⟨_, .symm <| .forallEDF tt'.symm <| bb.symm⟩
@@ -139,7 +144,8 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
       refine ⟨_, H, this.uniq c'.Ewf (.refl c'.Ewf hΔ) <| H.weakFV c'.Ewf (.skip_fvar _ _ .refl) hΔ⟩
     let ⟨_, a4, a5⟩ := this h.1 a3'
     let ⟨_, b4, b5⟩ := this h.2 b3
-    exact isDefEqForall.WF (fvs := default :: fvs) (by simp [hsubst]) a4 b4
+    exact isDefEqForall.WF (fvs := default :: fvs) (by simp [hsubst])
+      (List.forall_mem_cons.2 ⟨rfl, hfvs⟩) a4 b4
       |>.mono fun _ _ _ h hb =>
       have hΓ := ⟨c'.Δwf, b1⟩
       have bb := eq.symm.trans c'.Ewf hΓ a5 |>.trans c'.Ewf hΓ ((h hb).weak c'.Ewf (B := t₂'))
@@ -166,9 +172,9 @@ theorem quickIsDefEq.WF {c : VContext} {s : VState}
         a1 (he₁.weakFV' c.Ewf a2 a1) (he₂.weakFV' c.Ewf a2 a1)
   split <;> [exact .pure fun _ => h ‹_›; split]
   · exact .toLBoolM <| c.withMLC_self ▸
-      isDefEqLambda.WF (subst := #[]) (fvs := []) rfl (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
+      isDefEqLambda.WF (subst := #[]) (fvs := []) rfl (by simp) (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
   · exact .toLBoolM <| c.withMLC_self ▸
-      isDefEqForall.WF (subst := #[]) (fvs := []) rfl (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
+      isDefEqForall.WF (subst := #[]) (fvs := []) rfl (by simp) (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
   · have .sort hu := he₁; have .sort hv := he₂
     refine .pure fun h => ⟨_, .sortDF (.of_ofLevel hu) (.of_ofLevel hv) ?_⟩
     exact Level.isEquiv_wf (toLBool_true.1 h) hu hv

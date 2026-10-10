@@ -10,10 +10,6 @@ open Lean4Lean
 
 namespace Lean
 
-instance : LawfulBEq FVarId where
-  eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
-  rfl := BEq.rfl (α := Name)
-
 instance : LawfulBEq MVarId where
   eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
   rfl := BEq.rfl (α := Name)
@@ -968,13 +964,73 @@ theorem instantiateList_instantiate1_comm (h : a.looseBVarRange' = 0) :
   congr 1; refine (instantiate1'_instantiate1' (j := 0) ..).trans ?_
   rw [liftLooseBVars_eq_self (by simp [h])]
 
-theorem instantiateRev_eq_instantiateList {e : Expr} {subst : Array Expr} :
-    instantiateRev e subst = instantiateList e subst.toList.reverse := by
-  let ⟨subst⟩ := subst; simp
+theorem instantiateList_mdata : instantiateList (.mdata m e) as k = .mdata m (instantiateList e as k) := by
+  induction as generalizing e <;> simp [instantiate1', *]
 
-theorem instantiateRev_push {e : Expr} {subst a} :
-    instantiateRev e (subst.push a) = instantiateRev (e.instantiate1' a) subst := by
-  let ⟨subst⟩ := subst; simp [instantiateList]
+theorem instantiateList_proj : instantiateList (.proj s i e) as k = .proj s i (instantiateList e as k) := by
+  induction as generalizing e <;> simp [instantiate1', *]
+
+theorem instantiateList_bvar (h : ∀ a ∈ subst, a.looseBVarRange' = 0) :
+    ∀ (i k : Nat), instantiateList (.bvar i) subst k = instantiateN subst (.bvar i) k := by
+  induction subst with
+  | nil => intro i k; simp [instantiateN]
+  | cons a as ih =>
+    intro i k
+    simp only [List.mem_cons, forall_eq_or_imp] at h
+    simp only [instantiateList, instantiate1']
+    split
+    · rename_i hik
+      rw [ih h.2]; simp [instantiateN, hik]
+    · split
+      · subst i
+        rw [liftLooseBVars_eq_self (by omega), instantiateList'_eq_self (by omega)]
+        simp only [instantiateN, Nat.lt_irrefl, ↓reduceIte, Nat.sub_self, List.getElem?_cons_zero]
+        exact (liftLooseBVars_eq_self (by omega)).symm
+      · rename_i h1 h2
+        have h1' : ¬ i - 1 < k := by omega
+        rw [ih h.2]
+        simp only [instantiateN, if_neg h1', if_neg h1, List.length_cons]
+        rw [show i - k = (i - 1 - k) + 1 by omega, List.getElem?_cons_succ]
+        cases as[i - 1 - k]? with
+        | some b => rfl
+        | none =>
+          show Expr.bvar (i - 1 - as.length) = Expr.bvar (i - (as.length + 1))
+          congr 1; omega
+
+/-- On substitutions whose entries have no loose bound variables, simultaneous instantiation
+agrees with the sequential model. -/
+theorem instantiateN_eq_instantiateList (h : ∀ a ∈ subst, a.looseBVarRange' = 0) :
+    ∀ (e : Expr) (k : Nat), instantiateN subst e k = instantiateList e subst k
+  | .bvar i, k => (instantiateList_bvar h i k).symm
+  | .fvar _, k => by rw [instantiateN, instantiateList'_eq_self (by simp [looseBVarRange'])]
+  | .mdata _ e, k => by rw [instantiateN, instantiateList_mdata, instantiateN_eq_instantiateList h e k]
+  | .proj _ _ e, k => by rw [instantiateN, instantiateList_proj, instantiateN_eq_instantiateList h e k]
+  | .app f a, k => by
+    rw [instantiateN, instantiateList_app, instantiateN_eq_instantiateList h f k,
+      instantiateN_eq_instantiateList h a k]
+  | .lam _ t b _, k => by
+    rw [instantiateN, instantiateList_lam, instantiateN_eq_instantiateList h t k,
+      instantiateN_eq_instantiateList h b (k+1)]
+  | .forallE _ t b _, k => by
+    rw [instantiateN, instantiateList_forallE, instantiateN_eq_instantiateList h t k,
+      instantiateN_eq_instantiateList h b (k+1)]
+  | .letE _ t v b _, k => by
+    rw [instantiateN, instantiateList_letE, instantiateN_eq_instantiateList h t k,
+      instantiateN_eq_instantiateList h v k, instantiateN_eq_instantiateList h b (k+1)]
+  | .const .., k | .sort _, k | .mvar _, k | .lit _, k => by
+    rw [instantiateN, instantiateList'_eq_self (by simp [looseBVarRange'])]
+
+/-- Lean's `instantiate` agrees with the sequential model on substitutions without loose bound
+variables. -/
+theorem instantiate_eq_of_closed (e : Expr) (subst : Array Expr)
+    (h : ∀ a ∈ subst, a.looseBVarRange' = 0) :
+    e.instantiate subst = e.instantiateList subst.toList := by
+  rw [instantiateN_eq]; exact instantiateN_eq_instantiateList (by simpa using h) e 0
+
+theorem instantiateRev_eq_instantiateList {e : Expr} {subst : Array Expr}
+    (h : ∀ a ∈ subst, a.looseBVarRange' = 0) :
+    instantiateRev e subst = instantiateList e subst.toList.reverse := by
+  rw [instantiateRev_eq, instantiate_eq_of_closed _ _ (by simpa using h)]; simp
 
 theorem abstractList_eq_foldl {e : Expr} {as k} :
     abstractList e as k = List.foldl (fun e a => abstract1 a e k) e as := by
@@ -1091,6 +1147,239 @@ theorem abstract1_lower {e : Expr} (h : e.hasLooseBVar' k₁ = false) (hk : k₁
   | fvar b =>
     split <;> simp [lowerLooseBVars', -right_eq_ite_iff]
     rw [if_neg (by omega)]
+
+theorem lastRevIdx?_eq_none_of_not_mem {v : FVarId} : ∀ {xs : List FVarId}, v ∉ xs →
+    lastRevIdx? v xs = none
+  | [], _ => rfl
+  | a :: as, h => by
+    simp only [List.mem_cons, not_or] at h
+    simp [lastRevIdx?, lastRevIdx?_eq_none_of_not_mem h.2, Ne.symm h.1]
+
+theorem lastRevIdx?_eq_none_iff {v : FVarId} : ∀ {xs : List FVarId},
+    lastRevIdx? v xs = none ↔ v ∉ xs
+  | [] => by simp [lastRevIdx?]
+  | a :: as => by
+    simp only [lastRevIdx?, List.mem_cons, not_or]
+    constructor
+    · intro h
+      split at h
+      · cases h
+      · rename_i hnone
+        have := lastRevIdx?_eq_none_iff.1 hnone
+        refine ⟨fun hv => ?_, this⟩
+        subst hv; simp at h
+    · rintro ⟨hv, has⟩
+      rw [lastRevIdx?_eq_none_of_not_mem has]
+      simp [Ne.symm hv]
+
+theorem abstractList_bvar_lt (xs : List FVarId) (h : i < k) :
+    abstractList (.bvar i) xs k = .bvar i := by
+  induction xs with
+  | nil => rfl
+  | cons a as ih => simp [abstractList, abstract1, h, ih]
+
+theorem abstractList_bvar_ge (xs : List FVarId) (h : k ≤ i) :
+    abstractList (.bvar i) xs k = .bvar (i + xs.length) := by
+  induction xs generalizing i with
+  | nil => rfl
+  | cons a as ih =>
+    simp only [abstractList, abstract1, if_neg (by omega : ¬ i < k)]
+    rw [ih (by omega)]; simp; omega
+
+theorem abstractList_fvar (xs : List FVarId) (hnd : xs.Nodup) (v : FVarId) (k : Nat) :
+    abstractList (.fvar v) xs k =
+      match lastRevIdx? v xs with
+      | some r => .bvar (k + r)
+      | none => .fvar v := by
+  induction xs with
+  | nil => rfl
+  | cons a as ih =>
+    simp only [List.nodup_cons] at hnd
+    simp only [abstractList, abstract1, lastRevIdx?]
+    by_cases hv : a = v
+    · subst hv
+      simp only [beq_self_eq_true, ite_true, lastRevIdx?_eq_none_of_not_mem hnd.1]
+      rw [abstractList_bvar_ge _ (Nat.le_refl _)]
+    · have hne : (a == v) = false := by simpa using hv
+      simp only [hne, Bool.false_eq_true, ite_false]
+      rw [ih hnd.2]
+      split <;> simp_all
+
+theorem abstractList_mdata :
+    abstractList (.mdata m e) xs k = .mdata m (abstractList e xs k) := by
+  induction xs generalizing e <;> simp_all [abstractList, abstract1]
+theorem abstractList_proj :
+    abstractList (.proj s i e) xs k = .proj s i (abstractList e xs k) := by
+  induction xs generalizing e <;> simp_all [abstractList, abstract1]
+theorem abstractList_app :
+    abstractList (.app f a) xs k = .app (abstractList f xs k) (abstractList a xs k) := by
+  induction xs generalizing f a <;> simp_all [abstractList, abstract1]
+theorem abstractList_lam : abstractList (.lam n t b bi) xs k =
+    .lam n (abstractList t xs k) (abstractList b xs (k+1)) bi := by
+  induction xs generalizing t b <;> simp_all [abstractList, abstract1]
+theorem abstractList_forallE : abstractList (.forallE n t b bi) xs k =
+    .forallE n (abstractList t xs k) (abstractList b xs (k+1)) bi := by
+  induction xs generalizing t b <;> simp_all [abstractList, abstract1]
+theorem abstractList_letE : abstractList (.letE n t v b bi) xs k =
+    .letE n (abstractList t xs k) (abstractList v xs k) (abstractList b xs (k+1)) bi := by
+  induction xs generalizing t v b <;> simp_all [abstractList, abstract1]
+theorem abstractList_const : abstractList (.const c ls) xs k = .const c ls := by
+  induction xs <;> simp_all [abstractList, abstract1]
+theorem abstractList_sort : abstractList (.sort u) xs k = .sort u := by
+  induction xs <;> simp_all [abstractList, abstract1]
+theorem abstractList_mvar : abstractList (.mvar m) xs k = .mvar m := by
+  induction xs <;> simp_all [abstractList, abstract1]
+theorem abstractList_lit : abstractList (.lit l) xs k = .lit l := by
+  induction xs <;> simp_all [abstractList, abstract1]
+
+/-- On expressions with no loose bound variables at or above `k`, simultaneous abstraction of
+a duplicate-free list agrees with the sequential model. -/
+theorem abstractN_eq_abstractList {xs : List FVarId} (hnd : xs.Nodup) :
+    ∀ (e : Expr) (k : Nat), e.looseBVarRange' ≤ k → abstractN xs e k = abstractList e xs k
+  | .bvar i, k, h => by
+    simp only [looseBVarRange'] at h
+    rw [abstractN, abstractList_bvar_lt _ (by omega)]
+  | .fvar v, k, _ => by
+    rw [abstractN, abstractList_fvar _ hnd]
+    generalize lastRevIdx? v xs = r
+    cases r <;> rfl
+  | .mdata m e, k, h => by
+    rw [abstractN, abstractList_mdata, abstractN_eq_abstractList hnd e k h]
+  | .proj s i e, k, h => by
+    rw [abstractN, abstractList_proj, abstractN_eq_abstractList hnd e k h]
+  | .app f a, k, h => by
+    simp only [looseBVarRange', Nat.max_le] at h
+    rw [abstractN, abstractList_app, abstractN_eq_abstractList hnd f k h.1,
+      abstractN_eq_abstractList hnd a k h.2]
+  | .lam n t b bi, k, h => by
+    simp only [looseBVarRange', Nat.max_le] at h
+    rw [abstractN, abstractList_lam, abstractN_eq_abstractList hnd t k h.1,
+      abstractN_eq_abstractList hnd b (k+1) (by omega)]
+  | .forallE n t b bi, k, h => by
+    simp only [looseBVarRange', Nat.max_le] at h
+    rw [abstractN, abstractList_forallE, abstractN_eq_abstractList hnd t k h.1,
+      abstractN_eq_abstractList hnd b (k+1) (by omega)]
+  | .letE n t v b bi, k, h => by
+    simp only [looseBVarRange', Nat.max_le] at h
+    rw [abstractN, abstractList_letE, abstractN_eq_abstractList hnd t k h.1.1,
+      abstractN_eq_abstractList hnd v k h.1.2, abstractN_eq_abstractList hnd b (k+1) (by omega)]
+  | .const c ls, k, _ => by rw [abstractN, abstractList_const]
+  | .sort u, k, _ => by rw [abstractN, abstractList_sort]
+  | .mvar m, k, _ => by rw [abstractN, abstractList_mvar]
+  | .lit l, k, _ => by rw [abstractN, abstractList_lit]
+
+/-- Lean's `abstract` agrees with the sequential model on locally closed expressions and
+duplicate-free variable lists. -/
+theorem abstract_eq_of_closed (e : Expr) (xs : List FVarId) (hnd : xs.Nodup)
+    (h : e.looseBVarRange' = 0) : e.abstract ⟨xs.map .fvar⟩ = e.abstractList xs := by
+  rw [abstractN_eq]; exact abstractN_eq_abstractList hnd e 0 (by omega)
+
+/-- Abstracting a single variable from a locally closed expression. -/
+theorem abstractN_singleton (h : e.looseBVarRange' ≤ k) :
+    abstractN [a] e k = abstract1 a e k :=
+  abstractN_eq_abstractList (by simp) e k h
+
+/-- Abstracting one more variable, placed outermost, is a later abstraction at the binder
+depth of the inner variables. -/
+theorem abstractN_cons : ∀ (e : Expr) (d : Nat),
+    abstractN (a :: xs) e d = abstractN [a] (abstractN xs e d) (d + xs.length)
+  | .bvar _, _ => rfl
+  | .fvar v, d => by
+    simp only [abstractN, lastRevIdx?]
+    cases hr : lastRevIdx? v xs with
+    | some r => simp [abstractN]
+    | none =>
+      by_cases hv : a = v
+      · subst hv; simp [abstractN, lastRevIdx?]
+      · have : (a == v) = false := by simpa using hv
+        simp [abstractN, lastRevIdx?, this]
+  | .mdata _ e, d => by simp [abstractN, abstractN_cons e d]
+  | .proj _ _ e, d => by simp [abstractN, abstractN_cons e d]
+  | .app f a', d => by simp [abstractN, abstractN_cons f d, abstractN_cons a' d]
+  | .lam _ t b _, d => by
+    simp [abstractN, abstractN_cons t d, abstractN_cons b (d+1), Nat.add_right_comm]
+  | .forallE _ t b _, d => by
+    simp [abstractN, abstractN_cons t d, abstractN_cons b (d+1), Nat.add_right_comm]
+  | .letE _ t v b _, d => by
+    simp [abstractN, abstractN_cons t d, abstractN_cons v d, abstractN_cons b (d+1),
+      Nat.add_right_comm]
+  | .const .., _ | .sort _, _ | .mvar _, _ | .lit _, _ => rfl
+
+theorem abstractN_nil : ∀ (e : Expr) (d : Nat), abstractN [] e d = e
+  | .bvar _, _ => rfl
+  | .fvar v, d => by simp [abstractN, lastRevIdx?]
+  | .mdata _ e, d => by simp [abstractN, abstractN_nil e d]
+  | .proj _ _ e, d => by simp [abstractN, abstractN_nil e d]
+  | .app f a', d => by simp [abstractN, abstractN_nil f d, abstractN_nil a' d]
+  | .lam _ t b _, d => by simp [abstractN, abstractN_nil t d, abstractN_nil b (d+1)]
+  | .forallE _ t b _, d => by simp [abstractN, abstractN_nil t d, abstractN_nil b (d+1)]
+  | .letE _ t v b _, d => by
+    simp [abstractN, abstractN_nil t d, abstractN_nil v d, abstractN_nil b (d+1)]
+  | .const .., _ | .sort _, _ | .mvar _, _ | .lit _, _ => rfl
+
+/-- Abstraction at depth `d + 1` never creates or removes an occurrence of `bvar 0`. -/
+theorem abstractN_hasLooseBVar_zero (xs : List FVarId) : ∀ (e : Expr) (d : Nat),
+    (abstractN xs e (d + 1)).hasLooseBVar' 0 = e.hasLooseBVar' 0 := by
+  suffices ∀ (e : Expr) (d i : Nat), i < d →
+      (abstractN xs e d).hasLooseBVar' i = e.hasLooseBVar' i from
+    fun e d => this e (d + 1) 0 (by omega)
+  intro e
+  induction e with
+  | bvar _ => intros; rfl
+  | fvar v =>
+    intro d i hi
+    simp only [abstractN]
+    split <;> simp [hasLooseBVar']; omega
+  | mdata _ e ih | proj _ _ e ih => intro d i hi; simp [abstractN, hasLooseBVar', ih d i hi]
+  | app f a ihf iha => intro d i hi; simp [abstractN, hasLooseBVar', ihf d i hi, iha d i hi]
+  | lam _ t b _ iht ihb | forallE _ t b _ iht ihb =>
+    intro d i hi; simp [abstractN, hasLooseBVar', iht d i hi, ihb (d+1) (i+1) (by omega)]
+  | letE _ t v b _ iht ihv ihb =>
+    intro d i hi
+    simp [abstractN, hasLooseBVar', iht d i hi, ihv d i hi, ihb (d+1) (i+1) (by omega)]
+  | const _ _ => intros; rfl
+  | sort _ => intros; rfl
+  | mvar _ => intros; rfl
+  | lit _ => intros; rfl
+
+/-- Lowering an unused innermost variable commutes with later abstraction. -/
+theorem abstractN_lower (xs : List FVarId) : ∀ (e : Expr) (d : Nat), e.hasLooseBVar' 0 = false →
+    abstractN xs (e.lowerLooseBVars' 1 1) d = (abstractN xs e (d + 1)).lowerLooseBVars' 1 1 := by
+  suffices ∀ (e : Expr) (d k : Nat), k ≤ d → e.hasLooseBVar' k = false →
+      abstractN xs (e.lowerLooseBVars' (k + 1) 1) d =
+        (abstractN xs e (d + 1)).lowerLooseBVars' (k + 1) 1 from
+    fun e d h => this e d 0 (Nat.zero_le _) h
+  intro e
+  induction e with
+  | bvar i =>
+    intro d k hk h
+    simp [hasLooseBVar'] at h
+    simp [abstractN, lowerLooseBVars']
+  | fvar v =>
+    intro d k hk h
+    cases hr : lastRevIdx? v xs with
+    | some r =>
+      have h1 : ¬ (k + 1 < 1) := by omega
+      have h2 : ¬ (d + 1 + r < k + 1) := by omega
+      simp only [abstractN, hr, lowerLooseBVars', h1, h2, ite_false]
+      congr 1; omega
+    | none => simp [abstractN, hr, lowerLooseBVars']
+  | mdata _ e ih | proj _ _ e ih =>
+    intro d k hk h; simp [hasLooseBVar'] at h; simp [abstractN, lowerLooseBVars', ih d k hk h]
+  | app f a ihf iha =>
+    intro d k hk h; simp [hasLooseBVar'] at h
+    simp [abstractN, lowerLooseBVars', ihf d k hk h.1, iha d k hk h.2]
+  | lam _ t b _ iht ihb | forallE _ t b _ iht ihb =>
+    intro d k hk h; simp [hasLooseBVar'] at h
+    simp [abstractN, lowerLooseBVars', iht d k hk h.1, ihb (d+1) (k+1) (by omega) h.2]
+  | letE _ t v b _ iht ihv ihb =>
+    intro d k hk h; simp [hasLooseBVar'] at h
+    simp [abstractN, lowerLooseBVars', iht d k hk h.1.1, ihv d k hk h.1.2,
+      ihb (d+1) (k+1) (by omega) h.2]
+  | const _ _ => intros; simp [abstractN, lowerLooseBVars']
+  | sort _ => intros; simp [abstractN, lowerLooseBVars']
+  | mvar _ => intros; simp [abstractN, lowerLooseBVars']
+  | lit _ => intros; simp [abstractN, lowerLooseBVars']
 
 variable (red : Bool) (s : Name → Level) in
 def instantiateLevelParamsCore' : Expr → Expr

@@ -868,8 +868,21 @@ theorem MLCtx.PartialForall.sublist (H : MLCtx.PartialForall c n l e) : l <+ c.v
   | vlam _ ih | vlet _ ih => simp [ih]
   | skip _ _ _ _ ih => exact ih.trans (List.sublist_cons_self ..)
 
+/-- Closedness of the let-binding step of the telescope model. -/
+private theorem letStep_closed (hty : Closed ty) (hv : Closed v) (he : Closed e) :
+    Closed (let e' := Expr.abstract1 fv e
+      if e'.hasLooseBVar' 0 then .letE x ty v e' false else e'.lowerLooseBVars' 1 1) := by
+  dsimp only
+  split
+  · exact ⟨hty, hv, he.abstract1⟩
+  · rename_i h
+    have h' : (Expr.abstract1 fv e).hasLooseBVar' 0 = false := by simpa using h
+    rw [Expr.lowerLooseBVars_eq_instantiate h' (v := .sort .zero)]
+    exact he.abstract1.instantiate1 trivial
+
 theorem MLCtx.WF.mkForall_partial {c : MLCtx} (wf : c.WF env Us) (n hn)
-    (harr : arr.toList.reverse = l.map .fvar) (hp : MLCtx.PartialForall c n l e) :
+    (harr : arr.toList.reverse = l.map .fvar) (hp : MLCtx.PartialForall c n l e)
+    (he : Closed e) :
     c.lctx.mkForall arr e = c.mkForall n hn e := by
   have := congrArg (Array.mk ·.reverse) harr; simp at this
   rw [LocalContext.mkForall, this, ← List.map_reverse, LocalContext.mkBinding_eq,
@@ -877,21 +890,35 @@ theorem MLCtx.WF.mkForall_partial {c : MLCtx} (wf : c.WF env Us) (n hn)
   · clear harr this
     induction hp with
     | nil => simp
-    | vlam hp ih | vlet hp ih =>
+    | vlam hp ih =>
+      have hty := wf.2.2.1.closed; simp only [MLCtx.noBV] at hty
       simp
       refine (List.foldl_congr fun _ y h => ?_).trans <|
-        .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _)
+        .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _ ⟨hty, he.abstract1⟩)
       · refine LocalContext.mkBindingList1_congr ?_
         rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
         simp [LocalDecl.fvarId]; rintro ⟨⟩
         have := (List.cons_sublist_cons.2 hp.sublist).nodup wf.fvars_nodup; simp_all
-      · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
+      · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId,
+          Expr.abstractN_nil, Expr.abstractN_singleton he.looseBVarRange_le]
+    | vlet hp ih =>
+      have hty := wf.2.2.1.closed; simp only [MLCtx.noBV] at hty
+      have hv := wf.2.2.2.1.closed; simp only [MLCtx.noBV] at hv
+      simp
+      refine (List.foldl_congr fun _ y h => ?_).trans <|
+        .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _ (letStep_closed hty hv he))
+      · refine LocalContext.mkBindingList1_congr ?_
+        rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
+        simp [LocalDecl.fvarId]; rintro ⟨⟩
+        have := (List.cons_sublist_cons.2 hp.sublist).nodup wf.fvars_nodup; simp_all
+      · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId,
+          Expr.abstractN_nil, Expr.abstractN_singleton he.looseBVarRange_le]
     | skip h1 h2 h3 hp ih =>
       subst h2; simp [h3]
       rw [Expr.lowerLooseBVars_eq_instantiate h3 (v := default),
         Expr.abstract1_eq_liftLooseBVars h3, Expr.liftLooseBVars_eq_self (by simp [h1]),
         Expr.instantiate1_eq_self h1]
-      refine (List.foldl_congr fun _ y h => ?_).trans (ih wf.1 _)
+      refine (List.foldl_congr fun _ y h => ?_).trans (ih wf.1 _ he)
       refine LocalContext.mkBindingList1_congr ?_
       rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
       simp [LocalDecl.fvarId]; rintro ⟨⟩
@@ -901,11 +928,11 @@ theorem MLCtx.WF.mkForall_partial {c : MLCtx} (wf : c.WF env Us) (n hn)
   · exact List.nodup_reverse.2 (hp.sublist.nodup wf.fvars_nodup)
 
 theorem MLCtx.WF.mkForall_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
-    (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
-    c.lctx.mkForall arr e = c.mkForall n hn e := mkForall_partial wf n hn harr .full
+    (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) (he : Closed e) :
+    c.lctx.mkForall arr e = c.mkForall n hn e := mkForall_partial wf n hn harr .full he
 
 theorem MLCtx.WF.mkLambda_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
-    (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) :
+    (harr : arr.toList.reverse = (c.fvarRevList n hn).map .fvar) (he : Closed e) :
     c.lctx.mkLambda arr e = c.mkLambda n hn e := by
   have := congrArg (Array.mk ·.reverse) harr; simp at this
   rw [LocalContext.mkLambda, this, ← List.map_reverse, LocalContext.mkBinding_eq,
@@ -915,15 +942,29 @@ theorem MLCtx.WF.mkLambda_eq {c : MLCtx} (wf : c.WF env Us) (n hn)
     | zero => simp
     | succ n ih =>
       match c with
-      | .vlam .. | .vlet .. =>
+      | .vlam .. =>
+        have hty := wf.2.2.1.closed; simp only [MLCtx.noBV] at hty
         simp
         refine (List.foldl_congr fun _ y h => ?_).trans <|
-          .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _)
+          .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _ ⟨hty, he.abstract1⟩)
         · refine LocalContext.mkBindingList1_congr ?_
           rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
           simp [LocalDecl.fvarId]; rintro ⟨⟩
           have := wf.fvarRevList_nodup (n+1) hn; simp_all
-        · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId]
+        · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId,
+            Expr.abstractN_nil, Expr.abstractN_singleton he.looseBVarRange_le]
+      | .vlet .. =>
+        have hty := wf.2.2.1.closed; simp only [MLCtx.noBV] at hty
+        have hv := wf.2.2.2.1.closed; simp only [MLCtx.noBV] at hv
+        simp
+        refine (List.foldl_congr fun _ y h => ?_).trans <|
+          .trans (congrFun (congrArg _ ?_) _) (ih wf.1 _ (letStep_closed hty hv he))
+        · refine LocalContext.mkBindingList1_congr ?_
+          rw [wf.find?_eq, wf.1.find?_eq, decls, List.find?, (?_ : (y == _) = false)]
+          simp [LocalDecl.fvarId]; rintro ⟨⟩
+          have := wf.fvarRevList_nodup (n+1) hn; simp_all
+        · simp [LocalContext.mkBindingList1, wf.find?_eq, decls, LocalDecl.fvarId,
+            Expr.abstractN_nil, Expr.abstractN_singleton he.looseBVarRange_le]
   · intro _ h
     exact wf.tr.find?_eq_some.2 ((MLCtx.fvarRevList_prefix ..).subset (List.mem_reverse.1 h))
   · exact List.nodup_reverse.2 (wf.fvarRevList_nodup ..)
