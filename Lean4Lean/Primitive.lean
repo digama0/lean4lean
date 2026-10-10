@@ -299,6 +299,19 @@ once; the functions are `@[inline]` so that a use still compiles to the applicat
 @[inline] def fail (v : DefinitionVal) {α} : M α :=
   throw <| .other s!"invalid form for primitive def {v.name}"
 
+/-- The type with the head `mdata` of each domain along its forall spine removed, and nothing
+else removed.
+
+The types below are compared syntactically, and `==` on `Expr` ignores binder names but not
+`mdata`. The same declaration therefore compares unequal depending on where it came from: read
+from a live environment, `Nat.add` and most of the others carry the `@&` borrow markers they are
+declared with, while an export carries none, because the exporter drops `mdata` unless asked for
+it. The markers sit on the domains, so removing them there leaves the comparison as strict as it
+was: a stray annotation anywhere else still fails. -/
+def eraseMData : Expr → Expr
+  | .forallE n d b bi => .forallE n d.consumeMData (eraseMData b) bi
+  | e => e
+
 def tru : Expr := q(true)
 def fal : Expr := q(false)
 def zero : Expr := q(Nat.zero)
@@ -315,7 +328,7 @@ def two : Expr := succ one
 @[inline] def checkNatAdd (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat && ok v do fail v
   -- add : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let add := mkApp2 v.value
   withLocalDecl `x .default q(Nat) fun x => do
   -- add x 0 ≡ x
@@ -327,7 +340,7 @@ def two : Expr := succ one
 @[inline] def checkNatPred (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat && ok v do fail v
   -- pred : Nat → Nat
-  unless v.type == q(@& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat) do fail v
   let pred := mkApp v.value
   unless ← isDefEq (pred zero) zero do fail v
   withLocalDecl `x .default q(Nat) fun x => do
@@ -336,7 +349,7 @@ def two : Expr := succ one
 @[inline] def checkNatSub (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.pred && ok v do fail v
   -- sub : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let sub := mkApp2 v.value
   withLocalDecl `x .default q(Nat) fun x => do
   unless ← isDefEq (sub x zero) x do fail v
@@ -346,7 +359,7 @@ def two : Expr := succ one
 @[inline] def checkNatMul (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.add && ok v do fail v
   -- mul : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let mul := mkApp2 v.value
   withLocalDecl `x .default q(Nat) fun x => do
   unless ← isDefEq (mul x zero) zero do fail v
@@ -356,7 +369,7 @@ def two : Expr := succ one
 @[inline] def checkNatPow (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.mul && ok v do fail v
   -- pow : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let pow := mkApp2 v.value
   withLocalDecl `x .default q(Nat) fun x => do
   unless ← isDefEq (pow x zero) one do fail v
@@ -368,7 +381,7 @@ open private Nat.gcd._unary._proof_1 in Nat.gcd._unary in
   let env ← getEnv
   unless env.contains ``Nat.mod && env.contains ``Bool && ok v do fail v
   -- gcd : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   Condition.bool.check (fail v) (ite := true)
   let P ← unfoldNatWellFounded v.value q(fun m _n : Nat => m) (fail v)
   -- the base pattern `(0, n)` binds one variable, the step pattern `(m+1, n)` binds two
@@ -387,7 +400,7 @@ which is all that separates `Nat.beq` from `Nat.ble`. -/
   let env ← getEnv
   unless env.contains ``Nat && env.contains ``Bool && ok v do fail v
   -- f : Nat → Nat → Bool
-  unless v.type == q(@& Nat → @& Nat → Bool) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Bool) do fail v
   let f := mkApp2 v.value
   unless ← isDefEq (f zero zero) tru do fail v
   withLocalDecl `x .default q(Nat) fun x => do
@@ -405,7 +418,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
   let env ← getEnv
   unless env.contains ``Nat && env.contains ``Bool && ok v do fail v
   -- bitwise : Nat → Nat → Nat
-  unless v.type == q((Bool → Bool → Bool) → Nat → Nat → Nat) do fail v
+  unless eraseMData v.type == q((Bool → Bool → Bool) → Nat → Nat → Nat) do fail v
   let c := Condition.natEq; c.check (fail v) (ite := true) (dite := true)
   let bc := Condition.bool; bc.check (fail v) (ite := true)
   withLocalDecl `f .default q(Bool → Bool → Bool) fun f => do
@@ -426,7 +439,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
 @[inline] def checkNatLAnd (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.bitwise && ok v do fail v
   -- land : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let .app (.const ``Nat.bitwise []) and := v.value | fail v
   let and := mkApp2 and
   withLocalDecl `x .default q(Bool) fun x => do
@@ -436,7 +449,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
 @[inline] def checkNatLOr (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.bitwise && ok v do fail v
   -- lor : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let .app (.const ``Nat.bitwise []) or := v.value | fail v
   let or := mkApp2 or
   withLocalDecl `x .default q(Bool) fun x => do
@@ -446,7 +459,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
 @[inline] def checkNatXor (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.bitwise && ok v do fail v
   -- xor : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let .app (.const ``Nat.bitwise []) xor := v.value | fail v
   let xor := mkApp2 xor
   unless ← isDefEq (xor fal fal) fal do fail v
@@ -457,7 +470,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
 @[inline] def checkNatShiftLeft (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.mul && ok v do fail v
   -- shiftLeft : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let shl := mkApp2 v.value
   withLocalDecl `x .default q(Nat) fun x => do
   unless ← isDefEq (shl x zero) x do fail v
@@ -467,7 +480,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
 @[inline] def checkNatShiftRight (v : DefinitionVal) : M Unit := do
   unless (← getEnv).contains ``Nat.div && ok v do fail v
   -- shiftRight : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   let shr := mkApp2 v.value
   withLocalDecl `x .default q(Nat) fun x => do
   unless ← isDefEq (shr x zero) x do fail v
@@ -479,7 +492,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
   -- Char : Type
   _ ← ensureType q(Char) (inferOnly := false)
   -- @Char.ofNat : Nat → Char
-  unless v.type == q(Nat → Char) do fail v
+  unless eraseMData v.type == q(Nat → Char) do fail v
 
 @[inline] def checkStringOfList (v : DefinitionVal) : M Unit := do
   unless ok v do fail v
@@ -492,7 +505,7 @@ open private Nat.bitwise._unary._proof_1 in Nat.bitwise._unary in
   -- @List.cons.{0} Char : Char → List Char → List Char
   unless ← isDefEq (← checkType q(List.cons (α := Char))) q(Char → List Char → List Char) do fail v
   -- String.ofList : List Char → String
-  unless v.type == q(List Char → String) do fail v
+  unless eraseMData v.type == q(List Char → String) do fail v
 
 /-- The fuel recursion `Nat.mod` and `Nat.div` share: the `≤` they are stated with, the
 `go` they recurse through, the condition their conditionals test, and then two equations at
@@ -537,7 +550,7 @@ its own; `@[inline]` puts it back where it was for the compiler. -/
   let env ← getEnv
   unless env.contains ``Nat.sub && env.contains ``Bool && ok v do fail v
   -- mod : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   withLocalDecl `x .default q(Nat) fun x => do
     unless ← isDefEq (mkApp2 v.value zero x) zero do fail v
   checkNatFuelRec v ``Nat.modCore.go (ite := true) (lhs := succ) (H := id) (els := id) fun go x y =>
@@ -552,7 +565,7 @@ is covered by the top equation `div x y ≡ if 1 ≤ y then go y _ (succ x) x _ 
   let env ← getEnv
   unless env.contains ``Nat.sub && env.contains ``Bool && ok v do fail v
   -- div : Nat → Nat → Nat
-  unless v.type == q(@& Nat → @& Nat → Nat) do fail v
+  unless eraseMData v.type == q(Nat → Nat → Nat) do fail v
   checkNatFuelRec v ``Nat.div.go (lhs := id) (H := succ) (els := fun _ => zero)
     (top := fun go x y =>
       Condition.natLE.dite #[one, y]

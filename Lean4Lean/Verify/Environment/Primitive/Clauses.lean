@@ -229,7 +229,7 @@ theorem checkNatLAnd.WF {ves : VEnvs} (wf : ves.WF env)
   intro ctx P; rw [← ctx.withMLC_self]; unfold checkNatLAnd
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_; simp at h1
   have hbw := VContext.contains_primitive rfl h1.1
-  have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eqv h2)
+  have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eraseMData.eqv h2)
   have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.ordered hbw
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   split <;> [rename_i opSrc heq; exact .throw]
@@ -256,7 +256,7 @@ theorem checkNatLOr.WF {ves : VEnvs} (wf : ves.WF env)
   intro ctx P; rw [← ctx.withMLC_self]; unfold checkNatLOr
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_; simp at h1
   have hbw := VContext.contains_primitive rfl h1.1
-  have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eqv h2)
+  have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eraseMData.eqv h2)
   have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.ordered hbw
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   split <;> [rename_i opSrc heq; exact .throw]
@@ -284,7 +284,7 @@ theorem checkNatXor.WF {ves : VEnvs} (wf : ves.WF env)
   intro ctx P; rw [← ctx.withMLC_self]; unfold checkNatXor
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_; simp at h1
   have hbw := VContext.contains_primitive rfl h1.1
-  have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eqv h2)
+  have hnat := TrExprS.contains_nat_of_natArrow2 (P.htype.eraseMData.eqv h2)
   have hbool := wf.hasPrimitives.boolOfBitwise ctx.Ewf.ordered hbw
   have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
   split <;> [rename_i opSrc heq; exact .throw]
@@ -384,7 +384,7 @@ theorem checkCharOfNat.WF {ves : VEnvs} (wf : ves.WF env)
   obtain ⟨rfl, hchAny⟩ := hch.const0_inv (Us' := v.levelParams) (Δ' := [(none, .vlam .nat)])
   refine elseFail fun h2 => .pure ?_
   refine P.mkResultTypeEq (T := .forallE .nat .char) (hok h1.2) (by simp [primSpecs, hname]) ?_
-  exact TrExprS.unique (by simp [TrExprS.IsUnique]) (P.htype.eqv h2)
+  exact TrExprS.unique (by simp [TrExprS.IsUnique]) (P.htype.eraseMData.eqv h2)
     (TrTy.forallE
       (.of (wf.hasPrimitives.trNat ctx.Ewf.ordered hnat) (hNatT hnat (Δ := []) trivial))
       (.of hchAny ⟨_, hchT.weak0 ctx.Ewf.ordered⟩)).trS
@@ -424,7 +424,7 @@ theorem checkStringOfList.WF {ves : VEnvs} (wf : ves.WF env)
   -- the spec's three clauses: the recorded type from `v.type`, and the two constructor
   -- typings from the `checkType` calls, retyped along their `isDefEq` results. All are
   -- monotone, so they transfer to the extension.
-  have tyeq := TrExprS.listCharStringArrow_inv (P.htype.eqv h2)
+  have tyeq := TrExprS.listCharStringArrow_inv (P.htype.eraseMData.eqv h2)
   have hmem : (v.name, .stringOfList) ∈ primSpecs := by simp [primSpecs, hname]
   refine ⟨(hok h1).1, (hok h1).2, fun hle hwf hprim htr hciv hadd => ?_⟩
   have hnm : v.name = ci'.name := htr.1.2

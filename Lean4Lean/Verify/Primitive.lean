@@ -148,12 +148,12 @@ theorem VEnv.HasPrimitives.trBool (henv : env.Ordered)
 this shape. -/
 theorem TrExprS.natArrow1 {env : VEnv} (henv : env.Ordered)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Us : List Name}
-    {n₁ : Name} {d₁ : MData} {bi₁ : BinderInfo} {codSrc : Expr}
+    {n₁ : Name} {bi₁ : BinderInfo} {codSrc : Expr}
     (hcod : TrTy env Us [(none, .vlam .nat)] codSrc) :
-    TrExprS env Us [] (.forallE n₁ (.mdata d₁ (.const ``Nat [])) codSrc bi₁)
+    TrExprS env Us [] (.forallE n₁ (.const ``Nat []) codSrc bi₁)
       (.forallE .nat hcod.tgt) :=
-  (TrTy.forallE (.mdata (.of (hprim.trNat henv hnat)
-    (hprim.natIsType henv hnat (Δ := []) trivial))) hcod).trS
+  (TrTy.forallE (.of (hprim.trNat henv hnat)
+    (hprim.natIsType henv hnat (Δ := []) trivial)) hcod).trS
 
 /-- A constant with no universe arguments translates to itself, and does so at any context --
 which is how a translation obtained at the top level is reused under the arrow's binder. -/
@@ -198,10 +198,10 @@ theorem TrExprS.listCharStringArrow_inv {env : VEnv} {Us : List Name}
 /-- The checked type's translation already contains `Nat`. The bitwise operations guard on
 `Nat.bitwise`, whose spec records no typing, so this is how they get `Nat`. -/
 theorem TrExprS.contains_nat_of_natArrow2
-    (h : TrExprS env Us [] (.forallE n₁ (.mdata d₁ (.const ``Nat []))
-      (.forallE n₂ (.mdata d₂ (.const ``Nat [])) cod bi₂) bi₁) T) :
+    (h : TrExprS env Us [] (.forallE n₁ (.const ``Nat [])
+      (.forallE n₂ (.const ``Nat []) cod bi₂) bi₁) T) :
     env.contains ``Nat :=
-  let .forallE _ _ (.mdata hd) _ := h; let .const hci _ _ := hd; ⟨_, hci⟩
+  let .forallE _ _ hd _ := h; let .const hci _ _ := hd; ⟨_, hci⟩
 
 /-- `Nat.land`/`Nat.lor`/`Nat.xor` match their value against `Nat.bitwise` applied to an
 operator, and then probe that operator. Nothing checks the operator's type, so it has to be read
@@ -223,21 +223,19 @@ theorem TrExprS.bitwiseOperand {env : VEnv} {Us : List Name} {opSrc : Expr} {V :
   exact hdom.defeq haT
 
 /-- The translation of a checked binary `Nat` arrow type, generic in the binder names and in the
-annotations the compiler attaches -- which is what lets it serve `@& Nat → @& Nat → Nat` as the
-prelude actually declares it. Combined with `TrExprS.eqv` and `TrExprS.unique` this pins a
+the shape the recognizer compares, which is the declared type with the `@&` markers erased. Combined with `TrExprS.eqv` and `TrExprS.unique` this pins a
 primitive's `ci'.type` in one step. -/
 theorem TrExprS.natArrow2 (henv : env.Ordered)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat)
     (hcod : TrTy env Us [(none, .vlam .nat), (none, .vlam .nat)] codSrc) :
-    TrExprS env Us [] (.forallE n₁ (.mdata d₁ (.const ``Nat []))
-        (.forallE n₂ (.mdata d₂ (.const ``Nat [])) codSrc bi₂) bi₁)
+    TrExprS env Us [] (.forallE n₁ (.const ``Nat []) (.forallE n₂ (.const ``Nat []) codSrc bi₂) bi₁)
       (.forallE .nat (.forallE .nat hcod.tgt)) := by
   have hOn0 : OnCtx (VLCtx.toCtx []) (env.IsType Us.length) := trivial
   have hN0 := hprim.natIsType henv hnat hOn0
   have hOn1 : OnCtx (VLCtx.toCtx [(none, .vlam .nat)]) (env.IsType Us.length) := ⟨hOn0, hN0⟩
   have hN1 := hprim.natIsType henv hnat hOn1
-  exact (TrTy.forallE (.mdata (.of (hprim.trNat henv hnat) hN0))
-    (.forallE (.mdata (.of (hprim.trNat henv hnat) hN1)) hcod)).trS
+  exact (TrTy.forallE (.of (hprim.trNat henv hnat) hN0)
+    (.forallE (.of (hprim.trNat henv hnat) hN1) hcod)).trS
 
 /-- Congruence for `IsDefEqU` under an application, with the typing supplied explicitly.
 `IsDefEqU` hides the type, so the caller has to say at which type the two sides agree. -/

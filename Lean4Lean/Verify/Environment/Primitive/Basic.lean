@@ -976,6 +976,14 @@ theorem lambdaTelescope.WF {c : VContext} {α} {k : Array Expr → Expr → M α
   lambdaTelescope.loop.WF H e #[] m s e' (n := 0) (Nat.zero_le _) (by simp) rfl (by simp) (by simp)
     (As := []) ⟨rfl, by simp, .refl, by simp, rfl⟩ .rfl he
 
+theorem TrExprS.eraseMData {env : VEnv} {Us : List Name} {Δ : VLCtx} {e : Expr} {e' : VExpr}
+    (H : TrExprS env Us Δ e e') : TrExprS env Us Δ (Primitive.eraseMData e) e' := by
+  induction e generalizing Δ e' with
+  | forallE n d b bi _ ihb =>
+    cases H with
+    | forallE h1 h2 hd hb => exact .forallE h1 h2 hd.consumeMData (ihb hb)
+  | _ => simpa [Primitive.eraseMData] using H
+
 namespace Primitive
 
 /-- Peel one argument off an application whose head has a known `forallE` type. `app_inv` only
@@ -1160,9 +1168,9 @@ def bitwiseTy (hnat : c.venv.contains ``Nat) (hb : c.venv.contains ``Bool) :
 /-- The checked type pins `ci'.type` for `Nat.bitwise`, as `mkTyEq` does for the arrows. -/
 theorem Data.mkTyEqBitwise (P : Data v ci' c) (hnat : c.venv.contains ``Nat)
     (hb : c.venv.contains ``Bool)
-    (h2 : v.type == q((Bool → Bool → Bool) → Nat → Nat → Nat)) :
+    (h2 : eraseMData v.type == q((Bool → Bool → Bool) → Nat → Nat → Nat)) :
     ci'.type = .forallE .boolOp2 .natOp2 :=
-  (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique]) (bitwiseTy hnat hb).trS
+  (P.htype.eraseMData.eqv h2).unique (by simp [TrExprS.IsUnique]) (bitwiseTy hnat hb).trS
 
 /-- The definition's value as a bundle, at whatever local context the probes have built up. -/
 def Data.hv (P : Data v ci' c) {T} (eq : ci'.type = T) (m : MLCtx) [cwf : c.MLCWF m] :
@@ -1175,21 +1183,21 @@ Generic in the codomain, so `Nat.beq`/`Nat.ble` pass a `Bool` bundle instead. -/
 theorem Data.mkTyEq (P : Data v ci' c) (hnat : c.venv.contains ``Nat) {codSrc : Expr}
     (hcodU : TrExprS.IsUnique codSrc)
     (hcod : TrTy c.venv c.lparams [(none, .vlam .nat), (none, .vlam .nat)] codSrc)
-    {n₁ n₂ : Name} {d₁ d₂ : MData} {bi₁ bi₂ : BinderInfo}
-    (h2 : v.type == Expr.forallE n₁ (.mdata d₁ q(Nat))
-      (.forallE n₂ (.mdata d₂ q(Nat)) codSrc bi₂) bi₁) :
+    {n₁ n₂ : Name} {bi₁ bi₂ : BinderInfo}
+    (h2 : eraseMData v.type == Expr.forallE n₁ q(Nat)
+      (.forallE n₂ q(Nat) codSrc bi₂) bi₁) :
     ci'.type = .forallE .nat (.forallE .nat hcod.tgt) :=
-  (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
+  (P.htype.eraseMData.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
     (.natArrow2 c.Ewf.ordered c.hasPrimitives hnat hcod)
 
 /-- The unary version, for `Nat.pred`. -/
 theorem Data.mkTyEq1 (P : Data v ci' c) (hnat : c.venv.contains ``Nat) {codSrc : Expr}
     (hcodU : TrExprS.IsUnique codSrc)
     (hcod : TrTy c.venv c.lparams [(none, .vlam .nat)] codSrc)
-    {n₁ : Name} {d₁ : MData} {bi₁ : BinderInfo}
-    (h2 : v.type == Expr.forallE n₁ (.mdata d₁ q(Nat)) codSrc bi₁) :
+    {n₁ : Name} {bi₁ : BinderInfo}
+    (h2 : eraseMData v.type == Expr.forallE n₁ q(Nat) codSrc bi₁) :
     ci'.type = .forallE .nat hcod.tgt :=
-  (P.htype.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
+  (P.htype.eraseMData.eqv h2).unique (by simp [TrExprS.IsUnique, hcodU])
     (.natArrow1 c.Ewf.ordered c.hasPrimitives hnat hcod)
 
 theorem Data.uvars_eq (P : Data v ci' c) (hok' : v.safety = .safe ∧ v.levelParams = []) :

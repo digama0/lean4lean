@@ -2196,6 +2196,13 @@ theorem TrExprS.eqv (H : TrExprS env Us Δ e₁ e') : e₁ == e₂ → TrExprS e
 theorem TrExpr.eqv (H : TrExpr env Us Δ e₁ e') (h : e₁ == e₂) : TrExpr env Us Δ e₂ e' :=
   let ⟨_, h1, h2⟩ := H; ⟨_, h1.eqv h, h2⟩
 
+/-- Metadata is not translated, so dropping it at the head leaves the translation alone. -/
+theorem TrExprS.consumeMData (H : TrExprS env Us Δ e e') :
+    TrExprS env Us Δ e.consumeMData e' := by
+  induction e with
+  | mdata d e₀ ih => cases H with | mdata H' => exact ih H'
+  | _ => simpa [Expr.consumeMData] using H
+
 theorem fvarsList_eqv {e₁ e₂ : Expr} : e₁ == e₂ → e₁.fvarsList = e₂.fvarsList := by
   simp [(· == ·)]
   induction e₁ generalizing e₂ <;> (cases e₂ <;> try change false = _ → _; rintro ⟨⟩)
