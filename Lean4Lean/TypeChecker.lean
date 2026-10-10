@@ -1,3 +1,4 @@
+import Lean4Lean.WHNFCacheKey
 import Lean4Lean.Declaration
 import Lean4Lean.Level
 import Lean4Lean.Quot
@@ -229,7 +230,33 @@ def getSortLevel (e : Expr) : RecM Level := do
 zero. -/
 def isProp (e : Expr) : RecM Bool := return (← getSortLevel e).isAlwaysZero
 
-/-- Infers the type of structure projection `e`. -/
+/-- Instantiate the common-parameter prefix of a constructor telescope. -/
+def instantiateProjectionParameters (type : Expr) (args : Array Expr) :
+    Nat → Nat → RecM (Option Expr)
+  | _, 0 => pure (some type)
+  | position, remaining + 1 => do
+    let .forallE _ _ body _ ← whnf type | return none
+    let some argument := args[position]? | return none
+    instantiateProjectionParameters (body.instantiate1 argument) args
+      (position + 1) remaining
+
+/-- Instantiate the fields preceding a selected projection field. -/
+def instantiateProjectionFields (typeName : Name) (struct : Expr)
+    (maybePropType : Bool) : Expr → Nat → Nat → RecM (Option Expr)
+  | type, _, 0 => pure (some type)
+  | type, position, remaining + 1 => do
+    let .forallE _ domain body _ ← whnf type | return none
+    if body.hasLooseBVars then
+      if maybePropType then
+        unless ← isProp domain do return none
+      instantiateProjectionFields typeName struct maybePropType
+        (body.instantiate1 (.proj typeName position struct))
+        (position + 1) remaining
+    else
+      instantiateProjectionFields typeName struct maybePropType body
+        (position + 1) remaining
+
+/-- Infers the type of a structure projection. -/
 def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Expr := do
   let e := Expr.proj typeName idx struct
   let type ← whnf structType
@@ -242,22 +269,16 @@ def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Ex
   let [c] := I_val.ctors | fail
   if args.size != I_val.numParams + I_val.numIndices then fail
   let c_info ← env.get c
-  let mut r := c_info.instantiateTypeLevelParams I_levels
-  for i in [:I_val.numParams] do
-    let .forallE _ _ b _ ← whnf r | fail
-    r := b.instantiate1 args[i]!
+  let some afterParameters ← instantiateProjectionParameters
+      (c_info.instantiateTypeLevelParams I_levels) args 0 I_val.numParams
+    | fail
   let maybePropType := !(← getSortLevel type).isNeverZero
-  for i in [:idx] do
-    let .forallE _ dom b _ ← whnf r | fail
-    if b.hasLooseBVars then
-      -- prop structs cannot have non-prop dependent fields
-      if maybePropType then if !(← isProp dom) then fail
-      r := b.instantiate1 (.proj I_name i struct)
-    else
-      r := b
-  let .forallE _ dom _ _ ← whnf r | fail
-  if maybePropType then if !(← isProp dom) then fail
-  return dom
+  let some selected ← instantiateProjectionFields typeName struct maybePropType
+      afterParameters 0 idx
+    | fail
+  let .forallE _ domain _ _ ← whnf selected | fail
+  if maybePropType then if !(← isProp domain) then fail
+  return domain
 
 @[inherit_doc inferType]
 def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
@@ -318,8 +339,7 @@ result. This can be a useful optimization if we're checking the definitional equ
 projections of the same projection, where we might save some work by directly checking if the struct
 arguments are defeq (rather than eagerly applying a projection).
 
-The kernel has a companion `cheap_rec` flag doing the same for the major premise of a recursor, but
-nothing has set it since lean4#9275 removed the old compiler, so it is omitted here. -/
+Recursor reduction does not use an analogous flag. -/
 def whnfCore (e : Expr) (cheapProj := false) : RecM Expr :=
   fun m => m.whnfCore e cheapProj
 
@@ -339,23 +359,29 @@ def whnfFVar (e : Expr) (cheapProj : Bool) : RecM Expr := do
     return ← whnfCore v cheapProj
   return e
 
-/-- `reduceProj` on a structure that has already been reduced (C++ `reduce_proj_core`). -/
-def reduceProjCore (idx : Nat) (struct : Expr) : RecM (Option Expr) := do
-  let mut c := struct
-  if let .lit (.strVal s) := c then
-    c ← whnf (.strLitToConstructor s)
+/-- Reduce a projection whose structure argument has already been reduced to a constructor
+application.
+
+As in `type_checker::reduce_proj_core`, the head must be a constructor of `structName`, and the
+selected argument need only be present. -/
+def reduceProjCoreCont (structName : Name) (idx : Nat) (c : Expr) : RecM (Option Expr) :=
   c.withApp fun mk args => do
   let .const mkC _ := mk | return none
   let env ← getEnv
   let .ctorInfo mkInfo ← env.get mkC | return none
+  unless mkInfo.induct == structName do return none
   return args[mkInfo.numParams + idx]?
+
+@[inherit_doc reduceProjCoreCont]
+def reduceProjCore (structName : Name) (idx : Nat) (struct : Expr) : RecM (Option Expr) := do
+  let c ← if let .lit (.strVal s) := struct then whnf (.strLitToConstructor s) else pure struct
+  reduceProjCoreCont structName idx c
 
 /-- Reduces a projection of `struct` at index `idx` (when `struct` is reducible to a constructor
 application). -/
-def reduceProj (idx : Nat) (struct : Expr) (cheapProj : Bool) : RecM (Option Expr) :=
-  -- an explicit `>>=`: with the new `do` elaborator, `reduceProjCore idx (← if ..)` lifts the
-  -- bind into both branches, which `reduceProj.WF` cannot see through
-  (if cheapProj then whnfCore struct cheapProj else whnf struct) >>= reduceProjCore idx
+def reduceProj (structName : Name) (idx : Nat) (struct : Expr) (cheapProj : Bool) :
+    RecM (Option Expr) :=
+  (if cheapProj then whnfCore struct cheapProj else whnf struct) >>= reduceProjCore structName idx
 
 def isLetFVar (lctx : LocalContext) (fvar : FVarId) : Bool :=
   lctx.find? fvar matches some (.ldecl ..)
@@ -370,7 +396,7 @@ def whnfCore' (e : Expr) (cheapProj := false) : RecM Expr := do
   if let some r := (← get).whnfCoreCache[e]? then
     return r
   let rec save r := do
-    if !cheapProj then
+    if !cheapProj && whnfCacheKey e then
       modify fun s => { s with whnfCoreCache := s.whnfCoreCache.insert e r }
     return r
   match e with
@@ -401,14 +427,12 @@ def whnfCore' (e : Expr) (cheapProj := false) : RecM Expr := do
         pure e
     else
       let r := f.mkAppRevRange 0 rargs.size rargs
-      -- the recursive call re-decomposes `r` and reaches the `f == f0` branch above, so
-      -- `reduceRecursor` is still applied; adding arguments can only enable further normalization
-      -- if the head reduced to a partial recursor application
+      -- Re-enter reduction after rebuilding the complete application spine.
       save <|← whnfCore r cheapProj
   | .letE _ _ val body _ =>
     save <|← whnfCore (body.instantiate1 val) cheapProj
-  | .proj _ idx s =>
-    if let some m ← reduceProj idx s cheapProj then
+  | .proj structName idx s =>
+    if let some m ← reduceProj structName idx s cheapProj then
       save <|← whnfCore m cheapProj
     else
       save e
@@ -539,7 +563,8 @@ def whnf' (e : Expr) : RecM Expr := do
     loop t fuel
   let ctx ← readThe Context
   let r ← loop e <| if ctx.eagerReduce then ctx.fuel.whnfEager else ctx.fuel.whnf
-  modify fun s => { s with whnfCache := s.whnfCache.insert e r }
+  if whnfCacheKey e then
+    modify fun s => { s with whnfCache := s.whnfCache.insert e r }
   return r
 
 /-- If `t` and `s` are lambda expressions, checks that their domains are defeq and recurses on the
@@ -641,19 +666,24 @@ def tryEtaStructCore (t s : Expr) : RecM Bool := do
   let .ctorInfo fInfo ← env.get f | return false
   unless s.getAppNumArgs == fInfo.numParams + fInfo.numFields do return false
   unless env.isNonRecStructure fInfo.induct do return false
-  unless ← isDefEq (← inferType t) (← inferType s) do return false
+  let tType ← inferType t
+  unless ← isDefEq tType (← inferType s) do return false
+  -- The projections below are only well typed when the structure is never a proposition
+  -- (see `divergences.md`); propositions are handled by proof irrelevance instead.
+  let .sort u ← whnf (← inferType tType) | return false
+  unless u.isNeverZero do return false
   let args := s.getAppArgs
-  for h : i in [fInfo.numParams:args.size] do
-    -- since `t` is in WHNF, and assuming it is not a constructor application, this projection
-    -- cannot reduce (so we are directly checking if `s` is defeq to the struct-η-expansion of `t`)
-    unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) args[i] do return false
-  return true
+  -- since `t` is in WHNF, and assuming it is not a constructor application, these projections
+  -- cannot reduce (so we are directly checking if `s` is defeq to the struct-η-expansion of `t`)
+  let rec loop i := do
+    if _h : i < args.size then
+      unless ← isDefEq (.proj fInfo.induct (i - fInfo.numParams) t) args[i] do return false
+      loop (i + 1)
+    else return true
+  loop fInfo.numParams
 
 @[inherit_doc tryEtaStructCore]
 def tryEtaStruct (t s : Expr) : RecM Bool :=
-  -- when `t` and `s` are both constructor applications, `isDefEqApp` has already compared their
-  -- arguments and returned false, and the projections in `tryEtaStructCore` reduce back to those
-  -- same arguments, so both calls below merely redo that work. The kernel has the same redundancy.
   tryEtaStructCore t s <||> tryEtaStructCore s t
 
 /-- Checks if applications `t` and `s` (should be WHNF) are defeq on account of their function heads
@@ -793,14 +823,14 @@ where
     | .continue tn sn => loop tn sn fuel
     | r => return r
 
-/-- C++ `lazy_delta_proj_reduction`: for `t.idx =?= s.idx`, lazily delta-unfold the two
-structures, and once that stalls compare the projected *fields* rather than the structures. -/
-def lazyDeltaProjReduction (t s : Expr) (idx : Nat) : RecM Bool := do
+/-- Lazily delta-unfold two structures and, once that stalls, compare their
+projected fields. -/
+def lazyDeltaProjReduction (structName : Name) (t s : Expr) (idx : Nat) : RecM Bool := do
   loop t s (← readThe Context).fuel.lazyDelta
 where
   finish tn sn := do
-    if let some tf ← reduceProjCore idx tn then
-      if let some sf ← reduceProjCore idx sn then
+    if let some tf ← reduceProjCore structName idx tn then
+      if let some sf ← reduceProjCore structName idx sn then
         return ← isDefEqCore tf sf
     isDefEqCore tn sn
   loop tn sn
@@ -832,8 +862,7 @@ def isDefEqUnitLike (t s : Expr) : RecM Bool := do
   let tType ← whnf (← inferType t)
   let .const I _ := tType.getAppFn | return false
   let env ← getEnv
-  let .inductInfo { isRec := false, ctors := [c], numIndices := 0, .. } ← env.get I
-    | return false
+  let .inductInfo { isRec := false, ctors := [c], numIndices := 0, .. } ← env.get I | return false
   let .ctorInfo { numFields := 0, .. } ← env.get c | return false
   isDefEqCore tType (← inferType s)
 
@@ -865,9 +894,10 @@ def isDefEqCore' (t s : Expr) : RecM Bool := do
   | .const tf tl, .const sf sl =>
     if tf == sf && Level.isEquivList tl sl then return true
   | .fvar tv, .fvar sv => if tv == sv then return true
-  | .proj _ ti te, .proj _ si se =>
+  | .proj tn ti te, .proj sn si se =>
     -- optimized by the previous reduction functions using `cheapProj := true`
-    if ti == si then if ← lazyDeltaProjReduction te se ti then return true
+    if tn == sn && ti == si then
+      if ← lazyDeltaProjReduction tn te se ti then return true
   | _, _ => pure ()
 
   -- the previous reduction functions used `cheapProj := true`, so we may not have a complete WHNF
@@ -964,16 +994,3 @@ def etaExpand (e : Expr) : M Expr :=
     | _, it => return (← getLCtx).mkLambda fvars (mkAppN it args)
     loop2 fvars #[] (← readThe Context).fuel.etaExpand itType
   loop #[] e
-
--- for testing:
-
--- example : "hi" = sorry := by
---   run_tac
---     let env ← Lean.getEnv
---     let lctx ← getLCtx
---     let (_, lhs, _) := (← Elab.Tactic.getMainTarget).eq?.get!
---     logInfo lhs
---     let ty ← show M _ from withReader ({· with env := .empty `h}) (inferType lhs)
---     logInfo ty
---     let sort ← inferType ty
---     logInfo sort

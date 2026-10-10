@@ -22,9 +22,9 @@ jobs:
 
       # Installs the toolchain pinned in `lean-toolchain` and runs `lake build`,
       # i.e. the `defaultTargets`: the `Lean4Lean` library, the `lean4lean` exe,
-      # `Lean4Lean.Theory`, `Lean4Lean.Verify` and `Lean4Lean.Tests`. The proofs
-      # in `Verify` deliberately contain `sorry`s, so warnings must not fail the
-      # build. `Lean4Lean.Experimental` is WIP and is not a default target.
+      # `Lean4Lean.Theory` and `Lean4Lean.Verify`. The proofs deliberately contain
+      # `sorry`s, so warnings must not fail the build. `Lean4Lean.Tests` and
+      # `Lean4Lean.Experimental` are not default targets; they are built below.
       - name: Build
         uses: leanprover/lean-action@v1
         with:
@@ -60,3 +60,13 @@ jobs:
       # support loose bound variables" (digama0/lean4lean#17).
       - name: Recheck Init.System.IO and its imports from scratch
         run: lake exe lean4lean --fresh Init.System.IO
+
+      # Differential replay against the C++ kernel: every declaration of `Init` and all its
+      # imports (every `Init.*` module, from the empty environment) and of each test module
+      # imported by `Lean4Lean/Tests.lean` (into its imports) is checked by lean4lean and by
+      # `Kernel.Environment.addDecl` on the same environment; when both accept, the constants
+      # it adds (including generated constructors and recursors) are compared under `==`.
+      # Fails on any disagreement. A step of this job rather than a separate job, so that it
+      # reuses the build above.
+      - name: Differential replay against the C++ kernel
+        run: scripts/differential-replay.sh

@@ -26,17 +26,17 @@ variable {env : VEnv}
 `TrExprS.natZero`/`.natSucc`/`.natLit` already derive these from `HasPrimitives`; the wrappers
 below just restate them at an arbitrary context, which is the form the recurrence proofs use. -/
 
-theorem VEnv.HasPrimitives.natZeroT (henv : env.Ordered)
+theorem VEnv.HasPrimitives.natZeroT (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) (Γ) :
     env.HasType 0 Γ .natZero .nat :=
   HasType.weak0 henv (TrExprS.natZero (Us := []) (Δ := []) hprim hnat).2
 
-theorem VEnv.HasPrimitives.natSuccT (henv : env.Ordered)
+theorem VEnv.HasPrimitives.natSuccT (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) (Γ) :
     env.HasType 0 Γ .natSucc (.forallE .nat .nat) :=
   HasType.weak0 henv (TrExprS.natSucc (Us := []) (Δ := []) hprim hnat).2
 
-theorem VEnv.HasPrimitives.natPredT (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem VEnv.HasPrimitives.natPredT (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hpred : env.contains ``Nat.pred) (Γ) :
     env.HasType 0 Γ (.const ``Nat.pred []) (.forallE .nat .nat) :=
   (hprim.natPred hpred).1.weak0 henv
@@ -44,44 +44,44 @@ theorem VEnv.HasPrimitives.natPredT (henv : env.Ordered) (hprim : env.HasPrimiti
 /-- Anything typed as a function *from* `Nat` forces `Nat` to be present. Branches whose guard
 names some other primitive -- `Nat.sub` guards on `Nat.pred`, `Nat.mul` on `Nat.add` -- get
 `Nat` this way, from the typing clause of that primitive's reflection. -/
-theorem VEnv.contains_nat_of_hasType (henv : env.Ordered) {e A : VExpr}
+theorem VEnv.contains_nat_of_hasType (henv : env.OrderedStrong) {e A : VExpr}
     (h : env.HasType 0 [] e (.forallE .nat A)) : env.contains ``Nat := by
   obtain ⟨_, hT⟩ := (h.isType henv trivial).forallE_inv henv |>.1
   obtain ⟨_, hci, -, -⟩ := hT.const_inv henv trivial
   exact ⟨_, hci⟩
 
-theorem VEnv.HasPrimitives.natOfPred (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem VEnv.HasPrimitives.natOfPred (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hpred : env.contains ``Nat.pred) : env.contains ``Nat :=
   VEnv.contains_nat_of_hasType henv (hprim.natPred hpred).1
 
-theorem VEnv.HasPrimitives.natOfAdd (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem VEnv.HasPrimitives.natOfAdd (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hadd : env.contains ``Nat.add) : env.contains ``Nat :=
   VEnv.contains_nat_of_hasType henv (hprim.natAdd hadd).1
 
-theorem VEnv.HasPrimitives.natOfMul (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem VEnv.HasPrimitives.natOfMul (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hmul : env.contains ``Nat.mul) : env.contains ``Nat :=
   VEnv.contains_nat_of_hasType henv (hprim.natMul hmul).1
 
-theorem VEnv.HasPrimitives.natOfDiv (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem VEnv.HasPrimitives.natOfDiv (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hdiv : env.contains ``Nat.div) : env.contains ``Nat :=
   VEnv.contains_nat_of_hasType henv (hprim.natDiv hdiv).1
 
-theorem VEnv.HasPrimitives.natOfMod (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem VEnv.HasPrimitives.natOfMod (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hmod : env.contains ``Nat.mod) : env.contains ``Nat :=
   VEnv.contains_nat_of_hasType henv (hprim.natMod hmod).1
 
 /-- `Nat.bitwise`'s recorded type is the only place `Bool` appears among the bitwise operations'
 prerequisites, so this is how `Nat.land`/`Nat.lor`/`Nat.xor` -- which guard on `Nat.bitwise`
 alone -- learn that `Bool` is present. -/
-theorem VEnv.HasPrimitives.boolOfBitwise (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem VEnv.HasPrimitives.boolOfBitwise (henv : env.OrderedStrong) (hprim : env.HasPrimitives)
     (hbw : env.contains ``Nat.bitwise) : env.contains ``Bool := by
   obtain ⟨ci, hci⟩ := hbw
   cases (hprim.natBitwise ⟨ci, hci⟩).1 _ hci
-  obtain ⟨_, hT⟩ := ((henv.constWF hci).forallE_inv henv).1.forallE_inv henv |>.1
+  obtain ⟨_, hT⟩ := ((henv.ordered.constWF hci).forallE_inv henv).1.forallE_inv henv |>.1
   obtain ⟨_, hc, -, -⟩ := hT.const_inv henv trivial
   exact ⟨_, hc⟩
 
-theorem VEnv.HasPrimitives.natLitT (henv : env.Ordered)
+theorem VEnv.HasPrimitives.natLitT (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) (k Γ) :
     env.HasType U Γ (.natLit k) .nat :=
   VExpr.instL_natLit ▸ (TrExprS.natLit (Us := []) (Δ := []) hprim hnat k).2.instL (ls := []) nofun
@@ -93,7 +93,7 @@ theorem VExpr.closedN_natLit : (VExpr.natLit n).ClosedN k := by
 /-- The measure lambda a caller hands to `unfoldNatWellFounded` -- `fun m _ : Nat => m` -- at
 ground arguments. Two beta steps; the literals are closed, so neither the lift under the inner
 binder nor the final instantiation disturbs them. -/
-theorem VEnv.HasPrimitives.natFstLamApp (henv : env.Ordered)
+theorem VEnv.HasPrimitives.natFstLamApp (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Γ : List VExpr}
     (hΓ : OnCtx Γ (env.IsType U)) (x y : Nat) :
     env.IsDefEqU U Γ
@@ -111,7 +111,7 @@ theorem VEnv.HasPrimitives.natFstLamApp (henv : env.Ordered)
   refine ⟨_, .trans (.appDF step1 (hlit y)) ?_⟩
   simpa using VEnv.IsDefEq.beta (e := .natLit x) (e' := .natLit y) (hlit x) (hlit y)
 
-theorem VEnv.HasPrimitives.natIsType (henv : env.Ordered)
+theorem VEnv.HasPrimitives.natIsType (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Us : List Name} {Δ : VLCtx}
     (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
     env.IsType Us.length Δ.toCtx .nat :=
@@ -119,25 +119,25 @@ theorem VEnv.HasPrimitives.natIsType (henv : env.Ordered)
 
 /-- `Nat` translates to `.nat`. The `uvars = 0` side condition comes from `Nat.zero`'s recorded
 type being `.nat`: that type is well formed, and `const_inv` reads the arity off it. -/
-theorem VEnv.HasPrimitives.trNat (henv : env.Ordered)
+theorem VEnv.HasPrimitives.trNat (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Us : List Name} {Δ : VLCtx} :
     TrExprS env Us Δ (.const ``Nat []) .nat := by
   obtain ⟨_, hT⟩ := hprim.natIsType (Us := []) (Δ := []) henv hnat trivial
   obtain ⟨ci, hci, -, hlen⟩ := hT.const_inv henv trivial
   exact .const hci rfl hlen
 
-theorem VEnv.HasPrimitives.boolLitT (henv : env.Ordered)
+theorem VEnv.HasPrimitives.boolLitT (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hbool : env.contains ``Bool) (b Γ) :
     env.HasType 0 Γ (.boolLit b) .bool :=
   HasType.weak0 henv (TrExprS.boolLit (Us := []) (Δ := []) hprim hbool b).2
 
-theorem VEnv.HasPrimitives.boolIsType (henv : env.Ordered)
+theorem VEnv.HasPrimitives.boolIsType (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hbool : env.contains ``Bool) {Us : List Name} {Δ : VLCtx}
     (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
     env.IsType Us.length Δ.toCtx .bool :=
   (TrExprS.boolLit (Us := Us) (Δ := Δ) hprim hbool true).2.isType henv hΔ
 
-theorem VEnv.HasPrimitives.trBool (henv : env.Ordered)
+theorem VEnv.HasPrimitives.trBool (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hbool : env.contains ``Bool) {Us : List Name} {Δ : VLCtx} :
     TrExprS env Us Δ (.const ``Bool []) .bool := by
   obtain ⟨_, hT⟩ := hprim.boolIsType (Us := []) (Δ := []) henv hbool trivial
@@ -146,7 +146,7 @@ theorem VEnv.HasPrimitives.trBool (henv : env.Ordered)
 
 /-- The translation of a checked unary `Nat` arrow type; `Nat.pred` is the only primitive with
 this shape. -/
-theorem TrExprS.natArrow1 {env : VEnv} (henv : env.Ordered)
+theorem TrExprS.natArrow1 {env : VEnv} (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat) {Us : List Name}
     {n₁ : Name} {d₁ : MData} {bi₁ : BinderInfo} {codSrc : Expr}
     (hcod : TrTy env Us [(none, .vlam .nat)] codSrc) :
@@ -175,7 +175,7 @@ theorem TrExprS.appChar_inv {env : VEnv} {Us : List Name} {Δ : VLCtx} {c : Name
 /-- The same, plus the translation rebuilt at any context: both parts of the application are
 closed, so their typings weaken from the empty context to whatever the arrow builds. -/
 theorem TrExprS.appChar_inv' {env : VEnv} {Us : List Name} {Δ' : VLCtx} {c : Name} {T : VExpr}
-    (henv : env.Ordered)
+    (henv : env.OrderedStrong)
     (h : TrExprS env Us [] (.app (.const c [.zero]) (.const ``Char [])) T) :
     T = .app (.const c [.zero]) .char ∧
     TrExprS env Us Δ' (.app (.const c [.zero]) (.const ``Char []))
@@ -226,7 +226,7 @@ theorem TrExprS.bitwiseOperand {env : VEnv} {Us : List Name} {opSrc : Expr} {V :
 annotations the compiler attaches -- which is what lets it serve `@& Nat → @& Nat → Nat` as the
 prelude actually declares it. Combined with `TrExprS.eqv` and `TrExprS.unique` this pins a
 primitive's `ci'.type` in one step. -/
-theorem TrExprS.natArrow2 (henv : env.Ordered)
+theorem TrExprS.natArrow2 (henv : env.OrderedStrong)
     (hprim : env.HasPrimitives) (hnat : env.contains ``Nat)
     (hcod : TrTy env Us [(none, .vlam .nat), (none, .vlam .nat)] codSrc) :
     TrExprS env Us [] (.forallE n₁ (.mdata d₁ (.const ``Nat []))
@@ -284,8 +284,8 @@ theorem VEnv.ReflectsNatNatNat'.of_unary_step_equations (hU : U = 0)
       (.app g (.app (.app f (.bvar 1)) (.bvar 0)))) :
     env.ReflectsNatNatNat' f F := by
   subst hU; refine ⟨hfT, ?_⟩
-  have hzeroT := hprim.natZeroT henv.ordered hnat
-  have hlit := hprim.natLitT henv.ordered hnat (U := 0)
+  have hzeroT := hprim.natZeroT henv.orderedStrong hnat
+  have hlit := hprim.natLitT henv.orderedStrong hnat (U := 0)
   have ⟨_, hNatSort⟩ := (hzeroT []).isType henv trivial
   have hfClosed : f.ClosedN := (hfT.closedN' henv.ordered.closed trivial).1
   intro a b
@@ -325,7 +325,7 @@ theorem VEnv.ReflectsNatNatNat'.of_binary_step_equations (hU : U = 0)
       (.app (.app g (.app (.app f (.bvar 1)) (.bvar 0))) e)) :
     env.ReflectsNatNatNat' f F := by
   subst hU; refine ⟨hfT, ?_⟩
-  have hlit := hprim.natLitT henv.ordered hnat (U := 0)
+  have hlit := hprim.natLitT henv.orderedStrong hnat (U := 0)
   have hfClosed : f.ClosedN := (hfT.closedN' henv.ordered.closed trivial).1
   have hgClosed : g.ClosedN := (hg.1.closedN' henv.ordered.closed trivial).1
   intro a b
@@ -360,7 +360,7 @@ theorem VEnv.ReflectsNatNatNat'.of_first_arg_step_equations (hU : U = 0)
       (.app (.app f (.app (.app g (.natLit C)) (.bvar 1))) (.bvar 0))) :
     env.ReflectsNatNatNat' f F := by
   subst hU; refine ⟨hfT, ?_⟩
-  have hlit := hprim.natLitT henv.ordered hnat (U := 0)
+  have hlit := hprim.natLitT henv.orderedStrong hnat (U := 0)
   have hfClosed : f.ClosedN := (hfT.closedN' henv.ordered.closed trivial).1
   have hgClosed : g.ClosedN := (hg.1.closedN' henv.ordered.closed trivial).1
   intro a b
@@ -398,7 +398,7 @@ theorem VEnv.ReflectsNatNatBool'.of_constructor_cases (hU : U = 0) (henv : VEnv.
       (.app (.app f (.bvar 1)) (.bvar 0))) :
     env.ReflectsNatNatBool' f F := by
   subst hU; refine ⟨hfT, ?_⟩
-  have hlit := hprim.natLitT henv.ordered hnat (U := 0)
+  have hlit := hprim.natLitT henv.orderedStrong hnat (U := 0)
   have hfClosed : f.ClosedN := (hfT.closedN' henv.ordered.closed trivial).1
   intro a b
   induction a generalizing b with
@@ -434,7 +434,7 @@ theorem VEnv.ReflectsBoolBoolBool'.of_left_cases (hU : U = 0) (henv : VEnv.WF en
     (he₀ : ∀ b, e₀.inst (.boolLit b) = .boolLit (G false b))
     (he₁ : ∀ b, e₁.inst (.boolLit b) = .boolLit (G true b)) :
     env.ReflectsBoolBoolBool' f G := by
-  have hlit := hprim.boolLitT henv.ordered hbool
+  have hlit := hprim.boolLitT henv.orderedStrong hbool
   subst hU; refine ⟨hfT, fun a b => ?_⟩
   match a with
   | false =>
@@ -466,7 +466,7 @@ theorem VEnv.ReflectsNatNat'.of_pred_equations (hU : U = 0) (henv : VEnv.WF env)
   match a with
   | 0 => exact hz
   | k+1 =>
-    have := hs.instN henv.ordered .zero (hprim.natLitT henv.ordered hnat k [])
+    have := hs.instN henv.ordered .zero (hprim.natLitT henv.orderedStrong hnat k [])
     simpa [VExpr.inst, hfClosed.instN_eq, VExpr.natLit] using this
 
 /-- Reflection transfers along a definitional equation on the head. In the environment
@@ -563,7 +563,7 @@ theorem VEnv.ReflectsNatNatNat'.toConst {ci' : VDefVal}
   have ⟨hwfE, hcf⟩ := VDefVal.addDefEq_wf hwf hu hci hadd
   replace href := href.mono (hle.trans le)
   exact VEnv.ReflectsNatNatNat'.congr_head hwfE
-    (fun k Γ => (hprim.natLitT henv.ordered hnat k Γ).mono (hle.trans le)) href hcf
+    (fun k Γ => (hprim.natLitT henv.orderedStrong hnat k Γ).mono (hle.trans le)) href hcf
     (HasType.defeqU_l hwfE trivial hcf.symm href.1)
 
 theorem VEnv.ReflectsNatNatBool'.toConst {ci' : VDefVal}
@@ -577,7 +577,7 @@ theorem VEnv.ReflectsNatNatBool'.toConst {ci' : VDefVal}
   have ⟨hwfE, hcf⟩ := VDefVal.addDefEq_wf hwf hu hci hadd
   replace href := href.mono (hle.trans le)
   refine congr_head hwfE (fun k Γ => ?_) href hcf (href.1.defeqU_l hwfE trivial hcf.symm)
-  exact (hprim.natLitT henv.ordered hnat k Γ).mono (hle.trans le)
+  exact (hprim.natLitT henv.orderedStrong hnat k Γ).mono (hle.trans le)
 
 /-- The unary counterpart. The reflection now carries a typing clause, and the constant's is
 exactly what `congr_head` already needs, so it comes along for free. -/
@@ -592,4 +592,4 @@ theorem VEnv.ReflectsNatNat'.toConst {ci' : VDefVal}
   have ⟨hwfE, hcf⟩ := VDefVal.addDefEq_wf hwf hu hci hadd
   replace href := href.mono (hle.trans le)
   refine congr_head hwfE (fun k Γ => ?_) href hcf (href.1.defeqU_l hwfE trivial hcf.symm)
-  exact (hprim.natLitT henv.ordered hnat k Γ).mono (hle.trans le)
+  exact (hprim.natLitT henv.orderedStrong hnat k Γ).mono (hle.trans le)

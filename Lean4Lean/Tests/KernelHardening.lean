@@ -103,6 +103,25 @@ private def imaxLeakDecl : Declaration :=
 structure L4LKC where b : Bool
 inductive L4LKW : Type where | mk (p : Bool)
 inductive L4LKL (α : Type) (b : Bool) : Type where | mk
+structure L4LNestedParamBox where ty : Type
+
+/-- A valid nested declaration whose constructor spells the common parameter
+domain using a reducible projection.  Restored parameter validation must use
+definitional equality here, not syntactic equality or a projection ban. -/
+private def nestedProjectedParameter : Declaration :=
+  let projectedNat : Expr := .proj ``L4LNestedParamBox 0
+    (.app (.const ``L4LNestedParamBox.mk []) (.const ``Nat []))
+  let family := fun n => .app (.const `L4LNestedProjectedParam []) n
+  .inductDecl [] 1 [{
+    name := `L4LNestedProjectedParam
+    type := .forallE `n (.const ``Nat []) (.sort 1) .default
+    ctors := [{
+      name := `L4LNestedProjectedParam.mk
+      type := .forallE `n projectedNat
+        (.forallE `xs
+          (.app (.const ``List [.zero]) (family (.bvar 0)))
+          (family (.bvar 1)) .default) .default }]
+  }] false
 
 /-- lean4#14576/#14577: the parametric arguments of a nested occurrence are dropped from the
 auxiliary declaration, so they escape checking unless they are checked against the environment
@@ -171,6 +190,12 @@ run_meta do
   -- lean4#14576/#14577: parametric arguments dropped from the auxiliary declaration.
   expectError "nested inductive with ill-typed dropped parameters" "invalid projection" <|
     Lean4Lean.addDecl env nestedIllTypedParams
+
+  match Lean4Lean.addDecl env nestedProjectedParameter with
+  | .error e =>
+      throwError "nested inductive with a reducible projected parameter was rejected: \
+        {← (e.toMessageData {}).toString}"
+  | .ok _ => pure ()
 
   -- lean4#14607: validate original nested constructor types before elimination can hide them.
   expectError "nested inductive containing a free variable" "free variables" <|

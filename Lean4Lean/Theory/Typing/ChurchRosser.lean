@@ -1,6 +1,6 @@
 import Lean4Lean.Theory.Typing.Pattern
 import Lean4Lean.Theory.Typing.Strong
-import Lean4Lean.Theory.Typing.UniqueTyping
+import Lean4Lean.Theory.Typing.Injectivity
 
 namespace Lean4Lean
 open Lean4Lean
@@ -27,11 +27,28 @@ class Params where
   extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
     ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
     df.rhs.instL ls = r.1.apply m1 m2
+  /-- Every registered reduction rule of the environment (`IsDefEq.pat`) is a `Pat` rule,
+  as every definitional axiom is realised by one (`extra_pat`). -/
+  pat_env : env.pats p r → Pat p r
+  /-- The environment registers no structure: the projection rules `projDF`, `projIota`,
+  `structEta` and `unitLike` of the primitive-projection calculus are vacuous. This
+  confluence proof is the small-environment instance of the verified-inductives branch's;
+  structures (projections, structure η, unit-like conversion) are handled by its
+  `Theory/Typing/Confluence/` development, to be retargeted onto `env.pats` (wave 4). -/
+  no_projections : ∀ n info, ¬ env.projections n info
 
 variable [Params]
 open Params
 
 theorem Params.pat_not_var : ¬Pat (.var p) r := (nomatch pat_simple ·)
+
+/-- In a projection-free environment (`Params.no_projections`) no projection is well typed:
+its typing derivation would register the structure (`HasType.proj_inv`). Every typed case
+on a projection below is vacuous by this. -/
+theorem Params.no_proj_typed {Γ : List VExpr} {t : Name} {i : Nat} {m A : VExpr}
+    (hΓ : OnCtx Γ (IsType env univs)) (H : HasType env univs Γ (.proj t i m) A) : False := by
+  obtain ⟨info, _, _, _, _, _, _, hinfo, -⟩ := H.proj_inv henv hΓ
+  exact no_projections _ _ hinfo
 
 local notation:65 Γ " ⊢ " e " : " A:36 => HasType env univs Γ e A
 local notation:65 Γ " ⊢ " e1 " ≡ " e2:36 " : " A:36 => IsDefEq env univs Γ e1 e2 A
@@ -225,6 +242,7 @@ theorem NormalEq.instN_r (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : Γ₁ �
   | const =>
     let ⟨_, h1, h2, h3⟩ := H.const_inv henv hΓ₁
     exact .refl (.const h1 h2 h3)
+  | proj _ _ _ _ => exact (Params.no_proj_typed hΓ₁ H).elim
   | app fn arg ih1 ih2 =>
     let ⟨_, _, h1, h2⟩ := H.app_inv henv hΓ₁
     specialize ih1 hΓ₁ W h1; have hf := h1.instN henv W h₀
@@ -387,6 +405,7 @@ private def meas : VExpr → Nat
   | .app f a
   | .forallE f a => meas f + meas a + 1
   | .bvar _ | .const .. | .sort _ => 0
+  | .proj _ _ e => meas e + 1
   | .lam A e => meas A + meas e + 3
 
 omit [Params] in private theorem meas_liftN : meas (e.liftN n k) = meas e := by
@@ -472,6 +491,7 @@ inductive ParRed : List VExpr → VExpr → VExpr → Prop where
   | sort : Γ ⊢ .sort u ≫ .sort u
   | const : Γ ⊢ .const c ls ≫ .const c ls
   | app : Γ ⊢ f ≫ f' → Γ ⊢ a ≫ a' → Γ ⊢ .app f a ≫ .app f' a'
+  | proj : Γ ⊢ major ≫ major' → Γ ⊢ .proj typeName index major ≫ .proj typeName index major'
   | lam : Γ ⊢ A ≫ A' → A::Γ ⊢ body ≫ body' → Γ ⊢ .lam A body ≫ .lam A' body'
   | forallE : Γ ⊢ A ≫ A' → A::Γ ⊢ B ≫ B' → Γ ⊢ .forallE A B ≫ .forallE A' B'
   | beta : A::Γ ⊢ e₁ ≫ e₁' → Γ ⊢ e₂ ≫ e₂' → Γ ⊢ .app (.lam A e₁) e₂ ≫ e₁'.inst e₂'
@@ -487,6 +507,9 @@ inductive CParRed : List VExpr → VExpr → VExpr → Prop where
   | sort : Γ ⊢ .sort u ⋙ .sort u
   | const : ¬NonNeutral Γ (.const c ls) → Γ ⊢ .const c ls ⋙ .const c ls
   | app : ¬NonNeutral Γ (.app f a) → Γ ⊢ f ⋙ f' → Γ ⊢ a ⋙ a' → Γ ⊢ .app f a ⋙ .app f' a'
+  /-- No pattern matches a projection and it is not a beta redex: a projection is a
+  congruence node here (and untypable, `Params.no_proj_typed`). -/
+  | proj : Γ ⊢ major ⋙ major' → Γ ⊢ .proj typeName index major ⋙ .proj typeName index major'
   | lam : Γ ⊢ A ⋙ A' → A::Γ ⊢ body ⋙ body' → Γ ⊢ .lam A body ⋙ .lam A' body'
   | forallE : Γ ⊢ A ⋙ A' → A::Γ ⊢ B ⋙ B' → Γ ⊢ .forallE A B ⋙ .forallE A' B'
   | beta : A::Γ ⊢ e₁ ⋙ e₁' → Γ ⊢ e₂ ⋙ e₂' → Γ ⊢ .app (.lam A e₁) e₂ ⋙ e₁'.inst e₂'
@@ -498,6 +521,7 @@ protected theorem ParRed.rfl : ∀ {e}, Γ ⊢ e ≫ e
   | .sort .. => .sort
   | .const .. => .const
   | .app .. => .app ParRed.rfl ParRed.rfl
+  | .proj .. => .proj ParRed.rfl
   | .lam .. => .lam ParRed.rfl ParRed.rfl
   | .forallE .. => .forallE ParRed.rfl ParRed.rfl
 
@@ -505,6 +529,7 @@ theorem ParRed.weakN (W : Ctx.LiftN n k Γ Γ') (H : Γ ⊢ e1 ≫ e2) :
     Γ' ⊢ e1.liftN n k ≫ e2.liftN n k := by
   induction H generalizing k Γ' with
   | bvar | sort | const => exact .rfl
+  | proj _ ih => exact .proj (ih W)
   | app _ _ ih1 ih2 => exact .app (ih1 W) (ih2 W)
   | lam _ _ ih1 ih2 => exact .lam (ih1 W) (ih2 W.succ)
   | forallE _ _ ih1 ih2 => exact .forallE (ih1 W) (ih2 W.succ)
@@ -532,6 +557,7 @@ theorem ParRed.instN (W : Ctx.InstN Γ₀ a1 A₀ k Γ₁ Γ)
       | zero => exact .rfl
       | succ h => exact ih.weakN .one
   | sort | const => exact .rfl
+  | proj _ ih => exact .proj (ih W)
   | app _ _ ih1 ih2 => exact .app (ih1 W) (ih2 W)
   | lam _ _ ih1 ih2 => exact .lam (ih1 W) (ih2 W.succ)
   | forallE _ _ ih1 ih2 => exact .forallE (ih1 W) (ih2 W.succ)
@@ -546,6 +572,7 @@ variable! (hΓ : OnCtx Γ (IsType env univs)) in
 theorem ParRed.defeq (H : Γ ⊢ e ≫ e') (he : Γ ⊢ e : A) : Γ ⊢ e ≡ e' : A := by
   induction H generalizing A with
   | bvar | sort | const => exact he
+  | proj _ _ => exact (Params.no_proj_typed hΓ he).elim
   | app _ _ ih1 ih2 =>
     have ⟨_, _, h1, h2⟩ := he.app_inv henv hΓ
     exact .trans_l henv hΓ he <| .appDF (ih1 hΓ h1) (ih2 hΓ h2)
@@ -579,6 +606,7 @@ theorem ParRed.defeqDFC (W : IsDefEqCtx env univs Γ₀ Γ₁ Γ₂)
   | bvar => exact .bvar
   | sort => exact .sort
   | const => exact .const
+  | proj _ _ => exact (Params.no_proj_typed (W.isType' hΓ₀) h).elim
   | app _ _ ih1 ih2 =>
     have ⟨_, _, hf, ha⟩ := h.app_inv henv (W.isType' hΓ₀)
     exact .app (ih1 W hf) (ih2 W ha)
@@ -646,6 +674,9 @@ theorem ParRed.weakN_inv (W : Ctx.LiftN n k Γ Γ')
   | bvar => cases e1 <;> cases eq; exact ⟨_, .bvar, rfl⟩
   | sort => cases e1 <;> cases eq; exact ⟨_, .sort, rfl⟩
   | const => cases e1 <;> cases eq; exact ⟨_, .const, rfl⟩
+  | proj _ _ =>
+    cases e1 <;> cases eq
+    exact (Params.no_proj_typed hΓ h).elim
   | app h1 h2 ih1 ih2 =>
     cases e1 <;> cases eq
     have ⟨_, _, hf, ha⟩ := h.app_inv henv hΓ
@@ -704,6 +735,7 @@ theorem CParRed.toParRed (H : Γ ⊢ e ⋙ e') : Γ ⊢ e ≫ e' := by
   | bvar => exact .bvar
   | sort => exact .sort
   | const => exact .const
+  | proj _ ih => exact .proj ih
   | app _ _ _ ih1 ih2 => exact .app ih1 ih2
   | lam _ _ ih1 ih2 => exact .lam ih1 ih2
   | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
@@ -743,6 +775,7 @@ theorem CParRed.exists (H : Γ ⊢ e : A) : ∃ e', Γ ⊢ e ⋙ e' := by
   | bvar i => exact ⟨_, .bvar⟩
   | sort => exact ⟨_, .sort⟩
   | const n ls => exact Classical.byCases (neut H e_ih) fun hn => ⟨_, .const hn⟩
+  | proj => exact (Params.no_proj_typed hΓ H).elim
   | app ih1 ih2 =>
     have ⟨_, _, hf, ha⟩ := H.app_inv henv hΓ
     have ⟨_, h1⟩ := e_ih.1.1 hΓ hf
@@ -777,6 +810,7 @@ theorem ParRed.triangle (H1 : Γ ⊢ e : A) (H : Γ ⊢ e ≫ e') (H2 : Γ ⊢ e
     cases H with
     | const => exact ⟨_, .rfl, .refl H1⟩
     | extra h1 h2 h3 => cases hn (.inr ⟨_, _, _, _, h1, h2, h3⟩)
+  | proj _ _ => exact (Params.no_proj_typed hΓ H1).elim
   | app hn _ _ ih1 ih2 =>
     have ⟨_, _, l1, l2⟩ := H1.app_inv henv hΓ
     cases H with
@@ -950,6 +984,11 @@ theorem ParRedS.app (hf : Γ ⊢ f ≫* f') (ha : Γ ⊢ a ≫* a') :
   induction hf with
   | rfl =>  exact .rfl
   | tail f1 f2 ihf => exact .tail ihf (.app f2 .rfl)
+
+theorem ParRedS.proj (hm : Γ ⊢ m ≫* m') : Γ ⊢ VExpr.proj t i m ≫* VExpr.proj t i m' := by
+  induction hm with
+  | rfl => exact .rfl
+  | tail _ a2 ih => exact .tail ih (.proj a2)
 
 theorem ParRedS.lam (hf : Γ ⊢ A ≫* A') (ha : A::Γ ⊢ body ≫* body') :
     Γ ⊢ A.lam body ≫* A'.lam body' := by
@@ -1384,3 +1423,12 @@ theorem IsDefEq.church_rosser
     have ⟨_, _, _, _, a1, a2, a3, a4⟩ := extra_pat h1 h2 h3 (Γ := Γ)
     refine have h := .extra h1 h2 h3; mk h (.tail .rfl (.extra a1 a2 a3 fun _ => .rfl)) .rfl ?_
     exact a4 ▸ .refl h.hasType.2
+  | pat hp hm he hr hall =>
+    have hok := hr.toOK (defeq := IsDefEqU env univs _) fun t ht => ⟨_, hall t ht⟩
+    refine have h := .pat hp hm he hr hall
+      mk h (.tail .rfl (.extra (pat_env hp) hm hok fun _ => .rfl)) .rfl ?_
+    exact .refl h.hasType.2
+  | projDF h1 => exact absurd h1 (no_projections _ _)
+  | projIota h1 => exact absurd h1 (no_projections _ _)
+  | structEta h1 => exact absurd h1 (no_projections _ _)
+  | unitLike h1 => exact absurd h1 (no_projections _ _)

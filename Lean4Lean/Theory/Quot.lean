@@ -8,6 +8,8 @@ def quotConst := vconst(type_of% @Quot)
 def quotMkConst := vconst(type_of% @Quot.mk)
 def quotLiftConst := vconst(type_of% @Quot.lift)
 def quotIndConst := vconst(type_of% @Quot.ind)
+/-- The computation rule of `Quot.lift`. `Quot.ind` needs none: proof irrelevance derives its
+reduction on `Quot.mk` (`VEnv.quotInd_defeq`). -/
 def quotDefEq := vdefeq(α r β f c a => @Quot.lift α r β f c (Quot.mk r a) ≡ f a)
 
 def VEnv.QuotReady (env : VEnv) : Prop :=

@@ -17,9 +17,10 @@ globs = ["Lean4Lean.Theory.*"]
 name = "Lean4Lean.Verify"
 globs = ["Lean4Lean.Verify.*"]
 
+# WAVE 1E COMPAT: `Lean4Lean/Tests.lean` is the manifest of the test modules (its imports);
+# a test whose imports do not build yet is listed there with the wave that adds it back.
 [[lean_lib]]
 name = "Lean4Lean.Tests"
-globs = ["Lean4Lean.Tests.*"]
 
 [[lean_lib]]
 name = "Lean4Lean.Experimental"

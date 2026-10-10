@@ -13,19 +13,6 @@ open Lean4Lean
 
 attribute [simp] mkLevelSucc mkLevelMax mkLevelIMax updateSucc! updateMax! updateIMax!
 
--- variable (ls : List Name) in
--- def _root_.Lean4Lean.VLevel.toLevel : VLevel → Level
---   | .zero => .zero
---   | .succ l => .succ l.toLevel
---   | .max l₁ l₂ => .max l₁.toLevel l₂.toLevel
---   | .imax l₁ l₂ => .imax l₁.toLevel l₂.toLevel
---   | .param n => match ls.get? n with
---     | some l => .param l
---     | none => .zero
-
--- theorem toLevel_inj {ls : List Name} (d : ls.Nodup)
---     {l₁ l₂ : VLevel} (eq : l₁.toLevel ls = l₂.toLevel ls) : l₁ = l₂ := sorry
-
 @[simp] def getOffset' : Level → Nat
   | succ u => getOffset' u + 1
   | _      => 0
@@ -342,11 +329,6 @@ protected theorem Extend?.allNZ (H : Extend? p a p') : allNZ ls ρ p' = allNZ ls
 protected theorem Extend?.evalPath (H : Extend? p a p') :
     evalPath ls ρ p' = evalPath ls ρ (a :: p) := by ext n; simp [evalPath, H.allNZ]
 
-theorem ext_le {n m : Nat} (H : ∀ x, n ≤ x ↔ m ≤ x) : n = m :=
-  Nat.le_antisymm ((H _).2 (Nat.le_refl _)) ((H _).1 (Nat.le_refl _))
-
-theorem le_ext_le {n m : Nat} (H : ∀ x, n ≤ x → m ≤ x) : m ≤ n := H _ (Nat.le_refl _)
-
 /-- Condition sets are strictly sorted, which is what makes `subset` a decision procedure
 for inclusion: it is built up by `orderedInsert` from the empty set. -/
 def Sorted (l : List Name) : Prop := l.Pairwise (compare · · = .lt)
@@ -512,7 +494,7 @@ theorem NormLevel.addConst_eval (H : path = [] ∨ acc.contains path) (wf : acc.
       have := (Node.eval_le.1 (evalPath_le.1 (eval_le.1 le _ _ H) nz)).2 _ a3
       simp [allNZ] at nz
       exact Nat.le_trans (nz _ (a1.mem.2 (.inl rfl))) (Nat.le_of_add_right_le this)
-  · refine ext_le fun x => ?_
+  · refine nat_ext_le fun x => ?_
     simp [eval_le, Nat.max_le, Std.TreeMap.getElem?_alter, evalPath_le, Node.eval_le]
     refine ⟨fun H => ⟨fun a b h nz => ?_, fun nz => ?_⟩, fun ⟨H1, H2⟩ a b h nz => ?_⟩
     · have := H a; split at this
@@ -539,7 +521,7 @@ theorem VarNode.addVar_le : (∀ vn ∈ VarNode.addVar v k l, vn.eval ls ρ ≤ 
 
 theorem NormLevel.addNode_eval : (addNode v k path acc).eval ls ρ =
     max' (acc.eval ls ρ) (evalPath ls ρ path (evalParam ls ρ v + k)) := by
-  refine ext_le fun x => ?_
+  refine nat_ext_le fun x => ?_
   simp [addNode, eval_le, Std.TreeMap.getElem?_alter, evalPath_le, Node.eval_le, Nat.max_le]
   refine ⟨fun H => ⟨fun a b h nz => ?_, fun nz => ?_⟩, fun ⟨H1, H2⟩ a b h nz => ?_⟩
   · have := H a; split at this
@@ -556,7 +538,7 @@ theorem NormLevel.addNode_eval : (addNode v k path acc).eval ls ρ =
 
 theorem NormLevel.addVar_eval (H : acc.contains path) : (addVar v k path acc).eval ls ρ =
     max' (acc.eval ls ρ) (evalPath ls ρ path (evalParam ls ρ v + k)) := by
-  refine ext_le fun x => ?_
+  refine nat_ext_le fun x => ?_
   rw [← Std.TreeMap.isSome_getElem?_eq_contains, Option.isSome_iff_exists] at H; let ⟨v, H⟩ := H
   simp [addVar, eval_le, Nat.max_le, Std.TreeMap.getElem?_modify, evalPath_le, Node.eval_le, H]
   refine ⟨fun H => ⟨fun a b h nz => ?_, fun nz => ?_⟩, fun ⟨H1, H2⟩ a b h nz => ?_⟩
@@ -619,7 +601,7 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
         simp [evalPath]; split <;> [rename_i nz; simp]
         have hm := this.mem.2 (.inl rfl)
         obtain ⟨p1, p2, w1, a1, a2, a3, a4, z, a5, rfl⟩ := wf.of_mem hm (H.resolve_left hne)
-        refine ext_le fun n => ?_; simp [Nat.max_le, NormLevel.eval_le]; intro he
+        refine nat_ext_le fun n => ?_; simp [Nat.max_le, NormLevel.eval_le]; intro he
         have := Node.eval_le.1 (evalPath_le.1 (he _ _ a4)
           (allNZ_mono (fun _ h => (a2.mem.1 h).elim (· ▸ hm) (a1 _)) nz)) |>.2 _ a5
         simp [allNZ] at nz; specialize nz _ hm
@@ -645,7 +627,7 @@ theorem normalizeAux_eval (hu : VLevel.ofLevel ls u = some u')
     · simp [evalPath]; split <;> [rename_i nz; simp]
       have hm := this.mem.2 (.inl rfl)
       obtain ⟨p1, p2, w1, a1, a2, a3, a4, z, a5, rfl⟩ := wf.of_mem hm (H.resolve_left hne)
-      refine ext_le fun n => ?_; simp [Nat.max_le, NormLevel.eval_le]; intro he
+      refine nat_ext_le fun n => ?_; simp [Nat.max_le, NormLevel.eval_le]; intro he
       have := Node.eval_le.1 (evalPath_le.1 (he _ _ a4)
         (allNZ_mono (fun _ h => (a2.mem.1 h).elim (· ▸ hm) (a1 _)) nz)) |>.2 _ a5
       simp [allNZ] at nz; specialize nz _ hm
@@ -771,7 +753,7 @@ theorem Node.eval_empty {l : Node} (H : l.isEmpty) : Node.eval ls ρ l = 0 := by
 
 theorem NormLevel.eval_filter {m : NormLevel} :
     NormLevel.eval ls ρ (m.filter fun _ n => !n.isEmpty) = m.eval ls ρ := by
-  refine ext_le fun x => ?_
+  refine nat_ext_le fun x => ?_
   simp only [eval_le, Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_filter]
   refine ⟨fun H a b h => ?_, fun H a b h => ?_⟩
   · by_cases he : b.isEmpty
@@ -1189,7 +1171,7 @@ theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
         rw [hins p₁, if_pos rfl, if_neg he]
       have := H _ _ hget
       rw [evalPath_le] at this; exact this nz
-  refine ih _ nd.2 (fun p n h => ?_) (fun p n h v hv => ?_) ((ext_le fun m => ?_).trans eq)
+  refine ih _ nd.2 (fun p n h => ?_) (fun p n h v hv => ?_) ((nat_ext_le fun m => ?_).trans eq)
   · have hne : p₁ ≠ p := fun e => nd.1 (by rw [e]; exact List.mem_map_of_mem h)
     exact (hins p).trans (if_neg hne) ▸ hl _ _ (.tail _ h)
   · rw [hins p] at h; split at h
@@ -1327,21 +1309,15 @@ theorem imax_zero_left : Lean.Nat.imax 0 a = a := by rw [imax_eq_ite]; split <;>
 
 theorem Node.eval_const {var : List VarNode} :
     Node.eval ls ρ ⟨c, var⟩ = max' c (Node.eval ls ρ ⟨0, var⟩) :=
-  ext_le fun x => by simp [Node.eval_le, Nat.max_le]
+  nat_ext_le fun x => by simp [Node.eval_le, Nat.max_le]
 
 theorem Node.eval_cons {var : List VarNode} :
     Node.eval ls ρ ⟨c, a :: var⟩ = max' (VarNode.eval ls ρ a) (Node.eval ls ρ ⟨c, var⟩) :=
-  ext_le fun x => by simp [Node.eval_le, Nat.max_le, and_left_comm]
+  nat_ext_le fun x => by simp [Node.eval_le, Nat.max_le, and_left_comm]
 
 theorem eval_mkMax :
     Level.eval ρ μ (Tree.reify.mkMax l o) = max' (Level.eval ρ μ l) (evalOpt ρ μ o) := by
   cases o <;> simp [Tree.reify.mkMax, evalOpt, Level.eval]
-
-theorem eval_addOffset : Level.eval ρ μ (l.addOffset k) = Level.eval ρ μ l + k := by
-  simp only [Level.addOffset]
-  induction k generalizing l with
-  | zero => rfl
-  | succ k ih => rw [Level.addOffsetAux, ih]; simp [Level.eval]; omega
 
 theorem eval_ofNat : Level.eval ρ μ (Level.ofNat k) = k := by
   induction k with
@@ -2217,7 +2193,7 @@ innermost element of the chain, is what the edge into it contributes. -/
 theorem NormLevel.toTree_eval {s : NormLevel} (hsort : ∀ p n, s.get? p = some n → Sorted p)
     (hfeas : ∀ p, s.contains p → s.Feas [] p) :
     Tree.eval ls ρ (toTree s) = s.eval ls ρ := by
-  refine ext_le fun m => (toTree_le_iff hsort).trans (Iff.trans ?_ NormLevel.eval_le.symm)
+  refine nat_ext_le fun m => (toTree_le_iff hsort).trans (Iff.trans ?_ NormLevel.eval_le.symm)
   refine ⟨fun H p n hp => ?_, fun H p n hp => ⟨?_, fun a q hq => ?_⟩⟩
   · -- the entry is the node the tree records for it, plus the edge into that node
     rw [← evalPath_perm (lexChain_perm (s := s) (fuel := p.length) (p := p))]
