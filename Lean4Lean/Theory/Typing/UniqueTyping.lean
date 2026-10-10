@@ -169,6 +169,10 @@ theorem IsDefEqU.trans (henv : VEnv.WF env) (hΓ : OnCtx Γ (env.IsType U))
     env.IsDefEqU U Γ e₁ e₃ := h1.imp fun _ h1 => let ⟨_, h2⟩ := h2; h1.trans_l henv hΓ h2
 
 variable! (henv : VEnv.WF env) (hΓ : OnCtx Γ' (env.IsType U)) in
+/-- **Open, and false as stated**: the `→` direction (strengthening) fails in environments with
+two indexed singleton families, see https://github.com/digama0/lean4lean/issues/50. The
+provable special case is `IsDefEq.weakN_inv_of_hasType`, where the removed binder is inhabited.
+Everything derived from this lemma inherits the problem. -/
 theorem IsDefEqU.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     env.IsDefEqU U Γ' (e1.liftN n k) (e2.liftN n k) ↔ env.IsDefEqU U Γ e1 e2 := by
   refine ⟨fun h => have := henv; have := hΓ; sorry, fun h => h.weakN henv W⟩
@@ -176,15 +180,6 @@ theorem IsDefEqU.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
 variable! (henv : VEnv.WF env) (hΓ : OnCtx Γ' (env.IsType U)) in
 theorem _root_.Lean4Lean.VExpr.WF.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     VExpr.WF env U Γ' (e.liftN n k) ↔ VExpr.WF env U Γ e := IsDefEqU.weakN_iff henv hΓ W
-
-theorem IsDefEq.skips (henv : VEnv.WF env) (hΓ : OnCtx Γ' (env.IsType U))
-    (W : Ctx.LiftN n k Γ Γ')
-    (H : env.IsDefEq U Γ' e₁ e₂ A) (h1 : e₁.Skips n k) (h2 : e₂.Skips n k) :
-    ∃ B, env.IsDefEq U Γ' e₁ e₂ B ∧ B.Skips n k := by
-  obtain ⟨e₁, rfl⟩ := VExpr.skips_iff_exists.1 h1
-  obtain ⟨e₂, rfl⟩ := VExpr.skips_iff_exists.1 h2
-  have ⟨_, H⟩ := (IsDefEqU.weakN_iff henv hΓ W).1 ⟨_, H⟩
-  exact ⟨_, H.weakN henv W, .liftN⟩
 
 variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) (hΓ : OnCtx Γ (env.IsType U)) in
 theorem IsDefEq.weakN_iff' (W : Ctx.LiftN n k Γ Γ') :
@@ -221,11 +216,6 @@ variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
 theorem IsType.weakN_iff (W : Ctx.LiftN n k Γ Γ') :
     env.IsType U Γ' (A.liftN n k) ↔ env.IsType U Γ A :=
   exists_congr fun _ => HasType.weakN_iff henv hΓ' W (A := .sort _)
-
-variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
-theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
-    (h1 : env.HasType U Γ' e A) (h2 : e.Skips n k) : ∃ B, env.HasType U Γ' e B ∧ B.Skips n k :=
-  IsDefEq.skips henv hΓ' W h1 h2 h2
 
 variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
 theorem IsDefEqU.weak'_iff (W : Ctx.Lift' l Γ Γ') :
