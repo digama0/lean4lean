@@ -536,6 +536,42 @@ def _root_.Lean4Lean.Pattern.Check.defeqsS {p : Pattern}
   | .true => []
   | .defeq a b rest => (a.applyS m1 m2, b.applyS m1 m2) :: rest.defeqsS m1 m2
 
+theorem _root_.Lean4Lean.Pattern.RHS.lift'_applyS {p : Pattern} {m1 m2}
+    (r : p.RHS) :
+    (r.applyS m1 m2).lift' ρ = r.applyS m1 fun path => (m2 path).lift' ρ := by
+  induction r with
+  | fixed c h =>
+    simp only [Pattern.RHS.applyS]
+    rw [ClosedN.lift'_eq (h.mkS.instL) (by trivial)]
+  | var => rfl
+  | app _ _ ihf iha => simp only [Pattern.RHS.applyS, SExpr.lift', ihf, iha]
+
+theorem _root_.Lean4Lean.Pattern.MatchesS.lift'
+    (H : _root_.Lean4Lean.Pattern.MatchesS p e m1 m2) :
+    ∃ m2', _root_.Lean4Lean.Pattern.MatchesS p (e.lift' ρ) m1 m2' ∧
+      ∀ path, m2' path = (m2 path).lift' ρ := by
+  induction H with
+  | const => exact ⟨nofun, .const, nofun⟩
+  | @var _ fn _ _ arg _ ih =>
+    obtain ⟨g, hg, ih⟩ := ih
+    rw [show (fn.app arg).lift' ρ = (fn.lift' ρ).app (arg.lift' ρ) from rfl]
+    exact ⟨(·.elim (arg.lift' ρ) g), .var (a' := arg.lift' ρ) hg,
+      fun | none => rfl | some path => ih path⟩
+  | app _ _ ihf iha =>
+    obtain ⟨gf, hgf, ihf⟩ := ihf
+    obtain ⟨ga, hga, iha⟩ := iha
+    exact ⟨Sum.elim gf ga, .app hgf hga,
+      fun path => by cases path <;> simp [ihf, iha]⟩
+
+theorem _root_.Lean4Lean.Pattern.Check.defeqsS_lift' {p : Pattern} {m1 m2}
+    (r : p.Check) :
+    (r.defeqsS m1 m2).map (Prod.map (SExpr.lift' · ρ) (SExpr.lift' · ρ)) =
+      r.defeqsS m1 fun path => (m2 path).lift' ρ := by
+  induction r with
+  | true => rfl
+  | defeq a b rest ih =>
+    simp [Pattern.Check.defeqsS, Pattern.RHS.lift'_applyS, ih]
+
 section
 set_option hygiene false
 
@@ -960,7 +996,29 @@ theorem WHRed.weak' (W : Ctx.Lift' ρ Γ Γ') :
     Γ ⊢ e1 ⤳ e2 → Γ' ⊢ e1.lift' ρ ⤳ e2.lift' ρ
   | .app h1 => .app (h1.weak' W)
   | .beta => by rw [SExpr.lift'_inst_hi]; exact .beta
-  | .extra h1 h2 h3 h4 => sorry
+  | @extra _ _ p r e m1 m2 dfs h1 h2 h3 h4 => by
+    obtain ⟨m2', hm, heq⟩ := h2.lift' (ρ := ρ)
+    have heq' : m2' = fun path => (m2 path).lift' ρ := funext heq
+    subst m2'
+    let liftPair := Prod.map (SExpr.lift' · ρ) (SExpr.lift' · ρ)
+    let dfs' := dfs.map fun x => (x.1.lift' ρ, liftPair x.2)
+    rw [Pattern.RHS.lift'_applyS]
+    refine .extra h1 hm (dfs := dfs') ?_ ?_
+    · rw [← Pattern.Check.defeqsS_lift' (ρ := ρ), ← h3]
+      unfold dfs'
+      rw [List.map_map]
+      simp [liftPair, Function.comp_def]
+    · intro a b A hab
+      obtain ⟨x, hx, hxeq⟩ := List.mem_map.1 hab
+      obtain ⟨A', a', b'⟩ := x
+      have hw := (h4 a' b' A' hx).weak' W
+      have hA := congrArg Prod.fst hxeq
+      have hp := congrArg Prod.snd hxeq
+      have ha := congrArg Prod.fst hp
+      have hb := congrArg Prod.snd hp
+      dsimp [liftPair] at hA ha hb
+      rw [← hA, ← ha, ← hb]
+      exact hw
 
 theorem WHRed.weakU_inv (W : Ctx.Lift' ρ Γ Γ') (H : Γ' ⊢ e1.lift' ρ ⤳ e2') :
     ∃ e2, e2' = e2.lift' ρ ∧ Γ ⊢ e1 ⤳ e2 := by
