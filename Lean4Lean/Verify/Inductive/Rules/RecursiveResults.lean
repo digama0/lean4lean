@@ -20,18 +20,23 @@ open private Lean.Kernel.Environment.add from Lean.Environment
 
 namespace VerifyInductive
 
-/-- Fixed-frame package for one complete recursive result.  The generated
-recursor telescope and rule-wide field frame are parameters, so every
-array position is closed and typed in the same literal `equationDomains`;
-only its higher-order local telescope varies with the recursive field. -/
-theorem
-    RecursorCheck.RuleAlignment.recursiveResultTypingFor
+section RuleContexts
+
+variable
     {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
     {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
     {sourceEnv : VEnv} {indTypes : Array InductiveType}
     {ctorEnv outEnv : Environment}
     {R : ConstructorCheck c stats decl nparams isUnsafe depth
       sourceEnv indTypes ctorEnv}
+
+
+/-- Fixed-frame package for one complete recursive result.  The generated
+recursor telescope and rule-wide field frame are parameters, so every
+array position is closed and typed in the same literal `equationDomains`;
+only its higher-order local telescope varies with the recursive field. -/
+theorem
+    RecursorCheck.RuleAlignment.recursiveResultTypingFor
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -140,12 +145,6 @@ higher-order local telescope remains entry-specific, while its closed lambda
 and forall type both live in the single context shared by the whole RHS. -/
 structure
     RecursorCheck.RuleAlignment.RecursiveResult
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -267,12 +266,6 @@ structure
 
 theorem
     RecursorCheck.RuleAlignment.recursiveResult
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -333,12 +326,6 @@ exact complete higher-order domain produced by the recursive-call replay,
 closed over the executable's full rule binder list. -/
 theorem
     RecursorCheck.RuleAlignment.RecursiveResult.fullForallTranslation
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -462,12 +449,6 @@ domain.  Both its dependent local domains and its real residual are lifted
 at their exact respective cutoffs. -/
 theorem
     RecursorCheck.RuleAlignment.RecursiveResult.fullForallTranslationAfter
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -531,12 +512,6 @@ translations for the eta-expanded recursive-field lambda over the same local
 selection. -/
 theorem
     RecursorCheck.RuleAlignment.RecursiveResult.templateTranslation
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -628,12 +603,6 @@ derivations; the actual recursive-call residual is the independently checked
 one retained by `RecursiveResult`. -/
 theorem
     RecursorCheck.RuleAlignment.RecursiveResult.fullTranslationOfTemplate
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -727,12 +696,6 @@ section HypothesisComparison
 
 variable
 
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -2022,12 +1985,6 @@ section HypothesisDomainComparison
 
 variable
 
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -2754,6 +2711,8 @@ theorem RecursorCheck.RuleAlignment.installedHypothesisDomains :
   }⟩
 
 end HypothesisDomainComparison
+
+end RuleContexts
 
 end VerifyInductive
 end Lean4Lean

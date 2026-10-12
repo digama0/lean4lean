@@ -16,6 +16,17 @@ open private Lean.Kernel.Environment.add from Lean.Environment
 
 namespace VerifyInductive
 
+section RuleContexts
+
+variable
+    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
+    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
+    {sourceEnv : VEnv} {indTypes : Array InductiveType}
+    {ctorEnv outEnv : Environment}
+    {R : ConstructorCheck c stats decl nparams isUnsafe depth
+      sourceEnv indTypes ctorEnv}
+
+
 /-- The generated owner-motive domain is itself an exactly sized typed
 index/major telescope.  This follows from the retained executable local
 declarations, not by inspecting the translated target: the source closes the
@@ -23,12 +34,6 @@ owner indices and major, and abstraction over the preceding recursor binders
 preserves that telescope. -/
 theorem
     RecursorCheck.installedOwnerMotiveTelescopeShapeAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     let Us := AddInductive.getRecLevelParams H.elimLevel c.lparams
@@ -110,12 +115,6 @@ uniqueness transports the semantic shape to the exact `T` already selected
 by an equation frame. -/
 theorem
     RecursorCheck.installedOwnerMotiveTelescopeShapeForAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length)
     (T : RecursorTypeTelescope H.outVEnv
@@ -259,12 +258,6 @@ theorem RecursorConstruction.recursorTelescopeGenerated
 motive's domain telescope, lifted beneath the later motives and all minors.
 Both are produced by the same generator from the owner family's indices. -/
 theorem RecursorCheck.ownerSuffix_eq_expected
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length)
     (T : RecursorTypeTelescope H.outVEnv
@@ -346,12 +339,6 @@ theorem RecursorCheck.ownerSuffix_eq_expected
 /-- Complete dependent alignment of the generated owner index/major suffix
 with the owner motive's declared domains: the two telescopes coincide. -/
 theorem RecursorCheck.ownerMotiveSuffixContextFor
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length)
     (T : RecursorTypeTelescope H.outVEnv
@@ -386,12 +373,6 @@ theorem RecursorCheck.ownerMotiveSuffixContextFor
 direct use with the telescope retained by the canonical equation frame. -/
 theorem
     RecursorCheck.RuleAlignment.installedOwnerMotiveSuffixContextAlignmentFor
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     (T : RecursorTypeTelescope H.outVEnv
@@ -437,12 +418,6 @@ equation LHS: the generated recursor suffix and the independent motive
 domains are weakened through precisely the same locally bound fields. -/
 theorem
     RecursorCheck.RuleAlignment.installedOwnerMotiveSuffixAlignmentUnderFields
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     (T : RecursorTypeTelescope H.outVEnv
@@ -511,12 +486,6 @@ generated owner-motive application `T.result`; only the dependent domains
 differ, and `closeWrapForalls` discharges exactly that distinction. -/
 theorem
     RecursorCheck.RuleAlignment.installedOwnerMotiveSuffixTypeAlignment
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     (T : RecursorTypeTelescope H.outVEnv
@@ -630,12 +599,6 @@ has exactly the independent domains appearing on the right side of
 rather than the generated recursor result. -/
 theorem
     RecursorCheck.RuleAlignment.installedOwnerMotiveFieldWitnessTyping
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     (T : RecursorTypeTelescope H.outVEnv
@@ -695,12 +658,6 @@ owner variable and its complete dependent function type are unchanged; only
 the outer parameter domains are converted. -/
 theorem
     RecursorCheck.RuleAlignment.installedCachedOwnerMotiveWitnessTyping
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     (T : RecursorTypeTelescope H.outVEnv
@@ -779,12 +736,6 @@ recursor result, while the motive application returns an elimination sort.
 This is the form in which `SameTelescopeDomains` compares the two applications. -/
 theorem
     RecursorCheck.RuleAlignment.installedCachedPrefixOwnerTelescope
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     (T : RecursorTypeTelescope H.outVEnv
@@ -929,12 +880,6 @@ with the generated telescope.  No index, major, or current-motive weakening
 remains hidden in this frame. -/
 theorem
     RecursorCheck.installedOwnerClosedMotiveFrameAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     let Us := AddInductive.getRecLevelParams H.elimLevel c.lparams
@@ -997,12 +942,6 @@ theorem
 replayed in the checker context of the first pass. -/
 theorem
     RecursorCheck.installedOwnerScopedMotiveTranslationAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     let Us := AddInductive.getRecLevelParams H.elimLevel c.lparams
@@ -1048,12 +987,6 @@ mutual motives are absent from the concrete source, so adding their abstract
 binders is precisely ordinary bound-variable weakening. -/
 theorem
     RecursorCheck.installedOwnerMotiveDomainAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     let Us := AddInductive.getRecLevelParams H.elimLevel c.lparams
@@ -1330,12 +1263,6 @@ at its identity universe instantiation.  Rule typing can therefore consume
 the independently recovered telescope without appealing to the equation
 being constructed. -/
 theorem RecursorCheck.recursorTypingAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     let recursor := H.entries[owner].2
@@ -1357,12 +1284,6 @@ theorem RecursorCheck.recursorTypingAt
   exact VEnv.HasType.const0 hlookup hwf
 
 theorem RecursorCheck.RuleAlignment.recursorTyping
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -1371,6 +1292,8 @@ theorem RecursorCheck.RuleAlignment.recursorTyping
     H.outVEnv.HasType recursor.uvars []
       (.const recursor.name (VLevel.params recursor.uvars)) recursor.type := by
   exact H.recursorTypingAt owner howner
+
+end RuleContexts
 
 end VerifyInductive
 end Lean4Lean

@@ -20,16 +20,21 @@ open private Lean.Kernel.Environment.add from Lean.Environment
 
 namespace VerifyInductive
 
-/-- Pointwise projection used by abstract iota reconstruction.  It exposes
-the exact generated source rule together with its `Semantics` record from the
-same executable constructor iteration. -/
-theorem RecursorCheck.generatedRule
+section RuleContexts
+
+variable
     {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
     {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
     {sourceEnv : VEnv} {indTypes : Array InductiveType}
     {ctorEnv outEnv : Environment}
     {R : ConstructorCheck c stats decl nparams isUnsafe depth
       sourceEnv indTypes ctorEnv}
+
+
+/-- Pointwise projection used by abstract iota reconstruction.  It exposes
+the exact generated source rule together with its `Semantics` record from the
+same executable constructor iteration. -/
+theorem RecursorCheck.generatedRule
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length)
     (i : Nat) (hctor : i < indTypes[owner]!.ctors.length)
@@ -60,12 +65,6 @@ theorem RecursorCheck.generatedRule
 /-- The family selected from the generated residual is exactly the outer
 owner whose constructor batch is being traversed. -/
 theorem RecursorCheck.generatedRuleOwner
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length)
     (i : Nat) (hctor : i < indTypes[owner]!.ctors.length)
@@ -101,12 +100,6 @@ the rule is additionally identified with this owner.  Keeping these facts in
 one dependent record prevents later iota reconstruction from silently mixing
 the three independent indexing conventions. -/
 structure RecursorCheck.RuleAlignment
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length)
     (i : Nat) (hctor : i < indTypes[owner]!.ctors.length) where
@@ -137,12 +130,6 @@ structure RecursorCheck.RuleAlignment
   typing_owner : typing.ownerIdx = owner
 
 noncomputable def RecursorCheck.RuleAlignment.minorOrigin
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -152,12 +139,6 @@ noncomputable def RecursorCheck.RuleAlignment.minorOrigin
   Classical.choice A.minorOrigins
 
 noncomputable def RecursorCheck.RuleAlignment.minorShape
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -166,12 +147,6 @@ noncomputable def RecursorCheck.RuleAlignment.minorShape
   A.minorOrigin.producer.minorShape
 
 noncomputable def RecursorCheck.RuleAlignment.minorReplayAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -185,12 +160,6 @@ noncomputable def RecursorCheck.RuleAlignment.minorReplayAt
 recursor check.  All bounds not supplied by the caller follow from
 the generated-recursors cardinality and the source-declaration translation. -/
 theorem RecursorCheck.ruleAlignment
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length)
     (i : Nat) (hctor : i < indTypes[owner]!.ctors.length) :
@@ -234,12 +203,6 @@ the canonical source of the parameter, motive, and minor domains used when
 typing the corresponding equation; it does not reconstruct those domains
 from the rule RHS. -/
 theorem RecursorCheck.recursorTelescopeTranslationAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     Nonempty (RecursorTypeTelescope
@@ -263,12 +226,6 @@ theorem RecursorCheck.recursorTelescopeTranslationAt
   simpa [E.levels, H.localExtends.lparams_eq] using T
 
 theorem RecursorCheck.installedRecursorTelescopeTranslationAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     Nonempty (RecursorTypeTelescope H.outVEnv
@@ -285,12 +242,6 @@ are definitionally equal.  The proof is deliberately factored through the
 concrete generated source binders, so it does not assume that independently
 translated abstract domain lists are syntactically identical. -/
 theorem RecursorCheck.installedRecursorCommonPrefixContextAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner₁ : Nat) (howner₁ : owner₁ < H.entries.length)
     (owner₂ : Nat) (howner₂ : owner₂ < H.entries.length)
@@ -324,12 +275,6 @@ not syntax, and is derived from translation of the same concrete `mkForall`
 prefix on both sides. -/
 theorem
     RecursorCheck.installedRecursorParameterContextAt
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     (owner : Nat) (howner : owner < H.entries.length) :
     let Us := AddInductive.getRecLevelParams H.elimLevel c.lparams
@@ -426,12 +371,6 @@ theorem
 /-- Rule-local specialization of `installedRecursorParameterContextAt`. -/
 theorem
     RecursorCheck.RuleAlignment.installedRecursorParameterContext
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -455,12 +394,6 @@ same canonical parameter context.  The existential witness selected by
 telescope groups are uniquely determined by the common source and target. -/
 theorem
     RecursorCheck.installedRecursorParameterContextFor
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     (H : RecursorCheck R outEnv)
     {owner : Nat} (howner : owner < H.entries.length)
     (T : RecursorTypeTelescope H.outVEnv
@@ -487,12 +420,6 @@ abstract parameter contexts are related by conversion, not by syntactic
 equality. -/
 theorem
     RecursorCheck.RuleAlignment.installedCheckedConstructorFieldFrame
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -614,12 +541,6 @@ parameterized by the field-frame witnesses lets later equation proofs retain
 the very same recursor telescope witness. -/
 theorem
     RecursorCheck.RuleAlignment.cachedConstructorTargetOfFieldFrame
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -714,12 +635,6 @@ mention parameters and genuine fields, hence motives and minors merely shift
 the already abstracted parameter variables. -/
 theorem
     RecursorCheck.RuleAlignment.targetBinderLift_eq
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -891,12 +806,6 @@ telescope.  Keeping `T` explicit is essential when the resulting index spine
 is used by the matching recursor suffix. -/
 theorem
     RecursorCheck.RuleAlignment.cachedConstructorIndexSpineOfTarget
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -1025,12 +934,6 @@ fields.  `fieldDomains` is rebuilt from the lifted context prefix, so the
 resulting canonical equation context remains valid for dependent fields. -/
 theorem
     RecursorCheck.RuleAlignment.installedCheckedConstructorEquationContextWithFrame
-    {c : AddInductive.Context} {stats : AddInductive.InductiveStats}
-    {decl : VInductDecl} {nparams depth : Nat} {isUnsafe : Bool}
-    {sourceEnv : VEnv} {indTypes : Array InductiveType}
-    {ctorEnv outEnv : Environment}
-    {R : ConstructorCheck c stats decl nparams isUnsafe depth
-      sourceEnv indTypes ctorEnv}
     {H : RecursorCheck R outEnv}
     {owner : Nat} {howner : owner < H.entries.length}
     {i : Nat} {hctor : i < indTypes[owner]!.ctors.length}
@@ -1144,6 +1047,8 @@ theorem
       List.append_assoc, Nat.add_comm, bvarSpine] using Hweak
   · simpa [parameterDecls, inserted, fieldDomains, liftedPrefix, added,
       hfields, List.append_assoc] using HtargetWeak
+
+end RuleContexts
 
 end VerifyInductive
 end Lean4Lean
