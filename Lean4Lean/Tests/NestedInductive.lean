@@ -43,6 +43,47 @@ def badDecl : Declaration :=
              (mkApp (mkConst `Bad0 []) (.bvar 1)) .default) .default }] }]
     false
 
+/-- A direct recursive declaration, exercising the ordinary recursor/rule
+path without nested lowering. -/
+def recursiveDecl : Declaration :=
+  let nat := mkConst `VerifiedNat []
+  let zero : Constructor := { name := `VerifiedNat.zero, type := nat }
+  let succ : Constructor := {
+    name := `VerifiedNat.succ
+    type := .forallE `pred nat nat .default }
+  let info : InductiveType := {
+    name := `VerifiedNat
+    type := .sort 1
+    ctors := [zero, succ] }
+  .inductDecl [] 0 [info] false
+
+/-- A mutually recursive block whose first family contains a nested
+occurrence of the second under `Array`. -/
+def mutualNestedDecl : Declaration :=
+  let forest := fun a => mkApp (mkConst `VerifiedForest []) a
+  let tree := fun a => mkApp (mkConst `VerifiedTree []) a
+  let forestNode : Constructor := {
+    name := `VerifiedForest.node
+    type := .forallE `α (.sort 1)
+      (.forallE `trees
+        (mkApp (mkConst ``Array [.zero]) (tree (.bvar 0)))
+        (forest (.bvar 1)) .default) .default }
+  let treeNode : Constructor := {
+    name := `VerifiedTree.node
+    type := .forallE `α (.sort 1)
+      (.forallE `value (.bvar 0)
+        (.forallE `children (forest (.bvar 1))
+          (tree (.bvar 2)) .default) .default) .default }
+  let forestInfo : InductiveType := {
+    name := `VerifiedForest
+    type := .forallE `α (.sort 1) (.sort 1) .default
+    ctors := [forestNode] }
+  let treeInfo : InductiveType := {
+    name := `VerifiedTree
+    type := .forallE `α (.sort 1) (.sort 1) .default
+    ctors := [treeNode] }
+  .inductDecl [] 1 [forestInfo, treeInfo] false
+
 run_meta do
   let kenv := (← getEnv).toKernelEnv
 
@@ -58,5 +99,19 @@ run_meta do
   match Lean4Lean.addDecl kenv badDecl with
   | .ok _ => throwError "nested inductive with an ill-typed parameter was accepted"
   | .error _ => pure ()
+
+  match Lean4Lean.addDecl kenv recursiveDecl with
+  | .error e =>
+    throwError "recursive inductive was rejected: {← (e.toMessageData {}).toString}"
+  | .ok env =>
+    unless env.contains `VerifiedNat.rec do
+      throwError "recursive inductive did not install its recursor"
+
+  match Lean4Lean.addDecl kenv mutualNestedDecl with
+  | .error e =>
+    throwError "mutual nested inductive was rejected: {← (e.toMessageData {}).toString}"
+  | .ok env =>
+    unless env.contains `VerifiedForest.rec && env.contains `VerifiedTree.rec do
+      throwError "mutual nested inductive did not install both primary recursors"
 
 end Lean4Lean.Tests.NestedInductive

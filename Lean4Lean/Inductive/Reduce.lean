@@ -31,10 +31,7 @@ def toCtorWhenK (rval : RecursorVal) (e : Expr) : m Expr := do
   let appType ← whnf (← inferType e)
   let .const appTypeI _ := appType.getAppFn | return e
   if appTypeI != rval.getMajorInduct then return e
-  if appType.hasExprMVar then
-    let appTypeArgs := appType.getAppArgs
-    for h : i in [rval.numParams:appTypeArgs.size] do
-      if appTypeArgs[i].hasExprMVar then return e
+  if appType.hasExprMVar && appType.getAppArgs.any (·.hasExprMVar) rval.numParams then return e
   let some newCtorApp := mkNullaryCtor env appType rval.numParams | return e
   -- check that the indices of types of `e` and `newCtorApp` match
   unless ← isDefEq appType (← inferType newCtorApp) do return e
@@ -43,12 +40,11 @@ def toCtorWhenK (rval : RecursorVal) (e : Expr) : m Expr := do
 def expandEtaStruct (eType e : Expr) : Expr :=
   eType.withApp fun I args => Id.run do
   let .const I ls := I | return e
-  let some ctor := getFirstCtor env I | return e
-  let some (.ctorInfo info) := env.find? ctor | unreachable!
-  let mut result := mkAppRange (.const ctor ls) 0 info.numParams args
-  for i in [:info.numFields] do
-    result := .app result (.proj I i e)
-  pure result
+  let some (.inductInfo sInfo) := env.find? I | return e
+  let some ctor := sInfo.ctors.head? | return e
+  let some (.ctorInfo info) := env.find? ctor | return e
+  let result := mkAppRange (.const ctor ls) 0 info.numParams args
+  pure <| (List.range info.numFields).foldl (fun result i => .app result (.proj I i e)) result
 
 /-- When `e` is of non-recursive structure type, and that type is not a proposition, converts `e`
 into a constructor application using projections.
@@ -60,7 +56,7 @@ def toCtorWhenStruct (inductName : Name) (e : Expr) : m Expr := do
     return e
   let eType ← whnf (← inferType e)
   if !eType.getAppFn.isConstOf inductName then return e
-  let .sort u ← whnf (← inferType eType) | unreachable!
+  let .sort u ← whnf (← inferType eType) | return e
   unless u.isNeverZero do return e
   return expandEtaStruct env eType e
 
@@ -76,6 +72,9 @@ def inductiveReduceRecCore (rval : RecursorVal) (ls : List Level) (recArgs : Arr
     (major : Expr) : Option Expr := do
   let some rule := getRecRuleFor rval major | none
   let majorArgs := major.getAppArgs
+  -- Restored nested recursors need not bind the constructor's parameters: for
+  -- example, `Lean.Syntax.rec_1` eliminates `Array Lean.Syntax` with no parameters.
+  -- Constructor fields are the suffix, independently of the recursor telescope.
   if rule.nfields > majorArgs.size then none
   if ls.length != rval.levelParams.length then none
   let mut rhs := rule.rhs.instantiateLevelParams rval.levelParams ls

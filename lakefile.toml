@@ -17,9 +17,9 @@ globs = ["Lean4Lean.Theory.*"]
 name = "Lean4Lean.Verify"
 globs = ["Lean4Lean.Verify.*"]
 
+# `Lean4Lean/Tests.lean` is the manifest of the test modules (its imports).
 [[lean_lib]]
 name = "Lean4Lean.Tests"
-globs = ["Lean4Lean.Tests.*"]
 
 [[lean_lib]]
 name = "Lean4Lean.Experimental"

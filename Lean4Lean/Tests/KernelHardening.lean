@@ -78,6 +78,27 @@ private def nestedAuxProjDecl : Declaration :=
           (.const `L4LKNProj []) .default) .default }]
   }] false
 
+/-- An inductive type (not a constructor) naming a `_nested` auxiliary.  Both kernels reject it
+for the reserved prefix before the type is checked, rather than as an unknown constant. -/
+private def nestedAuxHeaderDecl : Declaration :=
+  .inductDecl [] 0 [{
+    name := `L4LKNHeader
+    type := .forallE `x (.const `_nested.L4LHost_1 []) (.sort .zero) .default
+    ctors := [] }] false
+
+/-- A nested-elimination result with one parameter and one auxiliary family, for the
+exceptions of the restoration (lean4#14632), which the elimination never triggers. -/
+private def restoreResult : ElimNestedInductive.Result where
+  ngen := {}
+  nparams := 1
+  lctx := {}
+  params := #[.fvar ⟨`p⟩]
+  aux2nested := ({} : NameMap Expr).insert `_nested.L4LAux_1
+    (.app (.const ``List [.zero]) (.fvar ⟨`p⟩))
+  types := []
+
+private def restoreLam (body : Expr) : Expr := .lam `x (.sort 1) body .default
+
 private def nestedBadDecl (bad : Expr) (name : Name) : Declaration :=
   let ind := fun a => .app (.const name []) a
   .inductDecl [] 1 [{
@@ -103,6 +124,25 @@ private def imaxLeakDecl : Declaration :=
 structure L4LKC where b : Bool
 inductive L4LKW : Type where | mk (p : Bool)
 inductive L4LKL (α : Type) (b : Bool) : Type where | mk
+structure L4LNestedParamBox where ty : Type
+
+/-- A valid nested declaration whose constructor spells the common parameter
+domain using a reducible projection.  Restored parameter validation must use
+definitional equality here, not syntactic equality or a projection ban. -/
+private def nestedProjectedParameter : Declaration :=
+  let projectedNat : Expr := .proj ``L4LNestedParamBox 0
+    (.app (.const ``L4LNestedParamBox.mk []) (.const ``Nat []))
+  let family := fun n => .app (.const `L4LNestedProjectedParam []) n
+  .inductDecl [] 1 [{
+    name := `L4LNestedProjectedParam
+    type := .forallE `n (.const ``Nat []) (.sort 1) .default
+    ctors := [{
+      name := `L4LNestedProjectedParam.mk
+      type := .forallE `n projectedNat
+        (.forallE `xs
+          (.app (.const ``List [.zero]) (family (.bvar 0)))
+          (family (.bvar 1)) .default) .default }]
+  }] false
 
 /-- lean4#14576/#14577: the parametric arguments of a nested occurrence are dropped from the
 auxiliary declaration, so they escape checking unless they are checked against the environment
@@ -167,10 +207,30 @@ run_meta do
   -- unknown constant.
   expectError "constructor naming a nested auxiliary in a projection" "reserved prefix '_nested'" <|
     Lean4Lean.addDecl env nestedAuxProjDecl
+  expectError "inductive type naming a nested auxiliary" "reserved prefix '_nested'" <|
+    Lean4Lean.addDecl env nestedAuxHeaderDecl
+  expectError "inductive type naming a nested auxiliary (C++ kernel)" "reserved prefix '_nested'" <|
+    Kernel.Environment.addDeclCore env 0 50000 nestedAuxHeaderDecl none
+
+  -- lean4#14632: the restoration's exceptions, where `restoreNested` itself is total.
+  expectError "restoration with fewer binders than parameters" "fewer binders than parameters" <|
+    restoreResult.checkRestoreNested env (.sort 0)
+  expectError "restoration of an unapplied auxiliary type" "not applied to all parameters" <|
+    restoreResult.checkRestoreNested env (restoreLam (.const `_nested.L4LAux_1 []))
+  expectError "restoration of a non-constructor name" "is not a constructor of an auxiliary type" <|
+    restoreResult.checkRestoreCtorName env `Nat.succ
+  runM <| restoreResult.checkRestoreNested env
+    (restoreLam (.app (.const `_nested.L4LAux_1 []) (.bvar 0)))
 
   -- lean4#14576/#14577: parametric arguments dropped from the auxiliary declaration.
   expectError "nested inductive with ill-typed dropped parameters" "invalid projection" <|
     Lean4Lean.addDecl env nestedIllTypedParams
+
+  match Lean4Lean.addDecl env nestedProjectedParameter with
+  | .error e =>
+      throwError "nested inductive with a reducible projected parameter was rejected: \
+        {← (e.toMessageData {}).toString}"
+  | .ok _ => pure ()
 
   -- lean4#14607: validate original nested constructor types before elimination can hide them.
   expectError "nested inductive containing a free variable" "free variables" <|

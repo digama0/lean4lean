@@ -22,4 +22,29 @@ run_meta
   | .ok true => throwError "a partial definition was accepted as a primitive"
   | .ok false => throwError "a partial definition was reported as a non-primitive"
 
+/- The primitive recognizer accepts the prelude's definitions of the primitives whose checks go
+through a `reflectNatNat` condition (`Nat.div`, `Nat.mod`, `Nat.land`, ...) or a well-founded
+unfolding (`Nat.gcd`, `Nat.bitwise`). The condition's pieces and the fixpoint functional are read
+only under binders; this exercises those readings outside a full replay. -/
+run_meta
+  let env ← Lean.getEnv
+  for n in [``Nat.div, ``Nat.mod, ``Nat.gcd, ``Nat.land, ``Nat.lor, ``Nat.xor, ``Nat.beq,
+      ``Nat.ble] do
+    let some (.defnInfo v) := env.toKernelEnv.find? n
+      | throwError "{n} is not a definition"
+    match (Primitive.checkDef v).run env.toKernelEnv (lparams := v.levelParams) with
+    | .ok true => pure ()
+    | .ok false => throwError "{n} was reported as a non-primitive"
+    | .error e => throwError "{n} was rejected as a primitive: {e.toMessageData .empty}"
+  -- and it is not vacuous: `Nat.gcd` and `Nat.div` with `Nat.mod`'s value are rejected
+  let some (.defnInfo natMod) := env.toKernelEnv.find? ``Nat.mod
+    | throwError "Nat.mod is not a definition"
+  for n in [``Nat.gcd, ``Nat.div] do
+    let some (.defnInfo v) := env.toKernelEnv.find? n
+      | throwError "{n} is not a definition"
+    let v := { v with value := natMod.value }
+    match (Primitive.checkDef v).run env.toKernelEnv (lparams := v.levelParams) with
+    | .error _ => pure ()
+    | .ok _ => throwError "{n} with the value of Nat.mod was accepted"
+
 end Lean4Lean.Tests.Environment
