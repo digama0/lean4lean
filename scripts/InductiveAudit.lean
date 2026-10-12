@@ -1,9 +1,11 @@
 import Lean4Lean.Verify.Inductive.Dispatch
+import Lean4Lean.Verify.Inductive.Nested.Install.Extension
 import Lean4Lean.Verify.Environment
 import Lean4Lean.Verify.TypeChecker
 import Lean4Lean.Verify.CanonicalEq
 import Lean4Lean.Theory.Typing.RecursorRegistryInstallation
 import Lean4Lean.Theory.Typing.ConstructorCaptureTransport
+import Lean4Lean.Verify.Replay
 import Lean4Lean.Theory.Typing.BVarConversion
 import Lean4Lean.Theory.Typing.DefinitionPatterns
 import Lean4Lean.Theory.Typing.EtaOpening
@@ -70,14 +72,22 @@ elab "#inductive_audit " ids:ident* : command => do
 -- The top-level verification theorems: checked addition of
 -- every declaration form, the inductive pipelines, the checker, the realizability of canonical
 -- `Eq`, and the replay driver.
+#inductive_audit Lean4Lean.addDecl.WF
 #inductive_audit Lean4Lean.addQuot.WF
 #inductive_audit Lean4Lean.VerifyInductive.addInductiveDeclaration.preserves
 #inductive_audit Lean4Lean.VerifyInductive.Environment.addInductive.inductiveExtensionWF
 #inductive_audit Lean4Lean.VerifyInductive.Environment.addInductive.primitiveInductiveExtensionWF
+#inductive_audit Lean4Lean.VerifyInductive.Environment.addInductiveAfterLowering.nestedInductiveExtensionWF
 #inductive_audit Lean4Lean.TypeChecker.whnf.WF
 #inductive_audit Lean4Lean.TypeChecker.Inner.reduceRecursor.WF
 #inductive_audit Lean4Lean.VerifyInductive.RecursorConstruction.typeTranslations
 #inductive_audit Lean4Lean.addDecl.preludeEq_hasCanonicalEq
+
+-- The replay driver (`Lean4Lean/Verify/Replay.lean`).
+#inductive_audit Lean4Lean.Replay.replayFresh.WF
+#inductive_audit Lean4Lean.Replay.replayFresh.WF_target
+#inductive_audit Lean4Lean.Replay.replayPure.WF_fromImports
+#inductive_audit Lean4Lean.Replay.Replayed.foldlM
 
 -- Generator and specification definitions: strict roots.
 #inductive_audit Lean4Lean.VEnv.DefinitionRegistered
@@ -85,6 +95,7 @@ elab "#inductive_audit " ids:ident* : command => do
 #inductive_audit Lean4Lean.InductiveSignature.RecursorData.compilationEntries
 #inductive_audit Lean.Level.paramsIn
 #inductive_audit Lean.Expr.levelParamsIn
+#inductive_audit Lean4Lean.InductiveSignature.TrRestoredCompilation
 #inductive_audit Lean4Lean.InductiveSignature.Restoration.expr
 #inductive_audit Lean4Lean.CompiledInductive
 #inductive_audit Lean4Lean.InductiveSignature.Instance.equation

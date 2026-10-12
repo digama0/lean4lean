@@ -17,6 +17,16 @@ import Lean4Lean.Verify.Inductive.Primitive.Shape
 import Lean4Lean.Verify.Inductive.Primitive.Run
 import Lean4Lean.Verify.Inductive.Primitive.Extension
 import Lean4Lean.Verify.Inductive.Dispatch
+import Lean4Lean.Verify.Inductive.Nested.Lowering.Basic
+import Lean4Lean.Verify.Inductive.Nested.Restoration.LoweredRun
+import Lean4Lean.Verify.Inductive.Nested.Restoration.RestorationRun
+import Lean4Lean.Verify.Inductive.Nested.Restoration.Validation.Passes
+import Lean4Lean.Verify.Inductive.Nested.Restoration.Certificate
+import Lean4Lean.Verify.Inductive.Nested.Restoration.Restore
+import Lean4Lean.Verify.Inductive.Nested.Equations.Rules
+import Lean4Lean.Verify.Inductive.Nested.Install.Installed
+import Lean4Lean.Verify.Inductive.Nested.Install.Result
+import Lean4Lean.Verify.Inductive.Nested.Install.Extension
 
 /-!
 # Verification of inductive declarations

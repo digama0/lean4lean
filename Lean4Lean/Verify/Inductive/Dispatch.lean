@@ -1,4 +1,5 @@
 import Lean4Lean.Verify.Inductive.Primitive.Extension
+import Lean4Lean.Verify.Inductive.Nested.Install.Extension
 
 /-! # Dispatch of inductive declarations
 
@@ -17,22 +18,6 @@ open Lean hiding Environment Exception
 open Kernel
 
 namespace VerifyInductive
-
-set_option linter.unusedVariables false in
-/-- LAYER HYPOTHESIS. The nested branch of the dispatch: the statement of
-`Environment.addInductiveAfterLowering.nestedInductiveExtensionWF`, which the nested
-layer of this branch proves in
-`Verify/Inductive/Nested/Install/Extension.lean` and then removes this hypothesis. -/
-def NestedInductivePreserves : Prop :=
-  ∀ (env : Environment) (lparams : List Name) (nparams : Nat)
-    (sourceTypes : List InductiveType) (isUnsafe : Bool) (fuel : FuelConfig)
-    (res : ElimNestedInductive.Result) (ves : VEnvs) (wf : ves.WF env)
-    (Hsources : SourceSyntaxChecks env sourceTypes)
-    (Hlower : loweringRun env fuel.inductiveFuel nparams sourceTypes lparams = .ok res)
-    (hnested : res.aux2nested.size ≠ 0),
-    (Environment.addInductiveAfterLowering env lparams nparams sourceTypes
-      isUnsafe false fuel res).WF fun outEnv =>
-        Nonempty (InductiveExtension env outEnv ves lparams nparams sourceTypes isUnsafe)
 
 /-- `InductiveExtension` for the ordinary branch after lowering (no auxiliary families). -/
 theorem Environment.addInductiveAfterLowering.ordinaryInductiveExtensionWF
@@ -72,7 +57,6 @@ the checked block is literally the source only under that hypothesis. The case w
 auxiliary families is the ordinary branch; otherwise the nested branch receives the checked
 lowering output selected by execution. -/
 theorem Environment.addInductive.inductiveExtensionWF
-    (Hnested : NestedInductivePreserves)
     (env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe : Bool) (fuel : FuelConfig)
     (ves : VEnvs) (wf : ves.WF env)
@@ -87,13 +71,12 @@ theorem Environment.addInductive.inductiveExtensionWF
     exact Environment.addInductiveAfterLowering.ordinaryInductiveExtensionWF
       env lparams nparams types isUnsafe fuel res ves wf htypes
       (htypes ▸ loweringRun.types_nonempty wf Hsources Hlower) haux
-  · exact Hnested env lparams nparams
+  · exact Environment.addInductiveAfterLowering.nestedInductiveExtensionWF env lparams nparams
       types isUnsafe fuel res ves wf Hsources Hlower haux
 
 /-- Model preservation alone for the non-primitive branch, without any hypothesis on the source
 syntax: the ordinary branch installs whatever lowering produced. -/
 theorem Environment.addInductive.preservesWF
-    (Hnested : NestedInductivePreserves)
     (env : Environment) (lparams : List Name) (nparams : Nat)
     (types : List InductiveType) (isUnsafe : Bool) (fuel : FuelConfig)
     (ves : VEnvs) (wf : ves.WF env) :
@@ -105,7 +88,7 @@ theorem Environment.addInductive.preservesWF
   · exact Environment.addInductiveAfterLowering.ordinaryInstalledModelWF
       env lparams nparams types isUnsafe fuel res ves wf
       (loweringRun.types_nonempty wf Hsources Hlower) haux
-  · exact (Hnested env lparams nparams
+  · exact (Environment.addInductiveAfterLowering.nestedInductiveExtensionWF env lparams nparams
       types isUnsafe fuel res ves wf Hsources Hlower haux).mono fun _ ⟨E⟩ => E.modelExtension
 
 /-- Dispatch of an inductive declaration: `addDecl` satisfies `Q` if, for every result
@@ -133,7 +116,6 @@ has a well-formed model extending the source models and carrying the
 primitive path for the canonical `Bool`/`Nat` declarations and the ordinary or nested path
 otherwise. -/
 theorem addInductiveDeclaration.spec
-    (Hnested : NestedInductivePreserves)
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (lparams : List Name) (nparams : Nat) (types : List InductiveType)
     (isUnsafe : Bool) (fuel : FuelConfig)
@@ -149,13 +131,12 @@ theorem addInductiveDeclaration.spec
       isUnsafe fuel ves wf ((checkPrimitiveInductive_eq_true_iff env lparams nparams types
         isUnsafe).mp hcheck)
   | false =>
-    exact Environment.addInductive.inductiveExtensionWF Hnested env lparams nparams types
+    exact Environment.addInductive.inductiveExtensionWF env lparams nparams types
       isUnsafe fuel ves wf HsourcesB
 
 /-- A checked inductive declaration, at any fuel, preserves the invariant `VEnvs.WF` and extends
 every safety-indexed abstract environment: the inductive case of `addDecl.WF`. -/
 theorem addInductiveDeclaration.preserves
-    (Hnested : NestedInductivePreserves)
     {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     (lparams : List Name) (nparams : Nat) (types : List InductiveType)
     (isUnsafe : Bool) (fuel : FuelConfig) :
@@ -170,7 +151,7 @@ theorem addInductiveDeclaration.preserves
       isUnsafe fuel ves wf ((checkPrimitiveInductive_eq_true_iff env lparams nparams types
         isUnsafe).mp hcheck)).mono fun _ ⟨E⟩ => E.modelExtension
   | false =>
-    exact Environment.addInductive.preservesWF Hnested env lparams nparams types isUnsafe fuel
+    exact Environment.addInductive.preservesWF env lparams nparams types isUnsafe fuel
       ves wf
 
 end VerifyInductive

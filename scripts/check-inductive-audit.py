@@ -20,14 +20,20 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 MARKER = "INDUCTIVE_AUDIT "
 ROOTS = {
+    "Lean4Lean.addDecl.WF",
     "Lean4Lean.addQuot.WF",
     "Lean4Lean.VerifyInductive.addInductiveDeclaration.preserves",
     "Lean4Lean.VerifyInductive.Environment.addInductive.inductiveExtensionWF",
     "Lean4Lean.VerifyInductive.Environment.addInductive.primitiveInductiveExtensionWF",
+    "Lean4Lean.VerifyInductive.Environment.addInductiveAfterLowering.nestedInductiveExtensionWF",
     "Lean4Lean.TypeChecker.whnf.WF",
     "Lean4Lean.TypeChecker.Inner.reduceRecursor.WF",
     "Lean4Lean.VerifyInductive.RecursorConstruction.typeTranslations",
     "Lean4Lean.addDecl.preludeEq_hasCanonicalEq",
+    "Lean4Lean.Replay.replayFresh.WF",
+    "Lean4Lean.Replay.replayFresh.WF_target",
+    "Lean4Lean.Replay.replayPure.WF_fromImports",
+    "Lean4Lean.Replay.Replayed.foldlM",
 }
 DEFINITION_ROOTS = {
     "Lean4Lean.VEnv.DefinitionRegistered",
@@ -35,6 +41,7 @@ DEFINITION_ROOTS = {
     "Lean4Lean.InductiveSignature.RecursorData.compilationEntries",
     "Lean.Level.paramsIn",
     "Lean.Expr.levelParamsIn",
+    "Lean4Lean.InductiveSignature.TrRestoredCompilation",
     "Lean4Lean.InductiveSignature.Restoration.expr",
     "Lean4Lean.CompiledInductive",
     "Lean4Lean.InductiveSignature.Instance.equation",
@@ -58,11 +65,13 @@ STRICT_ROOTS = DEFINITION_ROOTS | FOUNDATION_ROOTS
 ROOTS |= STRICT_ROOTS
 BUILD_TARGETS = [
     "Lean4Lean.Verify.Inductive.Dispatch",
+    "Lean4Lean.Verify.Inductive.Nested.Install.Extension",
     "Lean4Lean.Verify.Environment",
     "Lean4Lean.Verify.TypeChecker",
     "Lean4Lean.Verify.CanonicalEq",
     "Lean4Lean.Theory.Typing.RecursorRegistryInstallation",
     "Lean4Lean.Theory.Typing.ConstructorCaptureTransport",
+    "Lean4Lean.Verify.Replay",
 ]
 
 
