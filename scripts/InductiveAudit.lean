@@ -3,12 +3,12 @@ import Lean4Lean.Verify.Inductive.Nested.Install.Extension
 import Lean4Lean.Verify.Environment
 import Lean4Lean.Verify.TypeChecker
 import Lean4Lean.Verify.CanonicalEq
+import Lean4Lean.Theory.Typing.Confluence.WFParams
+import Lean4Lean.Theory.Typing.PrefixUnfolding.QuotLift
+import Lean4Lean.Theory.Typing.QuotPropInhabitant
 import Lean4Lean.Theory.Typing.RecursorRegistryInstallation
 import Lean4Lean.Theory.Typing.ConstructorCaptureTransport
 import Lean4Lean.Verify.Replay
-import Lean4Lean.Theory.Typing.BVarConversion
-import Lean4Lean.Theory.Typing.DefinitionPatterns
-import Lean4Lean.Theory.Typing.EtaOpening
 
 /-! Audit the transitive dependency closure, including opaque theorem bodies.
 Run through `scripts/check-inductive-audit.py`; this file emits one JSON record
@@ -89,7 +89,18 @@ elab "#inductive_audit " ids:ident* : command => do
 #inductive_audit Lean4Lean.Replay.replayPure.WF_fromImports
 #inductive_audit Lean4Lean.Replay.Replayed.foldlM
 
+-- The confluence engine.
+#inductive_audit Lean4Lean.VEnv.NormalEq.parRed
+#inductive_audit Lean4Lean.VEnv.PrefixUnfold.defeq
+#inductive_audit Lean4Lean.VEnv.QuotPrefixUnfold.defeq
+#inductive_audit Lean4Lean.VEnv.QuotRegistered.propInhabitant_app
+#inductive_audit Lean4Lean.VEnv.IsDefEq.full_church_rosser
+
 -- Generator and specification definitions: strict roots.
+#inductive_audit Lean4Lean.QuotPrefixUnfolding.propInhabitant
+#inductive_audit Lean4Lean.QuotPrefixUnfolding.generate
+#inductive_audit Lean4Lean.VEnv.QuotRegistered
+#inductive_audit Lean4Lean.VEnv.QuotPrefixUnfold
 #inductive_audit Lean4Lean.VEnv.DefinitionRegistered
 #inductive_audit Lean4Lean.VEnv.DefinitionPattern
 #inductive_audit Lean4Lean.InductiveSignature.RecursorData.compilationEntries
@@ -102,10 +113,23 @@ elab "#inductive_audit " ids:ident* : command => do
 #inductive_audit Lean4Lean.InductiveSignature.Compiles
 #inductive_audit Lean4Lean.InductiveSignature.TrRecursorVal
 #inductive_audit Lean4Lean.InductiveSignature.RecursorData.singletonEquation
+#inductive_audit Lean4Lean.InductiveSignature.RecursorData.singletonUnfolding
 #inductive_audit Lean4Lean.VEnv.RecursorRegistered
+#inductive_audit Lean4Lean.VEnv.RecursorEntry
+#inductive_audit Lean4Lean.VEnv.recursorRegistry
+#inductive_audit Lean4Lean.VEnv.definitionRegistry
+#inductive_audit Lean4Lean.VEnv.ConcretePattern
+#inductive_audit Lean4Lean.VEnv.GuardedIotaPattern
+#inductive_audit Lean4Lean.VEnv.PatternReductionTrace
+#inductive_audit Lean4Lean.VEnv.HeadParallelReduction
+#inductive_audit Lean4Lean.VEnv.PrefixUnfold
+#inductive_audit Lean4Lean.VEnv.FullStep
+#inductive_audit Lean4Lean.VEnv.FullReduction
+#inductive_audit Lean4Lean.VEnv.FullEquationCoverage
+#inductive_audit Lean4Lean.VEnv.FullPatCoverage
 #inductive_audit Lean4Lean.VEnv.HasCanonicalEq
 
--- Foundational lemmas: strict roots
+-- Foundational lemmas and the confluence theorem with its coverage lemmas: strict roots
 -- (`FOUNDATION_ROOTS` in `scripts/check-inductive-audit.py`).
 #inductive_audit Lean4Lean.VEnv.IsDefEq.strong
 #inductive_audit Lean4Lean.VEnv.IsDefEqStrong.subst
@@ -114,3 +138,9 @@ elab "#inductive_audit " ids:ident* : command => do
 #inductive_audit Lean4Lean.VEnv.HasType.etaOpen_wf
 #inductive_audit Lean4Lean.VEnv.HasType.etaOpen_defeq
 #inductive_audit Lean4Lean.VEnv.IsDefEq.etaOpen_wrapLams
+#inductive_audit Lean4Lean.VEnv.WF.params
+#inductive_audit Lean4Lean.VEnv.WF.church_rosser
+#inductive_audit Lean4Lean.VEnv.WF.equationCoverage
+#inductive_audit Lean4Lean.VEnv.WF.patCoverage
+#inductive_audit Lean4Lean.VEnv.WF.singletonPatCoverageJ
+#inductive_audit Lean4Lean.VEnv.WF.patCoverageJ

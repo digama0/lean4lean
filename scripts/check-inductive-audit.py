@@ -3,7 +3,8 @@
 
 The roots are listed below. Every axiom a root reaches must be listed in
 scripts/inductive-audit-inventory.json; the strict roots (generator definitions, foundational
-lemmas) may use only the standard axioms. Every `sorry` a root reaches must come from a declaration listed there as an
+lemmas, and the confluence theorem with its parameters and coverage lemmas) may use only the
+standard axioms. Every `sorry` a root reaches must come from a declaration listed there as an
 accepted open proof (`openProofs`). A strict root may reach no `sorry` at all, except the open
 proofs the inventory accepts for that root by name (`acceptedUnder`). With --require-complete
 the inventory must also be exact: every accepted open proof must still be reached by some root,
@@ -30,12 +31,21 @@ ROOTS = {
     "Lean4Lean.TypeChecker.Inner.reduceRecursor.WF",
     "Lean4Lean.VerifyInductive.RecursorConstruction.typeTranslations",
     "Lean4Lean.addDecl.preludeEq_hasCanonicalEq",
+    "Lean4Lean.VEnv.NormalEq.parRed",
+    "Lean4Lean.VEnv.PrefixUnfold.defeq",
+    "Lean4Lean.VEnv.QuotPrefixUnfold.defeq",
+    "Lean4Lean.VEnv.QuotRegistered.propInhabitant_app",
+    "Lean4Lean.VEnv.IsDefEq.full_church_rosser",
     "Lean4Lean.Replay.replayFresh.WF",
     "Lean4Lean.Replay.replayFresh.WF_target",
     "Lean4Lean.Replay.replayPure.WF_fromImports",
     "Lean4Lean.Replay.Replayed.foldlM",
 }
 DEFINITION_ROOTS = {
+    "Lean4Lean.QuotPrefixUnfolding.propInhabitant",
+    "Lean4Lean.QuotPrefixUnfolding.generate",
+    "Lean4Lean.VEnv.QuotRegistered",
+    "Lean4Lean.VEnv.QuotPrefixUnfold",
     "Lean4Lean.VEnv.DefinitionRegistered",
     "Lean4Lean.VEnv.DefinitionPattern",
     "Lean4Lean.InductiveSignature.RecursorData.compilationEntries",
@@ -48,10 +58,24 @@ DEFINITION_ROOTS = {
     "Lean4Lean.InductiveSignature.Compiles",
     "Lean4Lean.InductiveSignature.TrRecursorVal",
     "Lean4Lean.InductiveSignature.RecursorData.singletonEquation",
+    "Lean4Lean.InductiveSignature.RecursorData.singletonUnfolding",
     "Lean4Lean.VEnv.RecursorRegistered",
+    "Lean4Lean.VEnv.RecursorEntry",
+    "Lean4Lean.VEnv.recursorRegistry",
+    "Lean4Lean.VEnv.definitionRegistry",
+    "Lean4Lean.VEnv.ConcretePattern",
+    "Lean4Lean.VEnv.GuardedIotaPattern",
+    "Lean4Lean.VEnv.PatternReductionTrace",
+    "Lean4Lean.VEnv.HeadParallelReduction",
+    "Lean4Lean.VEnv.PrefixUnfold",
+    "Lean4Lean.VEnv.FullStep",
+    "Lean4Lean.VEnv.FullReduction",
+    "Lean4Lean.VEnv.FullEquationCoverage",
+    "Lean4Lean.VEnv.FullPatCoverage",
     "Lean4Lean.VEnv.HasCanonicalEq",
 }
-# Foundational lemmas.
+# Foundational lemmas, and the confluence theorem for every well-formed environment with
+# canonical `Eq` with its parameters and coverage lemmas.
 FOUNDATION_ROOTS = {
     "Lean4Lean.VEnv.IsDefEq.strong",
     "Lean4Lean.VEnv.IsDefEqStrong.subst",
@@ -60,6 +84,12 @@ FOUNDATION_ROOTS = {
     "Lean4Lean.VEnv.HasType.etaOpen_wf",
     "Lean4Lean.VEnv.HasType.etaOpen_defeq",
     "Lean4Lean.VEnv.IsDefEq.etaOpen_wrapLams",
+    "Lean4Lean.VEnv.WF.params",
+    "Lean4Lean.VEnv.WF.church_rosser",
+    "Lean4Lean.VEnv.WF.equationCoverage",
+    "Lean4Lean.VEnv.WF.patCoverage",
+    "Lean4Lean.VEnv.WF.singletonPatCoverageJ",
+    "Lean4Lean.VEnv.WF.patCoverageJ",
 }
 STRICT_ROOTS = DEFINITION_ROOTS | FOUNDATION_ROOTS
 ROOTS |= STRICT_ROOTS
@@ -69,6 +99,9 @@ BUILD_TARGETS = [
     "Lean4Lean.Verify.Environment",
     "Lean4Lean.Verify.TypeChecker",
     "Lean4Lean.Verify.CanonicalEq",
+    "Lean4Lean.Theory.Typing.Confluence.WFParams",
+    "Lean4Lean.Theory.Typing.PrefixUnfolding.QuotLift",
+    "Lean4Lean.Theory.Typing.QuotPropInhabitant",
     "Lean4Lean.Theory.Typing.RecursorRegistryInstallation",
     "Lean4Lean.Theory.Typing.ConstructorCaptureTransport",
     "Lean4Lean.Verify.Replay",
