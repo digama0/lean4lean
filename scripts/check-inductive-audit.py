@@ -21,8 +21,13 @@ ROOT = Path(__file__).resolve().parents[1]
 MARKER = "INDUCTIVE_AUDIT "
 ROOTS = {
     "Lean4Lean.addQuot.WF",
+    "Lean4Lean.VerifyInductive.addInductiveDeclaration.preserves",
+    "Lean4Lean.VerifyInductive.Environment.addInductive.inductiveExtensionWF",
+    "Lean4Lean.VerifyInductive.Environment.addInductive.primitiveInductiveExtensionWF",
     "Lean4Lean.TypeChecker.whnf.WF",
     "Lean4Lean.TypeChecker.Inner.reduceRecursor.WF",
+    "Lean4Lean.VerifyInductive.RecursorConstruction.typeTranslations",
+    "Lean4Lean.addDecl.preludeEq_hasCanonicalEq",
 }
 DEFINITION_ROOTS = {
     "Lean4Lean.VEnv.DefinitionRegistered",
@@ -34,6 +39,7 @@ DEFINITION_ROOTS = {
     "Lean4Lean.CompiledInductive",
     "Lean4Lean.InductiveSignature.Instance.equation",
     "Lean4Lean.InductiveSignature.Compiles",
+    "Lean4Lean.InductiveSignature.TrRecursorVal",
     "Lean4Lean.InductiveSignature.RecursorData.singletonEquation",
     "Lean4Lean.VEnv.RecursorRegistered",
     "Lean4Lean.VEnv.HasCanonicalEq",
@@ -51,8 +57,10 @@ FOUNDATION_ROOTS = {
 STRICT_ROOTS = DEFINITION_ROOTS | FOUNDATION_ROOTS
 ROOTS |= STRICT_ROOTS
 BUILD_TARGETS = [
+    "Lean4Lean.Verify.Inductive.Dispatch",
     "Lean4Lean.Verify.Environment",
     "Lean4Lean.Verify.TypeChecker",
+    "Lean4Lean.Verify.CanonicalEq",
     "Lean4Lean.Theory.Typing.RecursorRegistryInstallation",
     "Lean4Lean.Theory.Typing.ConstructorCaptureTransport",
 ]

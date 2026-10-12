@@ -31,3 +31,7 @@ import Lean4Lean.Tests.FVarRenamingEquivManager
 import Lean4Lean.Tests.QuotInit
 import Lean4Lean.Tests.AmbientContext
 import Lean4Lean.Tests.RecursiveFieldClassification
+import Lean4Lean.Tests.PreludeEq
+import Lean4Lean.Tests.InductiveTheory
+import Lean4Lean.Tests.TypedInductiveCompilation
+import Lean4Lean.Tests.CorruptRecursorMetadata

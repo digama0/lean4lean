@@ -5,6 +5,18 @@ import Lean4Lean.Verify.Inductive.Header.Check
 import Lean4Lean.Verify.Inductive.Header.Installation
 import Lean4Lean.Verify.Inductive.Constructor.CheckedTail
 import Lean4Lean.Verify.Inductive.Constructor.Check
+import Lean4Lean.Verify.Inductive.Recursor.Entries.TrRecursorVal
+import Lean4Lean.Verify.Inductive.Recursor.Check
+import Lean4Lean.Verify.Inductive.Rules.RuleTranslations
+import Lean4Lean.Verify.Inductive.Install.Result
+import Lean4Lean.Verify.Inductive.Install.BlockCertificate
+import Lean4Lean.Verify.Inductive.Install.Ordinary
+import Lean4Lean.Verify.Inductive.Install.OrdinaryExtension
+import Lean4Lean.Verify.Inductive.Lowering
+import Lean4Lean.Verify.Inductive.Primitive.Shape
+import Lean4Lean.Verify.Inductive.Primitive.Run
+import Lean4Lean.Verify.Inductive.Primitive.Extension
+import Lean4Lean.Verify.Inductive.Dispatch
 
 /-!
 # Verification of inductive declarations

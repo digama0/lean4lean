@@ -1,8 +1,9 @@
+import Lean4Lean.Verify.Inductive.Dispatch
 import Lean4Lean.Verify.Environment
 import Lean4Lean.Verify.TypeChecker
+import Lean4Lean.Verify.CanonicalEq
 import Lean4Lean.Theory.Typing.RecursorRegistryInstallation
 import Lean4Lean.Theory.Typing.ConstructorCaptureTransport
-import Lean4Lean.Theory.CanonicalEq
 import Lean4Lean.Theory.Typing.BVarConversion
 import Lean4Lean.Theory.Typing.DefinitionPatterns
 import Lean4Lean.Theory.Typing.EtaOpening
@@ -70,8 +71,13 @@ elab "#inductive_audit " ids:ident* : command => do
 -- every declaration form, the inductive pipelines, the checker, the realizability of canonical
 -- `Eq`, and the replay driver.
 #inductive_audit Lean4Lean.addQuot.WF
+#inductive_audit Lean4Lean.VerifyInductive.addInductiveDeclaration.preserves
+#inductive_audit Lean4Lean.VerifyInductive.Environment.addInductive.inductiveExtensionWF
+#inductive_audit Lean4Lean.VerifyInductive.Environment.addInductive.primitiveInductiveExtensionWF
 #inductive_audit Lean4Lean.TypeChecker.whnf.WF
 #inductive_audit Lean4Lean.TypeChecker.Inner.reduceRecursor.WF
+#inductive_audit Lean4Lean.VerifyInductive.RecursorConstruction.typeTranslations
+#inductive_audit Lean4Lean.addDecl.preludeEq_hasCanonicalEq
 
 -- Generator and specification definitions: strict roots.
 #inductive_audit Lean4Lean.VEnv.DefinitionRegistered
@@ -83,6 +89,7 @@ elab "#inductive_audit " ids:ident* : command => do
 #inductive_audit Lean4Lean.CompiledInductive
 #inductive_audit Lean4Lean.InductiveSignature.Instance.equation
 #inductive_audit Lean4Lean.InductiveSignature.Compiles
+#inductive_audit Lean4Lean.InductiveSignature.TrRecursorVal
 #inductive_audit Lean4Lean.InductiveSignature.RecursorData.singletonEquation
 #inductive_audit Lean4Lean.VEnv.RecursorRegistered
 #inductive_audit Lean4Lean.VEnv.HasCanonicalEq
