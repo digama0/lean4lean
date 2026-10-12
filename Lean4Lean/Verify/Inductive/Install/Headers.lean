@@ -190,32 +190,13 @@ def HeaderDeclaration.toHeaderEnvironment
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    {Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList}
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     {outEnv : Environment}
     (Hinstalled : InstalledHeaders c Hc stats nparams indTypes
-      numNested isUnsafe commonParams commonLevel Hsemantic outEnv)
+      numNested isUnsafe B.commonParams B.commonLevel B.semantic outEnv)
     (H : HeaderDeclaration Hc.venv Hinstalled.context.venv
-      c.lparams nparams indTypes.toList isUnsafe commonParams commonLevel
-      Hsemantic)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindices : stats.nindices.toList = H.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero) :
+      c.lparams nparams indTypes.toList isUnsafe B.commonParams B.commonLevel
+      B.semantic) :
     HeaderEnvironment c stats H.decl nparams isUnsafe depth Hc.venv
       indTypes outEnv := by
   let infos := AddInductive.inductiveTypeInfos stats nparams indTypes
@@ -223,45 +204,30 @@ def HeaderDeclaration.toHeaderEnvironment
   let entries : List (ConstantInfo × VConstVal) :=
     List.zip
       (infos.toList.map fun info => .inductInfo info)
-      Hsemantic.headers.targets
-  have hmetadataLength : H.metadata.length = indTypes.toList.length := by
-    calc
-      H.metadata.length = H.skeleton.types.length :=
-        VInductDeclSkeleton.withMetadata_length H.checked
-      _ = H.decl.types.length :=
-        (VInductDeclSkeleton.withMetadata_fields H.checked).2.2.2.symm
-      _ = indTypes.toList.length :=
-        (List.Forall₂.length_eq H.translation.types).symm
-  have hindicesSize : stats.nindices.size = indTypes.size := by
-    calc
-      stats.nindices.size = stats.nindices.toList.length := by simp
-      _ = (H.metadata.map Prod.fst).length :=
-        congrArg List.length hindices
-      _ = H.metadata.length := by simp
-      _ = indTypes.toList.length := hmetadataLength
-      _ = indTypes.size := by simp
+      B.semantic.headers.targets
   have hsourceLength : indTypes.toList.length =
-      Hsemantic.headers.targets.length :=
+      B.semantic.headers.targets.length :=
     List.Forall₂.length_eq
-      Hsemantic.headers.translations
+      B.semantic.headers.translations
   have hinfosLength : infos.toList.length =
-      Hsemantic.headers.targets.length := by
+      B.semantic.headers.targets.length := by
     calc
       infos.toList.length = indTypes.size := by
-        simp [infos, AddInductive.inductiveTypeInfos, hindicesSize]
+        simp [infos, AddInductive.inductiveTypeInfos, B.indicesSize]
       _ = indTypes.toList.length := by simp
-      _ = Hsemantic.headers.targets.length := hsourceLength
+      _ = B.semantic.headers.targets.length := hsourceLength
   have hentriesFst : entries.map Prod.fst =
       infos.toList.map (fun info => ConstantInfo.inductInfo info) := by
     apply List.map_fst_zip
     simpa using Nat.le_of_eq hinfosLength
   have hentriesSnd : entries.map Prod.snd =
-      Hsemantic.headers.targets := by
+      B.semantic.headers.targets := by
     apply List.map_snd_zip
     simpa using Nat.le_of_eq hinfosLength.symm
   let sourceMaterialized :=
-    H.checkedResult hlevels hlevelParams
-      hindices hconsts hparams Hcache Hsuffix Hambient hcommon hnotzero
+    H.checkedResult B.levels B.levelParams
+      (by rw [H.metadata_eq]; exact B.indices) B.consts B.params_size
+      B.cache B.suffix B.ambient B.resultLevel B.isNotZero
   have hsourceHeaders : sourceMaterialized.headers = H.headers := by
     change H.formations.complete H.checked = H.headers
     exact H.headers_eq.symm
@@ -315,28 +281,7 @@ theorem AddInductive.declareInductiveTypes.constructorsWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (hvisible : c.safety ≤
       (if isUnsafe then DefinitionSafety.unsafe else .safe))
     (hnprim : c.allowPrimitive = true → ∀ info ∈
@@ -353,65 +298,59 @@ theorem AddInductive.declareInductiveTypes.constructorsWF
           { headerCheckContext c stats with env := headerEnv }).WF fun _ =>
             ∃ decl, Nonempty (HeaderEnvironment c stats decl nparams
               isUnsafe depth Hc.venv indTypes headerEnv)) := by
-  let HheaderMaterialized := Hsemantic.checkedResult
-    (isUnsafe := isUnsafe) hlevels hlevelParams hindices hconsts hparams
-      hcommonParams Hcache Hsuffix Hambient hcommon hnotzero
+  let HheaderMaterialized := B.checkedResult isUnsafe
   have hheaderParams : HheaderMaterialized.headers.params =
-      commonParams := by
+      B.commonParams := by
     simp [HheaderMaterialized,
+      CheckedHeaderState.checkedResult,
       checkInductiveTypes.loopType.CheckedHeaders.checkedResult,
       checkInductiveTypes.loopType.CheckedHeaders.headerCertificate]
   have Hdeclare :=
-    AddInductive.declareInductiveTypes.headersWF Hc Hsemantic
-      hindicesSize hvisible hnprim hpresent
+    AddInductive.declareInductiveTypes.headersWF Hc B.semantic
+      B.indicesSize hvisible hnprim hpresent
   exact Hdeclare.mono fun headerEnv ⟨hheaderWF, Hinstalled⟩ => by
     refine ⟨hheaderWF, fun habsent => ?_⟩
     rcases Hinstalled habsent with ⟨Hinstalled⟩
     have htypesAdded : Hc.venv.addConstVals
-        (Hsemantic.headerDecl isUnsafe).typeConstants =
+        (B.semantic.headerDecl isUnsafe).typeConstants =
           some Hinstalled.context.venv := by
       simpa only [Hinstalled.contextVEnv] using Hinstalled.typesAdded
     have hlitInstalled : checkPositivityStep.AvailableLiteralDisjoint
         Hinstalled.context.venv stats.indConsts :=
       Hinstalled.checkedAvailableLiteralDisjoint HheaderMaterialized
     have hjL : depth ≤ Hinstalled.context.mlctx.length := by
-      rw [Hinstalled.contextMLCtx]; exact Hsuffix.depth_le
+      rw [Hinstalled.contextMLCtx]; exact B.suffix.depth_le
     have hdropL : Hinstalled.context.mlctx.dropN depth hjL =
-        Hc.mlctx.dropN depth Hsuffix.depth_le := by
+        Hc.mlctx.dropN depth B.suffix.depth_le := by
       have key : ∀ (m m' : TypeChecker.MLCtx) (_ : m = m') (h : depth ≤ m.length)
           (h' : depth ≤ m'.length), m.dropN depth h = m'.dropN depth h' := by
         intro m m' hm h h'; subst hm; rfl
       exact key _ _ Hinstalled.contextMLCtx _ _
     let HcL := Hinstalled.context.paramCheck stats stats.params.size depth hjL
-      (by rw [hdropL]; exact Hsuffix.headerFVars)
+      (by rw [hdropL]; exact B.suffix.headerFVars)
     have hlitL : checkPositivityStep.AvailableLiteralDisjoint
         HcL.venv stats.indConsts := hlitInstalled
     have htypesAddedL : Hc.venv.addConstVals
-        (Hsemantic.headerDecl isUnsafe).typeConstants = some HcL.venv :=
+        (B.semantic.headerDecl isUnsafe).typeConstants = some HcL.venv :=
       htypesAdded
     have halignL : VLCtx.IsDefEq HcL.venv c.lparams.length
         HheaderMaterialized.parameterScope HcL.chk.vlctx := by
-      have hchk : HcL.chk.vlctx = Hsuffix.parameterDecls := by
+      have hchk : HcL.chk.vlctx = B.suffix.parameterDecls := by
         change (Hinstalled.context.mlctx.dropN depth hjL).vlctx = _
-        rw [hdropL]; exact Hsuffix.headerVLCtx
+        rw [hdropL]; exact B.suffix.headerVLCtx
       have hwf := HcL.check.wf.tr.wf
       rw [hchk] at hwf
       rw [hchk]
       exact .refl HcL.checking.tr.wf hwf
     have Hconstructors :=
       checkConstructors.loopTypes.assemblesHeadersExact
-        (c := headerCheckContext c stats) (Hc := Hsuffix.headerCheck)
+        (c := headerCheckContext c stats) (Hc := B.suffix.headerCheck)
         HcL Hinstalled.contextMLCtx htypesAddedL
-        HheaderMaterialized hheaderParams halignL hcommonParams hconsume hlitL
+        HheaderMaterialized hheaderParams halignL B.commonParams_length hconsume hlitL
     exact (Hconstructors hlparams).mono fun _ Hassembled => by
       rcases Hassembled with ⟨Hassembled⟩
-      have hindicesAssembled : stats.nindices.toList =
-          Hassembled.metadata.map Prod.fst := by
-        rw [Hassembled.metadata_eq]
-        exact hindices
       refine ⟨Hassembled.decl, ⟨?_⟩⟩
-      exact Hassembled.toHeaderEnvironment Hinstalled hlevels hlevelParams
-        hindicesAssembled hconsts hparams Hcache Hsuffix Hambient hcommon hnotzero
+      exact Hassembled.toHeaderEnvironment B Hinstalled
 
 end VerifyInductive
 end Lean4Lean

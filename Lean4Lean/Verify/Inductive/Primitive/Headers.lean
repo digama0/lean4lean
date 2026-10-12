@@ -208,35 +208,16 @@ def HeaderDeclaration.toPrimitiveHeaderEnvironment
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    {Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList}
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     {envTypes : VEnv} {outEnv : Environment}
     (Hinstalled : AtomicAddConstants c.safety c.env Hc.venv
       (List.zip
         ((AddInductive.inductiveTypeInfos stats nparams indTypes numNested
           isUnsafe c.lparams).toList.map (fun info => .inductInfo info))
-        Hsemantic.headers.targets)
+        B.semantic.headers.targets)
       outEnv envTypes)
     (H : HeaderDeclaration Hc.venv envTypes c.lparams nparams
-      indTypes.toList isUnsafe commonParams commonLevel Hsemantic)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindices : stats.nindices.toList = H.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
+      indTypes.toList isUnsafe B.commonParams B.commonLevel B.semantic)
     (hpresent : ListedConstructorsPresent c.env) :
     PrimitiveHeaderEnvironment c stats H.decl nparams isUnsafe depth
       Hc.venv indTypes outEnv := by
@@ -244,44 +225,30 @@ def HeaderDeclaration.toPrimitiveHeaderEnvironment
     numNested isUnsafe c.lparams
   let entries : List (ConstantInfo × VConstVal) :=
     List.zip (infos.toList.map fun info => .inductInfo info)
-      Hsemantic.headers.targets
-  have hmetadataLength : H.metadata.length = indTypes.toList.length := by
-    calc
-      H.metadata.length = H.skeleton.types.length :=
-        VInductDeclSkeleton.withMetadata_length H.checked
-      _ = H.decl.types.length :=
-        (VInductDeclSkeleton.withMetadata_fields H.checked).2.2.2.symm
-      _ = indTypes.toList.length :=
-        (List.Forall₂.length_eq H.translation.types).symm
-  have hindicesSize : stats.nindices.size = indTypes.size := by
-    calc
-      stats.nindices.size = stats.nindices.toList.length := by simp
-      _ = (H.metadata.map Prod.fst).length := congrArg List.length hindices
-      _ = H.metadata.length := by simp
-      _ = indTypes.toList.length := hmetadataLength
-      _ = indTypes.size := by simp
+      B.semantic.headers.targets
   have hsourceLength : indTypes.toList.length =
-      Hsemantic.headers.targets.length :=
+      B.semantic.headers.targets.length :=
     List.Forall₂.length_eq
-      Hsemantic.headers.translations
+      B.semantic.headers.translations
   have hinfosLength : infos.toList.length =
-      Hsemantic.headers.targets.length := by
+      B.semantic.headers.targets.length := by
     calc
       infos.toList.length = indTypes.size := by
-        simp [infos, AddInductive.inductiveTypeInfos, hindicesSize]
+        simp [infos, AddInductive.inductiveTypeInfos, B.indicesSize]
       _ = indTypes.toList.length := by simp
-      _ = Hsemantic.headers.targets.length := hsourceLength
+      _ = B.semantic.headers.targets.length := hsourceLength
   have hentriesFst : entries.map Prod.fst =
       infos.toList.map (fun info => ConstantInfo.inductInfo info) := by
     apply List.map_fst_zip
     simpa using Nat.le_of_eq hinfosLength
   have hentriesSnd : entries.map Prod.snd =
-      Hsemantic.headers.targets := by
+      B.semantic.headers.targets := by
     apply List.map_snd_zip
     simpa using Nat.le_of_eq hinfosLength.symm
   let sourceMaterialized :=
-    H.checkedResult hlevels hlevelParams
-      hindices hconsts hparams Hcache Hsuffix Hambient hcommon hnotzero
+    H.checkedResult B.levels B.levelParams
+      (by rw [H.metadata_eq]; exact B.indices) B.consts B.params_size
+      B.cache B.suffix B.ambient B.resultLevel B.isNotZero
   have hsourceHeaders : sourceMaterialized.headers = H.headers := by
     change H.formations.complete H.checked = H.headers
     exact H.headers_eq.symm
@@ -332,28 +299,7 @@ theorem AddInductive.declareInductiveTypes.primitiveHeadersWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (Hshape : PrimitiveInductiveShape c.lparams nparams indTypes.toList
       isUnsafe)
     (hvisible : c.safety ≤
@@ -366,18 +312,14 @@ theorem AddInductive.declareInductiveTypes.primitiveHeadersWF
             isUnsafe depth Hc.venv indTypes outEnv, True := by
   have Hinstall :=
     AddInductive.declareInductiveTypes.installsHeadersAtomicWF
-      (numNested := numNested) Hc Hsemantic hindicesSize hvisible
+      (numNested := numNested) Hc B.semantic B.indicesSize hvisible
   exact Hinstall.mono fun outEnv Hresult => by
     rcases Hresult with ⟨envTypes, htypesAdded, Hatomic⟩
-    rcases Hshape.checkedConstructorRows Hsemantic htypesAdded with
+    rcases Hshape.checkedConstructorRows B.semantic htypesAdded with
       ⟨Hconstructors⟩
     rcases HeaderDeclaration.ofTargetsExact (isUnsafe := isUnsafe)
-      Hsemantic Hconstructors hcommonParams htypesAdded with ⟨A⟩
-    have hindices' : stats.nindices.toList = A.metadata.map Prod.fst := by
-      rw [A.metadata_eq]
-      exact hindices
-    let Hheaders := A.toPrimitiveHeaderEnvironment Hatomic hlevels hlevelParams
-      hindices' hconsts hparams Hcache Hsuffix Hambient hcommon hnotzero hpresent
+      B.semantic Hconstructors B.commonParams_length htypesAdded with ⟨A⟩
+    let Hheaders := A.toPrimitiveHeaderEnvironment B Hatomic hpresent
     exact ⟨A.decl, envTypes, Hheaders, trivial⟩
 
 end VerifyInductive

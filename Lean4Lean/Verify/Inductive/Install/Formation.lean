@@ -22,28 +22,7 @@ theorem AddInductive.formationCoreWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (hvisible : c.safety ≤
       (if isUnsafe then DefinitionSafety.unsafe else .safe))
     (hnprimTypes : c.allowPrimitive = true → ∀ info ∈
@@ -63,9 +42,7 @@ theorem AddInductive.formationCoreWF
           isUnsafe depth Hc.venv indTypes headerEnv,
         ∃ R : OrdinaryConstructorCheck Hheaders out.1, R.classes = out.2 := by
   have HheadersAndLoop :=
-    AddInductive.declareInductiveTypes.constructorsWF
-      Hsemantic hlevels hlevelParams hindicesSize hindices hconsts hparams
-      hcommonParams Hcache Hsuffix Hambient hcommon hnotzero hvisible hnprimTypes
+    AddInductive.declareInductiveTypes.constructorsWF B hvisible hnprimTypes
       hconsume hlparams hpresent
   unfold AddInductive.constructorPhase
   refine HheadersAndLoop.bind fun headerEnv ⟨hheaderWF, Hloop⟩ => ?_
@@ -288,28 +265,7 @@ theorem AddInductive.formationCoreClosedWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (Hclosed : MutualInductivesClosed c.env)
     (hvisible : c.safety ≤
       (if isUnsafe then DefinitionSafety.unsafe else .safe))
@@ -330,9 +286,7 @@ theorem AddInductive.formationCoreClosedWF
           isUnsafe depth Hc.venv indTypes headerEnv,
         ∃ R : OrdinaryConstructorCheck Hheaders out.1,
           R.classes = out.2 ∧ MutualInductivesClosed out.1 := by
-  have Hformation := AddInductive.formationCoreWF Hsemantic
-    hlevels hlevelParams hindicesSize hindices hconsts hparams
-    hcommonParams Hcache Hsuffix Hambient hcommon hnotzero hvisible hnprimTypes
+  have Hformation := AddInductive.formationCoreWF B hvisible hnprimTypes
     hconsume hnprimCtors hlparams henv hpresent
   intro outEnv hout
   rcases Hformation outEnv hout with ⟨decl, headerEnv, Hheaders, R, hclasses⟩

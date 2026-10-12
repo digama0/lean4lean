@@ -25,30 +25,9 @@ theorem AddInductive.declareInductiveTypes.primitiveHeadersClosedWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (Hclosed : MutualInductivesClosed c.env)
     (Hpresent : ListedConstructorsPresent c.env)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
     (Hshape : PrimitiveInductiveShape c.lparams nparams indTypes.toList
       isUnsafe)
     (hvisible : c.safety ≤
@@ -63,8 +42,7 @@ theorem AddInductive.declareInductiveTypes.primitiveHeadersClosedWF
     numNested isUnsafe c.lparams
   have Hheaders :=
     AddInductive.declareInductiveTypes.primitiveHeadersWF
-      (numNested := numNested) Hsemantic hlevels hlevelParams hindicesSize
-      hindices hconsts hparams hcommonParams Hcache Hsuffix Hambient hcommon hnotzero
+      (numNested := numNested) B
       Hshape hvisible Hpresent
   have Hproduction := declareInductiveTypeInfos_refines c.allowPrimitive
     infos.toList c.env Hc.checking.tr.map_wf
@@ -76,7 +54,7 @@ theorem AddInductive.declareInductiveTypes.primitiveHeadersClosedWF
   exact ⟨decl, envTypes, Hheader,
     Hinfos.closesMutuals Hclosed
       (inductiveTypeInfos_uniformAll stats nparams indTypes numNested
-        isUnsafe c.lparams hindicesSize)
+        isUnsafe c.lparams B.indicesSize)
       (inductiveTypeInfos_uniformNumParams stats nparams indTypes numNested
         isUnsafe c.lparams)⟩
 
@@ -86,30 +64,9 @@ theorem AddInductive.formationCore.primitiveClosedWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (Hclosed : MutualInductivesClosed c.env)
     (Hpresent : ListedConstructorsPresent c.env)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
     (Hshape : PrimitiveInductiveShape c.lparams nparams indTypes.toList
       isUnsafe)
     (hvisible : c.safety ≤
@@ -122,9 +79,7 @@ theorem AddInductive.formationCore.primitiveClosedWF
           R.classes = out.2 ∧ MutualInductivesClosed out.1 := by
   have Hheaders :=
     AddInductive.declareInductiveTypes.primitiveHeadersClosedWF
-      (numNested := numNested) Hsemantic Hclosed Hpresent hlevels hlevelParams
-      hindicesSize hindices hconsts hparams hcommonParams Hcache Hsuffix
-      Hambient hcommon hnotzero Hshape hvisible
+      (numNested := numNested) B Hclosed Hpresent Hshape hvisible
   unfold AddInductive.constructorPhase
   exact Hheaders.bind fun headerEnv Hheader => by
     rcases Hheader with ⟨decl, _envTypes, Hheader, hclosedHeader⟩
@@ -152,30 +107,9 @@ theorem AddInductive.runWithStats.primitiveWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (Hclosed : MutualInductivesClosed c.env)
     (Hpresent : ListedConstructorsPresent c.env)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
     (Hshape : PrimitiveInductiveShape c.lparams nparams indTypes.toList
       isUnsafe)
     (hvisible : c.safety ≤
@@ -189,9 +123,7 @@ theorem AddInductive.runWithStats.primitiveWF
   unfold AddInductive.runWithStats
   have Hformation :=
     AddInductive.formationCore.primitiveClosedWF
-      (numNested := numNested) Hsemantic Hclosed Hpresent hlevels hlevelParams
-      hindicesSize hindices
-      hconsts hparams hcommonParams Hcache Hsuffix Hambient hcommon hnotzero Hshape
+      (numNested := numNested) B Hclosed Hpresent Hshape
       hvisible
   refine Hformation.bind fun out Hresult => ?_
   obtain ⟨ctorEnv, positivity⟩ := out
@@ -259,10 +191,8 @@ theorem AddInductive.run.primitiveSourceAlignedWF
         (PrimitiveRunResult c Hc.venv
           nparams types)
         Hc hctx hnonempty Lean4Lean.consumeTypeAnnotationsCompat
-    intro c' stats depth commonParams commonLevel Hc' henv hsafety
-      hlparams hallowPrimitive hfuel hvenv Hsemantic
-      hlevels hlevelParams hindicesSize hindices _hconstsSize hconsts
-      _hnonempty hparams hcommonParams Hcache Hsuffix Hambient hcommon hnotzero
+    intro c' stats depth Hc' henv hsafety hlparams hallowPrimitive hfuel
+      hvenv B
     have Hclosed' : MutualInductivesClosed c'.env := by
       rw [henv]
       exact Hclosed
@@ -285,13 +215,11 @@ theorem AddInductive.run.primitiveSourceAlignedWF
     have hnotPartial : c'.safety ≠ .partial := by
       simpa [hsafety] using HnotPartial
     exact (AddInductive.runWithStats.primitiveWF
-      (hsourceSafety := by rw [hsafety]) (numNested := numNested) Hsemantic Hclosed' Hpresent' hlevels hlevelParams
-      hindicesSize hindices hconsts hparams hcommonParams Hcache Hsuffix
-      Hambient hcommon hnotzero Hshape' hvisible hlparamsNodup
+      (hsourceSafety := by rw [hsafety]) (numNested := numNested) B Hclosed' Hpresent' Hshape' hvisible hlparamsNodup
       hnotPartial).mono
         fun outEnv Hrun =>
-          ⟨c', stats, depth, commonParams, commonLevel, Hc', henv, hsafety,
-            hlparams, hallowPrimitive, hfuel, hvenv, Hsemantic, Hshape',
+          ⟨c', stats, depth, B.commonParams, B.commonLevel, Hc', henv, hsafety,
+            hlparams, hallowPrimitive, hfuel, hvenv, B.semantic, Hshape',
             Hrun⟩
   simpa [AddInductive.run] using Hcombined
 

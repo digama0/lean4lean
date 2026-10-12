@@ -898,8 +898,7 @@ theorem checkInductiveTypes.accumulatesHeadersSourceAligned
     (hnonempty : 0 < indTypes.size)
     (hconsume : ConsumeTypeAnnotationsCompat)
     (Hfinish : ∀ {c' : AddInductive.Context}
-      {stats' : AddInductive.InductiveStats} {depth : Nat}
-      {commonParams : List VExpr} {commonLevel : VLevel},
+      {stats' : AddInductive.InductiveStats} {depth : Nat},
       (Hc' : ContextWF c') →
       c'.env = c.env →
       c'.safety = c.safety →
@@ -907,42 +906,37 @@ theorem checkInductiveTypes.accumulatesHeadersSourceAligned
       c'.allowPrimitive = c.allowPrimitive →
       c'.fuel = c.fuel →
       Hc'.venv = Hc.venv →
-      (Hsemantic' :
-        checkInductiveTypes.loopType.CheckedHeaders
-          Hc'.venv c'.lparams nparams commonParams commonLevel
-            indTypes.toList) →
-      stats'.levels.length = c'.lparams.length →
-      stats'.levels = c'.lparams.map .param →
-      stats'.nindices.size = indTypes.size →
-      stats'.nindices.toList = Hsemantic'.metadata.map Prod.fst →
-      stats'.indConsts.size = indTypes.size →
-      stats'.indConsts =
-        (indTypes.toList.map fun source =>
-          .const source.name stats'.levels).toArray →
-      stats'.indConsts.isEmpty = false →
-      stats'.params.size = nparams →
-      commonParams.length = nparams →
-      checkInductiveTypes.loopType.ParameterCachePrefix
-        Hc'.venv c'.lparams Hc'.mlctx.vlctx stats'
-          nparams depth →
-      checkInductiveTypes.loopType.ParameterContextSuffix
-        Hc' stats' depth →
-      checkInductiveTypes.loopType.AmbientParamContext
-        Hc' commonParams depth →
-      VLevel.ofLevel c'.lparams stats'.resultLevel = some commonLevel →
-      stats'.isNotZero = stats'.resultLevel.isNeverZero →
+      CheckedHeaderState Hc' stats' nparams depth indTypes →
       (k stats' c').WF Q) :
     (AddInductive.checkInductiveTypes nparams indTypes k c).WF Q := by
   change (AddInductive.checkInductiveTypes.loopInd nparams indTypes 0
     { (default : AddInductive.InductiveStats) with
       levels := c.lparams.map .param } k c).WF Q
-  apply firstLoopInd k Q hconsume Hc Hfinish hctx hnonempty
+  apply firstLoopInd k Q hconsume Hc ?_ hctx hnonempty
   · rfl
   · simp
   · rfl
   · rfl
   · rfl
   · rfl
+  · intro c' stats' depth commonParams commonLevel Hc' henv hsafety hlparams
+      hallowPrimitive hfuel hvenv Hsemantic _hlevels hlevelParams _hindicesSize
+      hindices _hconstsSize hconsts _hnonempty hparams hcommonParams Hcache
+      Hsuffix Hambient hcommon hnotzero
+    exact Hfinish Hc' henv hsafety hlparams hallowPrimitive hfuel hvenv {
+      commonParams := commonParams
+      commonLevel := commonLevel
+      semantic := Hsemantic
+      levelParams := hlevelParams
+      indices := hindices
+      consts := hconsts
+      params_size := hparams
+      commonParams_length := hcommonParams
+      cache := Hcache
+      suffix := Hsuffix
+      ambient := Hambient
+      resultLevel := hcommon
+      isNotZero := hnotzero }
 
 end checkInductiveTypes.loopInd
 end VerifyInductive

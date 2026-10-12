@@ -79,28 +79,7 @@ theorem AddInductive.runWithStats.closedWF
     {c : AddInductive.Context} {Hc : ContextWF c}
     {stats : AddInductive.InductiveStats} {depth nparams : Nat}
     {indTypes : Array InductiveType} {numNested : Nat} {isUnsafe : Bool}
-    {commonParams : List VExpr} {commonLevel : VLevel}
-    (Hsemantic :
-      checkInductiveTypes.loopType.CheckedHeaders
-        Hc.venv c.lparams nparams commonParams commonLevel indTypes.toList)
-    (hlevels : stats.levels.length = c.lparams.length)
-    (hlevelParams : stats.levels = c.lparams.map .param)
-    (hindicesSize : stats.nindices.size = indTypes.size)
-    (hindices : stats.nindices.toList = Hsemantic.metadata.map Prod.fst)
-    (hconsts : stats.indConsts =
-      (indTypes.toList.map fun source =>
-        .const source.name stats.levels).toArray)
-    (hparams : stats.params.size = nparams)
-    (hcommonParams : commonParams.length = nparams)
-    (Hcache : checkInductiveTypes.loopType.ParameterCachePrefix
-      Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth)
-    (Hsuffix : checkInductiveTypes.loopType.ParameterContextSuffix
-      Hc stats depth)
-    (Hambient : checkInductiveTypes.loopType.AmbientParamContext
-      Hc commonParams depth)
-    (hcommon : VLevel.ofLevel c.lparams stats.resultLevel =
-      some commonLevel)
-    (hnotzero : stats.isNotZero = stats.resultLevel.isNeverZero)
+    (B : CheckedHeaderState Hc stats nparams depth indTypes)
     (Hclosed : MutualInductivesClosed c.env)
     (HenvGF : TypeChecker.EnvGhostFree (fun _ => True) c.env)
     (Hpresent : ListedConstructorsPresent c.env)
@@ -125,9 +104,7 @@ theorem AddInductive.runWithStats.closedWF
         Hc.venv) := by
   apply AddInductive.runWithStats.typingWF (hsourceSafety := hsourceSafety) stats nparams indTypes numNested
     isUnsafe c depth Hc.venv
-  · exact AddInductive.formationCoreClosedWF Hsemantic hlevels
-      hlevelParams hindicesSize hindices hconsts hparams hcommonParams
-      Hcache Hsuffix Hambient hcommon hnotzero Hclosed hvisible hnprimTypes
+  · exact AddInductive.formationCoreClosedWF B Hclosed hvisible hnprimTypes
       Lean4Lean.consumeTypeAnnotationsCompat hnprimCtors hlparams HenvGF Hpresent
   · exact hlparams
   · exact hnotPartial
@@ -214,12 +191,10 @@ theorem AddInductive.run.sourceAlignedWF
       (OrdinaryRunResult c Hc.venv nparams
         types)
       Hc hctx hnonempty Lean4Lean.consumeTypeAnnotationsCompat
-    intro c' stats depth commonParams commonLevel Hc' henv hsafety
-      hlparams hallowPrimitive hfuel hvenv Hsemantic
-      hlevels hlevelParams hindicesSize hindices _hconstsSize hconsts
-      _hnonempty hparams hcommonParams Hcache Hsuffix Hambient hcommon hnotzero
+    intro c' stats depth Hc' henv hsafety hlparams hallowPrimitive hfuel
+      hvenv B
     let I := Hinputs (stats := stats) (depth := depth) Hc'
-      hallowPrimitive hfuel Hsemantic
+      hallowPrimitive hfuel B.semantic
     have Hclosed' : MutualInductivesClosed c'.env := by
       rw [henv]
       exact Hclosed
@@ -242,13 +217,11 @@ theorem AddInductive.run.sourceAlignedWF
     have hnotPartial : c'.safety ≠ .partial := by
       simpa [hsafety] using HnotPartial
     exact (AddInductive.runWithStats.closedWF
-      (hsourceSafety := by rw [hsafety]) Hsemantic hlevels
-      hlevelParams hindicesSize hindices hconsts hparams hcommonParams
-      Hcache Hsuffix Hambient hcommon hnotzero Hclosed' HenvGF' Hpresent' hvisible I.freshTypes
+      (hsourceSafety := by rw [hsafety]) B Hclosed' HenvGF' Hpresent' hvisible I.freshTypes
       I.freshConstructors hlparamsNodup hnotPartial
       I.freshRecursors).mono fun outEnv Hrun =>
-        ⟨c', stats, depth, commonParams, commonLevel, Hc', henv, hsafety,
-          hlparams, hallowPrimitive, hfuel, hvenv, Hsemantic, Hrun⟩
+        ⟨c', stats, depth, B.commonParams, B.commonLevel, Hc', henv, hsafety,
+          hlparams, hallowPrimitive, hfuel, hvenv, B.semantic, Hrun⟩
   simpa [AddInductive.run] using Hcombined
 
 end VerifyInductive

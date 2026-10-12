@@ -271,6 +271,7 @@ theorem toFormationPrefix
 end CheckedHeaders
 
 end checkInductiveTypes.loopType
+
 end VerifyInductive
 end Lean4Lean
 
@@ -498,5 +499,58 @@ def CheckedHeaders.checkedResult
       using Hsuffix.suffixParams
 
 end checkInductiveTypes.loopType
+open checkInductiveTypes.loopType
+
+/-- The completed header traversal, aligned with its exact executable statistics
+and source family order. Both installation paths consume this same state. -/
+structure CheckedHeaderState {c : AddInductive.Context} (Hc : ContextWF c)
+    (stats : AddInductive.InductiveStats) (nparams depth : Nat)
+    (indTypes : Array InductiveType) where
+  commonParams : List VExpr
+  commonLevel : VLevel
+  semantic : CheckedHeaders Hc.venv c.lparams nparams commonParams commonLevel
+    indTypes.toList
+  levelParams : stats.levels = c.lparams.map .param
+  indices : stats.nindices.toList = semantic.metadata.map Prod.fst
+  consts : stats.indConsts =
+    (indTypes.toList.map fun source => .const source.name stats.levels).toArray
+  params_size : stats.params.size = nparams
+  commonParams_length : commonParams.length = nparams
+  cache : ParameterCachePrefix Hc.venv c.lparams Hc.mlctx.vlctx stats nparams depth
+  suffix : ParameterContextSuffix Hc stats depth
+  ambient : AmbientParamContext Hc commonParams depth
+  resultLevel : VLevel.ofLevel c.lparams stats.resultLevel = some commonLevel
+  isNotZero : stats.isNotZero = stats.resultLevel.isNeverZero
+
+namespace CheckedHeaderState
+
+variable {c : AddInductive.Context} {Hc : ContextWF c}
+
+theorem levels (B : CheckedHeaderState Hc stats nparams depth indTypes) :
+    stats.levels.length = c.lparams.length := by
+  simp [B.levelParams]
+
+theorem indicesSize (B : CheckedHeaderState Hc stats nparams depth indTypes) :
+    stats.nindices.size = indTypes.size := by
+  have horder := congrArg List.length B.semantic.sourceOrder
+  have hindices := congrArg List.length B.indices
+  simp only [Array.length_toList, List.length_map, CheckedHeaders.metadata] at hindices
+  simpa using hindices.trans (by simpa using horder)
+
+theorem constsSize (B : CheckedHeaderState Hc stats nparams depth indTypes) :
+    stats.indConsts.size = indTypes.size := by
+  simp [B.consts]
+
+/-- Materialize the existing header statistics certificate from the completed
+state, without reconstructing the traversal's parameter/context facts. -/
+def checkedResult (B : CheckedHeaderState Hc stats nparams depth indTypes)
+    (isUnsafe : Bool) :
+    checkInductiveTypes.loopInd.HeaderStatsWF Hc.venv c.lparams Hc.mlctx.vlctx
+      stats (B.semantic.headerDecl isUnsafe) depth :=
+  B.semantic.checkedResult B.levels B.levelParams B.indices B.consts B.params_size
+    B.commonParams_length B.cache B.suffix B.ambient B.resultLevel B.isNotZero
+
+end CheckedHeaderState
+
 end VerifyInductive
 end Lean4Lean
