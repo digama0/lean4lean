@@ -25,8 +25,7 @@ class Params where
   pat_app_uniq : Pat p r → Pat p' r' → Subpattern (.app p₁ p₂) p →
     Subpattern (.app p₁' p₂') p' → Subpattern p₃ p₁ → Subpattern p₃' p₂' → p₃.inter p₃' = none
   extra_pat : env.defeqs df → (∀ l ∈ ls, l.WF uvars) → ls.length = df.uvars →
-    ∃ p r m1 m2, Pat p r ∧ p.Matches (df.lhs.instL ls) m1 m2 ∧ r.2.OK (IsDefEqU env univs Γ) m1 m2 ∧
-    df.rhs.instL ls = r.1.apply m1 m2
+    Pattern.Equation Pat (IsDefEqU env univs) Γ (df.lhs.instL ls) (df.rhs.instL ls)
 
 variable [Params]
 open Params
@@ -500,6 +499,12 @@ protected theorem ParRed.rfl : ∀ {e}, Γ ⊢ e ≫ e
   | .app .. => .app ParRed.rfl ParRed.rfl
   | .lam .. => .lam ParRed.rfl ParRed.rfl
   | .forallE .. => .forallE ParRed.rfl ParRed.rfl
+
+theorem _root_.Lean4Lean.Pattern.Equation.parRed
+    (equation : Pattern.Equation Pat (IsDefEqU env univs) Γ left right) : Γ ⊢ left ≫ right := by
+  induction equation with
+  | rule registered matched checked => exact .extra registered matched checked (fun _ => .rfl)
+  | lam _ bodyIH => exact .lam .rfl bodyIH
 
 theorem ParRed.weakN (W : Ctx.LiftN n k Γ Γ') (H : Γ ⊢ e1 ≫ e2) :
     Γ' ⊢ e1.liftN n k ≫ e2.liftN n k := by
@@ -1381,6 +1386,6 @@ theorem IsDefEq.church_rosser
   | proofIrrel h1 h2 h3 ih1 ih2 ih3 =>
     exact .normalEq hΓ <| .proofIrrel h1.hasType.1 h2.hasType.1 h3.hasType.1
   | @extra _ _ Γ h1 h2 h3 =>
-    have ⟨_, _, _, _, a1, a2, a3, a4⟩ := extra_pat h1 h2 h3 (Γ := Γ)
-    refine have h := .extra h1 h2 h3; mk h (.tail .rfl (.extra a1 a2 a3 fun _ => .rfl)) .rfl ?_
-    exact a4 ▸ .refl h.hasType.2
+    have equation := extra_pat h1 h2 h3 (Γ := Γ)
+    refine have h := .extra h1 h2 h3; mk h (.tail .rfl equation.parRed) .rfl ?_
+    exact .refl h.hasType.2
