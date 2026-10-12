@@ -1,0 +1,83 @@
+import Lean4Lean.Theory.Typing.HeadInversionDefs
+import Lean4Lean.Theory.Typing.HeadInjectivity.Fields
+import Lean4Lean.Theory.Typing.HeadInjectivity.ChainInjectivity
+
+/-! # Head inversion for types: the base obligation of the inversion layer
+
+The statements (`HeadInversion`, `HeadSeparation`, `HeadInjectivity`) and the chain lemmas are in
+`HeadInversionDefs.lean`. Both halves are proved for every well-formed environment from the glued
+observation model (`Theory/Typing/HeadInjectivity/Model/`): separation by
+`VEnv.WF.headSeparationModel`, injectivity by `VEnv.WF.chainHeadInjectivity`. Every inversion
+lemma of `Injectivity.lean` and uniqueness of types (`IsDefEq.uniq`) are derived from these two
+statements through the syntactic layer (`HeadInjectivity/{ChainInjectivity, Congruence,
+FieldType, Uniqueness, Fields}.lean`).
+
+**The model on the ι pattern calculus.** The model interprets *strong* derivations
+(`IsDefEqStrong`), and its extraction turns a weak `TypeChain` link into a strong derivation by
+`IsDefEq.strong` (`Model.chain_sub`, `Model.spine_data`). `IsDefEq.pat` carries the typing of
+its reduct as a premise, so `IsDefEq.strong` strengthens it like any other premise and
+`VEnv.WF.orderedStrong` holds unconditionally: the model, `VEnv.WF.headInversion`,
+`IsDefEq.uniq` and `Injectivity.lean` depend on no open proof. The `pat` case of the model's
+soundness is proved for the ι rules of ordinary blocks (`Model.PatValid.ordinary`) and of nested
+blocks (`Model.PatValid.nested`, `Model/PatSound.lean`), with the reduct's strong typing among
+its premises.
+
+This file and the model do not import `UniqueTyping`, `Injectivity`, `ChurchRosser`,
+`FullReduction` or `HeadReduction`. -/
+
+namespace Lean4Lean
+namespace VEnv
+
+/-! ### Layer stub
+
+LAYER STUB. The glued observation model (`Theory/Typing/HeadInjectivity/Model/`) is the next
+layer of this branch. Until then its two exported theorems, `VEnv.WF.chainHeadInjectivity` and
+`VEnv.WF.headSeparationModel`, are stated below with `sorry`; the head-inversion layer imports
+the model and proves them under the same names, with the same statements. -/
+
+/-- **Chain-level head injectivity** for every well-formed environment, from soundness of the
+glued observation model (`VEnv.WF.soundEnv`, `HeadInjectivity/Model/EnvValid.lean`). -/
+theorem _root_.Lean4Lean.VEnv.WF.chainHeadInjectivity {env : VEnv} (henv : env.WF) :
+    env.ChainHeadInjectivity :=
+  sorry -- LAYER STUB: proved from the observation model in the next layer
+
+/-- **Head separation** for every well-formed environment, from the glued observation model
+(`HeadInjectivity/Model/Separation.lean`): a sort has a `sort` observation, a Pi type a `piDom`
+observation, a rigid spine neither. -/
+theorem _root_.Lean4Lean.VEnv.WF.headSeparationModel {env : VEnv} (henv : env.WF) :
+    env.HeadSeparation :=
+  sorry -- LAYER STUB: proved from the observation model in the next layer
+
+/-- Separation for every well-formed environment, from the glued observation model. -/
+theorem _root_.Lean4Lean.VEnv.WF.headSeparation {env : VEnv} (henv : env.WF) :
+    env.HeadSeparation :=
+  henv.headSeparationModel
+
+/-- Injectivity of type heads for every well-formed environment: the chain-level core from
+soundness of the glued observation model (`VEnv.WF.chainHeadInjectivity`), lifted by the
+syntactic layer (`VEnv.ChainHeadInjectivity.toHeadInjectivity`). -/
+theorem _root_.Lean4Lean.VEnv.WF.headInjectivity {env : VEnv} (henv : env.WF) :
+    env.HeadInjectivity :=
+  henv.chainHeadInjectivity.toHeadInjectivity henv
+
+/-- The base obligation of the inversion layer, assembled from separation and injectivity.
+
+All inversion lemmas in `Injectivity.lean` are derived from it; uniqueness of types
+(`IsDefEq.uniq`) uses the chain-level core directly. -/
+theorem _root_.Lean4Lean.VEnv.WF.headInversion {env : VEnv} (henv : env.WF) :
+    env.HeadInversion :=
+  have hs := henv.headSeparation
+  have hi := henv.headInjectivity
+  { sort_sort := hs.sort_sort
+    forallE_forallE := hi.forallE_forallE
+    rigid_rigid := fun hΓ hc hc' H =>
+      have ⟨h1, h2⟩ := hs.rigid_heads hΓ hc hc' H
+      ⟨h1, h2, by subst h1; exact hi.rigid_args hΓ hc H⟩
+    former_args := hi.former_args
+    sort_forallE := hs.sort_forallE
+    sort_rigid := hs.sort_rigid
+    forallE_rigid := hs.forallE_rigid
+    proj_fieldType := hi.proj_fieldType }
+
+end VEnv
+end Lean4Lean

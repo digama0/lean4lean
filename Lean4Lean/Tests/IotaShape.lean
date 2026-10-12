@@ -1,5 +1,5 @@
 import Lean4Lean.Tests.ShapeDecide
-import Lean4Lean.Theory.Typing.InductiveParams
+import Lean4Lean.Theory.Typing.PatsIota
 import Lean4Lean.Theory.Meta
 
 /-!
@@ -427,7 +427,8 @@ def rhs2 : VExpr := .lam CT (.lam M1T (.lam M2T (.bvar 0)))
 def t1V : VConstVal := { name := t1n, uvars := 0, type := Pc }
 def t2V : VConstVal := { name := t2n, uvars := 0, type := Pc }
 def PT : VInductiveType :=
-  { name := Pn, uvars := 0, type := .sort .zero, ctors := [t1V, t2V] }
+  { name := Pn, uvars := 0, type := .sort .zero, numIndices := 0, resultLevel := .zero,
+    ctors := [t1V, t2V] }
 def ru1 : VRecRule := { ctor := t1n, ctorParams := 0, nfields := 0, rhs := rhs1 }
 def ru2 : VRecRule := { ctor := t2n, ctorParams := 0, nfields := 0, rhs := rhs2 }
 def RV : VRecursor :=
@@ -439,6 +440,7 @@ def declB : VInductDecl where
   uvars := 0
   nparams := 0
   types := [PT]
+  isUnsafe := false
   recs := [RV]
 
 /-- The recursor asks for large elimination. -/
@@ -577,8 +579,9 @@ run_meta do
 
   -- The documented nested control. `Tree.node : List Tree → Tree` restores the block
   -- through `List`, so it is not strictly positive; `Tree.rec_1` eliminates `List`, a type
-  -- former outside the block, so its major premise is not a `MajorApp` of the block's
-  -- parameter and index variables.
+  -- former outside the block, at the specialization argument `Tree`.
+  -- `MajorApp` admits leading arguments over the parameters, so `RecShape` now accepts it
+  -- (the restored auxiliary recursors of nested blocks must satisfy `rec_shape`).
   let .ctorInfo node ← getConstInfo ``Tree.node | throwError "Tree.node"
   let nodeTy ← Meta.ofExpr node.levelParams {} node.type
   if nodeTy.CtorPositive [``Tree] 0 then throwError "CtorPositive accepts Tree.node"
@@ -586,8 +589,8 @@ run_meta do
   let tree1Ty ← Meta.ofExpr tree1.levelParams {} tree1.type
   unless tree1Ty.majorFormer? tree1.getMajorIdx = some ``List do
     throwError "the major premise of Tree.rec_1 is not over List"
-  if tree1Ty.RecShape tree1.numParams tree1.numMotives tree1.numMinors tree1.numIndices then
-    throwError "RecShape accepts the major premise of Tree.rec_1"
+  unless tree1Ty.RecShape tree1.numParams tree1.numMotives tree1.numMinors tree1.numIndices do
+    throwError "RecShape rejects the major premise of Tree.rec_1"
 
   -- Every check, on the direct shapes above and on a selection of `Init`/`Std` inductives.
   for I in [``Refl, ``Le, ``Dep, ``EvI, ``OdI, ``PropLarge, ``Wrap, ``SigmaLike,

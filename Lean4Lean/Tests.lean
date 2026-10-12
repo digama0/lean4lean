@@ -2,6 +2,11 @@ import Lean4Lean.Tests.Toolchain
 import Lean4Lean.Tests.ProjectionSpecialization
 import Lean4Lean.Tests.ShapeDecide
 import Lean4Lean.Tests.IotaShape
+import Lean4Lean.Tests.InductiveSignature
+import Lean4Lean.Tests.InductiveRestoration
+import Lean4Lean.Tests.InductiveCompilation
+import Lean4Lean.Tests.SortEquationRejection
+import Lean4Lean.Tests.SpecializedRecursorShape
 import Lean4Lean.Tests.Environment
 import Lean4Lean.Tests.RecursiveInductive
 import Lean4Lean.Tests.NestedInductive
@@ -19,3 +24,4 @@ import Lean4Lean.Tests.TypeAnnotationWrappers
 import Lean4Lean.Tests.StructEtaIota
 import Lean4Lean.Tests.LetCache
 import Lean4Lean.Tests.AmbientContext
+import Lean4Lean.Tests.RecursiveFieldClassification

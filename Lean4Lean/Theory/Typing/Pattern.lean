@@ -160,6 +160,12 @@ inductive Pattern.RHS (p : Pattern) where
 inductive Pattern.Check (p : Pattern) where
   | true
   | defeq (x y : RHS p) (rest : Check p)
+  /-- A universe guard, satisfied when the level is not `Prop` at the
+  instance's universes. The registered rules of an environment (`VEnv.pats`) never carry it
+  (`Realizes` rejects it); it belongs to the guarded pattern relation of the confluence
+  engine (`Theory/Typing/ChurchRosser.lean`, `Params.Pat`), which excludes the `Prop`-source
+  instances of a large-eliminating singleton recursor and covers them by prefix unfolding. -/
+  | nonzero (level : VLevel) (rest : Check p)
 
 def Pattern.RHS.apply {p : Pattern} (m1 : List VLevel) (m2 : p.Path → VExpr) : p.RHS → VExpr
   | .fixed c _ => c.instL m1
@@ -291,13 +297,36 @@ def Pattern.Check.OK (defeq : VExpr → VExpr → Prop) {p : Pattern}
     (m1 : List VLevel) (m2 : p.Path → VExpr) : p.Check → Prop
   | .true => True
   | .defeq a b rest => defeq (RHS.apply m1 m2 a) (RHS.apply m1 m2 b) ∧ rest.OK defeq m1 m2
+  | .nonzero level rest => ¬(level.inst m1 ≈ .zero) ∧ rest.OK defeq m1 m2
 
 theorem Pattern.Check.OK.map
+    {df df' : VExpr → VExpr → Prop} {p : Pattern} {ck : p.Check} {m1 m2 m2'}
+    (h : ∀ a b : p.RHS,
+      df (a.apply m1 m2) (b.apply m1 m2) → df' (a.apply m1 m2') (b.apply m1 m2'))
+    (H : ck.OK df m1 m2) : ck.OK df' m1 m2' := by
+  induction ck with
+  | true => trivial
+  | defeq a b rest ih => exact ⟨h _ _ H.1, ih H.2⟩
+  | nonzero level rest ih => exact ⟨H.1, ih H.2⟩
+
+/-- `OK.map` with a change of universe instantiation, which must preserve the universe
+guards. -/
+theorem Pattern.Check.OK.map_levels
     {df df' : VExpr → VExpr → Prop} {p : Pattern} {ck : p.Check} {m1 m2 m1' m2'}
+    (hl : ∀ level : VLevel, ¬(level.inst m1 ≈ .zero) → ¬(level.inst m1' ≈ .zero))
     (h : ∀ a b : p.RHS,
       df (a.apply m1 m2) (b.apply m1 m2) → df' (a.apply m1' m2') (b.apply m1' m2'))
     (H : ck.OK df m1 m2) : ck.OK df' m1' m2' := by
-  induction ck <;> simp [OK, *] at H ⊢; cases H; constructor <;> solve_by_elim
+  induction ck with
+  | true => trivial
+  | defeq a b rest ih => exact ⟨h _ _ H.1, ih H.2⟩
+  | nonzero level rest ih => exact ⟨hl _ H.1, ih H.2⟩
+
+/-- A check without universe guards: the shape of every registered rule. -/
+def Pattern.Check.Unguarded {p : Pattern} : p.Check → Prop
+  | .true => True
+  | .defeq _ _ rest => rest.Unguarded
+  | .nonzero _ _ => False
 
 /-- `ck.Realizes m1 m2 chk` says the typed-triple list `chk : List (lhs, rhs, ty)`
 enumerates exactly the `defeq` entries of `ck`, each triple's `lhs`/`rhs` being the
@@ -311,6 +340,16 @@ def Pattern.Check.Realizes {p : Pattern} (m1 : List VLevel) (m2 : p.Path → VEx
   | .defeq a b rest, t :: ts =>
     t.1 = RHS.apply m1 m2 a ∧ t.2.1 = RHS.apply m1 m2 b ∧ rest.Realizes m1 m2 ts
   | .defeq _ _ _, [] => False
+  | .nonzero _ _, _ => False
+
+theorem Pattern.Check.Realizes.unguarded {p : Pattern} {m1 m2} {ck : p.Check} {chk}
+    (hr : ck.Realizes m1 m2 chk) : ck.Unguarded := by
+  induction ck generalizing chk with
+  | true => trivial
+  | defeq a b rest ih =>
+    match chk, hr with
+    | _ :: ts, ⟨_, _, hr⟩ => exact ih hr
+  | nonzero _ _ _ => exact (hr : False).elim
 
 /-- If `chk` realizes `ck` and every triple in `chk` is related by `rel` at its
 type, then `ck.OK (untyped rel) holds`. Used to feed the `pat` rule's premises
@@ -324,19 +363,22 @@ theorem Pattern.Check.Realizes.toOK {defeq : VExpr → VExpr → Prop} {p : Patt
     match chk, hr with
     | t :: ts, ⟨e1, e2, hr⟩ =>
       exact ⟨e1 ▸ e2 ▸ h t (.head _), ih hr fun t ht => h t (.tail _ ht)⟩
+  | nonzero _ _ _ => exact (hr : False).elim
 
 /-- Conversely, from `ck.OK (fun a b => ∃ t, rel a b t)` extract a realizer
 `chk` (choosing each type from the existential) together with the per-triple
 relation. Used to *construct* a `pat` derivation from an abstract
 `Check.OK (IsDefEqU …)` hypothesis. -/
 theorem Pattern.Check.OK.exists_realizer {rel : VExpr → VExpr → VExpr → Prop} {p : Pattern}
-    {ck : p.Check} {m1 m2} (H : ck.OK (fun a b => ∃ t, rel a b t) m1 m2) :
+    {ck : p.Check} {m1 m2} (hng : ck.Unguarded)
+    (H : ck.OK (fun a b => ∃ t, rel a b t) m1 m2) :
     ∃ chk, ck.Realizes m1 m2 chk ∧ ∀ t ∈ chk, rel t.1 t.2.1 t.2.2 := by
   induction ck with
   | true => exact ⟨[], trivial, nofun⟩
+  | nonzero _ _ _ => exact (hng : False).elim
   | defeq a b rest ih =>
     obtain ⟨⟨t, h1⟩, h2⟩ := H
-    obtain ⟨chk, hr, hall⟩ := ih h2
+    obtain ⟨chk, hr, hall⟩ := ih hng h2
     refine ⟨(_, _, t) :: chk, ⟨rfl, rfl, hr⟩, ?_⟩
     rintro t' ht'
     rcases List.mem_cons.1 ht' with rfl | ht'
@@ -423,6 +465,7 @@ theorem Pattern.Check.Realizes.map_liftN {p : Pattern} {m1 m2} {ck : p.Check} {c
     match chk, hr with
     | t :: ts, ⟨h1, h2, hr⟩ =>
       exact ⟨by simp [h1, RHS.liftN_apply], by simp [h2, RHS.liftN_apply], ih hr⟩
+  | nonzero _ _ _ => exact (hr : False).elim
 
 /-- `Realizes` transports under instantiation. -/
 theorem Pattern.Check.Realizes.map_instN {p : Pattern} {m1 m2} {ck : p.Check} {chk} {e₀ k}
@@ -435,6 +478,7 @@ theorem Pattern.Check.Realizes.map_instN {p : Pattern} {m1 m2} {ck : p.Check} {c
     match chk, hr with
     | t :: ts, ⟨h1, h2, hr⟩ =>
       exact ⟨by simp [h1, RHS.instN_apply], by simp [h2, RHS.instN_apply], ih hr⟩
+  | nonzero _ _ _ => exact (hr : False).elim
 
 /-- `Realizes` transports under level instantiation. -/
 theorem Pattern.Check.Realizes.map_instL {p : Pattern} {m1 m2} {ck : p.Check} {chk} {ls}
@@ -447,6 +491,7 @@ theorem Pattern.Check.Realizes.map_instL {p : Pattern} {m1 m2} {ck : p.Check} {c
     match chk, hr with
     | t :: ts, ⟨h1, h2, hr⟩ =>
       exact ⟨by simp [h1, RHS.instL_apply], by simp [h2, RHS.instL_apply], ih hr⟩
+  | nonzero _ _ _ => exact (hr : False).elim
 
 /-- `RHS.apply` commutes with substitution: the `fixed` parts are closed, so a
 substitution only touches the holes. -/
@@ -480,6 +525,7 @@ theorem Pattern.Check.Realizes.map_subst {p : Pattern} {m1 m2} {ck : p.Check} {c
     match chk, hr with
     | t :: ts, ⟨h1, h2, hr⟩ =>
       exact ⟨by simp [h1, RHS.subst_apply], by simp [h2, RHS.subst_apply], ih hr⟩
+  | nonzero _ _ _ => exact (hr : False).elim
 
 inductive SimplePattern where
   | iota (recursor : Name) (major : Nat) (constr : Name) (args : Nat)

@@ -35,6 +35,9 @@ instance {cs : List Name} {e : VExpr} : Decidable (e.MentionsConst cs) :=
 instance {ty : VExpr} {T : Name} {np nf nind : Nat} : Decidable (ty.CtorResult T np nf nind) :=
   decidable_of_iff _ CtorResult_iff.symm
 
+-- The weakened `MajorApp` reads `Skips`.
+instance {e : VExpr} {n k : Nat} : Decidable (e.Skips n k) := by unfold Skips; infer_instance
+
 instance {A : VExpr} {T : Name} {np nm nmin nind : Nat} :
     Decidable (A.MajorApp T np nm nmin nind) := decidable_of_iff _ MajorApp_iff.symm
 

@@ -154,11 +154,13 @@ def mk : VExpr → SExpr
   | .sort u => .sort (.mk u)
   | .const c us => .const c (us.map .mk)
   | .app fn arg => .app (.mk fn) (.mk arg)
+  | .proj n i e => .app (.const (.num n i) []) (.mk e)
   | .lam ty body => .lam (.mk ty) (.mk body)
   | .forallE ty body => .forallE (.mk ty) (.mk body)
 
 theorem _root_.Lean4Lean.VExpr.ClosedN.mkS : ∀ {e : VExpr}, e.ClosedN k → ClosedN (.mk e) k
   | .bvar .., h | .sort .., h | .const .., h => h
+  | .proj _ _ e, h => ⟨trivial, VExpr.ClosedN.mkS (e := e) h⟩
   | .app .., h | .lam .., h | .forallE .., h => ⟨h.1.mkS, h.2.mkS⟩
 
 @[reducible] def Subst := Nat → SExpr
@@ -535,6 +537,8 @@ def _root_.Lean4Lean.Pattern.Check.defeqsS {p : Pattern}
     (m1 : List SLevel) (m2 : p.Path → SExpr) : p.Check → List (SExpr × SExpr)
   | .true => []
   | .defeq a b rest => (a.applyS m1 m2, b.applyS m1 m2) :: rest.defeqsS m1 m2
+  -- The universe guard of the confluence engine's patterns carries no equation.
+  | .nonzero _ rest => rest.defeqsS m1 m2
 
 section
 set_option hygiene false
