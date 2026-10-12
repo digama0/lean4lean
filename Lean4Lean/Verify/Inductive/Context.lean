@@ -22,53 +22,15 @@ domains (`ConsumeTypeAnnotationsCompat`), discharged in `TypeAnnotations.lean`. 
 
 namespace VerifyInductive
 
-structure ContextWF (c : AddInductive.Context) where
-  venv : VEnv
-  checking : CheckingEnv.Valid c.safety c.env venv
-
-  mlctx : TypeChecker.MLCtx
-  mlctx_wf : mlctx.WF venv c.lparams
+structure ContextWF (c : AddInductive.Context)
+    extends toSemantics : ContextSemantics c c.lparams where
   typeCheckerLParams_eq : c.typeCheckerLParams = none
-  onlyLams : MLCtxOnlyLams mlctx
-  lctx_eq : mlctx.lctx = c.lctx
-  ngen_prefix : c.ngen.namePrefix = `_ind_fresh
-  indFresh : ∀ fv ∈ mlctx.vlctx.fvars, c.ngen.Reserves fv
-  kernelFresh : ∀ fv ∈ mlctx.vlctx.fvars,
-    ({} : TypeChecker.State).ngen.Reserves fv
-  /-- The cache mode of the embedded checker runs is sound for the environment. -/
-  cacheSound : c.fuel.cacheMode.Sound venv
-  /-- The semantic checker context, embedded in the main one. -/
-  check : CheckBase venv c.lparams mlctx c.lctx c.checkLCtx
-
-/-- The shared semantic view, preserving the concrete frame data by reduction. -/
-abbrev ContextWF.toSemantics (H : ContextWF c) : ContextSemantics c c.lparams where
-  venv := H.venv
-  checking := H.checking
-  mlctx := H.mlctx
-  mlctx_wf := H.mlctx_wf
-  onlyLams := H.onlyLams
-  lctx_eq := H.lctx_eq
-  ngen_prefix := H.ngen_prefix
-  indFresh := H.indFresh
-  kernelFresh := H.kernelFresh
-  cacheSound := H.cacheSound
-  check := H.check
 
 /-- Restore the public frame with its explicit universe contract. -/
 abbrev ContextWF.ofSemantics (H : ContextSemantics c c.lparams)
     (hparams : c.typeCheckerLParams = none) :
     ContextWF c where
-  venv := H.venv
-  checking := H.checking
-  mlctx := H.mlctx
-  mlctx_wf := H.mlctx_wf
-  onlyLams := H.onlyLams
-  lctx_eq := H.lctx_eq
-  ngen_prefix := H.ngen_prefix
-  indFresh := H.indFresh
-  kernelFresh := H.kernelFresh
-  cacheSound := H.cacheSound
-  check := H.check
+  toSemantics := H
   typeCheckerLParams_eq := hparams
 
 def initialContext (env : Environment) (lparams : List Name)
@@ -326,56 +288,17 @@ embedded typechecker runs under exactly `recLparams`; the declaration's own
 universe parameters remain separately available as `c.lparams` for the
 installed recursor metadata. -/
 structure RecursorContextWF (c : AddInductive.Context)
-    (recLparams : List Name) where
-  venv : VEnv
-  checking : CheckingEnv.Valid c.safety c.env venv
-
-  mlctx : TypeChecker.MLCtx
-  mlctx_wf : mlctx.WF venv recLparams
+    (recLparams : List Name)
+    extends toSemantics : ContextSemantics c recLparams where
   typeCheckerLParams_eq : c.typeCheckerLParams = some recLparams
   lparams_origin : RecursorLParams c.lparams recLparams
-  onlyLams : MLCtxOnlyLams mlctx
-  lctx_eq : mlctx.lctx = c.lctx
-  ngen_prefix : c.ngen.namePrefix = `_ind_fresh
-  indFresh : ∀ fv ∈ mlctx.vlctx.fvars, c.ngen.Reserves fv
-  kernelFresh : ∀ fv ∈ mlctx.vlctx.fvars,
-    ({} : TypeChecker.State).ngen.Reserves fv
-  /-- The cache mode of the embedded checker runs is sound for the environment. -/
-  cacheSound : c.fuel.cacheMode.Sound venv
-  /-- The semantic checker context, embedded in the main one. -/
-  check : CheckBase venv recLparams mlctx c.lctx c.checkLCtx
-
-/-- The shared semantic view, preserving the concrete frame data by reduction. -/
-abbrev RecursorContextWF.toSemantics (H : RecursorContextWF c recLparams) :
-    ContextSemantics c recLparams where
-  venv := H.venv
-  checking := H.checking
-  mlctx := H.mlctx
-  mlctx_wf := H.mlctx_wf
-  onlyLams := H.onlyLams
-  lctx_eq := H.lctx_eq
-  ngen_prefix := H.ngen_prefix
-  indFresh := H.indFresh
-  kernelFresh := H.kernelFresh
-  cacheSound := H.cacheSound
-  check := H.check
 
 /-- Restore the public frame with its explicit universe contract. -/
 abbrev RecursorContextWF.ofSemantics (H : ContextSemantics c recLparams)
     (hparams : c.typeCheckerLParams = some recLparams)
     (horigin : RecursorLParams c.lparams recLparams) :
     RecursorContextWF c recLparams where
-  venv := H.venv
-  checking := H.checking
-  mlctx := H.mlctx
-  mlctx_wf := H.mlctx_wf
-  onlyLams := H.onlyLams
-  lctx_eq := H.lctx_eq
-  ngen_prefix := H.ngen_prefix
-  indFresh := H.indFresh
-  kernelFresh := H.kernelFresh
-  cacheSound := H.cacheSound
-  check := H.check
+  toSemantics := H
   typeCheckerLParams_eq := hparams
   lparams_origin := horigin
 
@@ -667,7 +590,7 @@ theorem RecursorContextWF.mkForallRecent
   rw [hsource]
   exact H.mlctx_wf.mkForall_trS H.checking.tr.wf htr hty n hn
 
-theorem ContextWF.findCDecl (H : ContextWF c)
+theorem ContextSemantics.findCDecl (H : ContextSemantics c Us)
     (hmem : fv ∈ H.mlctx.vlctx.fvars) :
     ∃ index name type bi kind,
       c.lctx.find? fv = some (.cdecl index fv name type bi kind) := by
@@ -690,29 +613,18 @@ theorem ContextWF.findCDecl (H : ContextWF c)
   rw [← H.lctx_eq]
   exact hfind
 
+theorem ContextWF.findCDecl (H : ContextWF c)
+    (hmem : fv ∈ H.mlctx.vlctx.fvars) :
+    ∃ index name type bi kind,
+      c.lctx.find? fv = some (.cdecl index fv name type bi kind) :=
+  H.toSemantics.findCDecl hmem
+
 theorem RecursorContextWF.findCDecl
     (R : RecursorContextWF c recLparams)
     (hmem : fv ∈ R.mlctx.vlctx.fvars) :
     ∃ index name type bi kind,
-      c.lctx.find? fv = some (.cdecl index fv name type bi kind) := by
-  rcases (R.mlctx_wf.tr.find?_eq_some (fv := fv)).2 hmem with
-    ⟨decl, hfind⟩
-  have hfindDecls : R.mlctx.decls.find? (fv == ·.fvarId) = some decl := by
-    rw [← R.mlctx_wf.find?_eq]
-    exact hfind
-  have hdeclMem : decl ∈ R.mlctx.decls :=
-    List.mem_of_find?_eq_some hfindDecls
-  rcases R.onlyLams decl hdeclMem with
-    ⟨index, fv', name, type, bi, kind, hdecl⟩
-  subst decl
-  have hfv : fv' = fv := by
-    have hpred := List.find?_some hfindDecls
-    have hfv' : fv = fv' := by simpa [LocalDecl.fvarId] using hpred
-    exact hfv'.symm
-  subst fv'
-  refine ⟨index, name, type, bi, kind, ?_⟩
-  rw [← R.lctx_eq]
-  exact hfind
+      c.lctx.find? fv = some (.cdecl index fv name type bi kind) :=
+  R.toSemantics.findCDecl hmem
 
 /-- Operational local-context invariant used by structurally exploded
 recursor traversals.  It records exactly what those proofs need in order to
@@ -726,7 +638,7 @@ structure BindingContextWF (c : AddInductive.Context) where
   findCDecl : ∀ fv ∈ c.lctx.fvars, ∃ index name type bi kind,
     c.lctx.find? fv = some (.cdecl index fv name type bi kind)
 
-theorem ContextWF.toBindingContextWF (H : ContextWF c) :
+theorem ContextSemantics.toBindingContextWF (H : ContextSemantics c Us) :
     BindingContextWF c where
   wf := H.lctx_eq ▸ H.mlctx_wf.tr.1
   onlyLams := by
@@ -744,25 +656,14 @@ theorem ContextWF.toBindingContextWF (H : ContextWF c) :
     rw [← H.mlctx_wf.tr.fvars_eq, H.lctx_eq]
     exact hfv
 
+theorem ContextWF.toBindingContextWF (H : ContextWF c) :
+    BindingContextWF c := H.toSemantics.toBindingContextWF
+
 /-- A recursor-universe semantic context projects to the same concrete
 binder/freshness invariant used by the structural traversals. -/
 theorem RecursorContextWF.toBindingContextWF
-    (R : RecursorContextWF c recLparams) : BindingContextWF c where
-  wf := R.lctx_eq ▸ R.mlctx_wf.tr.1
-  onlyLams := by
-    intro d hd
-    apply R.onlyLams d
-    rw [← R.mlctx_wf.toList_eq, R.lctx_eq]
-    exact hd
-  ngen_prefix := R.ngen_prefix
-  fresh := by
-    intro fv hfv
-    apply R.indFresh fv
-    rw [← R.mlctx_wf.tr.fvars_eq, R.lctx_eq]
-    exact hfv
-  findCDecl fv hfv := R.findCDecl <| by
-    rw [← R.mlctx_wf.tr.fvars_eq, R.lctx_eq]
-    exact hfv
+    (R : RecursorContextWF c recLparams) : BindingContextWF c :=
+  R.toSemantics.toBindingContextWF
 
 theorem RecursorContextWF.lctxClosed (R : RecursorContextWF c recLparams) :
     LocalContext.LctxClosed c.lctx :=
@@ -1617,25 +1518,39 @@ theorem ContextWF.Aligned.withCheckedLocalDecl {H : ContextWF c} (ha : H.Aligned
   rintro _ _ ⟨⟩
   exact ⟨H.current_not_mem, htr.fvarsList⟩
 
-theorem ContextWF.chkKernelFresh (H : ContextWF c) :
+theorem ContextSemantics.chkKernelFresh (H : ContextSemantics c Us) :
     ∀ fv ∈ H.chk.vlctx.fvars, ({} : TypeChecker.State).ngen.Reserves fv :=
   fun fv h => H.kernelFresh fv (H.check.embed.fvars_subset h)
 
+/-- The checker context as a type-checker context at the active universes. -/
+def ContextSemantics.checkTC (H : ContextSemantics c Us) : TypeChecker.VContext :=
+  TypeChecker.VContext.mkCheckingValidMLC H.checking H.chk H.check.wf c.fuel
+
+/-- Connect a shared semantic frame to the executable universe selection. -/
+theorem ContextSemantics.liftTypeCheckerWF {x : TypeChecker.M α}
+    (H : ContextSemantics c Us)
+    (hparams : c.typeCheckerLParams.getD c.lparams = Us)
+    (Hx : TypeChecker.M.WF H.checkTC {} x fun a _ => Q a) :
+    ((monadLift x : AddInductive.M α) c).WF Q := by
+  change (TypeChecker.M.run c.env c.safety c.checkLCtx
+    (c.typeCheckerLParams.getD c.lparams) c.fuel x).WF Q
+  rw [hparams, ← H.check.lctx_eq]
+  exact TypeChecker.M.WF.runCheckingValidMLC H.chkKernelFresh Hx H.cacheSound
+
+theorem ContextWF.chkKernelFresh (H : ContextWF c) :
+    ∀ fv ∈ H.chk.vlctx.fvars, ({} : TypeChecker.State).ngen.Reserves fv :=
+  H.toSemantics.chkKernelFresh
+
 /-- The checker context as a type-checker context. -/
 def ContextWF.checkTC (H : ContextWF c) : TypeChecker.VContext :=
-  TypeChecker.VContext.mkCheckingValidMLC H.checking H.chk H.check.wf c.fuel
+  H.toSemantics.checkTC
 
 /-- Reuse a verified typechecker computation inside `AddInductive.M`.  The
 run happens in the checker context, and is verified there. -/
 theorem liftTypeChecker.WF {x : TypeChecker.M α} (Hc : ContextWF c)
     (Hx : TypeChecker.M.WF Hc.checkTC {} x fun a _ => Q a) :
-    ((monadLift x : AddInductive.M α) c).WF Q := by
-  change (TypeChecker.M.run c.env c.safety c.checkLCtx
-    (c.typeCheckerLParams.getD c.lparams) c.fuel x).WF Q
-  rw [Hc.typeCheckerLParams_eq]
-  simp only [Option.getD_none]
-  rw [← Hc.check.lctx_eq]
-  exact TypeChecker.M.WF.runCheckingValidMLC Hc.chkKernelFresh Hx Hc.cacheSound
+    ((monadLift x : AddInductive.M α) c).WF Q :=
+  Hc.toSemantics.liftTypeCheckerWF (by simp [Hc.typeCheckerLParams_eq]) Hx
 
 theorem checkTypeInContext.checkingWF (Hc : ContextWF c)
     (hfvars : e.FVarsIn (· ∈ Hc.chk.vlctx.fvars)) :
@@ -1652,12 +1567,35 @@ theorem checkTypeInContext.WF (Hc : ContextWF c)
     obtain ⟨ty', h'⟩ := Hc.check.embed.trTyping Hc.checking.tr.wf he' h
     exact ⟨e', ty', h'⟩
 
+theorem ContextSemantics.whnfCheckingWF (Hc : ContextSemantics c Us)
+    (hparams : c.typeCheckerLParams.getD c.lparams = Us)
+    (he : TrExprS Hc.venv Us Hc.chk.vlctx e e') :
+    ((monadLift (TypeChecker.whnf e) : AddInductive.M Expr) c).WF fun e₁ =>
+      FVarsBelow Hc.chk.vlctx e e₁ ∧
+      TrExpr Hc.venv Us Hc.chk.vlctx e₁ e' :=
+  Hc.liftTypeCheckerWF hparams ((TypeChecker.Inner.whnf.WF he).run)
+
+/-- Checker facts and their transfers to the main context share one proof
+at any explicitly selected universe parameters. -/
+theorem ContextSemantics.whnfDualWF (Hc : ContextSemantics c Us)
+    (hparams : c.typeCheckerLParams.getD c.lparams = Us)
+    (he : TrExprS Hc.venv Us Hc.mlctx.vlctx e e')
+    (hn : TrExprS Hc.venv Us Hc.chk.vlctx e e₀) :
+    ((monadLift (TypeChecker.whnf e) : AddInductive.M Expr) c).WF fun e₁ =>
+      (FVarsBelow Hc.mlctx.vlctx e e₁ ∧
+        TrExpr Hc.venv Us Hc.mlctx.vlctx e₁ e') ∧
+      FVarsBelow Hc.chk.vlctx e e₁ ∧
+        TrExpr Hc.venv Us Hc.chk.vlctx e₁ e₀ :=
+  (Hc.whnfCheckingWF hparams hn).mono fun _ ⟨h1, h2⟩ =>
+    ⟨⟨Hc.check.embed.fvarsBelow h1, Hc.check.embed.trExpr Hc.checking.tr.wf hn he h2⟩,
+      h1, h2⟩
+
 theorem whnfInContext.checkingWF (Hc : ContextWF c)
     (he : TrExprS Hc.venv c.lparams Hc.chk.vlctx e e') :
     ((monadLift (TypeChecker.whnf e) : AddInductive.M Expr) c).WF fun e₁ =>
       FVarsBelow Hc.chk.vlctx e e₁ ∧
       TrExpr Hc.venv c.lparams Hc.chk.vlctx e₁ e' :=
-  liftTypeChecker.WF Hc ((TypeChecker.Inner.whnf.WF he).run)
+  Hc.toSemantics.whnfCheckingWF (by simp [Hc.typeCheckerLParams_eq]) he
 
 /-- `whnf` preserves every admissible free-variable scope of its input, in
 addition to preserving the abstract expression up to definitional equality.
@@ -1681,9 +1619,7 @@ theorem whnfInContext.dualWF (Hc : ContextWF c)
         TrExpr Hc.venv c.lparams Hc.mlctx.vlctx e₁ e') ∧
       FVarsBelow Hc.chk.vlctx e e₁ ∧
         TrExpr Hc.venv c.lparams Hc.chk.vlctx e₁ e₀ :=
-  (whnfInContext.checkingWF Hc hn).mono fun _ ⟨h1, h2⟩ =>
-    ⟨⟨Hc.check.embed.fvarsBelow h1, Hc.check.embed.trExpr Hc.checking.tr.wf hn he h2⟩,
-      h1, h2⟩
+  Hc.toSemantics.whnfDualWF (by simp [Hc.typeCheckerLParams_eq]) he hn
 
 theorem whnfInContext.WF (Hc : ContextWF c)
     (he : TrExprS Hc.venv c.lparams Hc.mlctx.vlctx e e')
@@ -1702,26 +1638,19 @@ def RecursorContextWF.typeChecker
 
 theorem RecursorContextWF.chkKernelFresh (H : RecursorContextWF c recLparams) :
     ∀ fv ∈ H.chk.vlctx.fvars, ({} : TypeChecker.State).ngen.Reserves fv :=
-  fun fv h => H.kernelFresh fv (H.check.embed.fvars_subset h)
+  H.toSemantics.chkKernelFresh
 
 /-- The checker context of a recursor frame as a type-checker context. -/
 def RecursorContextWF.checkTC (H : RecursorContextWF c recLparams) :
-    TypeChecker.VContext :=
-  TypeChecker.VContext.mkCheckingValidMLC H.checking H.chk H.check.wf c.fuel
+    TypeChecker.VContext := H.toSemantics.checkTC
 
 /-- Reuse a verified typechecker computation in a recursor frame; the run
 happens in the checker context under the recursor universe parameters. -/
 theorem liftTypeChecker.recursorWF {x : TypeChecker.M α}
     (Hc : RecursorContextWF c recLparams)
     (Hx : TypeChecker.M.WF Hc.checkTC {} x fun a _ => Q a) :
-    ((monadLift x : AddInductive.M α) c).WF Q := by
-  change (TypeChecker.M.run c.env c.safety c.checkLCtx
-    (c.typeCheckerLParams.getD c.lparams) c.fuel x).WF Q
-  rw [Hc.typeCheckerLParams_eq]
-  simp only [Option.getD_some]
-  rw [← Hc.check.lctx_eq]
-  exact TypeChecker.M.WF.runCheckingValidMLC (lparams := recLparams) (fuel := c.fuel)
-    Hc.chkKernelFresh Hx Hc.cacheSound
+    ((monadLift x : AddInductive.M α) c).WF Q :=
+  Hc.toSemantics.liftTypeCheckerWF (by simp [Hc.typeCheckerLParams_eq]) Hx
 
 theorem whnfInRecursorContext.checkingScopeWF
     (Hc : RecursorContextWF c recLparams)
@@ -1729,7 +1658,7 @@ theorem whnfInRecursorContext.checkingScopeWF
     ((monadLift (TypeChecker.whnf e) : AddInductive.M Expr) c).WF fun e₁ =>
       FVarsBelow Hc.chk.vlctx e e₁ ∧
       TrExpr Hc.venv recLparams Hc.chk.vlctx e₁ e' :=
-  liftTypeChecker.recursorWF Hc ((TypeChecker.Inner.whnf.WF he).run)
+  Hc.toSemantics.whnfCheckingWF (by simp [Hc.typeCheckerLParams_eq]) he
 
 theorem whnfInRecursorContext.dualWF
     (Hc : RecursorContextWF c recLparams)
@@ -1740,9 +1669,7 @@ theorem whnfInRecursorContext.dualWF
         TrExpr Hc.venv recLparams Hc.mlctx.vlctx e₁ e') ∧
       FVarsBelow Hc.chk.vlctx e e₁ ∧
         TrExpr Hc.venv recLparams Hc.chk.vlctx e₁ e₀ :=
-  (whnfInRecursorContext.checkingScopeWF Hc hn).mono fun _ ⟨h1, h2⟩ =>
-    ⟨⟨Hc.check.embed.fvarsBelow h1, Hc.check.embed.trExpr Hc.checking.tr.wf hn he h2⟩,
-      h1, h2⟩
+  Hc.toSemantics.whnfDualWF (by simp [Hc.typeCheckerLParams_eq]) he hn
 
 /-- `getType` of a translated free variable returns its declared type, which
 types the variable in the main context.  This replaces checker inference of
