@@ -1,6 +1,7 @@
 import Lean4Lean.Theory.Typing.HeadInversionDefs
 import Lean4Lean.Theory.Typing.HeadInjectivity.Fields
-import Lean4Lean.Theory.Typing.HeadInjectivity.ChainInjectivity
+import Lean4Lean.Theory.Typing.HeadInjectivity.Model.Separation
+import Lean4Lean.Theory.Typing.HeadInjectivity.Model.EnvValid
 
 /-! # Head inversion for types: the base obligation of the inversion layer
 
@@ -28,25 +29,18 @@ This file and the model do not import `UniqueTyping`, `Injectivity`, `ChurchRoss
 namespace Lean4Lean
 namespace VEnv
 
-/-! ### Layer stub
-
-LAYER STUB. The glued observation model (`Theory/Typing/HeadInjectivity/Model/`) is the next
-layer of this branch. Until then its two exported theorems, `VEnv.WF.chainHeadInjectivity` and
-`VEnv.WF.headSeparationModel`, are stated below with `sorry`; the head-inversion layer imports
-the model and proves them under the same names, with the same statements. -/
-
 /-- **Chain-level head injectivity** for every well-formed environment, from soundness of the
 glued observation model (`VEnv.WF.soundEnv`, `HeadInjectivity/Model/EnvValid.lean`). -/
 theorem _root_.Lean4Lean.VEnv.WF.chainHeadInjectivity {env : VEnv} (henv : env.WF) :
     env.ChainHeadInjectivity :=
-  sorry -- LAYER STUB: proved from the observation model in the next layer
+  WF.chainHeadInjectivity_of_sound henv henv.soundEnv
 
 /-- **Head separation** for every well-formed environment, from the glued observation model
 (`HeadInjectivity/Model/Separation.lean`): a sort has a `sort` observation, a Pi type a `piDom`
 observation, a rigid spine neither. -/
 theorem _root_.Lean4Lean.VEnv.WF.headSeparationModel {env : VEnv} (henv : env.WF) :
     env.HeadSeparation :=
-  sorry -- LAYER STUB: proved from the observation model in the next layer
+  WF.headSeparation_of_sound henv henv.soundEnv
 
 /-- Separation for every well-formed environment, from the glued observation model. -/
 theorem _root_.Lean4Lean.VEnv.WF.headSeparation {env : VEnv} (henv : env.WF) :
