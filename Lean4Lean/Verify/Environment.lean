@@ -19,6 +19,7 @@ theorem addAxiom.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : Axi
   refine (checkConstantVal.WF wf (.axiomInfo v) false hsafety).run wf
     |>.bind fun _ ⟨ci', htr, hci, hn, hnonprim⟩ => ?_
   have ⟨ves', hwf, hstep⟩ := addConst.WF wf (.axiomInfo v) ci' checkSafety ?_ htr hci hn
+    (by intro _ h; cases h) (by intro _ h; cases h) (by intro _ h; cases h)
     (by simp at hnonprim; exact hnonprim) fun _ _ htr hci hadd old => ?_
   · exact .pure ⟨ves', hwf, ci', hstep⟩
   · intro safety _
@@ -37,7 +38,7 @@ theorem addDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
     refine (checkNoMVarNoFVar.WF _ _ _).bind fun _ h => ?_
     have ⟨vesA, wfA, hstepA⟩ := addConst.WF wf (.axiomInfo { v with isUnsafe := true }) ci0
       .unsafe (fun _ => id) ⟨⟨DefinitionSafety.unsafe_le, htr.1.2.1, htr.1.2.2⟩, htr.2⟩
-      hwfc hn hnonprim fun _ _ htr' hci' hadd' old =>
+      hwfc hn (by intro _ h; cases h) (by intro _ h; cases h) (by intro _ h; cases h) hnonprim fun _ _ htr' hci' hadd' old =>
         .axiom htr' (by rwa [← old.map_wf.find?'_eq_find?]) hci' hadd' old
     have hadd := (hstepA .unsafe).2.2
     refine checkBodyCore.WF (wfA.toVEnvAt .unsafe) (.defnDecl v)
@@ -79,7 +80,8 @@ theorem addTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : T
   refine (checkTheorem.WF wf v).run wf |>.bind fun _ h => ?_
   obtain ⟨ci', htr, hbody, hprop, hn, hnonprim⟩ := h
   have ⟨ves', hwf, hstep⟩ := addConst.WF wf (.thmInfo v) ci'.toVConstVal .safe
-    (fun _ _ => DefinitionSafety.le_safe) htr.1 ⟨_, hprop⟩ hn hnonprim
+    (fun _ _ => DefinitionSafety.le_safe) htr.1 ⟨_, hprop⟩ hn
+    (by intro _ h; cases h) (by intro _ h; cases h) (by intro _ h; cases h) hnonprim
     fun safety _ hheader _ hadd old => ?_
   · exact .pure ⟨ves', hwf, ci'.toVConstVal, hstep⟩
   have hle := wf.mono hheader.1
@@ -102,7 +104,8 @@ theorem addOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : Op
   have htr : TrConstVal checkSafety (ves.venv checkSafety) (.opaqueInfo v) ci'.toVConstVal :=
     ⟨⟨hsafety.symm ▸ DefinitionSafety.le_rfl, hu, ht.mono hmono⟩, hname⟩
   have ⟨ves', hwf, hstep⟩ := addConst.WF wf (.opaqueInfo v) ci'.toVConstVal checkSafety ?_ htr
-    (hciC.mono hmono) hfresh hnonprim fun safety _ htr hciW hadd old => ?_
+    (hciC.mono hmono) hfresh (by intro _ h; cases h) (by intro _ h; cases h) (by intro _ h; cases h) hnonprim
+    fun safety _ htr hciW hadd old => ?_
   · exact .pure ⟨ves', hwf, ci'.toVConstVal, hstep⟩
   · intro safety hvisible
     rwa [hsafety] at hvisible
@@ -172,7 +175,7 @@ theorem addMutual.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
       (checkNoMVarNoFVar.WF _ v.name v.value)).bind fun _ _ _ hclosed => ?_
     have hclosed' : v.value.FVarsIn
         (· ∈ (TypeChecker.VContext.mk1 wfA v.levelParams).vlctx.fvars) := by
-      simpa [TypeChecker.VContext.mk1] using hclosed
+      simpa [TypeChecker.VContext.mk1, TypeChecker.VContext.mkChecking] using hclosed
     refine hd.2.2 ▸ (TypeChecker.checkType.WF hclosed').bind
       fun valType _ _ ⟨value', valType', _, hval, hvalTy, hhasType⟩ => ?_
     refine (TypeChecker.isDefEq.WF hvalTy hdecl).bind fun equal _ _ hequal => ?_
@@ -191,10 +194,25 @@ theorem addMutual.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   · obtain ⟨v, -, h⟩ := this.forall_exists_r ci hc; exact h.2.1
   · obtain ⟨v, -, h⟩ := hbody.forall_exists_r ci hc; exact h.2
 
-/-- Successful checked addition preserves well-formedness and extends every safety-indexed
-abstract environment. Still outstanding: inductives, which need the `AddInduct` witness to be
-constructed from `Environment.addInductive`. -/
-theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration) :
+set_option linter.unusedVariables false in
+/-- LAYER HYPOTHESIS. The inductive case of `addDecl.WF`: the statement of
+`VerifyInductive.addInductiveDeclaration.preserves`, which the installation layers of this branch
+prove (`Verify/Inductive/`). Until then the top-level theorem `addDecl.WF_of` takes it as
+its first argument; the layer that adds the nested installation states `addDecl.WF` without it. -/
+def InductiveDeclPreserves : Prop :=
+  ∀ {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+    (lparams : List Name) (nparams : Nat) (types : List InductiveType)
+    (isUnsafe : Bool) (fuel : FuelConfig),
+    (addDecl env (.inductDecl lparams nparams types isUnsafe)
+      (check := true) (fuel := fuel)).WF fun outEnv =>
+        ∃ ves' : VEnvs, ves'.WF outEnv ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety
+
+/-- Successful checked addition of a declaration preserves the invariant `VEnvs.WF` and extends
+every safety-indexed abstract environment, for every declaration form, given the inductive case
+(`InductiveDeclPreserves`). No hypothesis on `Eq` is needed: quotient initialization reads the
+abstract `Eq` off the successful `checkEqType` (`Verify/Environment/Quot.lean`). -/
+theorem addDecl.WF_of (hind : InductiveDeclPreserves)
+    {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : Declaration) :
     (addDecl env decl (check := true) (fuel := {})).WF fun env' =>
       ∃ ves' : VEnvs, ves'.WF env' ∧ ∀ safety, ves.venv safety ≤ ves'.venv safety := by
   cases decl with
@@ -205,4 +223,31 @@ theorem addDecl.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (decl : D
     exact (addOpaque.WF wf v).mono fun _ ⟨ves', hwf, _, h⟩ => ⟨ves', hwf, (h · |>.le)⟩
   | quotDecl => exact addQuot.WF wf
   | mutualDefnDecl vs => exact addMutual.WF wf vs
-  | inductDecl _ _ _ _ => sorry
+  | inductDecl lparams nparams types isUnsafe =>
+    exact hind wf lparams nparams types isUnsafe {}
+
+/-! ### The empty environment -/
+
+theorem _root_.Lean.Kernel.Environment.empty_find? (m : Name) (s : Bool) (n : Name) :
+    (Kernel.Environment.empty m s).find? n = none := by
+  change ({ stage₁ := s } : ConstMap).find?' n = none
+  rw [(SMap.WF.empty_stage s).find?'_eq_find?]; simp
+
+/-- The model of the empty environment: the empty abstract environment at every safety level. -/
+def VEnvs.empty : VEnvs := ⟨fun _ => .empty⟩
+
+theorem VEnv.HasPrimitives.empty : VEnv.empty.HasPrimitives := by
+  intro p _
+  rcases p with ⟨n, spec⟩
+  cases spec <;> simp [PrimSpec.Holds, VEnv.ReflectsNatNat, VEnv.ReflectsNatNatNat,
+    VEnv.ReflectsNatNatBool, VEnv.ReflectsNatBitwise, VEnv.contains, VEnv.empty]
+
+/-- **Base case.** The empty environment that a replay starts from (`Kernel.Environment.empty`,
+in either stage) satisfies the invariant; every field but the translation is vacuous. -/
+theorem VEnvs.WF.empty (m : Name) (s : Bool) :
+    VEnvs.empty.WF (Kernel.Environment.empty m s) where
+  tr := .empty
+  hasPrimitives := VEnv.HasPrimitives.empty
+  safePrimitives h := by simp [Kernel.Environment.empty_find?] at h
+  blocks := .empty (by simp [Kernel.Environment.empty_find?])
+  mono _ := VEnv.LE.rfl

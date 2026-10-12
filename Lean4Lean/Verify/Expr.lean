@@ -10,10 +10,6 @@ open Lean4Lean
 
 namespace Lean
 
-instance : LawfulBEq FVarId where
-  eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
-  rfl := BEq.rfl (α := Name)
-
 instance : LawfulBEq MVarId where
   eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
   rfl := BEq.rfl (α := Name)
@@ -654,6 +650,11 @@ theorem getAppArgsRevList_reverse : (getAppArgsRevList e).reverse = getAppArgsLi
 theorem getAppArgsList_reverse : (getAppArgsList e).reverse = getAppArgsRevList e := by
   rw [← getAppArgsRevList_reverse]; simp
 
+@[simp] theorem getAppArgsList_app :
+    getAppArgsList (.app fn arg) = getAppArgsList fn ++ [arg] := by
+  rw [← getAppArgsRevList_reverse]
+  simp [getAppArgsRevList, getAppArgsRevList_reverse]
+
 open private getAppNumArgsAux getAppArgsAux mkAppRangeAux from Lean.Expr
 
 theorem getAppNumArgs_eq : getAppNumArgs e = (getAppArgsRevList e).length := by
@@ -742,19 +743,82 @@ theorem mkAppList_getAppArgsList (e) :
     mkAppList e.getAppFn (getAppArgsList e) = e := by
   rw [← mkAppRevList_reverse, getAppArgsList_reverse, mkAppRevList_getAppArgsRevList]
 
-@[simp] theorem getAppFn_mkAppList : ∀ (es) (e : Expr), (mkAppList e es).getAppFn = e.getAppFn
-  | [], _ => rfl
-  | _ :: es, e => by rw [mkAppList, getAppFn_mkAppList es]; rfl
+theorem getAppFn_mkAppList (fn : Expr) (args : List Expr) :
+    (mkAppList fn args).getAppFn = fn.getAppFn := by
+  induction args generalizing fn with
+  | nil => rfl
+  | cons arg args ih => simp only [mkAppList]; rw [ih]; rfl
+
+theorem getAppFn_mkAppList_const (name : Name) (levels : List Level) (args : List Expr) :
+    (mkAppList (.const name levels) args).getAppFn = .const name levels := by
+  rw [getAppFn_mkAppList]; rfl
+
+theorem getAppArgsList_mkAppList (fn : Expr) (args : List Expr) :
+    (mkAppList fn args).getAppArgsList = fn.getAppArgsList ++ args := by
+  induction args generalizing fn with
+  | nil => simp
+  | cons arg args ih => simp only [mkAppList]; rw [ih, getAppArgsList_app]; simp
+
+theorem getAppArgsList_const (name : Name) (levels : List Level) :
+    (Expr.const name levels).getAppArgsList = [] := rfl
+
+theorem mkAppN_eq_mkAppList (fn : Expr) (args : Array Expr) :
+    mkAppN fn args = mkAppList fn args.toList := by
+  unfold mkAppN
+  rw [← Array.foldl_toList, mkAppList_eq_foldl]
+  generalize args.toList = l
+  induction l generalizing fn with
+  | nil => rfl
+  | cons a l ih => exact ih _
+
+theorem abstractList_bvar_ge (fvs : List FVarId) (k n : Nat) :
+    (Expr.bvar (k + n)).abstractList fvs k = .bvar (k + n + fvs.length) := by
+  induction fvs generalizing n with
+  | nil => simp
+  | cons head tail ih =>
+    simp only [abstractList]
+    rw [show (Expr.bvar (k + n)).abstract1 head k = .bvar (k + n + 1) by
+      simp [abstract1]]
+    simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using ih (n + 1)
+
+theorem abstractList_fvar_of_not_mem (hmem : fv ∉ fvs) :
+    (Expr.fvar fv).abstractList fvs k = .fvar fv := by
+  induction fvs generalizing k with
+  | nil => simp
+  | cons head tail ih =>
+    simp only [List.mem_cons, not_or] at hmem
+    have hne : head ≠ fv := Ne.symm hmem.1
+    simp [abstractList, abstract1, hne, ih hmem.2]
+
+theorem abstractList_fvar_getElem (hnd : fvs.Nodup) (i : Nat) (hi : i < fvs.length) :
+    (Expr.fvar fvs[i]).abstractList fvs k = .bvar (k + (fvs.length - 1 - i)) := by
+  induction fvs generalizing i k with
+  | nil => simp at hi
+  | cons head tail ih =>
+    simp only [List.nodup_cons] at hnd
+    cases i with
+    | zero =>
+      simp only [List.getElem_cons_zero, abstractList]
+      rw [show (Expr.fvar head).abstract1 head k = .bvar k by simp [abstract1]]
+      simpa using abstractList_bvar_ge tail k 0
+    | succ i =>
+      have hiTail : i < tail.length := by simpa using hi
+      have hne : tail[i] ≠ head := by
+        intro heq
+        apply hnd.1
+        simpa [heq] using List.getElem_mem hiTail
+      simp only [List.getElem_cons_succ, abstractList]
+      rw [show (Expr.fvar tail[i]).abstract1 head k = .fvar tail[i] by
+        simp [abstract1, Ne.symm hne]]
+      rw [ih hnd.2 i hiTail (k := k)]
+      congr 1
+      simp only [List.length_cons]
+      omega
 
 theorem getAppArgsRevList_mkAppList : ∀ (es) (e : Expr),
     getAppArgsRevList (mkAppList e es) = es.reverse ++ getAppArgsRevList e
   | [], _ => rfl
   | _ :: es, e => by rw [mkAppList, getAppArgsRevList_mkAppList es]; simp [getAppArgsRevList]
-
-theorem getAppArgsList_mkAppList (es) (e : Expr) :
-    getAppArgsList (mkAppList e es) = getAppArgsList e ++ es := by
-  rw [← getAppArgsRevList_reverse, getAppArgsRevList_mkAppList, ← getAppArgsRevList_reverse]
-  simp
 
 theorem mkAppRange_eq (h1 : args.toList = l₁ ++ l₂ ++ l₃)
     (h2 : l₁.length = i) (h3 : (l₁ ++ l₂).length = j) :
@@ -919,6 +983,10 @@ theorem instantiate1'_instantiate1' (e1 e2 e3 j) :
   | [], _ => e
   | a :: as, k => instantiate1' (instantiateRevList e as k) a k
 
+theorem instantiateRevList'_eq_self (h : e.looseBVarRange' ≤ k) :
+    instantiateRevList e as k = e := by
+  induction as <;> simp [instantiateRevList, instantiate1'_eq_self, *]
+
 theorem instantiateList_eq_foldl :
     instantiateList e as k = as.foldl (instantiate1' · · k) e := by
   induction as generalizing e <;> simp [*]
@@ -958,6 +1026,148 @@ theorem instantiateList_lam : instantiateList (.lam n ty body bi) as k =
 theorem instantiateRevList_app : instantiateRevList (.app f a) as k =
     .app (instantiateRevList f as k) (instantiateRevList a as k) := by
   induction as <;> simp [instantiate1', *]
+
+@[simp]
+theorem instantiateRevList_forallE :
+    instantiateRevList (.forallE n ty body bi) as k =
+      .forallE n (instantiateRevList ty as k)
+        (instantiateRevList body as (k + 1)) bi := by
+  induction as <;> simp [instantiate1', *]
+
+@[simp]
+theorem instantiateRevList_letE :
+    instantiateRevList (.letE n ty value body nondep) as k =
+      .letE n (instantiateRevList ty as k)
+        (instantiateRevList value as k)
+        (instantiateRevList body as (k + 1)) nondep := by
+  induction as <;> simp [instantiate1', *]
+
+@[simp]
+theorem instantiateRevList_mdata :
+    instantiateRevList (.mdata (md : MData) body) as k =
+      .mdata md (instantiateRevList body as k) := by
+  induction as <;> simp [instantiate1', *]
+
+@[simp]
+theorem instantiateRevList_proj :
+    instantiateRevList (.proj name idx body) as k =
+      .proj name idx (instantiateRevList body as k) := by
+  induction as <;> simp [instantiate1', *]
+
+/-- Substituting a free variable below another binder commutes past opening
+that binder, with the expected one-place decrease in de Bruijn depth. -/
+theorem instantiate1'_instantiate1'_fvars
+    (e : Expr) (outer inner : FVarId) (j d : Nat) :
+    instantiate1' (instantiate1' e (.fvar outer) (j + d + 1))
+        (.fvar inner) j =
+      instantiate1' (instantiate1' e (.fvar inner) j)
+        (.fvar outer) (j + d) := by
+  induction e generalizing j with
+  | bvar i =>
+    simp only [instantiate1']
+    repeat' first | split
+    all_goals try simp only [instantiate1']
+    all_goals repeat' first | split
+    all_goals try simp only [liftLooseBVars']
+    all_goals first | rfl | (exfalso; omega)
+  | fvar | mvar | sort | const | lit => rfl
+  | app fn arg ihFn ihArg =>
+    simp only [instantiate1']
+    rw [ihFn, ihArg]
+  | lam name dom body bi ihDom ihBody =>
+    simp only [instantiate1']
+    rw [ihDom]
+    simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+      ihBody (j + 1)
+  | forallE name dom body bi ihDom ihBody =>
+    simp only [instantiate1']
+    rw [ihDom]
+    simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+      ihBody (j + 1)
+  | letE name ty value body nondep ihTy ihValue ihBody =>
+    simp only [instantiate1']
+    rw [ihTy, ihValue]
+    simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+      ihBody (j + 1)
+  | mdata md body ihBody =>
+    simp only [instantiate1']
+    rw [ihBody]
+  | proj name idx body ihBody =>
+    simp only [instantiate1']
+    rw [ihBody]
+
+/-- Opening one outer binder below a list of inner binders commutes with
+opening those inner binders, when all opening terms are free variables. -/
+theorem instantiateRevList_instantiate1'_fvars
+    (e : Expr) (fv : FVarId) (fvs : List FVarId)
+    (k d : Nat := 0) :
+    instantiateRevList
+        (instantiate1' e (.fvar fv) (k + fvs.length + d))
+        (fvs.map Expr.fvar) k =
+      instantiate1' (instantiateRevList e (fvs.map Expr.fvar) k)
+        (.fvar fv) (k + d) := by
+  induction fvs generalizing d with
+  | nil => simp
+  | cons head tail ih =>
+    simp only [List.length_cons, List.map_cons, instantiateRevList]
+    rw [show k + (tail.length + 1) + d =
+        k + tail.length + (d + 1) by omega]
+    rw [ih (d + 1)]
+    exact instantiate1'_instantiate1'_fvars _ _ _ k d
+
+/-- Reverse-instantiating a bound variable above all supplied free-variable
+arguments removes exactly the size of that substitution block. -/
+theorem instantiateRevList_bvar_fvars_ge
+    (fvars : List FVarId) (k n : Nat) :
+    (Expr.bvar (k + n + fvars.length)).instantiateRevList
+        (fvars.map Expr.fvar) k =
+      .bvar (k + n) := by
+  induction fvars generalizing n with
+  | nil => simp
+  | cons fv fvars ih =>
+    simp only [List.length_cons, List.map_cons, instantiateRevList]
+    rw [show k + n + (fvars.length + 1) =
+        k + (n + 1) + fvars.length by omega]
+    rw [ih (n + 1)]
+    simp [instantiate1']
+
+/-- Reverse-instantiation does not affect bound variables below the supplied
+de Bruijn depth. -/
+theorem instantiateRevList_bvar_fvars_lt
+    (fvars : List FVarId) (i k : Nat) (hi : i < k) :
+    (Expr.bvar i).instantiateRevList (fvars.map Expr.fvar) k = .bvar i := by
+  induction fvars with
+  | nil => simp
+  | cons fv fvars ih =>
+    simp only [List.map_cons, instantiateRevList, ih]
+    simp [instantiate1', hi]
+
+/-- Reverse-instantiating the canonical bound-variable index for an array
+position returns the free variable at that same position. -/
+theorem instantiateRevList_bvar_fvars_getElem
+    (fvars : List FVarId) (i k : Nat) (hi : i < fvars.length) :
+    (Expr.bvar (k + (fvars.length - 1 - i))).instantiateRevList
+        (fvars.map Expr.fvar) k =
+      .fvar fvars[i] := by
+  induction fvars generalizing i with
+  | nil => simp at hi
+  | cons fv fvars ih =>
+    cases i with
+    | zero =>
+      simp only [List.length_cons, Nat.sub_zero,
+        List.map_cons, instantiateRevList, List.getElem_cons_zero]
+      rw [show k + (fvars.length + 1 - 1) =
+          k + 0 + fvars.length by omega]
+      rw [instantiateRevList_bvar_fvars_ge]
+      simp [instantiate1', liftLooseBVars']
+    | succ i =>
+      have hi' : i < fvars.length := by simpa using hi
+      simp only [List.length_cons, List.map_cons, instantiateRevList,
+        List.getElem_cons_succ]
+      rw [show k + (fvars.length + 1 - 1 - (i + 1)) =
+          k + (fvars.length - 1 - i) by omega]
+      rw [ih i hi']
+      simp [instantiate1']
 
 @[simp]
 theorem instantiateList_app : instantiateList (.app f a) as k =
@@ -1072,17 +1282,6 @@ theorem abstractList_eq_self {e : Expr} {as : List FVarId} {k}
     show abstractList (abstract1 a e k) as k = e
     rw [e1]; exact abstract1_eq_self (e1 ▸ h')
 
--- theorem abstract1_looseBVarRange_le :
---     (abstract1 a e k).looseBVarRange' ≤ max k e.looseBVarRange' + 1 := by
---   have H {k a b c d} (h1 : a ≤ max k c + 1) (h2 : b ≤ max k d + 1) :
---       max a b ≤ max k (max c d) + 1 := by
---     rw [Nat.max_le]; simp [Nat.max_def]; split <;> split <;> omega
---   have {k a b c d} (h1 : a ≤ max k c + 1) (h2 : b ≤ max (k+1) d + 1) :
---       max a (b - 1) ≤ max k (max c (d - 1)) + 1 := by apply H <;> omega
---   induction e generalizing k with simp [abstract1, looseBVarRange', *] <;> try solve_by_elim
---   | bvar => split <;> omega
---   | fvar => split <;> simp [looseBVarRange']
-
 theorem lowerLooseBVars_eq_instantiate (h : e.hasLooseBVar' k = false) :
     e.lowerLooseBVars' (k + 1) 1 = instantiate1' e v k := by
   induction e generalizing k with simp_all [hasLooseBVar', lowerLooseBVars', instantiate1']
@@ -1195,6 +1394,51 @@ instance : EquivBEq Expr where
   trans h1 h2 := eqv_euc (eqv_euc h1 (eqv_refl _)) h2
   rfl := eqv_refl _
 
+theorem app_eqv (hfn : fn₁ == fn₂) (harg : arg₁ == arg₂) :
+    (Expr.app fn₁ arg₁ == Expr.app fn₂ arg₂) := by
+  simpa [(· == ·), Expr.eqv'] using And.intro hfn harg
+
+theorem lam_eqv (hdom : dom₁ == dom₂) (hbody : body₁ == body₂) :
+    (Expr.lam name dom₁ body₁ bi == Expr.lam name dom₂ body₂ bi) := by
+  simpa [(· == ·), Expr.eqv'] using And.intro hdom hbody
+
+theorem forallE_eqv (hdom : dom₁ == dom₂) (hbody : body₁ == body₂) :
+    (Expr.forallE name dom₁ body₁ bi ==
+      Expr.forallE name dom₂ body₂ bi) := by
+  simpa [(· == ·), Expr.eqv'] using And.intro hdom hbody
+
+theorem letE_eqv (htype : type₁ == type₂) (hvalue : value₁ == value₂)
+    (hbody : body₁ == body₂) :
+    (Expr.letE name type₁ value₁ body₁ nondep ==
+      Expr.letE name type₂ value₂ body₂ nondep) := by
+  simpa [(· == ·), Expr.eqv'] using And.intro (And.intro htype hvalue) hbody
+
+theorem mdata_eqv (md : MData) (hbody : body₁ == body₂) :
+    (Expr.mdata md body₁ == Expr.mdata md body₂) := by
+  have hbody' : body₁.eqv' body₂ = true := by
+    simpa [(· == ·)] using hbody
+  have hrefl := Expr.eqv_refl (Expr.mdata md body₁)
+  simp [(· == ·), Expr.eqv'] at hrefl ⊢
+  exact And.intro hbody' hrefl.2
+
+theorem proj_eqv (hbody : body₁ == body₂) :
+    (Expr.proj name idx body₁ == Expr.proj name idx body₂) := by
+  have hbody' : body₁.eqv' body₂ = true := by
+    simpa [(· == ·)] using hbody
+  have hrefl := Expr.eqv_refl (Expr.proj name idx body₁)
+  simp [(· == ·), Expr.eqv'] at hrefl ⊢
+  exact And.intro hbody' hrefl.2
+
+theorem mkAppList_eqv {fn₁ fn₂ : Expr} (h : fn₁ == fn₂)
+    (args : List Expr) :
+    fn₁.mkAppList args == fn₂.mkAppList args := by
+  induction args generalizing fn₁ fn₂ with
+  | nil => exact h
+  | cons arg args ih =>
+    apply ih
+    simpa [(· == ·), Expr.eqv'] using
+      And.intro h (Expr.eqv_refl arg)
+
 theorem data_eq {e₁ e₂ : Expr} : e₁ == e₂ → e₁.data = e₂.data := by
   simp [(· == ·)]; induction e₁ generalizing e₂
   all_goals
@@ -1217,3 +1461,176 @@ theorem instantiate1_eqv {e₁ e₂ : Expr} :
 theorem instantiateList_eqv {e₁ e₂ : Expr} (h : e₁ == e₂) :
     e₁.instantiateList as k == e₂.instantiateList as k := by
   induction as generalizing e₁ e₂ <;> simp [instantiate1_eqv, *]
+
+theorem abstractN_eqv {e₁ e₂ : Expr} :
+    e₁ == e₂ → e₁.abstractN xs k == e₂.abstractN xs k := by
+  simp [(· == ·)]
+  induction e₁ generalizing e₂ k
+  all_goals
+    cases e₂ <;> try change false = _ → _; rintro ⟨⟩
+    simp only [abstractN, eqv']
+    intros; simp_all
+  all_goals split <;> simp_all [eqv']
+
+end Expr
+
+end Lean
+
+namespace Lean4Lean.TypeChecker
+
+open Lean hiding Environment Exception
+
+/-- Closing a free variable after lifting below `d` binders is the same as
+closing it outside those binders and lifting the resulting loose variable.
+This is the value-side algebra needed by substitution under binders. -/
+theorem Expr.abstract1_liftLooseBVars_alpha
+    (value : Expr) (fv : FVarId) (k d : Nat) :
+    (value.liftLooseBVars' k d).abstract1 fv (k + d) =
+      (value.abstract1 fv k).liftLooseBVars' k d := by
+  induction value generalizing k d <;>
+    grind [Expr.abstract1, Expr.liftLooseBVars']
+
+/-- Abstracting a free variable commutes with substituting a bound variable.
+This is the single-binder algebra behind alpha-equivariance of `let` beta
+reduction. -/
+theorem Expr.abstract1_instantiate1'_alpha
+    (body value : Expr) (fv : FVarId) (d : Nat) :
+    (body.instantiate1' value d).abstract1 fv d =
+      (body.abstract1 fv (d + 1)).instantiate1'
+        (value.abstract1 fv 0) d := by
+  induction body generalizing d with
+  | bvar index =>
+      by_cases hbelow : index < d
+      · have hbelowSucc : index < d + 1 := by omega
+        simp [Expr.instantiate1', Expr.abstract1, hbelow, hbelowSucc]
+      by_cases heq : index = d
+      · subst index
+        simpa [Expr.instantiate1', Expr.abstract1] using
+          Expr.abstract1_liftLooseBVars_alpha value fv 0 d
+      · have habove : d < index := by omega
+        have hnotBelowSucc : ¬index < d + 1 := by omega
+        have hsubNotBelow : ¬index - 1 < d := by omega
+        have hplusNotBelow : ¬index + 1 < d := by omega
+        have hplusNe : index + 1 ≠ d := by omega
+        simp [Expr.instantiate1', Expr.abstract1, hbelow, heq,
+          hnotBelowSucc, hsubNotBelow, hplusNotBelow, hplusNe,
+          Nat.sub_add_cancel (by omega : 1 ≤ index)]
+  | fvar id =>
+      by_cases h : (fv == id) = true
+      · simp [Expr.instantiate1', Expr.abstract1, h]
+      · simp [Expr.instantiate1', Expr.abstract1, h]
+  | mvar | sort | const | lit => rfl
+  | app fn arg ihFn ihArg =>
+      simp only [Expr.instantiate1', Expr.abstract1]
+      rw [ihFn, ihArg]
+  | lam name domain body bi ihDomain ihBody =>
+      simp only [Expr.instantiate1', Expr.abstract1]
+      rw [ihDomain]
+      simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+        ihBody (d + 1)
+  | forallE name domain body bi ihDomain ihBody =>
+      simp only [Expr.instantiate1', Expr.abstract1]
+      rw [ihDomain]
+      simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+        ihBody (d + 1)
+  | letE name type value body nondep ihType ihValue ihBody =>
+      simp only [Expr.instantiate1', Expr.abstract1]
+      rw [ihType, ihValue]
+      simpa [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using
+        ihBody (d + 1)
+  | mdata data body ihBody =>
+      simp only [Expr.instantiate1', Expr.abstract1]
+      rw [ihBody]
+  | proj name index body ihBody =>
+      simp only [Expr.instantiate1', Expr.abstract1]
+      rw [ihBody]
+
+end Lean4Lean.TypeChecker
+
+namespace Lean.Expr
+
+/-- Source-syntax absence of a set of constants.  This is deliberately an
+inductive judgment rather than a Boolean fold: the literal case records the
+expanded constructor syntax that `TrExprS.lit` actually translates. -/
+inductive AvoidsConsts (names : List Name) : Expr → Prop
+  | bvar (i) : AvoidsConsts names (.bvar i)
+  | fvar (fv) : AvoidsConsts names (.fvar fv)
+  | mvar (mv) : AvoidsConsts names (.mvar mv)
+  | sort (u) : AvoidsConsts names (.sort u)
+  | const (name levels) (fresh : name ∉ names) :
+      AvoidsConsts names (.const name levels)
+  | app (fn arg) : AvoidsConsts names fn → AvoidsConsts names arg →
+      AvoidsConsts names (.app fn arg)
+  | lam (name dom body bi) :
+      AvoidsConsts names dom → AvoidsConsts names body →
+      AvoidsConsts names (.lam name dom body bi)
+  | forallE (name dom body bi) :
+      AvoidsConsts names dom → AvoidsConsts names body →
+      AvoidsConsts names (.forallE name dom body bi)
+  | letE (name type value body nondep) :
+      AvoidsConsts names type → AvoidsConsts names value →
+      AvoidsConsts names body →
+      AvoidsConsts names (.letE name type value body nondep)
+  | lit (value) : AvoidsConsts names value.toConstructor →
+      AvoidsConsts names (.lit value)
+  | mdata (data body) : AvoidsConsts names body →
+      AvoidsConsts names (.mdata data body)
+  | proj (structName idx body) : AvoidsConsts names body →
+      AvoidsConsts names (.proj structName idx body)
+
+end Lean.Expr
+
+namespace Lean.Expr
+
+open Lean4Lean
+
+/-! ### Absence of constants -/
+
+namespace AvoidsConsts
+
+theorem instantiateLevelParamsCore' {names : List Name} {e : Expr} (H : AvoidsConsts names e) :
+    AvoidsConsts names (e.instantiateLevelParamsCore' red s) := by
+  induction H with
+  | bvar => exact .bvar _
+  | fvar => exact .fvar _
+  | mvar => exact .mvar _
+  | sort => exact .sort _
+  | const _ _ fresh => exact .const _ _ fresh
+  | app _ _ _ _ ihf iha => exact .app _ _ ihf iha
+  | lam _ _ _ _ _ _ iht ihb => exact .lam _ _ _ _ iht ihb
+  | forallE _ _ _ _ _ _ iht ihb => exact .forallE _ _ _ _ iht ihb
+  | letE _ _ _ _ _ _ _ _ iht ihv ihb => exact .letE _ _ _ _ _ iht ihv ihb
+  | lit _ h => exact .lit _ h
+  | mdata _ _ _ ih => exact .mdata _ _ ih
+  | proj _ _ _ _ ih => exact .proj _ _ _ ih
+
+theorem instantiateLevelParams {names : List Name} {e : Expr} (H : AvoidsConsts names e) :
+    AvoidsConsts names (e.instantiateLevelParams ps us) := by
+  rw [Expr.instantiateLevelParams_eq]; exact H.instantiateLevelParamsCore'
+
+end AvoidsConsts
+
+/-! ### Forall telescopes -/
+
+/-- `LeadingForalls k e body`: `e` is `k` nested `forallE` binders around `body`. -/
+inductive LeadingForalls : Nat → Expr → Expr → Prop
+  | zero (e : Expr) : LeadingForalls 0 e e
+  | forallE {k : Nat} {n : Name} {t b body : Expr} {bi : BinderInfo} :
+      LeadingForalls k b body → LeadingForalls (k + 1) (.forallE n t b bi) body
+
+theorem LeadingForalls.forallE_inv {k : Nat} {n : Name} {t b body : Expr} {bi : BinderInfo}
+    (H : LeadingForalls (k + 1) (.forallE n t b bi) body) : LeadingForalls k b body := by
+  cases H; assumption
+
+theorem LeadingForalls.isForall {k : Nat} {e body : Expr} (H : LeadingForalls (k + 1) e body) :
+    ∃ n t b bi, e = .forallE n t b bi ∧ LeadingForalls k b body := by
+  cases H; exact ⟨_, _, _, _, rfl, ‹_›⟩
+
+/-- The results of `Nat` literal reduction: a `Nat` literal or a `Bool` constant. -/
+def IsNatResult (e : Expr) : Prop :=
+  (∃ n, e = .lit (.natVal n)) ∨ e = .const ``Bool.true [] ∨ e = .const ``Bool.false []
+
+theorem IsNatResult.toExpr_bool (b : Bool) : IsNatResult (toExpr b) := by
+  cases b <;> simp [IsNatResult, toExpr, mkConst]
+
+end Lean.Expr

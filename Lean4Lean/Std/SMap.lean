@@ -13,6 +13,10 @@ structure WF (s : SMap α β) where
 
 theorem WF.empty : WF ({} : SMap α β) := ⟨.empty, fun _ => rfl, by simp⟩
 
+/-- An empty map in either stage is well formed. -/
+theorem WF.empty_stage (s : Bool) : WF ({ stage₁ := s } : SMap α β) :=
+  ⟨.empty, fun _ => rfl, by simp⟩
+
 protected nonrec theorem WF.insert [LawfulBEq α] [LawfulHashable α] {s : SMap α β}
     (h : s.WF) (k : α) (v : β) (hn : s.find? k = none) : (s.insert k v).WF := by
   unfold insert; split
@@ -111,6 +115,10 @@ theorem WF.find?_eq {α β} [BEq α] [Hashable α] [LawfulBEq α] [LawfulHashabl
     exact Std.HashMap.getElem?_eq_lookup_toList ..
   · simp [toList', List.lookup_append, wf.map₂.find?_eq]
     cases List.lookup a .. <;> simp [Std.HashMap.getElem?_eq_lookup_toList]
+
+@[simp] theorem find?_empty_stage {α β} [BEq α] [Hashable α] [LawfulBEq α] [LawfulHashable α]
+    (s : Bool) (k : α) : ({ stage₁ := s } : SMap α β).find? k = none := by
+  rw [(WF.empty_stage s).find?_eq]; simp [toList']
 
 theorem WF.find?'_eq_find? {α β} [BEq α] [Hashable α] [EquivBEq α] [LawfulHashable α]
     {m : SMap α β} (wf : WF m) (a : α) : m.find?' a = m.find? a := by

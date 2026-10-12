@@ -342,7 +342,7 @@ closing of the probe's own context (`hcl`) to discharge it with, since that is t
 cannot build without naming the binder's type. Both hypotheses are plain propositions about
 `mkRhs (.fvar id)`: `mkRhs` is a function, so nothing here is monadic. -/
 theorem ProbeBundle.probe.WF {c : VContext} {m mp : MLCtx} [cwf : c.MLCWF m] [cwfp : c.MLCWF mp]
-    {P : ProbeBundle (c.withMLC m)} {s : VState} {fail : ∀ {α}, M α}
+    {P : ProbeBundle (c.withMLC m)} {s : State} {fail : ∀ {α}, M α}
     {subst : Array Expr} {mkRhs : Expr → Expr}
     {R : (c.withMLC m).Ext → VExpr.Subst → VExpr → VExpr → Prop}
     {τ : List VExpr} {dk n k}
@@ -378,7 +378,7 @@ theorem ProbeBundle.probe.WF {c : VContext} {m mp : MLCtx} [cwf : c.MLCWF m] [cw
   obtain ⟨hdomTr, hdomTy, hFpackTr, resTy, hFpackT⟩ :=
     P.applied W cwfp.wf.tr.wf
       (Expr.mkAppN_eq _ _ ▸ TrExprS.appN c.Ewf.orderedStrong (c.withMLC mp).Δwf.toCtx
-        (P.hpack.weakFV c.Ewf.ordered W cwfp.wf.tr.wf) hτ ⟨_, hpackT⟩) hpackT
+        (P.hpack.weakFV c.Ewf.orderedStrong W cwfp.wf.tr.wf) hτ ⟨_, hpackT⟩) hpackT
   unfold Probe.probe
   refine M.WF.withLocalDecl hdomTr hdomTy .rfl ?_
   intro id cwf' s' hs hres
@@ -584,7 +584,7 @@ every argument of `go` still bound. `entry` at `a` fixes the base point to `a`, 
 `reflects` runs the induction at. `lambdaTelescope.Inv` supplies the closing (its domains and
 `VExpr.lams_appN`), and `hσm` supplies the arguments' typing, which is what makes that closing a
 `VEnv.Ctx.SubstEq`. -/
-theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : VState}
+theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : State}
     {e meas : Expr} {fail : ∀ {α}, M α} {ev mv : VExpr}
     (hev : (c.withMLC m₀).TrExprS e ev) (hmv : (c.withMLC m₀).TrExprS meas mv)
     (hnat : c.venv.contains ``Nat) (hsafe : c.safety = .safe)
@@ -656,7 +656,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
   let .app hfixT ha₀A hfixS ha₀ stk := stk
   -- `a`, the variable the `go` equation is checked at, standing for the packed argument
   refine .bind (inferType.WF ha₀) fun ty _ _ ⟨tyv, _, _, htyS, hty⟩ => ?_
-  -- Next: `M.WF.withLocalDecl htyS (hty.isType c.Ewf.ordered (c.withMLC m').Δwf.toCtx)`, bound
+  -- Next: `M.WF.withLocalDecl htyS (hty.isType c.Ewf.orderedStrong (c.withMLC m').Δwf.toCtx)`, bound
   -- into the rest -- `withLocalDecl` is followed by `getLCtx` and the `F` closedness test, so it
   -- is a `.bind`, not the tail.
   --
@@ -687,11 +687,11 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     -- `f` has a pi type -- that `checkType (f.app a)` succeeded is how we know -- and its domain
     -- is the binder's type, so `f` also applies to the packed argument
     let .app hfT haT hfS haS := hfaS
-    cases TrExprS.unique (by simp [TrExprS.IsUnique]) haS hida
+    cases TrExprS.unique haS hida
     have hdom := (VEnv.HasType.bvar .zero).uniqU c.Ewf
       (c.withMLC _ (wf := cwfa)).Δwf.toCtx haT
     have ha₀T := VEnv.HasType.defeqU_r c.Ewf (c.withMLC _ (wf := cwfa)).Δwf.toCtx hdom
-      (hty.weakN c.Ewf.ordered
+      (hty.weakN c.Ewf.orderedStrong
         (VLCtx.FVLift.skip_fvar (ida, ty.fvarsList) (.vlam tyv) .refl).toCtx)
     refine .bind (isDefEq.WF (.app hfT ha₀T hfS ha₀w) hbodyw) fun _ _ _ hfa₀ => ?_
     split <;> [skip; exact hfailb]
@@ -790,7 +790,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
         .app (TrExprS.natSucc c.hasPrimitives hnat).2 hfaNatT
       have hAnat := hfuelNT.uniqU c.Ewf (c.withMLC _ (wf := cwfa)).Δwf.toCtx
         (VEnv.HasType.defeqU_l c.Ewf (c.withMLC _ (wf := cwfa)).Δwf.toCtx (hfuelEq ‹_›).symm hnT)
-      have hAnatw := hAnat.weakN c.Ewf.ordered
+      have hAnatw := hAnat.weakN c.Ewf.orderedStrong
         (VLCtx.FVLift.skip_fvar (idx, (Expr.const ``Nat []).fvarsList) (.vlam .nat) .refl).toCtx
       have hidxT' := VEnv.HasType.defeqU_r c.Ewf (c.withMLC _ (wf := cwfx)).Δwf.toCtx
         (by simpa [mx, VExpr.lift, VExpr.liftN, VExpr.nat] using hAnatw.symm) hidxT
@@ -811,7 +811,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
         hgen hlit.2
       simp [VExpr.inst, VExpr.instVar, VLocalDecl.depth, VExpr.inst_lift] at hinst
       refine VEnv.IsDefEqU.trans c.Ewf (c.withMLC _ (wf := cwfa)).Δwf.toCtx ⟨_, hinst⟩ ?_
-      have hrI := TrExprS.instN (henv := c.Ewf.ordered) (h₀ := hlit.1) (W := .zero)
+      have hrI := TrExprS.instN (henv := c.Ewf.orderedStrong) (h₀ := hlit.1) (W := .zero)
         (H := hrS.abstract (v₀ := idx) .zero) hlit.2
       -- the same conditional at the literal: both branches are it, and the decision now reduces
       have hbeqCa := TrExprS.ofConst (Us := c.lparams)
@@ -962,7 +962,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
         exact h.1.resolve_left h.2
       obtain ⟨nrv₀, hnr₀⟩ := TrExprS.weakFV_inv c.Ewf (.skip_fvar _ (.vlam tyv2) .refl)
         (.refl c.Ewf (c.withMLC _ (wf := cwf2b)).Δwf) hnr (m2'.noBV ▸ hnr.closed) hnrfv
-      exact ⟨nrv₀, ((hnr₀.weakFV c.Ewf.ordered (.skip_fvar _ _ .refl)
+      exact ⟨nrv₀, ((hnr₀.weakFV c.Ewf.orderedStrong (.skip_fvar _ _ .refl)
         (c.withMLC _ (wf := cwf2b)).Δwf).uniq c.Ewf
         (.refl c.Ewf (c.withMLC _ (wf := cwf2b)).Δwf) hnr).symm⟩
     refine .pure ⟨ida, cwfa, ?_, ?_⟩
@@ -992,10 +992,14 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     have hfvs : fvs = ⟨List.map Expr.fvar (m'.fvarRevList n hn).reverse⟩ := by
       have := congrArg List.reverse harr; simp at this
       exact Array.toList_inj.1 (by simpa using this)
+    have hFc : F.looseBVarRange' = 0 := (m'.noBV ▸ hFF.closed).looseBVarRange_zero
+    have hndF : ((m'.fvarRevList n hn).reverse).Nodup :=
+      List.nodup_reverse.2 (‹c.MLCWF m'›.wf.fvarRevList_nodup n hn)
     have hFlb : (F.abstractList (m'.fvarRevList n hn).reverse).looseBVarRange' = 0 := by
-      simp only [Fa, hfvs, Expr.abstract_eq] at hF; simpa [Expr.hasLooseBVars] using hF
+      simp only [Fa, hfvs, Expr.abstract_eq_of_closed _ _ hndF hFc] at hF
+      simpa [Expr.hasLooseBVars] using hF
     have hFaF : Fa = F := by
-      simp only [Fa, hfvs, Expr.abstract_eq]
+      simp only [Fa, hfvs, Expr.abstract_eq_of_closed _ _ hndF hFc]
       exact Expr.abstractList_eq_self (Nat.le_of_eq hFlb)
     obtain ⟨Fv, hFaS⟩ : ∃ Fv, (c.withMLC m').TrExprS Fa Fv := ⟨_, hFaF ▸ hFF⟩
     -- and the same guard read on the variables rather than the term: `F` mentions none of the
@@ -1029,7 +1033,8 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
           c.venv.HasType c.lparams.length (c.withMLC m₀).vlctx.toCtx pack' packTy ∧
           c.venv.HasType c.lparams.length (As.reverse ++ (c.withMLC m₀).vlctx.toCtx) a₀' tyv ∧
           (c.withMLC m').TrExprS a₀ a₀' := by
-      rw [show (c.withMLC m').lctx' = m'.lctx from rfl, hwf'.mkLambda_eq n hn harr]
+      rw [show (c.withMLC m').lctx' = m'.lctx from rfl,
+        hwf'.mkLambda_eq n hn harr (m'.noBV ▸ ha₀.closed)]
       refine ⟨_, _, _, hdrop ▸ (hwf'.mkLambda_trS c.Ewf ha₀ hty n hn).1, hmk _,
         hdrop ▸ (hwf'.mkLambda_trS c.Ewf ha₀ hty n hn).2, ?_⟩
       refine ⟨?_, ha₀⟩
@@ -1092,7 +1097,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
       -- `hBS` translates `cod` under the `none`-tagged `vlam` the `forallE` rule produces, and
       -- `inst_fvar` turns that binder into `idd`'s -- exactly the substitution the code performs
       simp only [Expr.instantiate1_eq]
-      refine .bind (whnf.WF (hBS.inst_fvar c.Ewf.ordered cwfd.wf.tr.wf)) fun _ _ _ h2 => ?_
+      refine .bind (whnf.WF (hBS.inst_fvar c.Ewf.orderedStrong cwfd.wf.tr.wf)) fun _ _ _ h2 => ?_
       obtain ⟨hw2b, _, hw2S, hw2eq⟩ := h2
       have hw2fv := hw2b _ hupd ((hcodfv.mono fun _ => .inl).instantiate1 (.inr rfl))
       split <;> try exact hfail
@@ -1150,8 +1155,11 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
       have hsorted := VEnv.IsDefEqU.defeqDF c.Ewf hΓc (hT.hasType.1.uniqU c.Ewf hΓc hcodv₀T) hT
       have hlamS : (c.withMLC m₀).TrExprS (.lam `a Adom (dAE.abstract #[.fvar idd]) .default)
           (.lam Aty dAv₀) := by
-        simp only [show (#[Expr.fvar idd] : Array Expr) = ⟨[idd].map .fvar⟩ from rfl,
-          Expr.abstract_eq, Expr.abstractList]
+        have hdAEc : dAE.looseBVarRange' ≤ 0 :=
+          Nat.le_of_eq (Closed.looseBVarRange_zero (by have := hdAS.closed; rwa [VContext.vlctx,
+            (VContext.mlctx _).noBV] at this))
+        rw [show (#[Expr.fvar idd] : Array Expr) = ⟨[idd].map .fvar⟩ from rfl,
+          Expr.abstractN_eq, Expr.abstractN_singleton hdAEc]
         exact .lam hAty hAtyS hdAS₀
       exact .pure ⟨.lam Aty dAv₀, hlamS, ⟨_, .lam hAty.choose_spec hdAT⟩, restv₀, _, hsorted⟩
     -- `F`'s own typing comes down the same way: `inferType`'s judgement is transported onto the
@@ -1581,7 +1589,7 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     obtain ⟨w1, w2, w3, w4, rfl⟩ : ∃ w1 w2 w3 w4, xs4 = [w1, w2, w3, w4] := by
       rcases xs4 with _|⟨w1,_|⟨w2,_|⟨w3,_|⟨w4,_|_⟩⟩⟩⟩ <;> simp at hxs4len ⊢
     let .app _ _ hFgS hxgS := hFxS
-    have hFg3 := hFg0.weakFV c.Ewf.ordered hinv3.lift (c.withMLC m3).Δwf
+    have hFg3 := hFg0.weakFV c.Ewf.orderedStrong hinv3.lift (c.withMLC m3).Δwf
     have hFgeq := hFgS.uniq c.Ewf (.refl c.Ewf (c.withMLC m3).Δwf) hFg3
     have hxgeq := hxgS.uniq c.Ewf (.refl c.Ewf (c.withMLC m3).Δwf) hxg0
     have hFgc := E.mono (hΓ3 ▸ hFgeq) |>.subst E.wf hcl3
@@ -1652,13 +1660,13 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
           (As2.reverse ++ (tyv :: (As.reverse ++ (c.withMLC m₀).vlctx.toCtx))) := hΓ3
       rw [show (c.withMLC m4).vlctx = m4.vlctx from rfl, hinv4.toCtx, h3']
     -- the recursor, weakened over the two inner telescopes and closed
-    have hnr4 := hnrS.weakFV c.Ewf.ordered hinv3.lift (c.withMLC m3).Δwf
-      |>.weakFV c.Ewf.ordered hinv4.lift (c.withMLC m4).Δwf
+    have hnr4 := hnrS.weakFV c.Ewf.orderedStrong hinv3.lift (c.withMLC m3).Δwf
+      |>.weakFV c.Ewf.orderedStrong hinv4.lift (c.withMLC m4).Δwf
     have hnreq4 := E.mono (hΓ4 ▸ hnrS4.uniq c.Ewf (.refl c.Ewf (c.withMLC m4).Δwf) hnr4)
       |>.subst E.wf hcl4
     -- the fuel, and the recursion argument the `ih` telescope binds
-    have htg4 := htg0.weakFV c.Ewf.ordered hinv3.lift (c.withMLC m3).Δwf
-      |>.weakFV c.Ewf.ordered hinv4.lift (c.withMLC m4).Δwf
+    have htg4 := htg0.weakFV c.Ewf.orderedStrong hinv3.lift (c.withMLC m3).Δwf
+      |>.weakFV c.Ewf.orderedStrong hinv4.lift (c.withMLC m4).Δwf
     have htgeq4 := E.mono (hΓ4 ▸ htgS4.uniq c.Ewf (.refl c.Ewf (c.withMLC m4).Δwf) htg4)
       |>.subst E.wf hcl4
     have hygeq4 := E.mono (hΓ4 ▸ hygS.uniq c.Ewf (.refl c.Ewf (c.withMLC m4).Δwf) hyg0)
@@ -1720,7 +1728,7 @@ contexts are built on top of `c` and are the business of `probe.WF`.
 `R` is quantified after `γ`, which is what lets the answer depend on the closing: `Nat.bitwise`
 is checked with its operator still a variable of `c`, and only a closing says which `Bool`
 operation that variable stands for. -/
-theorem unfoldNatWellFounded.WF {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : VState}
+theorem unfoldNatWellFounded.WF {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : State}
     {e meas : Expr} {fail : ∀ {α}, M α} {ev mv : VExpr}
     (hev : (c.withMLC m₀).TrExprS e ev) (hmv : (c.withMLC m₀).TrExprS meas mv)
     (hnat : c.venv.contains ``Nat) (hsafe : c.safety = .safe)
@@ -1747,7 +1755,7 @@ first, which is what `fun m _ => m` measures.
 The measure being fixed, so are its translation and what it is worth at the recursion's
 arguments -- that is `natFstLamApp`, and it is a closed term, so no closing reaches it -- and all
 that is left of `unfoldNatWellFounded.WF` for the caller is the value being unfolded. -/
-theorem unfoldNatWellFounded.WF₂ {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : VState}
+theorem unfoldNatWellFounded.WF₂ {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s : State}
     {e : Expr} {fail : ∀ {α}, M α} {ev : VExpr}
     (hev : (c.withMLC m₀).TrExprS e ev)
     (hnat : c.venv.contains ``Nat) (hsafe : c.safety = .safe)

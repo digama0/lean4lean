@@ -1,5 +1,8 @@
 import Lean4Lean.Tests.Toolchain
+import Lean4Lean.Tests.ProjectionInference
+import Lean4Lean.Tests.ProjectionWithoutCasesOn
 import Lean4Lean.Tests.ProjectionSpecialization
+import Lean4Lean.Tests.ProjectionReduction
 import Lean4Lean.Tests.ShapeDecide
 import Lean4Lean.Tests.IotaShape
 import Lean4Lean.Tests.InductiveSignature
@@ -22,6 +25,9 @@ import Lean4Lean.Tests.DeclFVar
 import Lean4Lean.Tests.Level
 import Lean4Lean.Tests.TypeAnnotationWrappers
 import Lean4Lean.Tests.StructEtaIota
+import Lean4Lean.Tests.CacheScope
 import Lean4Lean.Tests.LetCache
+import Lean4Lean.Tests.FVarRenamingEquivManager
+import Lean4Lean.Tests.QuotInit
 import Lean4Lean.Tests.AmbientContext
 import Lean4Lean.Tests.RecursiveFieldClassification

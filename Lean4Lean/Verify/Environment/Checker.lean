@@ -47,15 +47,15 @@ private theorem Except.WF.trivial (x : Except ε α) : x.WF fun _ => True :=
   fun _ _ => True.intro
 
 private theorem TypeChecker.M.WF.pureBind {c : VContext}
-    {s : VState} {f : β → M α} {Q} {x : β}
+    {s : State} {f : β → M α} {Q} {x : β}
     (H : (f x).WF c s Q) : ((Pure.pure x : M β) >>= f).WF c s Q := H
 
 /-- The part of `checkConstantVal` that does not check the name. `addDefinition` runs it before
 `Primitive.checkDef`, so that the latter's `isDefEq` calls act on terms already known to be well
 typed, and defers the name check until the primitive verdict is available. -/
-theorem checkConstantValBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (ci : ConstantInfo) (state : VState := {}) :
-    (checkConstantValBody env ci.toConstantVal).WF (.mk' wf safety ci.levelParams) state fun _ _ =>
+theorem checkConstantValBody.WF {env : Environment} {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
+    (ci : ConstantInfo) (state : State := {}) :
+    (checkConstantValBody env ci.toConstantVal).WF (.mk' wf safety ci.levelParams fuel) state fun _ _ =>
       ∃ ci' : VConstVal,
         ci.levelParams.length = ci'.uvars ∧
         TrExprS (ves.venv safety) ci.levelParams [] ci.type ci'.type ∧
@@ -66,8 +66,8 @@ theorem checkConstantValBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF e
   refine (M.WF.liftExcept
     (checkNoMVarNoFVar.WF env ci.name ci.type)).bind fun _ _ _ hclosed => ?_
   have hclosed' : ci.type.FVarsIn
-      (· ∈ (VContext.mk' wf safety ci.levelParams).vlctx.fvars) := by
-    simpa [VContext.mk', VContext.mk1] using hclosed
+      (· ∈ (VContext.mk' wf safety ci.levelParams fuel).vlctx.fvars) := by
+    simpa [VContext.mk', VContext.mk1, VContext.mkChecking] using hclosed
   refine (checkType.WF hclosed').bind fun _ _ _ ⟨type', sort', _, htype, hsort, hhasType⟩ => ?_
   refine (ensureSort.WF hsort).bind fun _ _ _ ⟨⟨_, hsort', hdefeq⟩, hsortEq⟩ => .pure ?_
   obtain ⟨u, rfl⟩ := hsortEq
@@ -75,10 +75,10 @@ theorem checkConstantValBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF e
   refine ⟨{ name := ci.name, uvars := ci.levelParams.length, type := type' }, rfl, htype, rfl, ?_⟩
   exact ⟨_, hhasType.defeqU_r (wf.tr (safety := safety)).wf (by trivial) hdefeq.symm⟩
 
-theorem checkConstantValCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (ci : ConstantInfo) (allowPrimitive : Bool) (state : VState := {}) :
+theorem checkConstantValCore.WF {env : Environment} {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
+    (ci : ConstantInfo) (allowPrimitive : Bool) (state : State := {}) :
     (checkConstantVal env ci.toConstantVal allowPrimitive).WF
-      (.mk' wf safety ci.levelParams) state fun _ _ =>
+      (.mk' wf safety ci.levelParams fuel) state fun _ _ =>
         ∃ ci' : VConstVal,
           ci.levelParams.length = ci'.uvars ∧
           TrExprS (ves.venv safety) ci.levelParams [] ci.type ci'.type ∧
@@ -91,10 +91,10 @@ theorem checkConstantValCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF e
   exact (checkConstantValBody.WF wf ci _).mono fun _ _ _ ⟨ci', hu, ht, hn', hci⟩ =>
     ⟨ci', hu, ht, hn', hci, hname⟩
 
-theorem checkConstantVal.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (ci : ConstantInfo) (allowPrimitive : Bool) (hs : safety ≤ ci.safety) (state : VState := {}) :
+theorem checkConstantVal.WF {env : Environment} {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
+    (ci : ConstantInfo) (allowPrimitive : Bool) (hs : safety ≤ ci.safety) (state : State := {}) :
     (checkConstantVal env ci.toConstantVal allowPrimitive).WF
-      (.mk' wf safety ci.levelParams) state fun _ _ =>
+      (.mk' wf safety ci.levelParams fuel) state fun _ _ =>
         ∃ ci' : VConstVal, TrConstVal safety (ves.venv safety) ci ci' ∧
           ci'.toVConstant.WF (ves.venv safety) ∧ env.find? ci.name = none ∧
           (Environment.primitives.contains ci.name → allowPrimitive) :=
@@ -113,15 +113,15 @@ separately.
 
 Stated against a single-level model (`VEnvAt`): a mutual block's bodies are checked in the
 temporary environment holding the whole block as axioms, which has no model at every level. -/
-theorem checkBodyCore.WF {env : Environment} {venv : VEnv} (wf : VEnvAt env safety venv)
+theorem checkBodyCore.WF {env : Environment} {venv : VEnv} {fuel : FuelConfig} (wf : VEnvAt env safety venv)
     (decl : Declaration) (levelParams : List Name) (type value : Expr)
     (type' : VExpr) (hdeclType : TrExprS venv levelParams [] type type')
-    (hclosed : value.FVarsIn fun _ => False) (state : VState := {}) :
-    (checkBodyCore env decl type value).WF (.mk1 wf levelParams) state fun _ _ =>
+    (hclosed : value.FVarsIn fun _ => False) (state : State := {}) :
+    (checkBodyCore env decl type value).WF (.mk1 wf levelParams fuel) state fun _ _ =>
       ∃ value', TrExprS venv levelParams [] value value' ∧
         venv.HasType levelParams.length [] value' type' := by
-  have hclosed' : value.FVarsIn (· ∈ (VContext.mk1 wf levelParams).vlctx.fvars) := by
-    simpa [VContext.mk1] using hclosed
+  have hclosed' : value.FVarsIn (· ∈ (VContext.mk1 wf levelParams fuel).vlctx.fvars) := by
+    simpa [VContext.mk1, VContext.mkChecking] using hclosed
   refine (checkType.WF hclosed').bind
     fun valueType _ _ ⟨value', _, _, hvalue, hvalueType, hhasType⟩ => ?_
   refine (isDefEq.WF hvalueType hdeclType).bind fun equal _ _ hequal => ?_
@@ -133,11 +133,11 @@ def checkBody (env : Environment) (name : Name)
   Environment.checkNoMVarNoFVar env name value
   checkBodyCore env decl type value
 
-theorem checkBody.WF {env : Environment} (wf : VEnvAt env safety venv)
+theorem checkBody.WF {env : Environment} {fuel : FuelConfig} (wf : VEnvAt env safety venv)
     (decl : Declaration) (name : Name) (value : Expr)
     (hdeclType : TrExprS venv levelParams [] type type')
-    (state : VState := {}) :
-    (checkBody env name type value decl).WF (.mk1 wf levelParams) state fun _ _ =>
+    (state : State := {}) :
+    (checkBody env name type value decl).WF (.mk1 wf levelParams fuel) state fun _ _ =>
       ∃ value', TrExprS venv levelParams [] value value' ∧
         venv.HasType levelParams.length [] value' type' :=
   (M.WF.liftExcept (checkNoMVarNoFVar.WF env name value)).bind fun _ _ _ hclosed =>
@@ -152,8 +152,8 @@ def checkTheorem (env : Environment) (v : TheoremVal) : M Unit := do
   if !(← isDefEq valueType v.type) then
     throw <| Exception.declTypeMismatch env (.thmDecl v) valueType
 
-theorem checkTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : TheoremVal) :
-    (checkTheorem env v).WF (.mk' wf .safe v.levelParams) {} fun _ _ =>
+theorem checkTheorem.WF {env : Environment} {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env) (v : TheoremVal) :
+    (checkTheorem env v).WF (.mk' wf .safe v.levelParams fuel) {} fun _ _ =>
       ∃ ci' : VDefVal, TrDefVal .safe (ves.venv .safe) (.thmInfo v) ci' ∧
         ci'.WF (ves.venv .safe) ∧
         (ves.venv .safe).HasType ci'.uvars [] ci'.type (.sort .zero) ∧
@@ -171,9 +171,9 @@ theorem checkTheorem.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v :
   · simp at hnonprim; exact hnonprim
 
 /-- The type and the body, with neither the name check nor the primitive check. -/
-theorem checkDefinitionBody.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
-    (v : DefinitionVal) (state : VState := {}) :
-    (checkDefinitionBody env v).WF (.mk' wf safety v.levelParams) state fun _ _ => ∃ ci' : VDefVal,
+theorem checkDefinitionBody.WF {env : Environment} {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
+    (v : DefinitionVal) (state : State := {}) :
+    (checkDefinitionBody env v).WF (.mk' wf safety v.levelParams fuel) state fun _ _ => ∃ ci' : VDefVal,
       v.levelParams.length = ci'.uvars ∧
       TrExprS (ves.venv safety) v.levelParams [] v.type ci'.type ∧
       v.name = ci'.name ∧
@@ -188,9 +188,9 @@ def checkDefinition (env : Environment) (v : DefinitionVal) : M Unit := do
   checkDefinitionBody env v
   Environment.checkName env v.name (← Primitive.checkDef v)
 
-theorem checkDefinition.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
+theorem checkDefinition.WF {env : Environment} {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
     (v : DefinitionVal) :
-    (checkDefinition env v).WF (.mk' wf .safe v.levelParams) {} fun _ _ => ∃ ci' : VDefVal,
+    (checkDefinition env v).WF (.mk' wf .safe v.levelParams fuel) {} fun _ _ => ∃ ci' : VDefVal,
       (Environment.primitives.contains v.name → Primitive.PrimitiveResult (ves.venv .safe) v ci') ∧
       v.levelParams.length = ci'.uvars ∧
       TrExprS (ves.venv .safe) v.levelParams [] v.type ci'.type ∧
@@ -213,8 +213,8 @@ def checkOpaque (env : Environment) (v : OpaqueVal) : M Unit := do
 the resulting `VDefVal`; `TrEnv'.opaque` consumes it. An opaque body still contributes no
 definitional equality -- that is `TrEnv'.opaque` adding no `addDefEq`, not the body going
 unrecorded. -/
-theorem checkOpaque.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env) (v : OpaqueVal) :
-    (checkOpaque env v).WF (.mk' wf .safe v.levelParams) {} fun _ _ => ∃ ci' : VDefVal,
+theorem checkOpaque.WF {env : Environment} {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env) (v : OpaqueVal) :
+    (checkOpaque env v).WF (.mk' wf .safe v.levelParams fuel) {} fun _ _ => ∃ ci' : VDefVal,
       v.levelParams.length = ci'.uvars ∧
       TrExprS (ves.venv .safe) v.levelParams [] v.type ci'.type ∧
       v.name = ci'.name ∧

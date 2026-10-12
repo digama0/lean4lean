@@ -7,6 +7,21 @@ open Lean4Lean
 
 namespace Lean.LocalContext
 
+theorem find?_empty (fv : FVarId) : ({} : LocalContext).find? fv = none := by
+  show PersistentHashMap.find? PersistentHashMap.empty fv = none
+  rw [PersistentHashMap.WF.empty.find?_eq, PersistentHashMap.toList'_empty]
+  rfl
+
+/-- `find?_mkLocalDecl` with the test written as `fv == fv'`. -/
+theorem find?_mkLocalDecl_beq
+    {l : LocalContext} {fv fv' : FVarId} {name : Name} {ty : Expr}
+    {bi : BinderInfo} {kind : LocalDeclKind} (hwf : l.fvarIdToDecl.WF) :
+    (l.mkLocalDecl fv name ty bi kind).find? fv' =
+      if fv == fv' then some (.cdecl l.decls.size fv name ty bi kind)
+      else l.find? fv' := by
+  simp only [LocalContext.mkLocalDecl, LocalContext.find?]
+  exact hwf.find?_insert
+
 noncomputable def toList (lctx : LocalContext) : List LocalDecl :=
   lctx.decls.toList'.reverse.filterMap id
 
@@ -39,24 +54,6 @@ where
   | [], b => b
   | x :: xs, b => go xs (mkBindingList1 isLambda lctx xs.reverse x b)
 
-theorem mkBinding_eq :
-    mkBinding isLambda lctx ⟨xs.map .fvar⟩ b = mkBindingList isLambda lctx xs b := by
-  simp only [mkBinding, List.getElem_toArray, Expr.abstractRange_eq, Expr.hasLooseBVar_eq,
-    Expr.abstract_eq, ← Array.take_eq_extract, List.take_toArray, Bool.and_false,
-    ← List.map_take, List.getElem_map, Expr.lowerLooseBVars_eq]
-  dsimp only [Array.size]
-  simp only [List.getElem_eq_getElem?_get, Option.get_eq_getD (fallback := default)]
-  change Nat.foldRev _ (fun i x =>
-    mkBindingList1 isLambda lctx (xs.take i) (xs[i]?.getD default)) .. = mkBindingList.go ..
-  rw [List.length_map]; generalize eq : xs.length = n
-  generalize b.abstractList xs = b
-  induction n generalizing xs b with
-  | zero => let [] := xs; simp [mkBindingList.go]
-  | succ n ih =>
-    obtain rfl | ⟨xs, a, rfl⟩ := List.eq_nil_or_concat xs; · cases eq
-    simp at eq ⊢; subst eq
-    simp +contextual only [Nat.le_of_lt, List.take_append_of_le_length,
-      List.getElem?_append_left, mkBindingList.go, ih]; simp
 
 theorem mkBindingList1_abstract {xs : List FVarId}
     (hx : lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
@@ -104,6 +101,236 @@ theorem mkBindingList_eq_fold
     mkBindingList isLambda lctx xs b =
     xs.foldr (fun a e => mkBindingList1 isLambda lctx [] a (e.abstract1 a)) b := by
   induction xs <;> simp_all [mkBindingList_cons]
+
+/-! ### Exact (simultaneous-abstraction) model of `mkBinding`
+
+`mkBindingListN` models `LocalContext.mkBinding` with Lean's actual abstraction
+(`Expr.abstractN`, linked to `Expr.abstract` by the axiom `Expr.abstractN_eq`). It agrees with the sequential
+`mkBindingList` when the body and binder types are locally closed and the variables are
+duplicate-free, and it is the model to use wherever a body may contain loose bound variables
+(for example the recursor-placeholder templates of recursive calls). -/
+
+def mkBindingList1N (isLambda : Bool) (lctx : LocalContext)
+    (xs : List FVarId) (x : FVarId) (b : Expr) : Expr :=
+  match lctx.find? x with
+  | some (.cdecl _ _ n ty bi _) =>
+    let ty := ty.abstractN xs
+    if isLambda then
+      .lam n ty b bi
+    else
+      .forallE n ty b bi
+  | some (.ldecl _ _ n ty val nonDep _) =>
+    if b.hasLooseBVar' 0 then
+      let ty  := ty.abstractN xs
+      let val := val.abstractN xs
+      .letE n ty val b nonDep
+    else
+      b.lowerLooseBVars' 1 1
+  | none => panic! "unknown free variable"
+
+def mkBindingListN (isLambda : Bool) (lctx : LocalContext) (xs : List FVarId) (b : Expr) :
+    Expr :=
+  core (b.abstractN xs)
+where
+  core := go xs.reverse
+  go : List FVarId → Expr → Expr
+  | [], b => b
+  | x :: xs, b => go xs (mkBindingList1N isLambda lctx xs.reverse x b)
+
+theorem mkBinding_eqN :
+    mkBinding isLambda lctx ⟨xs.map .fvar⟩ b = mkBindingListN isLambda lctx xs b := by
+  simp only [mkBinding, List.getElem_toArray, Expr.abstractRange_eq, Expr.hasLooseBVar_eq,
+    Expr.abstractN_eq, ← Array.take_eq_extract, List.take_toArray, Bool.and_false,
+    ← List.map_take, List.getElem_map, Expr.lowerLooseBVars_eq]
+  dsimp only [Array.size]
+  simp only [List.getElem_eq_getElem?_get, Option.get_eq_getD (fallback := default)]
+  change Nat.foldRev _ (fun i x =>
+    mkBindingList1N isLambda lctx (xs.take i) (xs[i]?.getD default)) .. = mkBindingListN.go ..
+  rw [List.length_map]; generalize eq : xs.length = n
+  generalize b.abstractN xs = b
+  induction n generalizing xs b with
+  | zero => let [] := xs; simp [mkBindingListN.go]
+  | succ n ih =>
+    obtain rfl | ⟨xs, a, rfl⟩ := List.eq_nil_or_concat xs; · cases eq
+    simp at eq ⊢; subst eq
+    simp +contextual only [Nat.le_of_lt, List.take_append_of_le_length,
+      List.getElem?_append_left, mkBindingListN.go, ih]; simp
+
+theorem mkBindingList1N_abstract {xs : List FVarId}
+    (hx : lctx.find? x = some decl) (ha : a ∉ xs) :
+    (mkBindingList1N isLambda lctx xs x b).abstractN [a] xs.length =
+    mkBindingList1N isLambda lctx (a :: xs) x (b.abstractN [a] (xs.length + 1)) := by
+  simp [mkBindingList1N, hx]; cases decl with simp
+  | cdecl _ _ _ ty => split <;> simp [Expr.abstractN, Expr.abstractN_cons ha]
+  | ldecl =>
+    rw [Expr.abstractN_hasLooseBVar_zero]
+    split
+    · simp [Expr.abstractN, Expr.abstractN_cons ha]
+    · rename_i h; simp at h
+      rw [Expr.abstractN_lower _ _ _ h]
+
+theorem mkBindingListN_core_cons {xs : List FVarId} {b : Expr}
+    (hx : ∀ x ∈ xs, ∃ decl, lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
+    mkBindingListN.core isLambda lctx (a :: xs) (b.abstractN [a] xs.length) =
+    mkBindingList1N isLambda lctx [] a
+      ((mkBindingListN.core isLambda lctx xs b).abstractN [a]) := by
+  obtain ⟨xs, rfl⟩ : ∃ xs', List.reverse xs' = xs := ⟨_, List.reverse_reverse _⟩
+  simp [mkBindingListN.core] at *
+  induction xs generalizing b with
+  | nil => simp [mkBindingListN.go]
+  | cons c xs ih =>
+    simp at hx nd ih
+    let ⟨decl, eq⟩ := hx.1
+    simp [mkBindingListN.go]
+    rw [← xs.length_reverse, ← mkBindingList1N_abstract eq (by simp [*])]
+    simp [ih hx.2 nd.1.2 nd.2.2]
+
+@[simp] theorem mkBindingListN_nil : mkBindingListN isLambda lctx [] b = b := by
+  simp [mkBindingListN, mkBindingListN.core, mkBindingListN.go, Expr.abstractN_nil]
+
+theorem mkBindingListN_cons
+    (hx : ∀ x ∈ xs, ∃ decl, lctx.find? x = some decl) (nd : (a :: xs).Nodup) :
+    mkBindingListN isLambda lctx (a :: xs) b =
+    mkBindingList1N isLambda lctx [] a ((mkBindingListN isLambda lctx xs b).abstractN [a]) := by
+  simp only [mkBindingListN]
+  rw [Expr.abstractN_cons (by simpa using (List.nodup_cons.1 nd).1), Nat.zero_add,
+    mkBindingListN_core_cons hx nd]
+
+theorem mkBindingListN_eq_fold
+    (hx : ∀ x ∈ xs, ∃ decl, lctx.find? x = some decl) (nd : xs.Nodup) :
+    mkBindingListN isLambda lctx xs b =
+    xs.foldr (fun a e => mkBindingList1N isLambda lctx [] a (e.abstractN [a])) b := by
+  induction xs <;> simp_all [mkBindingListN_cons]
+
+theorem mkBindingList1N_congr (H : lctx₁.find? x = lctx₂.find? x) :
+    mkBindingList1N isLambda lctx₁ xs x b = mkBindingList1N isLambda lctx₂ xs x b := by
+  simp [mkBindingList1N, H]
+
+/-- A local declaration whose type (and value) are locally closed. -/
+def DeclClosed : LocalDecl → Prop
+  | .cdecl _ _ _ ty _ _ => Closed ty
+  | .ldecl _ _ _ ty val _ _ => Closed ty ∧ Closed val
+
+/-- Closedness of the declarations selected by a binding. -/
+def DeclsClosed (lctx : LocalContext) (xs : List FVarId) : Prop :=
+  ∀ x ∈ xs, ∀ d, lctx.find? x = some d → DeclClosed d
+
+theorem DeclsClosed.tail (h : DeclsClosed lctx (a :: xs)) : DeclsClosed lctx xs :=
+  fun x hx => h x (List.mem_cons_of_mem a hx)
+
+private theorem closed_lower_of_abstract1 (he : Closed e)
+    (h : (e.abstract1 a).hasLooseBVar' 0 = false) :
+    Closed ((e.abstract1 a).lowerLooseBVars' 1 1) := by
+  rw [Expr.lowerLooseBVars_eq_instantiate h (v := .sort .zero)]
+  exact Closed.instantiate1 he.abstract1 trivial
+
+/-- One binding step of the exact model agrees with the sequential model on a closed body with
+closed declaration, and the result is closed again. -/
+theorem mkBindingList1N_eq_mkBindingList1 (hx : lctx.find? x = some d)
+    (hd : DeclClosed d) (hb : Closed b) :
+    mkBindingList1N isLambda lctx [] x (b.abstractN [x]) =
+      mkBindingList1 isLambda lctx [] x (b.abstract1 x) ∧
+    Closed (mkBindingList1 isLambda lctx [] x (b.abstract1 x)) := by
+  have hsingle : b.abstractN [x] = b.abstract1 x :=
+    Expr.abstractN_singleton hb.looseBVarRange_le
+  cases d with
+  | cdecl _ _ _ ty bi _ =>
+    simp only [DeclClosed] at hd
+    simp only [mkBindingList1N, mkBindingList1, hx, hsingle, Expr.abstractN_nil, Expr.abstractList]
+    cases isLambda
+    · simp only [Bool.false_eq_true, ite_false]
+      exact ⟨trivial, hd, hb.abstract1⟩
+    · simp only [ite_true]
+      exact ⟨trivial, hd, hb.abstract1⟩
+  | ldecl _ _ _ ty val _ _ =>
+    simp only [DeclClosed] at hd
+    simp only [mkBindingList1N, mkBindingList1, hx, hsingle, Expr.abstractN_nil, Expr.abstractList]
+    by_cases h : (b.abstract1 x).hasLooseBVar' 0 = true
+    · simp only [h, ite_true]
+      exact ⟨trivial, hd.1, hd.2, hb.abstract1⟩
+    · simp only [h, Bool.false_eq_true, ite_false]
+      exact ⟨trivial, closed_lower_of_abstract1 hb (by simpa using h)⟩
+
+/-- The exact and the sequential binding models agree when the body and the selected
+declarations are locally closed and the variables are duplicate-free. -/
+theorem mkBindingListN_eq_mkBindingList (hex : ∀ x ∈ xs, ∃ d, lctx.find? x = some d)
+    (nd : xs.Nodup) (hb : Closed b) (hdecl : DeclsClosed lctx xs) :
+    mkBindingListN isLambda lctx xs b = mkBindingList isLambda lctx xs b ∧
+      Closed (mkBindingList isLambda lctx xs b) := by
+  rw [mkBindingListN_eq_fold hex nd, mkBindingList_eq_fold hex nd]
+  induction xs with
+  | nil => exact ⟨rfl, hb⟩
+  | cons a xs ih =>
+    have hex' : ∀ x ∈ xs, ∃ d, lctx.find? x = some d := fun x hx => hex x (List.mem_cons_of_mem a hx)
+    obtain ⟨heq, hcl⟩ := ih hex' (List.nodup_cons.1 nd).2 hdecl.tail
+    obtain ⟨d, hd⟩ := hex a (List.mem_cons_self ..)
+    simp only [List.foldr_cons]
+    rw [heq]
+    exact mkBindingList1N_eq_mkBindingList1 hd (hdecl a (List.mem_cons_self ..) d hd) hcl
+
+/-- `mkBinding` agrees with the sequential `mkBindingList` under the hypotheses that make the
+sequential model correct: every variable is declared, the variables are duplicate-free, and the
+body and the selected declarations are locally closed. Without them use `mkBinding_eqN`. -/
+theorem mkBinding_eq' (hex : ∀ x ∈ xs, ∃ d, lctx.find? x = some d)
+    (nd : xs.Nodup) (hb : Closed b) (hdecl : DeclsClosed lctx xs) :
+    mkBinding isLambda lctx ⟨xs.map .fvar⟩ b = mkBindingList isLambda lctx xs b := by
+  rw [mkBinding_eqN]
+  exact (mkBindingListN_eq_mkBindingList hex nd hb hdecl).1
+
+/-- Every declaration of `lctx` is locally closed. Translated contexts satisfy this
+(`Lean4Lean.TrLCtx.lctxClosed`). -/
+def LctxClosed (lctx : LocalContext) : Prop :=
+  ∀ fv d, lctx.find? fv = some d → DeclClosed d
+
+theorem LctxClosed.declsClosed (h : LctxClosed lctx) : DeclsClosed lctx xs :=
+  fun x _ d hd => h x d hd
+
+theorem LctxClosed.cdecl (h : LctxClosed lctx)
+    (hd : lctx.find? fv = some (.cdecl index fv' name type bi kind)) : Closed type :=
+  h _ _ hd
+
+theorem mkBinding_closed (hex : ∀ x ∈ xs, ∃ d, lctx.find? x = some d) (nd : xs.Nodup)
+    (hb : Closed b) (hdecl : DeclsClosed lctx xs) :
+    Closed (mkBinding isLambda lctx ⟨xs.map .fvar⟩ b) := by
+  rw [mkBinding_eq' hex nd hb hdecl]
+  exact (mkBindingListN_eq_mkBindingList hex nd hb hdecl).2
+
+theorem _root_.Lean.Expr.abstractN_eq_abstractList_of_closed {xs : List FVarId}
+    (hnd : xs.Nodup) (h : Closed e) : e.abstractN xs = e.abstractList xs :=
+  Expr.abstractN_eq_abstractList hnd e 0 h.looseBVarRange_le
+
+theorem mkBindingListN_congr
+    (H : ∀ x ∈ xs, lctx₁.find? x = lctx₂.find? x) :
+    mkBindingListN isLambda lctx₁ xs b = mkBindingListN isLambda lctx₂ xs b := by
+  obtain ⟨xs, rfl⟩ : ∃ xs', List.reverse xs' = xs := ⟨_, List.reverse_reverse _⟩
+  simp [mkBindingListN, mkBindingListN.core] at *
+  generalize b.abstractN _ = b
+  induction xs generalizing b <;> simp_all [mkBindingListN.go]
+  simp [mkBindingList1N_congr H.1]
+
+theorem mkBindingList1N_congr_setIndex
+    (H : (lctx₁.find? x).map (·.setIndex 0) = (lctx₂.find? x).map (·.setIndex 0)) :
+    mkBindingList1N isLambda lctx₁ xs x b = mkBindingList1N isLambda lctx₂ xs x b := by
+  unfold mkBindingList1N
+  rcases h1 : lctx₁.find? x with _ | d1 <;> rcases h2 : lctx₂.find? x with _ | d2 <;>
+    rw [h1, h2] at H <;> simp only [Option.map_some, Option.map_none, Option.some.injEq,
+      reduceCtorEq] at H
+  case some.some =>
+    cases d1 <;> cases d2 <;> simp only [LocalDecl.setIndex, LocalDecl.cdecl.injEq,
+      LocalDecl.ldecl.injEq, reduceCtorEq, true_and] at H
+    · obtain ⟨rfl, rfl, rfl, rfl, rfl⟩ := H; rfl
+    · obtain ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩ := H; rfl
+
+/-- `mkBindingListN` only reads the selected declarations, and ignores their
+indices. -/
+theorem mkBindingListN_congr_setIndex
+    (H : ∀ x ∈ xs, (lctx₁.find? x).map (·.setIndex 0) = (lctx₂.find? x).map (·.setIndex 0)) :
+    mkBindingListN isLambda lctx₁ xs b = mkBindingListN isLambda lctx₂ xs b := by
+  obtain ⟨xs, rfl⟩ : ∃ xs', List.reverse xs' = xs := ⟨_, List.reverse_reverse _⟩
+  simp [mkBindingListN, mkBindingListN.core] at *
+  generalize b.abstractN _ = b
+  induction xs generalizing b <;> simp_all [mkBindingListN.go]
+  simp [mkBindingList1N_congr_setIndex H.1]
 
 theorem mkBindingList1_congr (H : lctx₁.find? x = lctx₂.find? x) :
     mkBindingList1 isLambda lctx₁ xs x b = mkBindingList1 isLambda lctx₂ xs x b := by
@@ -191,9 +418,6 @@ theorem toList_empty : ({} : LocalContext).toList = [] := by
   unfold toList
   rw [show ({} : LocalContext).decls = .empty from rfl, PersistentArray.toList'_empty]; rfl
 
-theorem find?_empty (x : FVarId) : ({} : LocalContext).find? x = none := by
-  rw [WF.empty.find?_eq_find?_toList, toList_empty]; rfl
-
 /-- The empty context's map is well formed. -/
 theorem empty_map_wf : ({} : LocalContext).fvarIdToDecl.WF := .empty
 
@@ -213,12 +437,14 @@ theorem find?_mkLocalDecl {lctx : LocalContext} (h : lctx.fvarIdToDecl.WF) (x : 
   · subst hx; simp
   · rw [if_neg (by simp only [beq_iff_eq]; exact fun e => hx e.symm), if_neg hx]; rfl
 
-/-- `mkForall` over declared, distinct variables is the right fold of `mkBindingList1`. -/
+/-- `mkForall` over declared, distinct variables is the right fold of `mkBindingList1`, when
+the body and the selected declarations are locally closed (`mkBinding_eq'`). -/
 theorem mkForall_eq_fold {lctx : LocalContext} (xs : List FVarId) (b : Expr)
-    (hx : ∀ x ∈ xs, ∃ d, lctx.find? x = some d) (nd : xs.Nodup) :
+    (hx : ∀ x ∈ xs, ∃ d, lctx.find? x = some d) (nd : xs.Nodup)
+    (hb : Closed b) (hdecl : DeclsClosed lctx xs) :
     lctx.mkForall ⟨xs.map .fvar⟩ b =
       xs.foldr (fun a e => mkBindingList1 false lctx [] a (e.abstract1 a)) b := by
-  rw [mkForall, mkBinding_eq, mkBindingList_eq_fold hx nd]
+  rw [mkForall, mkBinding_eq' hx nd hb hdecl, mkBindingList_eq_fold hx nd]
 
 end Lean.LocalContext
 
@@ -264,6 +490,30 @@ theorem TrLCtx.nil {env : VEnv} {Us : List Name} : TrLCtx env Us {} [] := ⟨.ni
 theorem TrLCtx'.noBV : TrLCtx' env Us ds Δ → Δ.NoBV
   | .nil => rfl
   | .cons h _ => h.noBV
+
+theorem TrLocalDecl.closed (H : TrLocalDecl env Us Δ d d') (hΔ : Δ.NoBV) :
+    LocalContext.DeclClosed d := by
+  have hΔ' : Δ.bvars = 0 := hΔ
+  cases H with
+  | vlam h _ =>
+    have hc := h.closed; rw [hΔ'] at hc; exact hc
+  | vlet h1 h2 _ =>
+    have h1c := h1.closed; rw [hΔ'] at h1c
+    have h2c := h2.closed; rw [hΔ'] at h2c
+    exact ⟨h1c, h2c⟩
+
+theorem TrLCtx'.declClosed : TrLCtx' env Us ds Δ → d ∈ ds → LocalContext.DeclClosed d
+  | .nil, h => by cases h
+  | .cons h1 h2, h => by
+    rcases List.mem_cons.1 h with rfl | h
+    · exact h2.closed h1.noBV
+    · exact h1.declClosed h
+
+/-- Every declaration of a translated local context is locally closed. -/
+theorem TrLCtx.lctxClosed (H : TrLCtx env Us lctx Δ) : LocalContext.LctxClosed lctx := by
+  intro fv d hd
+  rw [H.1.find?_eq_find?_toList] at hd
+  exact H.2.declClosed (List.mem_of_find?_eq_some hd)
 
 theorem TrLCtx'.forall₂ :
     TrLCtx' env Us ds Δ → ds.Forall₂ Δ (R := fun d d' => d'.1 = some (d.fvarId, d.deps))
@@ -371,3 +621,216 @@ theorem TrLCtx.mkLetDecl
     TrLCtx env Us (lctx.mkLetDecl fv name ty val bi kind)
       ((some (fv, ty.fvarsList ++ val.fvarsList), .vlet ty' val') :: Δ) :=
   ⟨h1.1.mkLetDecl h2, by simpa using .cons h1.2 (.vlet h3 h4 h5)⟩
+
+/-- Closing no free variables leaves the body unchanged. -/
+theorem _root_.Lean.LocalContext.mkForall_empty
+    (lctx : LocalContext) (body : Expr) :
+    lctx.mkForall #[] body = body := by
+  rw [LocalContext.mkForall]
+  change LocalContext.mkBinding false lctx
+    (([] : List FVarId).map Expr.fvar).toArray body = body
+  rw [LocalContext.mkBinding_eqN]
+  exact LocalContext.mkBindingListN_nil
+
+/-- With distinct selected declarations, closing a concatenated free-variable
+list is exactly the same as closing the suffix and then the prefix. -/
+theorem _root_.Lean.LocalContext.mkBindingList_append
+    (hdecl : ∀ fv ∈ xs ++ ys, ∃ decl, lctx.find? fv = some decl)
+    (hnodup : (xs ++ ys).Nodup) :
+    LocalContext.mkBindingList isLambda lctx (xs ++ ys) body =
+      LocalContext.mkBindingList isLambda lctx xs
+        (LocalContext.mkBindingList isLambda lctx ys body) := by
+  rcases List.nodup_append.mp hnodup with ⟨hxs, hys, _⟩
+  have hdeclXs : ∀ fv ∈ xs, ∃ decl, lctx.find? fv = some decl := by
+    intro fv hfv
+    exact hdecl fv (List.mem_append_left ys hfv)
+  have hdeclYs : ∀ fv ∈ ys, ∃ decl, lctx.find? fv = some decl := by
+    intro fv hfv
+    exact hdecl fv (List.mem_append_right xs hfv)
+  rw [LocalContext.mkBindingList_eq_fold hdecl hnodup,
+    LocalContext.mkBindingList_eq_fold hdeclXs hxs,
+    LocalContext.mkBindingList_eq_fold hdeclYs hys,
+    List.foldr_append]
+
+/-- With distinct selected declarations, closing a concatenated free-variable
+list is exactly the same as closing the suffix and then the prefix. -/
+theorem _root_.Lean.LocalContext.mkBindingListN_append
+    (hdecl : ∀ fv ∈ xs ++ ys, ∃ decl, lctx.find? fv = some decl)
+    (hnodup : (xs ++ ys).Nodup) :
+    LocalContext.mkBindingListN isLambda lctx (xs ++ ys) body =
+      LocalContext.mkBindingListN isLambda lctx xs
+        (LocalContext.mkBindingListN isLambda lctx ys body) := by
+  rcases List.nodup_append.mp hnodup with ⟨hxs, hys, _⟩
+  have hdeclXs : ∀ fv ∈ xs, ∃ decl, lctx.find? fv = some decl := by
+    intro fv hfv
+    exact hdecl fv (List.mem_append_left ys hfv)
+  have hdeclYs : ∀ fv ∈ ys, ∃ decl, lctx.find? fv = some decl := by
+    intro fv hfv
+    exact hdecl fv (List.mem_append_right xs hfv)
+  rw [LocalContext.mkBindingListN_eq_fold hdecl hnodup,
+    LocalContext.mkBindingListN_eq_fold hdeclXs hxs,
+    LocalContext.mkBindingListN_eq_fold hdeclYs hys,
+    List.foldr_append]
+
+/-- Closing an older selected list after extending the local context by one
+fresh selected declaration is the same as closing the new declaration first
+and then using the old context. -/
+theorem _root_.Lean.LocalContext.mkForall_append_fresh
+    {lctx : LocalContext} {selected : List FVarId} {fv : FVarId}
+    {name : Name} {type body : Expr} {bi : BinderInfo}
+    (hwf : lctx.WF) (hfind : lctx.find? fv = none)
+    (hdecl : ∀ other ∈ selected, ∃ decl,
+      lctx.find? other = some decl)
+    (hnodup : selected.Nodup) :
+    let next := lctx.mkLocalDecl fv name type bi
+    next.mkForall
+        ((selected ++ [fv]).map Expr.fvar).toArray body =
+      lctx.mkForall (selected.map Expr.fvar).toArray
+        (.forallE name type (body.abstractN [fv]) bi) := by
+  dsimp only
+  let next := lctx.mkLocalDecl fv name type bi
+  have hfresh : fv ∉ selected := by
+    intro hmem
+    rcases hdecl fv hmem with ⟨decl, hsome⟩
+    rw [hfind] at hsome
+    contradiction
+  have hselectedNext : ∀ other ∈ selected, ∃ decl,
+      next.find? other = some decl := by
+    intro other hother
+    rcases hdecl other hother with ⟨decl, hlookup⟩
+    refine ⟨decl, ?_⟩
+    simp only [next, LocalContext.mkLocalDecl, LocalContext.find?,
+      hwf.map_wf.find?_insert]
+    rw [if_neg]
+    · exact hlookup
+    · intro heq
+      have : fv = other := beq_iff_eq.mp heq
+      exact hfresh (this.symm ▸ hother)
+  have hnewNext : next.find? fv = some
+      (.cdecl lctx.decls.size fv name type bi .default) := by
+    simp [next, LocalContext.mkLocalDecl, LocalContext.find?,
+      hwf.map_wf.find?_insert]
+  have hallNext : ∀ other ∈ selected ++ [fv], ∃ decl,
+      next.find? other = some decl := by
+    intro other hother
+    rcases List.mem_append.mp hother with hother | hother
+    · exact hselectedNext other hother
+    · simp only [List.mem_singleton] at hother
+      subst other
+      exact ⟨_, hnewNext⟩
+  have hallNodup : (selected ++ [fv]).Nodup := by
+    apply List.nodup_append.mpr
+    refine ⟨hnodup, by simp, ?_⟩
+    intro a ha b hb hab
+    have hb' : b = fv := by simpa using hb
+    apply hfresh
+    rw [← hb', ← hab]
+    exact ha
+  rw [LocalContext.mkForall, LocalContext.mkBinding_eqN,
+    LocalContext.mkForall, LocalContext.mkBinding_eqN]
+  rw [LocalContext.mkBindingListN_append hallNext hallNodup]
+  have hsingle : LocalContext.mkBindingListN false next [fv] body =
+      .forallE name type (body.abstractN [fv]) bi := by
+    simp [LocalContext.mkBindingListN_eq_fold, hnewNext,
+      LocalContext.mkBindingList1N, Expr.abstractN_nil]
+  rw [hsingle]
+  exact LocalContext.mkBindingListN_congr (by
+    intro other hother
+    simp only [next, LocalContext.mkLocalDecl, LocalContext.find?,
+      hwf.map_wf.find?_insert]
+    rw [if_neg]
+    intro heq
+    have : fv = other := beq_iff_eq.mp heq
+    exact hfresh (this.symm ▸ hother))
+
+/-- Extending a local context by a fresh declaration not selected for
+closure leaves the selected forall expression unchanged. -/
+theorem _root_.Lean.LocalContext.mkForall_skip_fresh
+    {lctx : LocalContext} {selected : List FVarId} {fv : FVarId}
+    {name : Name} {type body : Expr} {bi : BinderInfo}
+    (hwf : lctx.WF)
+    (hselected : fv ∉ selected) :
+    let next := lctx.mkLocalDecl fv name type bi
+    next.mkForall (selected.map Expr.fvar).toArray body =
+      lctx.mkForall (selected.map Expr.fvar).toArray body := by
+  dsimp only
+  rw [LocalContext.mkForall, LocalContext.mkBinding_eqN,
+    LocalContext.mkForall, LocalContext.mkBinding_eqN]
+  apply LocalContext.mkBindingListN_congr
+  intro other hother
+  simp only [LocalContext.mkLocalDecl, LocalContext.find?,
+    hwf.map_wf.find?_insert]
+  rw [if_neg]
+  intro heq
+  have : fv = other := beq_iff_eq.mp heq
+  exact hselected (this.symm ▸ hother)
+
+end Lean4Lean
+
+namespace Lean.Expr
+
+open Lean4Lean
+
+/-! ### Leading binders -/
+
+/-- `LeadingBinders k e body`: `e` is `k` nested `forallE`/`lam` binders (in any mix) around
+`body`. Binder domains are unconstrained. This is exactly the input shape that
+`ElimNestedInductive.Result.openRestoreParams k` consumes without reaching `unreachable!`. -/
+inductive LeadingBinders : Nat → Expr → Expr → Prop
+  | zero (e : Expr) : LeadingBinders 0 e e
+  | forallE {k : Nat} {n : Name} {t b body : Expr} {bi : BinderInfo} :
+      LeadingBinders k b body → LeadingBinders (k + 1) (.forallE n t b bi) body
+  | lam {k : Nat} {n : Name} {t b body : Expr} {bi : BinderInfo} :
+      LeadingBinders k b body → LeadingBinders (k + 1) (.lam n t b bi) body
+
+namespace LeadingBinders
+
+theorem trans {k m : Nat} {e mid body : Expr} (H₁ : LeadingBinders k e mid)
+    (H₂ : LeadingBinders m mid body) : LeadingBinders (m + k) e body := by
+  induction H₁ with
+  | zero => exact H₂
+  | forallE _ ih => exact .forallE (ih H₂)
+  | lam _ ih => exact .lam (ih H₂)
+
+theorem instantiate1' {k : Nat} {e body : Expr} (H : LeadingBinders k e body) (a : Expr)
+    (j : Nat) : LeadingBinders k (e.instantiate1' a j) (body.instantiate1' a (j + k)) := by
+  induction H generalizing j with
+  | zero => exact .zero _
+  | @forallE k _ _ _ _ _ _ ih =>
+    have := ih (j + 1)
+    rw [show j + 1 + k = j + (k + 1) by omega] at this
+    exact .forallE this
+  | @lam k _ _ _ _ _ _ ih =>
+    have := ih (j + 1)
+    rw [show j + 1 + k = j + (k + 1) by omega] at this
+    exact .lam this
+
+end LeadingBinders
+
+private theorem leadingBinders_go {isLambda : Bool} {lctx : LocalContext} :
+    ∀ {l : List FVarId}, (∀ x ∈ l, ∃ i fv n ty bi kind,
+      lctx.find? x = some (.cdecl i fv n ty bi kind)) →
+    ∀ b, LeadingBinders l.length (LocalContext.mkBindingListN.go isLambda lctx l b) b
+  | [], _, b => .zero b
+  | x :: l, hx, b => by
+    obtain ⟨i, fv, n, ty, bi, kind, hfind⟩ := hx x (.head _)
+    have ih := leadingBinders_go (isLambda := isLambda) (lctx := lctx) (l := l) (fun y hy => hx y (.tail _ hy))
+      (LocalContext.mkBindingList1N isLambda lctx l.reverse x b)
+    have hstep : LeadingBinders 1 (LocalContext.mkBindingList1N isLambda lctx l.reverse x b) b := by
+      simp only [LocalContext.mkBindingList1N, hfind]
+      cases isLambda
+      · exact .forallE (.zero b)
+      · exact .lam (.zero b)
+    simpa [LocalContext.mkBindingListN.go, Nat.add_comm] using ih.trans hstep
+
+/-- When every bound variable is a `cdecl`, `mkBindingListN` (the exact model of
+`LocalContext.mkBinding`) adds exactly one binder per variable around `b.abstractN xs`. -/
+theorem LeadingBinders.mkBindingListN {isLambda : Bool} {lctx : LocalContext}
+    {xs : List FVarId} (hx : ∀ x ∈ xs, ∃ i fv n ty bi kind,
+      lctx.find? x = some (.cdecl i fv n ty bi kind)) (b : Expr) :
+    LeadingBinders xs.length (LocalContext.mkBindingListN isLambda lctx xs b) (b.abstractN xs) := by
+  simp only [LocalContext.mkBindingListN, LocalContext.mkBindingListN.core]
+  simpa using leadingBinders_go (l := xs.reverse) (fun x hx' => hx x (List.mem_reverse.1 hx'))
+    (b.abstractN xs)
+
+end Lean.Expr

@@ -10,9 +10,9 @@ namespace Primitive
 /-- `Nat.gcd`: a well-founded recursion, which the `eager` gadget packs into a form the
 recognizer can probe. The base probe is `gcd' 0 n ≡ n`; the step probe's right-hand side is the
 recursive call at `n % succ m`, which is what the branch's `Nat.mod` guard is for. -/
-theorem checkNatGcd.WF {ves : VEnvs} (wf : ves.WF env)
+theorem checkNatGcd.WF {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
     (hname : v.name = ``Nat.gcd) :
-    let c := .mk' wf .safe v.levelParams; Data v ci' c →
+    let c := .mk' wf .safe v.levelParams fuel; Data v ci' c →
     (checkNatGcd v).WF c state fun _ _ => PrimitiveResult (ves.venv .safe) v ci' := by
   intro ctx P; rw [← ctx.withMLC_self]; unfold checkNatGcd
   refine .getEnv <| elseFail fun h1 => elseFail fun h2 => ?_
@@ -24,7 +24,7 @@ theorem checkNatGcd.WF {ves : VEnvs} (wf : ves.WF env)
   have hE := ctx.Ewf.orderedStrong
   have hΔ := ctx.Δwf.toCtx
   have hnat := wf.hasPrimitives.natOfMod hE hmod
-  have tyeq := P.mkTyEq hnat (by simp [TrExprS.IsUnique]) (natCod hnat) h2
+  have tyeq := P.mkTyEq hnat (natCod hnat) h2
   -- the `eager` gadget's conditional is checked here now, and handed to the recognizer
   refine Condition.check.WF hnat hbool rfl .throw |>.bind fun _ _ _ ⟨wb, hite, _⟩ => ?_
   -- the recursion is on the first argument, and the intended answer is `Nat.gcd`
@@ -39,7 +39,7 @@ theorem checkNatGcd.WF {ves : VEnvs} (wf : ves.WF env)
     (by simp [hplen]) (List.forall_mem_pair (zerob hnat).hasType hn.hasType) ?_) ?_
   · refine fun id {cwf'} => ⟨hn.trS.fvarsIn.fvars_cons, fun _ rhsv hrhs _ γ ih _ _ => ?_⟩
     -- the right-hand side is the outer probe variable, so its value is the closing at it
-    cases TrExprS.unique (by simp [TrExprS.IsUnique]) hrhs (hn.wk ctx.Ewf cwf'.wf.tr.wf).trS
+    cases TrExprS.unique hrhs (hn.wk ctx.Ewf cwf'.wf.tr.wf).trS
     simp [VLocalDecl.depth, hn, TrTerm.wk, TrTerm.fvar]
   rintro _ _ _ heq
   refine .withNatProbe wf.hasPrimitives hnat .rfl ?_; intro idm mnn cwf _ _ _ hm
@@ -73,15 +73,15 @@ theorem checkNatGcd.WF {ves : VEnvs} (wf : ves.WF env)
     cases hrhs with | app _ _ hrhs hpf
     cases hrhs with | @app _ _ _ arg _ _ _ _ _ hfv hX
     -- `ih` is the innermost binder, so its translation is `.bvar 0`
-    cases TrExprS.unique (by simp [TrExprS.IsUnique]) hfv (TrExprS.fvar VLCtx.find?_vlam_self)
+    cases TrExprS.unique hfv (TrExprS.fvar VLCtx.find?_vlam_self)
     refine ⟨_, _, ?_, rfl⟩
     -- the packed argument: its head translates to `pack'` only up to defeq, and its first
     -- argument is `Nat.mod` at the two literals
     cases hX with | app hfT haT hX hBv
     cases hX with | app hpT haT2 hpackv hAv
-    cases TrExprS.unique (by simp [TrExprS.IsUnique, succ]) hBv
+    cases TrExprS.unique hBv
       (((succb hnat).natUnApp hm).wk ctx.Ewf cwf2.wf.tr.wf).trS
-    cases TrExprS.unique (by simp [TrExprS.IsUnique, succ, mod]) hAv
+    cases TrExprS.unique hAv
       (((modb hmod).natBinApp hn1 ((succb hnat).natUnApp hm)).wk ctx.Ewf cwf2.wf.tr.wf).trS
     -- the head is only a *translation* of `pack`, so it is `pack'` up to defeq
     have hpk := PB.hpack.weakFV hE

@@ -20,17 +20,17 @@ theorem boolOp2_apply (henv : env.WF) {g : Bool → Bool → Bool}
     (hb : env.IsDefEqU U [] b (.boolLit bb)) (hwf : VExpr.WF env U [] ((f.app a).app b)) :
     env.HasType U [] ((f.app a).app b) .bool ∧
     env.IsDefEqU U [] ((f.app a).app b) (.boolLit (g ba bb)) := by
-  obtain ⟨-, hfa⟩ := VExpr.WF.app_inv' henv trivial hfT (hwf.app_inv₂ henv trivial).1
+  obtain ⟨-, hfa⟩ := VExpr.WF.app_inv_of_hasType henv trivial hfT (hwf.app_inv₂ henv trivial).1
   have hfa : env.HasType U [] (f.app a) (.forallE .bool .bool) := by
     simpa [VExpr.inst, VExpr.bool] using hfa
-  obtain ⟨-, hab⟩ := VExpr.WF.app_inv' henv trivial hfa hwf
+  obtain ⟨-, hab⟩ := VExpr.WF.app_inv_of_hasType henv trivial hfa hwf
   refine ⟨by simpa [VExpr.inst, VExpr.bool] using hab, .trans henv trivial ?_ (hfg ba bb)⟩
   exact (VEnv.IsDefEqU.appN' henv trivial (xs := [a, b]) (ys := [VExpr.boolLit ba, .boolLit bb])
     ⟨_, hfT⟩ (.cons ha (.cons hb .nil)) (by simpa [VExpr.appN] using hwf) :)
 
-theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
+theorem checkNatBitwise.WF {ves : VEnvs} {fuel : FuelConfig} (wf : ves.WF env)
     (hname : v.name = ``Nat.bitwise) :
-    let c := .mk' wf .safe v.levelParams; Data v ci' c →
+    let c := .mk' wf .safe v.levelParams fuel; Data v ci' c →
     (checkNatBitwise v).WF c state fun _ _ => PrimitiveResult (ves.venv .safe) v ci' := by
   intro ctx P; rw [← ctx.withMLC_self]; unfold checkNatBitwise
   have hnat : ctx.env.contains ``Nat → (ves.venv .safe).contains ``Nat :=
@@ -83,15 +83,14 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
   · intro m' cwf2; refine ⟨?_, fun hcl rhsv hrhs E γ ih hγ hihT g x y hx hy hfg IH => ?_⟩
     · -- the equation body mentions only the probe's own variables and the packer, so unfolding
       -- the conditional builders leaves nothing but those memberships
-      have hpk := PB.hpack.weakFV hE.ordered
+      have hpk := PB.hpack.weakFV hE
         (.skip_fvar _ _ (.skip_fvar _ _ (.skip_fvar _ _ .refl))) cwf2.wf.tr.wf |>.fvarsIn
       simp only [Condition.dite, Condition.ite, Condition.decide, Condition.natEq, Condition.bool,
         mkApp4, mkAppN, Expr.lam0, add, div, mod, one, two, zero, succ]
       simp [FVarsIn, mkAppB, Level.hasMVar', mnm, mn, mf, MLCtx.vlctx, VLCtx.fvars] at hpk ⊢
       exact hpk
     -- the equation body: one `dite` on `n = 0`, then three `ite`s on the operator's decisions
-    have ⟨P0, D0, t0', e0', hP0, hD0, ht0, he0, hshape0⟩ := Condition.dite_tr_inv
-      (by simp [Condition.natEq, Expr.mkAppN_eq, Expr.appN, noProj, zero]) hrhs
+    have ⟨P0, D0, t0', e0', hP0, hD0, ht0, he0, hshape0⟩ := Condition.dite_tr_inv hrhs
     -- the probe's variables, at the `ih` context
     let hnΔ := hn1.wk ctx.Ewf cwf2.wf.tr.wf
     let hmΔ := hm.wk ctx.Ewf cwf2.wf.tr.wf
@@ -111,10 +110,10 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
       rw [VExpr.subst_boolLit]; exact ⟨_, hboolT b⟩
     have htwo {Y pf B'} (hB : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) two B') :
         E.IsDefEqU₀ (B'.subst ((γ.cons ih).cons pf)) (.natLit 2) :=
-      TrExprS.unique (by simp [TrExprS.IsUnique, two, one, zero, succ]) hB (twob hnat).trS ▸ hlit0 2
+      TrExprS.unique hB (twob hnat).trS ▸ hlit0 2
     have hone {Y pf B'} (hB : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) one B') :
         E.IsDefEqU₀ (B'.subst ((γ.cons ih).cons pf)) (.natLit 1) :=
-      TrExprS.unique (by simp [TrExprS.IsUnique, one, succ, zero]) hB (oneb hnat).trS ▸ hlit0 1
+      TrExprS.unique hB (oneb hnat).trS ▸ hlit0 1
     -- peeling a ground application: how the well-formedness of every piece of the equation body
     -- is read off the conditional's own
     have pk {f a : VExpr} (h : (f.app a).WF E.venv ctx.lparams.length []) := h.app_inv₂ E.wf trivial
@@ -132,7 +131,6 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
     -- conditional is worth the branch `g` selects at its two decisions. All three of them sit one
     -- binder inside the outer `dite`, which is what `Y` and `pf` stand for.
     have hboolStep {Y pf a b α' Pb Db a' b' t' e'} (ba bb : Bool)
-        (hua : noProj a) (hub : noProj b)
         (hα : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) q(Nat) α')
         (hPb : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx)
           (mkAppN Condition.bool.prop #[mkApp2 (.fvar idf) a b]) Pb)
@@ -145,21 +143,21 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
         (hwf : E.WF₀ ((iteApp α' Pb Db t' e').subst ((γ.cons ih).cons pf))) :
         E.IsDefEqU₀ ((iteApp α' Pb Db t' e').subst ((γ.cons ih).cons pf)) <|
           if g ba bb then t'.subst ((γ.cons ih).cons pf) else e'.subst ((γ.cons ih).cons pf) := by
-      cases TrExprS.unique (by simp [TrExprS.IsUnique]) hα trNatS
+      cases TrExprS.unique hα trNatS
       obtain ⟨_, hPa, rfl⟩ :=
-        TrExprS.app1_nil_inv hE.ordered (by simp [Condition.bool, noProj]) wb.hprop0 hPb
+        TrExprS.app1_nil_inv hE wb.hprop0 hPb
       obtain ⟨_, hDa, rfl⟩ :=
-        TrExprS.app1_nil_inv hE.ordered (by simp [Condition.bool, noProj]) wb.hdec0 hDb
-      cases TrExprS.unique (noProj.isUnique (by simp [noProj, hua, hub])) hDa hPa
+        TrExprS.app1_nil_inv hE wb.hdec0 hDb
+      cases TrExprS.unique hDa hPa
       obtain ⟨_, _, _, hf, ha2, hb2, rfl⟩ := hPa.app2_inv
       cases TrExprS.fvar_lift_uniq hfΔ.trS hf
-      cases (TrExprS.unique (noProj.isUnique hua) ha2 ha').symm
-      cases (TrExprS.unique (noProj.isUnique hub) hb2 hb').symm
+      cases (TrExprS.unique ha2 ha').symm
+      cases (TrExprS.unique hb2 hb').symm
       -- the operator variable is three binders down, so the closing sends it to `γ 2`
       have hfeq : (hfΔ.tgt.lift).subst ((γ.cons ih).cons pf) = γ 2 := by
         simp [hfΔ, hfb, TrTerm.wk, VExpr.lift, VExpr.liftN, liftVar, VExpr.Subst.cons]
       -- the conditional's own pieces are closed, so the closing only reaches the decision
-      simp only [iteApp, VExpr.subst, wb.propC.subst_eq', wb.decC.subst_eq', hfeq] at hwf ⊢
+      simp only [iteApp, VExpr.subst, wb.propC.subst_eq_of_closed, wb.decC.subst_eq_of_closed, hfeq] at hwf ⊢
       -- the decision: the operator at the two boolean values it is applied to
       obtain ⟨hbeT, hbeeq⟩ := boolOp2_apply E.wf hfgT hfgE hea heb
         (pk (pk (pk (pk (pk hwf).1).1).1).2).2
@@ -174,13 +172,13 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
     -- the outer condition is `natEq` at the first recursion variable and `0`
     obtain ⟨_, _, hP0n, hP0z, rfl⟩ := wc.prop_app2_inv hP0
     obtain ⟨_, _, hD0n, hD0z, rfl⟩ := wc.dec_app2_inv hD0
-    cases TrExprS.unique (by simp [TrExprS.IsUnique]) hP0n hnΔ.trS
-    cases TrExprS.unique (by simp [TrExprS.IsUnique]) hD0n hnΔ.trS
-    cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hP0z (zerob hnat).trS
-    cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hD0z (zerob hnat).trS
+    cases TrExprS.unique hP0n hnΔ.trS
+    cases TrExprS.unique hD0n hnΔ.trS
+    cases TrExprS.unique hP0z (zerob hnat).trS
+    cases TrExprS.unique hD0z (zerob hnat).trS
     subst hshape0
-    have hwfr0 : E.WF₀ _ := E.monoW (hrhs.wf hE.ordered cwf2.wf.tr.wf) |>.subst E.wf hclS
-    simp only [diteApp, VExpr.subst, wc.propC.subst_eq', wc.decC.subst_eq', hxs, zerob,
+    have hwfr0 : E.WF₀ _ := E.monoW (hrhs.wf hE cwf2.wf.tr.wf) |>.subst E.wf hclS
+    simp only [diteApp, VExpr.subst, wc.propC.subst_eq_of_closed, wc.decC.subst_eq_of_closed, hxs, zerob,
       TrTerm.natZero, TrTerm.of] at hwfr0 ⊢
     obtain ⟨pf0, hev0⟩ := wc.natEq_diteEval (hcdite rfl).2.1 wf.hasPrimitives hnat E.cast
       (hlitR x) (hlitR 0) (by simpa [VExpr.WF, diteApp, VExpr.natLit] using hwfr0)
@@ -200,13 +198,13 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) a a' ∧
           TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) b b' ∧
           r = wb.prop'.app ((f'.app a').app b') := by
-      obtain ⟨_, hab, rfl⟩ := TrExprS.app1_nil_inv hE.ordered (by simp [Condition.bool, noProj]) wb.hprop0 h
+      obtain ⟨_, hab, rfl⟩ := TrExprS.app1_nil_inv hE wb.hprop0 h
       obtain ⟨_, _, _, _, ha, hb, rfl⟩ := hab.app2_inv
       exact ⟨_, _, _, ha, hb, rfl⟩
     -- `natEq.decide #[mod v two, one]` at a closing: the `Nat.mod` evaluates and the reflected
     -- equality decides. `Nat.mod` is not guarded by the branch -- its containment comes from the
     -- translation, which is `natBinLitTr`'s business.
-    have hdecide {Y pf v v' r} (a : Nat) (hv : noProj v)
+    have hdecide {Y pf v v' r} (a : Nat)
         (hvt : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx) v v')
         (hva : E.IsDefEqU₀ (v'.subst ((γ.cons ih).cons pf)) (.natLit a))
         (hr : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx)
@@ -214,11 +212,9 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
         (hwfr : E.WF₀ (r.subst ((γ.cons ih).cons pf))) :
         E.IsDefEqU₀ (r.subst ((γ.cons ih).cons pf)) (.boolLit (Nat.beq (a % 2) 1)) := by
       refine wc.natEq_decideTr (hcite rfl).2 wf.hasPrimitives hnat hbool E.cast (a % 2) 1
-        ?_ ?_ (fun hB _ => hone hB) hr hwfr (hA := fun hA hW =>
+        (fun hB _ => hone hB) hr hwfr (hA := fun hA hW =>
           E.natBinLitTr a 2 wf.hasPrimitives.natMod (fun hA2 _ => ?_) (fun hB _ => htwo hB) hA hW)
-      · simp [two, one, zero, succ, noProj, mkApp, hv]
-      · simp [one, zero, succ, noProj]
-      · exact TrExprS.unique (noProj.isUnique hv) hA2 hvt ▸ hva
+      · exact TrExprS.unique hA2 hvt ▸ hva
     cases hb0 : Nat.beq x 0 with
     | true =>
       let 0 := x
@@ -226,12 +222,12 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
       -- `bitwise g 0 y = if g false true then y else 0`
       obtain ⟨α1', P1, D1, t1', e1', hα1, hP1, hD1, ht1, he1, rfl⟩ := Condition.ite_tr_inv' ht0
       have hwft0 : E.WF₀ _ := ⟨_, (hbeta hwfif).choose_spec.hasType.2⟩
-      refine hboolStep false true (by decide) (by decide) hα1 hP1 hD1
+      refine hboolStep false true hα1 hP1 hD1
         (TrExprS.boolLit wf.hasPrimitives hbool false).1
         (TrExprS.boolLit wf.hasPrimitives hbool true).1
         (hbeq false) (hbeq true) hwft0 |>.trans E.wf trivial ?_
       cases TrExprS.fvar_lift_uniq hmΔ.trS ht1
-      cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) he1
+      cases TrExprS.unique he1
         (TrExprS.natZero wf.hasPrimitives hnat).1
       rw [show Nat.bitwise g 0 y = if g false true then y else 0 by rw [Nat.bitwise]; simp]
       simp only [VExpr.lift_subst, VExpr.Subst.cons_tail, hys, VExpr.natZero, VExpr.subst]
@@ -247,13 +243,13 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
       obtain ⟨_, _, hD2n, hD2z, rfl⟩ := wc.dec_app2_inv hD2
       cases TrExprS.fvar_lift_uniq hmΔ.trS hP2n
       cases TrExprS.fvar_lift_uniq hmΔ.trS hD2n
-      cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hP2z
+      cases TrExprS.unique hP2z
         (TrExprS.natZero wf.hasPrimitives hnat).1
-      cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hD2z
+      cases TrExprS.unique hD2z
         (TrExprS.natZero wf.hasPrimitives hnat).1
-      cases TrExprS.unique (by simp [TrExprS.IsUnique]) hα2 trNatS
+      cases TrExprS.unique hα2 trNatS
       simp only [iteApp, VExpr.subst, VExpr.lift_subst, VExpr.Subst.cons_tail,
-        wc.propC.subst_eq', wc.decC.subst_eq', hys, VExpr.natZero] at hwfe0 ⊢
+        wc.propC.subst_eq_of_closed, wc.decC.subst_eq_of_closed, hys, VExpr.natZero] at hwfe0 ⊢
       have hev2 := wc.natEq_iteEval (hcite rfl).2 wf.hasPrimitives hnat E.cast
         (hlitR y) (hlitR 0) (by simpa [VExpr.WF, iteApp, VExpr.natLit, VExpr.natZero] using hwfe0)
       refine hev2.trans E.wf trivial ?_
@@ -263,12 +259,12 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
         let 0 := y
         -- `bitwise g x 0 = if g true false then x else 0`
         obtain ⟨α3', P3, D3, t3', e3', hα3, hP3, hD3, ht3, he3, rfl⟩ := Condition.ite_tr_inv' ht2
-        refine hboolStep true false (by decide) (by decide) hα3 hP3 hD3
+        refine hboolStep true false hα3 hP3 hD3
           (TrExprS.boolLit wf.hasPrimitives hbool true).1
           (TrExprS.boolLit wf.hasPrimitives hbool false).1
           (hbeq true) (hbeq false) hwfif2 |>.trans E.wf trivial ?_
         cases TrExprS.fvar_lift_uniq hnΔ.trS ht3
-        cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) he3
+        cases TrExprS.unique he3
           (TrExprS.natZero wf.hasPrimitives hnat).1
         rw [show Nat.bitwise g x 0 = if g true false then x else 0 by
           rw [Nat.bitwise]; simp [hx0]]
@@ -288,8 +284,8 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
             ⟨cwf2.wf.tr.wf, nofun, hYT⟩; ?_
         have hS1 := VEnv.Ctx.SubstEq.cons (σ := (γ.cons ih).cons pf0) (σ' := (γ.cons ih).cons pf0)
             hclS (E.monoT hYT.choose_spec) <| by
-          simpa only [VExpr.Subst.cons_tail, VExpr.Subst.cons_head, VExpr.subst, wc.propC.subst_eq',
-            wc.decC.subst_eq', hxs, zerob, TrTerm.natZero, TrTerm.of, VExpr.natZero,
+          simpa only [VExpr.Subst.cons_tail, VExpr.Subst.cons_head, VExpr.subst, wc.propC.subst_eq_of_closed,
+            wc.decC.subst_eq_of_closed, hxs, zerob, TrTerm.natZero, TrTerm.of, VExpr.natZero,
             VContext.withMLC, VEnv.HasType] using (VExpr.WF.betaU E.wf trivial hwfif).1
         -- the well-formedness of every piece, read off the conditional's own
         have hwfit := by
@@ -302,16 +298,12 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           rw [VExpr.lift_subst, VExpr.Subst.cons_tail, hxs]; exact hlitR x
         have hys' : E.IsDefEqU₀ ((hmΔ.tgt.lift).subst ((γ.cons ih).cons pf0)) (.natLit y) := by
           rw [VExpr.lift_subst, VExpr.Subst.cons_tail, hys]; exact hlitR y
-        have hval1 := hdecide x (by simp [noProj]) (hunder hnΔ.trS) hxs' hb1 hwfb1
-        have hval2 := hdecide y (by simp [noProj]) (hunder hmΔ.trS) hys' hb2' hwfb2
-        have hunoProj {w} (hw : noProj w) : noProj (Condition.natEq.decide #[mod w two, one]) := by
-          simp [Condition.decide, Condition.ite, Condition.natEq, mkApp5, mkApp4, mkApp2, mkApp,
-            mkAppN, mkAppB, noProj, mod, two, one, zero, succ, hw]
+        have hval1 := hdecide x (hunder hnΔ.trS) hxs' hb1 hwfb1
+        have hval2 := hdecide y (hunder hmΔ.trS) hys' hb2' hwfb2
         refine hboolStep (Nat.beq (x % 2) 1) (Nat.beq (y % 2) 1)
-          (hunoProj (by simp [noProj])) (hunoProj (by simp [noProj]))
           hα4 hP4 hD4 hb1 hb2' hval1 hval2 hwfif2 |>.trans E.wf trivial ?_
         -- the recursive call: `ih` at the packer's value on the two halves
-        have hpk := PB.hpack.weakFV hE.ordered
+        have hpk := PB.hpack.weakFV hE
           (.skip_fvar _ _ (.skip_fvar _ _ (.skip_fvar _ _ .refl))) cwf2.wf.tr.wf
         have hrval {pfe r'}
             (hr' : TrExprS ctx.venv ctx.lparams ((none, .vlam Y) :: m'.vlctx)
@@ -327,10 +319,10 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           have ⟨hwfd1, hwfd2⟩ := pk hwfpack
           have ⟨hwfpk, hwfd1⟩ := pk hwfd1
           have hd1val := E.natBinLitTr x 2 wf.hasPrimitives.natDiv
-            (fun hA _ => TrExprS.unique (by simp [TrExprS.IsUnique]) hA (hunder hnΔ.trS) ▸ hxs')
+            (fun hA _ => TrExprS.unique hA (hunder hnΔ.trS) ▸ hxs')
             (fun hB _ => htwo hB) hd1 hwfd1
           have hd2val := E.natBinLitTr y 2 wf.hasPrimitives.natDiv
-            (fun hA _ => TrExprS.unique (by simp [TrExprS.IsUnique]) hA (hunder hmΔ.trS) ▸ hys')
+            (fun hA _ => TrExprS.unique hA (hunder hmΔ.trS) ▸ hys')
             (fun hB _ => htwo hB) hd2 hwfd2
           -- the packer's head is only a *translation* of `pack`, so it is `pack'` up to defeq
           have hpkeq : E.IsDefEqU₀ (pkv.subst ((γ.cons ih).cons pf0))
@@ -400,5 +392,5 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
         TrTerm.of, TrTerm.fvar, TrTerm.wk] using hlhs
     · exact IH (x'/2, y'/2) arg hy (Nat.div_lt_self (Nat.pos_of_ne_zero hx0) (by decide))
         (by simpa using harg) hwfa
-  simpa [VContext.Ext.IsDefEqU₀, VContext.withMLC, hlp, VExpr.appN, VExpr.subst, hvalC.subst_eq',
+  simpa [VContext.Ext.IsDefEqU₀, VContext.withMLC, hlp, VExpr.appN, VExpr.subst, hvalC.subst_eq_of_closed,
     VExpr.Subst.cons] using hdone ⟨env', hle, hwf''⟩ (.cons .id fv) hγ _ hDone (x, y)

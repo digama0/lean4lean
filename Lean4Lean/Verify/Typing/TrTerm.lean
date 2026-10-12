@@ -77,7 +77,7 @@ def TrTerm.of_nil' (henv : env.WF) (hbv : Δ.NoBV) (hΔ : Δ.WF env Us.length)
     (H : TrExprS env Us [] e e') (hT : env.HasType Us.length [] e' A) :
     TrTerm env Us Δ e A :=
   .of (H.of_nil henv hbv hΔ ((hT.closedN' henv.ordered.closed trivial).1))
-    (VEnv.HasType.weak0 henv.ordered hT)
+    (VEnv.HasType.weak0 henv.orderedStrong hT)
 
 def TrTerm.cast (h : T = T') (H : TrTerm env Us Δ e T) : TrTerm env Us Δ e T' :=
   { H with hasType := h ▸ H.hasType }
@@ -122,7 +122,7 @@ def TrTerm.wk (henv : env.WF) {fv deps ty} {e : Expr} {A : VExpr}
     TrTerm env Us ((some (fv, deps), .vlam ty) :: Δ) e A.lift :=
   ⟨h.tgt.lift,
    h.trS.weakFV henv (.skip_fvar _ _ .refl) hΔ',
-   h.hasType.weakN henv.ordered (VLCtx.FVLift.skip_fvar (fv, deps) (.vlam ty) .refl).toCtx⟩
+   h.hasType.weakN henv.orderedStrong (VLCtx.FVLift.skip_fvar (fv, deps) (.vlam ty) .refl).toCtx⟩
 
 def TrTerm.app {f a : Expr} {A B : VExpr}
     (hf : TrTerm env Us Δ f (.forallE A B)) (ha : TrTerm env Us Δ a A) :
