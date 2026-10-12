@@ -63,16 +63,16 @@ structure TypedCallTemplate
   universes : (call.lctx.mkForall call.args (.sort .zero)).levelParamsIn root.lparams = true ∧
     ∀ e ∈ call.targetIndices.toList, e.levelParamsIn root.lparams = true
 
-/-- Array alignment for the typed call templates (`TypedCallTemplate`) produced by
-`loopUTemplates`.  Entry `j` is rooted after exactly the `j` earlier
-hypotheses declared by that same loop, hence its validation depth is
-`depth + j`. -/
-structure TypedCallTemplates
+/-- Array alignment for typed call templates with an entry-specific scope.
+Entry `j` is rooted after the `j` earlier hypotheses of the same loop,
+so its validation depth is `depth + j`. The uniform row specializes this
+certificate to a constant scope. -/
+structure TypedCallTemplatesAt
     {recLparams : List Name}
     (Rroot : RecursorContextWF fieldRoot recLparams)
     (decl : VInductDecl) (depth : Nat)
     (stats : AddInductive.InductiveStats) (motives : Array Expr)
-    (rootScope : FVarId → Prop)
+    (fieldScope : Nat → FVarId → Prop)
     (fields hypotheses : Array Expr)
     (calls : Array AddInductive.RecCallTemplate) : Prop where
   size_eq : calls.size = hypotheses.size
@@ -83,33 +83,35 @@ structure TypedCallTemplates
           ∃ _ : RecursorFVarSuffix Rroot Rorigin priorHypotheses,
             priorHypotheses.size = j ∧ Rorigin.chk = Rroot.chk ∧
               Nonempty (TypedCallTemplate stats motives
-                Rorigin rootScope decl (depth + j) fields[j]! calls[j]!)
+                Rorigin (fieldScope j) decl (depth + j) fields[j]! calls[j]!)
 
-theorem TypedCallTemplates.empty
+theorem TypedCallTemplatesAt.empty
     {recLparams : List Name}
     (R : RecursorContextWF c recLparams) (decl : VInductDecl) (depth : Nat)
     (stats : AddInductive.InductiveStats) (motives : Array Expr)
-    (rootScope : FVarId → Prop)
+    (fieldScope : Nat → FVarId → Prop)
     (fields : Array Expr) :
-    TypedCallTemplates R decl depth stats motives rootScope
+    TypedCallTemplatesAt R decl depth stats motives fieldScope
       fields #[] #[] where
   size_eq := rfl
   entry j hj := by simp at hj
 
-theorem TypedCallTemplates.pushCurrent
+theorem TypedCallTemplatesAt.pushCurrent
     {recLparams : List Name}
     {Rroot : RecursorContextWF fieldRoot recLparams}
     {R : RecursorContextWF c recLparams}
     {calls : Array AddInductive.RecCallTemplate}
-    (Hsem : TypedCallTemplates Rroot decl depth stats
-      motives rootScope fields hypotheses calls)
+    (Hsem : TypedCallTemplatesAt Rroot decl depth stats
+      motives fieldScope fields hypotheses calls)
     (Hrecent : RecursorFVarSuffix Rroot R hypotheses)
     (hchk : R.chk = Rroot.chk)
     (call : AddInductive.RecCallTemplate)
-    (S : TypedCallTemplate stats motives R rootScope decl
+    (S : TypedCallTemplate stats motives R
+      (fieldScope hypotheses.size) decl
       (depth + hypotheses.size) fields[hypotheses.size]! call) :
-    TypedCallTemplates Rroot decl depth stats motives rootScope
-      fields (hypotheses.push (.fvar ⟨c.ngen.curr⟩)) (calls.push call) := by
+    TypedCallTemplatesAt Rroot decl depth stats motives
+      fieldScope fields (hypotheses.push (.fvar ⟨c.ngen.curr⟩))
+      (calls.push call) := by
   refine {
     size_eq := by simpa using congrArg Nat.succ Hsem.size_eq
     entry := ?_ }
@@ -135,6 +137,45 @@ theorem TypedCallTemplates.pushCurrent
     rw [hcall]
     exact ⟨originRoot, Rorigin, priorHypotheses, Hprior,
       hpriorSize, hchkO, S⟩
+
+/-- The equation layer uses the same template accumulator at a uniform
+root scope; per-field strengthening uses `TypedCallTemplatesAt` directly. -/
+abbrev TypedCallTemplates
+    {recLparams : List Name}
+    (Rroot : RecursorContextWF fieldRoot recLparams)
+    (decl : VInductDecl) (depth : Nat)
+    (stats : AddInductive.InductiveStats) (motives : Array Expr)
+    (rootScope : FVarId → Prop)
+    (fields hypotheses : Array Expr)
+    (calls : Array AddInductive.RecCallTemplate) : Prop :=
+  TypedCallTemplatesAt Rroot decl depth stats motives (fun _ => rootScope)
+    fields hypotheses calls
+
+theorem TypedCallTemplates.empty
+    {recLparams : List Name}
+    (R : RecursorContextWF c recLparams) (decl : VInductDecl) (depth : Nat)
+    (stats : AddInductive.InductiveStats) (motives : Array Expr)
+    (rootScope : FVarId → Prop)
+    (fields : Array Expr) :
+    TypedCallTemplates R decl depth stats motives rootScope
+      fields #[] #[] :=
+  TypedCallTemplatesAt.empty R decl depth stats motives (fun _ => rootScope) fields
+
+theorem TypedCallTemplates.pushCurrent
+    {recLparams : List Name}
+    {Rroot : RecursorContextWF fieldRoot recLparams}
+    {R : RecursorContextWF c recLparams}
+    {calls : Array AddInductive.RecCallTemplate}
+    (Hsem : TypedCallTemplates Rroot decl depth stats
+      motives rootScope fields hypotheses calls)
+    (Hrecent : RecursorFVarSuffix Rroot R hypotheses)
+    (hchk : R.chk = Rroot.chk)
+    (call : AddInductive.RecCallTemplate)
+    (S : TypedCallTemplate stats motives R rootScope decl
+      (depth + hypotheses.size) fields[hypotheses.size]! call) :
+    TypedCallTemplates Rroot decl depth stats motives rootScope
+      fields (hypotheses.push (.fvar ⟨c.ngen.curr⟩)) (calls.push call) :=
+  TypedCallTemplatesAt.pushCurrent Hsem Hrecent hchk call S
 
 /-- Sharpening a field up-set to a binder-order prefix of the fields.  The
 fields form the newest-first prefix of the context, each
@@ -215,82 +256,6 @@ theorem IsFVarUpSet.sharpenPrefix {P : FVarId → Prop} :
           exact List.mem_append_left _ hxL'
         · exact absurd hfvP (hfresh fv (by simp))
       · exact Or.inr hxP
-
-/-- Per-field variant of `TypedCallTemplates`: entry `j`
-is scoped by `fieldScope j`, the up-set established for the `j`-th
-selected recursive field.  Both rows come from the same
-executable run; the coarse row serves the equation layer while this one
-supports strengthening the call context to the field's own prefix. -/
-structure TypedCallTemplatesAt
-    {recLparams : List Name}
-    (Rroot : RecursorContextWF fieldRoot recLparams)
-    (decl : VInductDecl) (depth : Nat)
-    (stats : AddInductive.InductiveStats) (motives : Array Expr)
-    (fieldScope : Nat → FVarId → Prop)
-    (fields hypotheses : Array Expr)
-    (calls : Array AddInductive.RecCallTemplate) : Prop where
-  size_eq : calls.size = hypotheses.size
-  entry : ∀ j (_hj : j < hypotheses.size),
-    ∃ originRoot,
-      ∃ Rorigin : RecursorContextWF originRoot recLparams,
-        ∃ priorHypotheses : Array Expr,
-          ∃ _ : RecursorFVarSuffix Rroot Rorigin priorHypotheses,
-            priorHypotheses.size = j ∧ Rorigin.chk = Rroot.chk ∧
-              Nonempty (TypedCallTemplate stats motives
-                Rorigin (fieldScope j) decl (depth + j) fields[j]! calls[j]!)
-
-theorem TypedCallTemplatesAt.empty
-    {recLparams : List Name}
-    (R : RecursorContextWF c recLparams) (decl : VInductDecl) (depth : Nat)
-    (stats : AddInductive.InductiveStats) (motives : Array Expr)
-    (fieldScope : Nat → FVarId → Prop)
-    (fields : Array Expr) :
-    TypedCallTemplatesAt R decl depth stats motives fieldScope
-      fields #[] #[] where
-  size_eq := rfl
-  entry j hj := by simp at hj
-
-theorem TypedCallTemplatesAt.pushCurrent
-    {recLparams : List Name}
-    {Rroot : RecursorContextWF fieldRoot recLparams}
-    {R : RecursorContextWF c recLparams}
-    {calls : Array AddInductive.RecCallTemplate}
-    (Hsem : TypedCallTemplatesAt Rroot decl depth stats
-      motives fieldScope fields hypotheses calls)
-    (Hrecent : RecursorFVarSuffix Rroot R hypotheses)
-    (hchk : R.chk = Rroot.chk)
-    (call : AddInductive.RecCallTemplate)
-    (S : TypedCallTemplate stats motives R
-      (fieldScope hypotheses.size) decl
-      (depth + hypotheses.size) fields[hypotheses.size]! call) :
-    TypedCallTemplatesAt Rroot decl depth stats motives
-      fieldScope fields (hypotheses.push (.fvar ⟨c.ngen.curr⟩))
-      (calls.push call) := by
-  refine {
-    size_eq := by simpa using congrArg Nat.succ Hsem.size_eq
-    entry := ?_ }
-  intro j hj
-  by_cases hlast : j = hypotheses.size
-  · subst j
-    have hcall : (calls.push call)[hypotheses.size]! = call := by
-      rw [show hypotheses.size = calls.size from Hsem.size_eq.symm]
-      simp
-    rw [hcall]
-    exact ⟨c, R, hypotheses, Hrecent, rfl, hchk, ⟨S⟩⟩
-  · have hjOld : j < hypotheses.size := by
-      have : j < hypotheses.size + 1 := by simpa using hj
-      omega
-    rcases Hsem.entry j hjOld with
-      ⟨originRoot, Rorigin, priorHypotheses, Hprior, hpriorSize, hchkO, S⟩
-    have hjCalls : j < calls.size := by rw [Hsem.size_eq]; exact hjOld
-    have hcall : (calls.push call)[j]! = calls[j]! := by
-      simp only [Array.getElem!_eq_getD]
-      unfold Array.getD
-      rw [dif_pos (by simp; omega), dif_pos hjCalls]
-      exact Array.getElem_push_lt hjCalls
-    rw [hcall]
-    exact ⟨originRoot, Rorigin, priorHypotheses, Hprior,
-      hpriorSize, hchkO, S⟩
 
 /-- The scope of one selected recursive field: the parameters together
 with the constructor fields before that field, in binder order.  The
