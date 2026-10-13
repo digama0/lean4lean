@@ -3,6 +3,166 @@ import Lean4Lean.Verify.TypeChecker.Reduce
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
 
+private theorem quotMkShape {expression : Expr}
+    (shape : expression.isAppOfArity ``Quot.mk 3 = true) :
+    ∃ levels : List Level, ∃ typeExpr relationExpr valueExpr,
+      expression = Expr.app (Expr.app (Expr.app (.const ``Quot.mk levels) typeExpr) relationExpr) valueExpr := by
+  cases expression with
+  | app remaining firstArg =>
+    cases remaining with
+    | app remaining secondArg =>
+      cases remaining with
+      | app remaining thirdArg =>
+        cases remaining with
+        | const constructorName constructorLevels =>
+          simp [Expr.isAppOfArity] at shape
+          simp_all
+        | _ => simp [Expr.isAppOfArity] at shape
+      | _ => simp [Expr.isAppOfArity] at shape
+    | _ => simp [Expr.isAppOfArity] at shape
+  | _ => simp [Expr.isAppOfArity] at shape
+
+private theorem quotArgumentBelow {context : VContext} {expression : Expr} (position : Nat)
+    (bound : position < expression.getAppArgs.size) :
+    context.FVarsBelow expression expression.getAppArgs[position] := by
+  intro property hProperty hFreeVars
+  rw [← expression.mkAppList_getAppArgsList] at hFreeVars
+  have allArguments := (FVarsIn.mkAppList.mp hFreeVars).2
+  have member : expression.getAppArgs[position] ∈ expression.getAppArgsList := by
+    rw [← expression.getAppArgs_toList]
+    exact Array.mem_toList_iff.mpr (Array.getElem_mem bound)
+  exact allArguments _ member
+
+private theorem quotAppStackTranslatedArgument
+    (stack : AppStack environment levels locals function functionSemantic arguments)
+    (member : argument ∈ arguments) :
+    ∃ semantic, TrExprS environment levels locals argument semantic := by
+  induction stack generalizing argument with
+  | head => cases member
+  | app functionTyping argumentTyping functionTranslation argumentTranslation tail inductionHypothesis =>
+    rcases List.mem_cons.mp member with same | remaining
+    · subst argument
+      exact ⟨_, argumentTranslation⟩
+    · exact inductionHypothesis remaining
+
+private theorem quotTranslatedApplicationArgument {context : VContext}
+    (translated : context.TrExprS expression semantic)
+    (bound : position < expression.getAppArgs.size) :
+    ∃ result, context.TrExprS expression.getAppArgs[position] result := by
+  obtain ⟨_, stack⟩ := AppStack.build (expression.mkAppList_getAppArgsList ▸ translated)
+  apply quotAppStackTranslatedArgument stack
+  rw [← Expr.getAppArgs_toList]
+  exact Array.mem_toList_iff.mpr (Array.getElem_mem bound)
+
+private theorem quotRangeBelow {context : VContext} {expression base : Expr} {start : Nat}
+    (bound : start ≤ expression.getAppArgs.size)
+    (baseBelow : context.FVarsBelow expression base) :
+    context.FVarsBelow expression (mkAppRange base start expression.getAppArgs.size expression.getAppArgs) := by
+  let args := expression.getAppArgs
+  let pre := args.toList.take start
+  let suffix := args.toList.drop start
+  have split : args.toList = pre ++ suffix := by
+    exact (List.take_append_drop start args.toList).symm
+  have bound' : start ≤ args.size := by simpa [args] using bound
+  have preLength : pre.length = start := by
+    simp [pre, List.length_take, Nat.min_eq_left bound']
+  have fullLength : (pre ++ suffix).length = args.size := by
+    exact (congrArg List.length split).symm.trans (by simp [args])
+  have split' : args.toList = pre ++ suffix ++ [] := by simpa using split
+  rw [Expr.mkAppRange_eq (l₁ := pre) (l₂ := suffix) (l₃ := [])
+    split' preLength fullLength]
+  intro property hProperty hFreeVars
+  apply FVarsIn.mkAppList.mpr
+  refine ⟨baseBelow property hProperty hFreeVars, ?_⟩
+  intro argument argumentMember
+  have freeVarsInExpression : FVarsIn property
+      (expression.getAppFn.mkAppList expression.getAppArgs.toList) := by
+    rw [expression.getAppArgs_toList, expression.mkAppList_getAppArgsList]
+    exact hFreeVars
+  have allArguments := (FVarsIn.mkAppList.mp freeVarsInExpression).2
+  have member : argument ∈ expression.getAppArgs.toList := by
+    rw [split]
+    exact List.mem_append_right _ argumentMember
+  exact allArguments _ member
+
+theorem quotReduceRec.fvarsBelow {context : VContext} {state : VState}
+    (translated : context.TrExprS expression semantic) :
+    RecM.WF context state (quotReduceRec expression whnf) fun outcome _ =>
+      ∀ reduced, outcome = some reduced → context.FVarsBelow expression reduced := by
+  intro methods valid
+  unfold quotReduceRec
+  cases head : expression.getAppFn <;> try exact .pure nofun
+  rename_i name levels
+  dsimp only
+  have continuation (constructorPosition argumentPosition : Nat)
+      (positionBound : argumentPosition < constructorPosition) :
+      ((do
+        let arguments := expression.getAppArgs
+        if bound : constructorPosition < arguments.size then
+          let constructor ← whnf arguments[constructorPosition]
+          if !constructor.isAppOfArity ``Quot.mk 3 then return none
+          let result := Expr.app arguments[argumentPosition]! constructor.appArg!
+          let arity := constructorPosition + 1
+          if arity < arguments.size then
+            return some (mkAppRange result arity arguments.size arguments)
+          else return some result
+        else return none) methods).WF context state
+        (fun outcome _ => ∀ reduced, outcome = some reduced →
+          context.FVarsBelow expression reduced) := by
+    dsimp only
+    split
+    · rename_i bound
+      dsimp only [Bind.bind, ReaderT.bind, whnf]
+      obtain ⟨_, constructorTranslation⟩ :=
+        quotTranslatedApplicationArgument (context := context) translated ‹_›
+      refine (valid.whnf constructorTranslation).bind fun normalized _ _ ⟨below, _⟩ => ?_
+      split
+      · exact .pure nofun
+      · rename_i shape
+        have shape' : normalized.isAppOfArity ``Quot.mk 3 = true := by
+          simp at shape ⊢
+          exact shape
+        have constructorBelow : context.FVarsBelow expression
+            (getElem expression.getAppArgs constructorPosition bound) :=
+          quotArgumentBelow _ bound
+        have payloadBelow : context.FVarsBelow expression normalized.appArg! := by
+          obtain ⟨levels, typeExpr, relationExpr, valueExpr, rfl⟩ := quotMkShape shape'
+          intro property hProperty hFreeVars
+          have normalizedFreeVars :=
+            below property hProperty (constructorBelow property hProperty hFreeVars)
+          simpa [Expr.appArg!] using normalizedFreeVars.2
+        have argumentBound : argumentPosition < expression.getAppArgs.size := by omega
+        have argumentBelow : context.FVarsBelow expression
+            (getElem expression.getAppArgs argumentPosition argumentBound) :=
+          quotArgumentBelow _ argumentBound
+        have resultBelow :
+            context.FVarsBelow expression
+              ((getElem expression.getAppArgs argumentPosition argumentBound).app normalized.appArg!) := by
+          intro property hProperty hFreeVars
+          exact ⟨argumentBelow property hProperty hFreeVars,
+            payloadBelow property hProperty hFreeVars⟩
+        split
+        · change M.WF context _ (pure (some _)) _
+          exact .pure (by
+            rintro _ ⟨⟩
+            rw [getElem!_pos expression.getAppArgs argumentPosition argumentBound]
+            exact quotRangeBelow (by omega) resultBelow)
+        · change M.WF context _ (pure (some _)) _
+          exact .pure (by
+            rintro _ ⟨⟩
+            rw [getElem!_pos expression.getAppArgs argumentPosition argumentBound]
+            exact resultBelow)
+    · exact .pure nofun
+  by_cases isLiftName : name == ``Quot.lift
+  · simp only [isLiftName, if_true]
+    exact continuation 5 3 (by omega)
+  · simp only [Bool.eq_false_iff.mpr isLiftName, Bool.false_eq_true, if_false]
+    by_cases isInductiveName : name == ``Quot.ind
+    · simp only [isInductiveName, if_true]
+      exact continuation 4 3 (by omega)
+    · simp only [Bool.eq_false_iff.mpr isInductiveName, Bool.false_eq_true, if_false]
+      exact .pure nofun
+
 theorem reduceRecursor.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
     RecM.WF c s (reduceRecursor e) fun oe _ =>
       ∀ e₁, oe = some e₁ → c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := sorry
