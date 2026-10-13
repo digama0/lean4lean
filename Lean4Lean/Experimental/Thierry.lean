@@ -90,7 +90,11 @@ axiom FinElem.LE.unfold : a ≤ b → FinElem.LE_unfold a b
   · show (_:D) ≤ _; simp [FinElem.embed_bot, D.LE.bot]
   · show (_:DF) ≤ _; simp [FinFun.embed_bot, DF.LE.bot]
 
-@[simp] theorem FinMut.LE.rfl {x : FinMut b} : x ≤ x := sorry
+@[simp] theorem FinMut.LE.rfl {x : FinMut b} : x ≤ x := by
+  cases b
+  · exact D.LE.rfl
+  · exact fun _ => D.LE.rfl
+
 @[simp] theorem FinMut.LE.lam {x y : FinFun} : x.lam ≤ y.lam ↔ x ≤ y := sorry
 @[simp] theorem FinMut.LE.pi {x y : FinElem} : x.pi f ≤ y.pi g ↔ x ≤ y ∧ f ≤ g := sorry
 axiom FinMut.LE.cons : FinMut.cons u v f ≤ g ↔ v ≤ g u ∧ f ≤ g
