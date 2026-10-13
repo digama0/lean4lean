@@ -385,10 +385,30 @@ theorem inferLet.WF
   refine (c.withMLC_self ▸ inferLet.loop.WF (Nat.zero_le _) [] rfl rfl rfl rfl rfl ?_ hr) hinf
   exact fun P hP he => ⟨(AllAbove.wf wf.trctx.wf.fvwf).2 hP, he.mono fun _ h _ => h, fun _ => id⟩
 
+theorem inferProj.rejects (translated : c.TrExprS ety semanticType) :
+    (inferProj st i e ety).WF c s (fun _ _ => False) := by
+  unfold inferProj
+  refine (whnf.WF translated).bind fun normalized _ _ ⟨_, normalizedTranslation⟩ => ?_
+  rw [Expr.withApp_eq]
+  let ⟨_, structural, _⟩ := normalizedTranslation
+  have ⟨_, headStack⟩ := AppStack.build <| normalized.mkAppList_getAppArgsList ▸ structural
+  refine RecM.WF.getEnv ?_
+  cases headEq : normalized.getAppFn <;> try exact RecM.WF.getLCtx RecM.WF.throw
+  case const name levels =>
+    have headTranslation := headEq ▸ headStack.tr
+    let .const semanticLookup _ _ := headTranslation
+    dsimp only
+    split
+    · rintro _ _ _ _ _ accepted; cases accepted
+    · refine (M.WF.liftExcept envGet.WF).lift.bind fun information _ _ nativeLookup => ?_
+      cases information <;> try exact RecM.WF.getLCtx RecM.WF.throw
+      exact False.elim <| c.trenv.inductiveNotInModel nativeLookup ⟨_, semanticLookup⟩
+
 theorem inferProj.WF
-    (he : c.TrExprS e e') (hty : c.TrExprS ety ety') (hasty : c.HasType e' ty') :
+    (_he : c.TrExprS e e') (hty : c.TrExprS ety ety') (_hasty : c.HasType e' ty') :
     (inferProj st i e ety).WF c s fun ty _ =>
-      ∃ ty', c.TrTyping (.proj st i e) ty e' ty' := sorry
+      ∃ ty', c.TrTyping (.proj st i e) ty e' ty' :=
+  (inferProj.rejects hty).mono fun _ _ _ impossible => impossible.elim
 
 theorem literal_is_primitive (H : n = ``Nat ∨ n = ``Char.ofNat ∨ n = ``String.ofList)  :
     Environment.primitives.contains n := by
