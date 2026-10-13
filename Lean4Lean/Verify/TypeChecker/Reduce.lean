@@ -9,6 +9,29 @@ theorem reduceNative.WF :
   unfold reduceNative; split <;> [skip; exact .pure nofun]
   split <;> [exact .throw; skip]; split <;> [exact .throw; exact .pure nofun]
 
+theorem _root_.Lean4Lean.TypeChecker.VContext.constAppHeadInModel {context : VContext}
+    (translated : context.TrExprS expression semantic)
+    (headEq : expression.getAppFn = .const name levels) : context.venv.contains name := by
+  obtain ⟨_, stack⟩ := AppStack.build (expression.mkAppList_getAppArgsList ▸ translated)
+  have headTranslation := headEq ▸ stack.tr
+  let .const semanticLookup _ _ := headTranslation
+  exact ⟨_, semanticLookup⟩
+
+theorem inductiveReduceRec.none_of_translation {context : VContext} {state : VState}
+    (translated : context.TrExprS expression semantic) :
+    (inductiveReduceRec context.env expression whnf inferType isDefEq).WF context state
+      (fun outcome _ => outcome = none) := by
+  unfold inductiveReduceRec
+  cases headEq : expression.getAppFn <;> try exact RecM.WF.pure rfl
+  case const name levels =>
+    have inModel := context.constAppHeadInModel translated headEq
+    simp only [Lean.Kernel.Environment.find?]
+    split
+    · rename_i previous info found
+      exact False.elim <|
+        context.trenv.inductiveFamilyNotInModel found trivial inModel
+    · exact RecM.WF.pure rfl
+
 theorem rawNatLitExt?.WF {c : VContext} (H : rawNatLitExt? e = some n) (he : c.TrExprS e e') :
     c.venv.contains ``Nat ∧ e' = .natLit n := by
   have : c.TrExprS (.lit (.natVal n)) e' := by
