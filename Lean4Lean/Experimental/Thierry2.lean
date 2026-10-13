@@ -327,7 +327,24 @@ theorem Shape.lift_mono {s t : Shape n} : s ≤ t → (s.lift : Shape m) ≤ t.l
       · grind
 
 theorem Shape.Compat.lift {x y : Shape n} (le : n ≤ m) :
-    (x.lift : Shape m).Compat y.lift ↔ x.Compat y := sorry
+    (x.lift : Shape m).Compat y.lift ↔ x.Compat y := by
+  rw [← Bool.eq_iff_iff]
+  induction n generalizing m with
+  | zero =>
+    cases m with
+    | zero => simp [Shape.lift_self]
+    | succ m => cases x <;> cases y <;> simp [Shape.lift, Shape.Compat]
+  | succ n ih =>
+    let m + 1 := m
+    replace le := Nat.le_of_succ_le_succ le
+    replace ih {x y} := @ih m x y le
+    have ihf {x y : ShapeFun n} :
+        ShapeFun.Compat (@Shape.Compat m)
+            (ShapeFun.lift (Shape.lift : Shape n → Shape m) x)
+            (ShapeFun.lift Shape.lift y) =
+          ShapeFun.Compat (@Shape.Compat n) x y := by
+      simp only [ShapeFun.Compat, ShapeFun.lift, List.all_map, Function.comp_def, ih]
+    cases x <;> cases y <;> simp [Shape.lift, Shape.Compat, ih, ihf]
 
 theorem ShapeFun.Compat.lift {x y : ShapeFun n} (le : n ≤ m) :
     Compat Shape.Compat (lift Shape.lift x : ShapeFun m) (lift Shape.lift y) ↔
