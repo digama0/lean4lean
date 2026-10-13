@@ -32,6 +32,19 @@ theorem inductiveReduceRec.none_of_translation {context : VContext} {state : VSt
         context.trenv.inductiveFamilyNotInModel found trivial inModel
     · exact RecM.WF.pure rfl
 
+theorem reduceRecursor.none_of_translation {context : VContext} {state : VState}
+    (notInitialized : context.env.quotInit = false)
+    (translated : context.TrExprS expression semantic) :
+    (reduceRecursor expression).WF context state
+      (fun outcome _ => outcome = none) := by
+  unfold reduceRecursor
+  refine RecM.WF.getEnv ?_
+  simp [notInitialized]
+  refine (inductiveReduceRec.none_of_translation translated).bind fun outcome _ _ h => ?_
+  cases outcome with
+  | none => exact .pure rfl
+  | some value => cases h
+
 theorem rawNatLitExt?.WF {c : VContext} (H : rawNatLitExt? e = some n) (he : c.TrExprS e e') :
     c.venv.contains ``Nat ∧ e' = .natLit n := by
   have : c.TrExprS (.lit (.natVal n)) e' := by
