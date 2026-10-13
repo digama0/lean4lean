@@ -9,6 +9,14 @@ theorem reduceNative.WF :
   unfold reduceNative; split <;> [skip; exact .pure nofun]
   split <;> [exact .throw; skip]; split <;> [exact .throw; exact .pure nofun]
 
+theorem _root_.Lean4Lean.TypeChecker.VContext.constAppHeadInModel {context : VContext}
+    (translated : context.TrExprS expression semantic)
+    (headEq : expression.getAppFn = .const name levels) : context.venv.contains name := by
+  obtain ⟨_, stack⟩ := AppStack.build (expression.mkAppList_getAppArgsList ▸ translated)
+  have headTranslation := headEq ▸ stack.tr
+  let .const semanticLookup _ _ := headTranslation
+  exact ⟨_, semanticLookup⟩
+
 theorem rawNatLitExt?.WF {c : VContext} (H : rawNatLitExt? e = some n) (he : c.TrExprS e e') :
     c.venv.contains ``Nat ∧ e' = .natLit n := by
   have : c.TrExprS (.lit (.natVal n)) e' := by
