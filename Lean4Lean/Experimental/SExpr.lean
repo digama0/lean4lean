@@ -792,7 +792,22 @@ theorem Ctx.SubstEq.symm (W : Ctx.SubstEq Γ₀ σ σ' Γ) : Ctx.SubstEq Γ₀ �
   | cons W hA h ih => exact .cons ih hA (.defeqDF (.subst W hA) h.symm)
 
 theorem Ctx.SubstEq.lookup (W : Ctx.SubstEq Γ₀ σ σ' Γ) :
-    Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ := sorry
+    Lookup Γ i A → Γ₀ ⊢ σ i ≡ σ' i : A.subst σ := by
+  intro h
+  induction W generalizing i A with
+  | nil =>
+    change Γ₀ ⊢ .bvar i ≡ .bvar i : A.subst .id
+    rw [subst_id]
+    exact .bvar h
+  | cons W' hA' hhead ih =>
+    cases h with
+    | zero =>
+      simp only [show ∀ (s : SExpr.Subst), s 0 = s.head from fun _ => rfl, lift_subst]
+      exact hhead
+    | succ h' =>
+      simp only [show ∀ (s : SExpr.Subst) n, s (n+1) = s.tail n from fun _ _ => rfl,
+        lift_subst]
+      exact ih h'
 
 theorem Ctx.SubstEq.lift (W : Ctx.SubstEq Γ₀ σ σ' Γ) (hA : Γ₀ ⊢ A.subst σ : .sort u) :
     Ctx.SubstEq (A.subst σ :: Γ₀) σ.lift σ'.lift (A :: Γ) := sorry
