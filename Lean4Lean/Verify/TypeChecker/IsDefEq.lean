@@ -5,6 +5,7 @@ open Lean4Lean
 
 namespace Lean4Lean.TypeChecker.Inner
 open Lean hiding Environment Exception
+open Kernel
 
 theorem isDefEqLambda.WF {c : VContext} {s : VState}
     {m} [mwf : c.MLCWF m]
@@ -222,9 +223,28 @@ theorem tryEtaExpansion.WF {c : VContext} {s : VState}
   split <;> [exact .pure fun _ => h rfl; skip]
   exact (tryEtaExpansionCore.WF he₂ he₁).mono fun _ _ _ h hb => (h hb).symm
 
+theorem tryEtaStructCore.false_of_translation {context : VContext} {state : VState}
+    (translated : context.TrExprS second semantic) :
+    (tryEtaStructCore first second).WF context state (fun equal _ => equal = false) := by
+  unfold tryEtaStructCore
+  cases headEq : second.getAppFn <;> try exact RecM.WF.pure rfl
+  case const name levels =>
+    have inModel := context.constAppHeadInModel translated headEq
+    refine RecM.WF.getEnv ?_
+    have envGetWF : (context.env.get name).WF fun information =>
+        context.env.find? name = some information := by
+      simp [Environment.get]
+      split <;> [refine .pure ‹_›; exact .throw]
+    refine (M.WF.liftExcept envGetWF).lift.bind fun information _ _ found => ?_
+    cases information <;> try exact RecM.WF.pure rfl
+    exact False.elim <| context.trenv.constructorNotInModel found inModel
+
 theorem tryEtaStructCore.WF {c : VContext} {s : VState}
-    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (tryEtaStructCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := sorry
+    (_he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
+    RecM.WF c s (tryEtaStructCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
+  exact (tryEtaStructCore.false_of_translation he₂).mono fun _ _ _ rejected accepted => by
+    cases rejected
+    cases accepted
 
 theorem tryEtaStruct.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
@@ -483,9 +503,30 @@ theorem tryStringLitExpansion.WF {c : VContext} {s : VState}
   split <;> [skip; exact .pure h]
   exact (tryStringLitExpansionCore.WF he₂ he₁).mono fun _ _ _ h hb => (h hb).symm
 
+theorem isDefEqUnitLike.false_of_translation {context : VContext} {state : VState}
+    (translated : context.TrExprS first semantic) :
+    (isDefEqUnitLike first second).WF context state (fun equal _ => equal = false) := by
+  unfold isDefEqUnitLike
+  refine (inferType.WF translated).bind fun _ _ _ ⟨_, _, _, typeTranslation, _⟩ => ?_
+  refine (whnf.WF typeTranslation).bind fun normalized _ _ ⟨_, _, structural, _⟩ => ?_
+  cases headEq : normalized.getAppFn <;> try exact RecM.WF.pure rfl
+  case const name levels =>
+    have inModel := context.constAppHeadInModel structural headEq
+    refine RecM.WF.getEnv ?_
+    have envGetWF : (context.env.get name).WF fun information =>
+        context.env.find? name = some information := by
+      simp [Environment.get]
+      split <;> [refine .pure ‹_›; exact .throw]
+    refine (M.WF.liftExcept envGetWF).lift.bind fun information _ _ found => ?_
+    cases information <;> try exact RecM.WF.pure rfl
+    exact False.elim <| context.trenv.inductiveNotInModel found inModel
+
 theorem isDefEqUnitLike.WF {c : VContext} {s : VState}
-    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (isDefEqUnitLike e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := sorry
+    (he₁ : c.TrExprS e₁ e₁') (_he₂ : c.TrExprS e₂ e₂') :
+    RecM.WF c s (isDefEqUnitLike e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
+  exact (isDefEqUnitLike.false_of_translation he₁).mono fun _ _ _ rejected accepted => by
+    cases rejected
+    cases accepted
 
 theorem lazyDeltaProjReduction.finish.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS (.proj n₁ i e₁) e₁') (he₂ : c.TrExprS (.proj n₂ i e₂) e₂') :
