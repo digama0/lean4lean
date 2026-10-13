@@ -175,7 +175,8 @@ theorem ShapeFun.Compat.def {f f' : ShapeFun n} :
     ShapeFun.Compat Shape.Compat f f' ↔ ∀ x, (f.app x).Compat (f'.app x) :=
   sorry
 
-@[simp] theorem ShapeFun.bot_app : (@ShapeFun.bot n).app x = .bot := sorry
+@[simp] theorem ShapeFun.bot_app : (@ShapeFun.bot n).app x = .bot := by
+  simp [ShapeFun.app, ShapeFun.maxBelow, ShapeFun.bot]
 
 def Shape.app : Shape (n + 1) → Shape n → Shape n
   | .lam f, x => ShapeFun.app f x
