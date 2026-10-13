@@ -212,6 +212,82 @@ theorem insertDefs_find? : ∀ {cis : List DefinitionVal} {C : ConstMap} {name c
       · exact .inl h
     · exact .inr ⟨e, .tail _ he, h1, h2⟩
 
+private def InductiveFamilyInfo : ConstantInfo → Prop
+  | .inductInfo _ | .ctorInfo _ | .recInfo _ => True
+  | _ => False
+
+private def InductiveLookupsRejected (safety : DefinitionSafety) (constants : ConstMap) : Prop :=
+  ∀ name information, constants.find? name = some information →
+    InductiveFamilyInfo information → ¬safety ≤ information.safety
+
+private theorem InductiveLookupsRejected.insert {constants : ConstMap} {information : ConstantInfo}
+    (valid : constants.WF) (previous : InductiveLookupsRejected safety constants)
+    (inserted : InductiveFamilyInfo information → ¬safety ≤ information.safety) :
+    InductiveLookupsRejected safety (constants.insert name information) := by
+  intro queried queriedInformation found family
+  rw [valid.find?_insert] at found
+  split at found
+  · cases Option.some.inj found
+    exact inserted family
+  · exact previous queried queriedInformation found family
+
+private theorem InductiveLookupsRejected.addQuot1 {result : Prop}
+    (continuation : ∀ constants environment, constants.WF →
+      InductiveLookupsRejected safety constants → property constants environment → result)
+    (constants environment) (valid : constants.WF)
+    (previous : InductiveLookupsRejected safety constants)
+    (added : AddQuot1 name kind semantic property constants environment) : result := by
+  obtain ⟨levels, type, nextEnvironment, translated, fresh, installed, remaining⟩ := added
+  exact continuation _ _ (valid.insert _ _ fresh)
+    (previous.insert valid (by intro impossible; cases impossible)) remaining
+
+private theorem InductiveLookupsRejected.addQuot
+    (added : AddQuot initial final initialEnvironment finalEnvironment)
+    (valid : initial.WF) (previous : InductiveLookupsRejected safety initial) :
+    InductiveLookupsRejected safety final := by
+  dsimp [AddQuot] at added
+  refine (addQuot1 <| addQuot1 <| addQuot1 <| addQuot1 ?_) _ _ valid previous added
+  rintro _ _ _ rejected ⟨rfl, rfl⟩
+  exact rejected
+
+private theorem TrEnv'.inductiveFamilyLookupsRejected
+    (valid : TrEnv' safety constants quotient environment) :
+    InductiveLookupsRejected safety constants := by
+  induction valid with
+  | empty => intro _ _ impossible; simp [SMap.find?] at impossible
+  | ignore _ ignored previous inductionHypothesis =>
+    exact inductionHypothesis.insert previous.map_wf (fun _ => ignored)
+  | «axiom» _ _ _ _ previous inductionHypothesis
+  | defn _ _ _ _ previous inductionHypothesis
+  | thm _ _ _ _ _ previous inductionHypothesis
+  | «opaque» _ _ _ _ previous inductionHypothesis =>
+    exact inductionHypothesis.insert previous.map_wf (by intro impossible; cases impossible)
+  | mutualDef _ distinct fresh _ _ _ previous inductionHypothesis =>
+    intro queried information found family
+    rcases insertDefs_find? previous.map_wf fresh distinct found with found | ⟨_, _, _, impossible⟩
+    · exact inductionHypothesis queried information found family
+    · cases impossible; cases family
+  | quot _ added previous inductionHypothesis =>
+    exact inductionHypothesis.addQuot added previous.map_wf
+  | induct _ impossible _ _ => cases impossible
+
+theorem TrEnv'.constructorLookupRejected (valid : TrEnv' safety constants quotient environment)
+    (found : constants.find? name = some (.ctorInfo header)) :
+    ¬safety ≤ (ConstantInfo.ctorInfo header).safety :=
+  valid.inductiveFamilyLookupsRejected name _ found trivial
+
+theorem TrEnv.constructorLookupRejected (valid : TrEnv safety native environment)
+    (found : native.find? name = some (.ctorInfo header)) :
+    ¬safety ≤ (ConstantInfo.ctorInfo header).safety :=
+  TrEnv'.constructorLookupRejected valid (name := name)
+    (by rwa [← valid.map_wf.find?'_eq_find?])
+
+theorem TrEnv.constructorNotInModel (valid : TrEnv safety native environment)
+    (found : native.find? name = some (.ctorInfo header)) :
+    ¬environment.contains name := by
+  rintro ⟨semantic, translated⟩
+  exact valid.constructorLookupRejected found (valid.find?_uniq found translated).2.1
+
 theorem TrEnv'.of_value (H : TrEnv' safety C Q venv) (h : C.find? name = some ci)
     (hs : safety ≤ ci.safety) (hv : ci.deltaValue? = some v) :
     TrExpr venv ci.levelParams [] v (.const ci.name (VLevel.params ci.levelParams.length)) := by
