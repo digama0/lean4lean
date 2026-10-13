@@ -281,3 +281,74 @@ nonrec theorem TrEnv.of_value (H : TrEnv safety env venv) (h : env.find? name = 
     (hs : safety ≤ ci.safety) (hv : ci.deltaValue? = some v) :
     TrExpr venv ci.levelParams [] v (.const ci.name (VLevel.params ci.levelParams.length)) :=
   H.of_value (by rwa [← H.map_wf.find?'_eq_find?]) hs hv
+
+private def InductiveLookupsRejected (safety : DefinitionSafety) (constants : ConstMap) : Prop :=
+  ∀ name header, constants.find? name = some (.inductInfo header) →
+    ¬safety ≤ (ConstantInfo.inductInfo header).safety
+
+private theorem InductiveLookupsRejected.insert {constants : ConstMap} {information : ConstantInfo}
+    (valid : constants.WF) (previous : InductiveLookupsRejected safety constants)
+    (inserted : ∀ header, information = .inductInfo header →
+      ¬safety ≤ (ConstantInfo.inductInfo header).safety) :
+    InductiveLookupsRejected safety (constants.insert name information) := by
+  intro queried header found
+  rw [valid.find?_insert] at found
+  split at found
+  · exact inserted header (Option.some.inj found)
+  · exact previous queried header found
+
+private theorem InductiveLookupsRejected.addQuot1 {result : Prop}
+    (continuation : ∀ constants environment, constants.WF →
+      InductiveLookupsRejected safety constants → property constants environment → result)
+    (constants environment) (valid : constants.WF)
+    (previous : InductiveLookupsRejected safety constants)
+    (added : AddQuot1 name kind semantic property constants environment) : result := by
+  obtain ⟨levels, type, nextEnvironment, translated, fresh, installed, remaining⟩ := added
+  exact continuation _ _ (valid.insert _ _ fresh)
+    (previous.insert valid (by intro header impossible; cases impossible)) remaining
+
+private theorem InductiveLookupsRejected.addQuot
+    (added : AddQuot initial final initialEnvironment finalEnvironment)
+    (valid : initial.WF) (previous : InductiveLookupsRejected safety initial) :
+    InductiveLookupsRejected safety final := by
+  dsimp [AddQuot] at added
+  refine (addQuot1 <| addQuot1 <| addQuot1 <| addQuot1 ?_) _ _ valid previous added
+  rintro _ _ _ rejected ⟨rfl, rfl⟩
+  exact rejected
+
+theorem TrEnv'.inductiveLookupRejected (valid : TrEnv' safety constants quotient environment)
+    (found : constants.find? name = some (.inductInfo header)) :
+    ¬safety ≤ (ConstantInfo.inductInfo header).safety := by
+  have rejected : InductiveLookupsRejected safety constants := by
+    clear found
+    induction valid with
+    | empty => intro _ _ impossible; simp [SMap.find?] at impossible
+    | ignore _ ignored previous inductionHypothesis =>
+      exact inductionHypothesis.insert previous.map_wf
+        (by intro _ same; exact same ▸ ignored)
+    | «axiom» _ _ _ _ previous inductionHypothesis
+    | defn _ _ _ _ previous inductionHypothesis
+    | thm _ _ _ _ _ previous inductionHypothesis
+    | «opaque» _ _ _ _ previous inductionHypothesis =>
+      exact inductionHypothesis.insert previous.map_wf (by intro _ impossible; cases impossible)
+    | mutualDef _ distinct fresh _ _ _ previous inductionHypothesis =>
+      intro queried header found
+      rcases insertDefs_find? previous.map_wf fresh distinct found with found | ⟨_, _, _, impossible⟩
+      · exact inductionHypothesis queried header found
+      · cases impossible
+    | quot _ added previous inductionHypothesis =>
+      exact inductionHypothesis.addQuot added previous.map_wf
+    | induct _ impossible _ _ => cases impossible
+  exact rejected name header found
+
+theorem TrEnv.inductiveLookupRejected (valid : TrEnv safety native environment)
+    (found : native.find? name = some (.inductInfo header)) :
+    ¬safety ≤ (ConstantInfo.inductInfo header).safety :=
+  TrEnv'.inductiveLookupRejected valid (name := name)
+    (by rwa [← valid.map_wf.find?'_eq_find?])
+
+theorem TrEnv.inductiveNotInModel (valid : TrEnv safety native environment)
+    (found : native.find? name = some (.inductInfo header)) :
+    ¬environment.contains name := by
+  rintro ⟨semantic, translated⟩
+  exact valid.inductiveLookupRejected found (valid.find?_uniq found translated).2.1
