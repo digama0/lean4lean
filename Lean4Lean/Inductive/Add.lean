@@ -1,6 +1,7 @@
 import Batteries.Data.List.Basic
 import Lean4Lean.Environment.Basic
 import Lean4Lean.TypeChecker
+import Lean4Lean.Inductive.ElimName
 
 namespace Lean4Lean
 open Lean hiding Environment Exception
@@ -276,15 +277,11 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
     loop ctor.type 0 #[] (← readThe Context).fuel.inductiveFuel
   | _ => return false
 
-partial -- TODO: remove
 def getElimLevel (stats : InductiveStats) (indTypes : Array InductiveType) :
     M Level := do
   unless ← isLargeEliminator stats indTypes do return .zero
   let {lparams, ..} ← read
-  let rec loop u i := Id.run do
-    unless lparams.contains u do return .param u
-    loop ((`u).appendIndexAfter i) (i + 1)
-  return loop `u 1
+  return .param (freshElimName lparams)
 
 def isKTarget (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool := do
   let #[indType] := indTypes | return false
