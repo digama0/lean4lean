@@ -1,5 +1,6 @@
 import Lean4Lean.Verify.Environment.Lemmas
 import Lean4Lean.Verify.Typing.ConditionallyTyped
+import Lean4Lean.Verify.Typing.LetErasure
 import Lean4Lean.TypeChecker
 
 namespace Except
@@ -98,6 +99,32 @@ variable! (henv : env.WF) (W : VLCtx.FVLift' Δ Δ' 0 n 0) (hΔ : VLCtx.WF env U
 theorem WF.weak' (wf : WF env Us Δ m) : WF env Us Δ' m where
   wf := wf.wf
   defeq h1 h2 h3 := wf.defeq h1 h2 h3 |>.weak' henv W hΔ
+
+/-- Equivalence-manager leaves keep their exact translations when a fresh let
+is inserted. Reflexive and congruence nodes need no source-scope restriction. -/
+theorem IsDefEqE.insertLet (fresh : removed ∉ Δ.fvars)
+    (H : IsDefEqE env Us Δ e₁ e₂) :
+    IsDefEqE env Us ((some (removed, support), .vlet domain value) :: Δ) e₁ e₂ := by
+  have unused {e e'} (h : TrExprS env Us Δ e e') : FVarsIn (· ≠ removed) e :=
+    h.fvarsIn.mono fun _ member equal => fresh (equal ▸ member)
+  induction H with
+  | rfl => exact .rfl
+  | trans _ _ ih1 ih2 => exact .trans ih1 ih2
+  | defeq h1 h2 =>
+    obtain ⟨_, h2, equal⟩ := h2
+    exact .defeq (h1.insertLet .zero (unused h1))
+      ⟨_, h2.insertLet .zero (unused h2), equal⟩
+  | app _ _ ih1 ih2 => exact .app ih1 ih2
+  | lam _ _ ih1 ih2 => exact .lam ih1 ih2
+  | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
+  | letE _ _ _ ih1 ih2 ih3 => exact .letE ih1 ih2 ih3
+  | mdata _ ih => exact .mdata ih
+  | proj _ ih => exact .proj ih
+
+theorem WF.insertLet (fresh : removed ∉ Δ.fvars) (wf : WF env Us Δ m) :
+    WF env Us ((some (removed, support), .vlet domain value) :: Δ) m where
+  wf := wf.wf
+  defeq h1 h2 h3 := wf.defeq h1 h2 h3 |>.insertLet fresh
 
 end EquivManager
 
@@ -555,9 +582,9 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
     have trctx := wf.trctx.mkLetDecl h1' hty hval hval'
     have hic {ic} (H : InferCache.WF (c.withMLC m) s ic) :
         InferCache.WF (c.withMLC m') s.next ic :=
-      fun _ _ h => ((H h).fresh c.Ewf.ordered trctx.wf).mono le
+      fun _ _ h => ((H h).freshLet).mono le
     have hwc {wc} (H : WHNFCache.WF (c.withMLC m) s wc) : WHNFCache.WF (c.withMLC m') s.next wc :=
-      fun _ _ h => ((H h).fresh c.Ewf trctx.wf).mono le
+      fun _ _ h => ((H h).freshLet).mono le
     { ngen_wf := by
         simp [m', VContext.withMLC]; exact ⟨h0, fun _ h => le.reservesV (wf.ngen_wf _ h)⟩
       ectx := by
@@ -565,7 +592,7 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
         have hv := List.append_subset.2 ⟨hty.fvarsList, hval.fvarsList⟩
         refine
           have b1 := ⟨a1, ?_, hval'.weak' c.Ewf.ordered a2.toCtx⟩
-          ⟨_, _, b1, a2.cons_fvar _ _ hv, a3.weak' c.Ewf (.skip_fvar _ _ .refl) b1,
+          ⟨_, _, b1, a2.cons_fvar _ _ hv, a3.insertLet ((b1.2.1 _ _ rfl).1),
             fun _ h => by obtain _ | ⟨_, h⟩ := h <;> [exact h0; exact (a4 _ h).mono le]⟩
         rintro _ _ ⟨⟩; exact ⟨mt (a4 _) h1, hv.trans a2.fvars_sublist.subset⟩
       trctx, inferTypeI_wf := hic wf.inferTypeI_wf, inferTypeC_wf := hic wf.inferTypeC_wf
@@ -573,9 +600,9 @@ protected theorem RecM.WF.withLetDecl {c : VContext} {m} [cwf : c.MLCWF m]
   let ⟨s', hs1, hs2, wf', hs4⟩ := H _ _ _ (hs.trans le) h1 _ mwf this a s' e
   refine ⟨s', hs1, le.trans hs2, ?_, hs4⟩
   have hic {ic} (H : InferCache.WF (c.withMLC m') s' ic) :
-      InferCache.WF (c.withMLC m) s' ic := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
+      InferCache.WF (c.withMLC m) s' ic := fun _ _ h => (H h).weakLet_inv wf'.trctx.wf
   have hwc {wc} (H : WHNFCache.WF (c.withMLC m') s' wc) :
-      WHNFCache.WF (c.withMLC m) s' wc := fun _ _ h => (H h).weakN_inv c.Ewf wf'.trctx.wf
+      WHNFCache.WF (c.withMLC m) s' wc := fun _ _ h => (H h).weakLet_inv wf'.trctx.wf
   let ⟨_, _, a1, a2, a3⟩ := wf'.ectx
   exact {
     ngen_wf := (by simpa [VContext.withMLC] using wf'.ngen_wf :).2
@@ -654,6 +681,8 @@ def MLCtx.mkLetArg (x : FVarId) (name : Name)
     c.mkLet n (Nat.le_of_succ_le_succ h) nds (Nat.succ_inj.1 eq) <| mkLetArg x name ty val nd e
 termination_by structural n
 
+-- Keep the existing environment parameter for callers; erasure itself needs none.
+set_option linter.unusedVariables false in
 variable! (henv : VEnv.WF env) in
 theorem MLCtx.WF.mkForall_trS {c : MLCtx} (wf : c.WF env Us)
     (H1 : TrExprS env Us c.vlctx e e')
@@ -673,8 +702,7 @@ theorem MLCtx.WF.mkForall_trS {c : MLCtx} (wf : c.WF env Us)
       refine ih h1 ?_ H2 _; dsimp; split
       · exact .letE h5 h3 h4 (.abstract .zero H1)
       · rename_i h; simp at h
-        rw [Expr.lowerLooseBVars_eq_instantiate h (v := val)]
-        exact .inst_let henv (.abstract .zero H1) h4
+        exact H1.eraseAbstractedLet (c.noBV ▸ H1.closed) h
 
 theorem mkForall_hasType {c : MLCtx}
     (hus : us.Forall₂ (VLevel.ofLevel Us · = some ·) us')
@@ -718,6 +746,8 @@ theorem MLCtx.WF.mkForall_tr (henv : VEnv.WF env) {c : MLCtx} (wf : c.WF env Us)
   have := wf.mkForall_trS henv H1 ⟨_, eq.hasType.1⟩ n hn
   exact ⟨⟨_, this.1, _, H⟩, this.2.defeqU_l henv (wf.dropN n hn).tr.wf ⟨_, H⟩⟩
 
+-- Keep the existing environment parameter for callers; erasure itself needs none.
+set_option linter.unusedVariables false in
 variable! (henv : VEnv.WF env) in
 theorem MLCtx.WF.mkLambda_trS {c : MLCtx} (wf : c.WF env Us)
     (H1 : TrExprS env Us c.vlctx e e')
@@ -738,8 +768,7 @@ theorem MLCtx.WF.mkLambda_trS {c : MLCtx} (wf : c.WF env Us)
       refine ih h1 ?_ H2 _; dsimp; split
       · exact .letE h5 h3 h4 (.abstract .zero H1)
       · rename_i h; simp at h
-        rw [Expr.lowerLooseBVars_eq_instantiate h (v := val)]
-        exact .inst_let henv (.abstract .zero H1) h4
+        exact H1.eraseAbstractedLet (c.noBV ▸ H1.closed) h
 
 theorem MLCtx.WF.mkLambda'_congr {c : MLCtx} (wf : c.WF env Us)
     (H : env.IsDefEq Us.length c.vlctx.toCtx e₁ e₂ ty) (n hn) :
@@ -764,6 +793,8 @@ theorem MLCtx.WF.mkLambda_tr (henv : VEnv.WF env) {c : MLCtx} (wf : c.WF env Us)
   have := wf.mkLambda_trS henv H1 eq.hasType.1 n hn
   exact ⟨⟨_, this.1, _, H⟩, this.2.defeqU_l henv (wf.dropN n hn).tr.wf ⟨_, H⟩⟩
 
+-- Keep the existing environment parameter for callers; erasure itself needs none.
+set_option linter.unusedVariables false in
 variable! (henv : VEnv.WF env) in
 theorem MLCtx.WF.mkLet_trS {c : MLCtx} (wf : c.WF env Us)
     (H1 : TrExprS env Us c.vlctx e e')
@@ -785,8 +816,7 @@ theorem MLCtx.WF.mkLet_trS {c : MLCtx} (wf : c.WF env Us)
       · exact .letE h5 h3 h4 (.abstract .zero H1)
       · exact .letE h5 h3 h4 (.abstract .zero H1)
       · rename_i h _ _; simp at h
-        rw [Expr.lowerLooseBVars_eq_instantiate h (v := val)]
-        exact .inst_let henv (.abstract .zero H1) h4
+        exact H1.eraseAbstractedLet (c.noBV ▸ H1.closed) h
 
 theorem MLCtx.fvarRevList_prefix (c : MLCtx)
     {n hn} : c.fvarRevList n hn <+: c.vlctx.fvars := by
