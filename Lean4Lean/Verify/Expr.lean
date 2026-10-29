@@ -676,6 +676,10 @@ theorem getAppArgs_toList_rev : (getAppArgs e).toList = (getAppArgsRevList e).re
   simp [getAppArgs, getAppNumArgs_eq]
   exact (loop (List.append_nil _).symm (by simp)).trans (by simp)
 
+theorem getAppNumArgs_eq_getAppArgs_size : getAppNumArgs e = (getAppArgs e).size := by
+  rw [getAppNumArgs_eq]
+  simpa using (congrArg List.length (getAppArgs_toList_rev (e := e))).symm
+
 theorem getAppArgs_toList : (getAppArgs e).toList = getAppArgsList e := by
   rw [getAppArgs_toList_rev, getAppArgsRevList_reverse]
 
