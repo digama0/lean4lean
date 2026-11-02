@@ -30,6 +30,13 @@ instance decidable_WF : ∀ {l}, Decidable (WF n l)
   | .max .. | .imax .. => @instDecidableAnd _ _ decidable_WF decidable_WF
   | .param _ => Nat.decLt ..
 
+theorem WF.mono (h : n ≤ m) (hl : WF n l) : WF m l := by
+  induction l with
+  | zero => trivial
+  | succ _ ih => exact ih hl
+  | max _ _ ih1 ih2 | imax _ _ ih1 ih2 => exact ⟨ih1 hl.1, ih2 hl.2⟩
+  | param => exact Nat.lt_of_lt_of_le hl h
+
 variable (ls : List Nat) in
 def eval : VLevel → Nat
   | .zero => 0
