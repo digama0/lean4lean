@@ -170,16 +170,17 @@ and add it to the environment.
 partial def replayConstant (name : Name) : M Unit := do
   if ← isTodo name then
     let some ci := (← read).newConstants[name]? | unreachable!
-    let mut usedConstants := ci.getUsedConstants
-    -- We want `String.ofList` to be available when encountering string literals.
-    -- Presumably faster to first check if we already have it, before traversing
-    -- the declaration
+    -- We want `String.ofList` and `Char.ofNat` to be available when encountering string literals.
+    -- Presumably faster to first check if we already have them, before traversing
+    -- the declaration. Replay them before the other dependencies and only then set the flag:
+    -- one of those dependencies may have string literals of its own, and with the flag already
+    -- set it would be checked before `Char.ofNat` is added.
     unless (← get).hasStrings do
       if ci.hasStrLit then
-        usedConstants := usedConstants.insert ``String.ofList
-        usedConstants := usedConstants.insert ``Char.ofNat
+        replayConstant ``Char.ofNat
+        replayConstant ``String.ofList
         modify ({· with hasStrings := true })
-    replayConstants usedConstants
+    replayConstants ci.getUsedConstants
     -- Check that this name is still pending: a mutual block may have taken care of it.
     if (← get).pending.contains name then
       let addDeclAt (d : Declaration) :=
