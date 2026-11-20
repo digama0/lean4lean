@@ -18,6 +18,34 @@ structure RecInfo where
   major : Expr
   deriving Inhabited
 
+/-- What `checkConstructors` records about one constructor, for the recursor construction to
+read back. -/
+structure CtorData where
+  /-- The constructor's type with the block's parameters instantiated, so that its binders are
+  exactly the fields, and with `consumeFieldAnnotations` applied, so that each binder's domain
+  is already the type the field is declared at. Prepared once by `checkConstructors`, which is
+  also where the parameters are checked against the type former's; every later walk reads this
+  and so never has to skip a parameter or consume an annotation. -/
+  type : Expr
+  /-- For each non-parameter field, the `deepWhnfField` normal form of that field's type.
+
+  These are open terms, which is rare in this checker. Each one is abstracted over the fields
+  before it, innermost as `#0`, so it carries loose bound variables. A reader closes it against
+  its own field binders, as `mkRecInfos.loopCtorArgs` does with
+  `fields[bu.size]!.instantiateRev bu`. That is what lets a field's normal form outlive the
+  local declarations it was reduced under and be read again under the recursor construction's,
+  which is the point of recording it at all.
+
+  The parameters are not abstracted: `stats.params` are the block's own free variables, in
+  scope for everything inside `checkInductiveTypes`, so they are the same variables at both
+  ends and abstracting them would only be an identity round trip.
+
+  Computed once by `checkConstructors`; `checkPositivity`, the recursive-argument
+  classification in `mkRecInfos.loopCtorArgs` and the inductive hypotheses in
+  `mkRecInfos.loopUArgs` all read it rather than reducing the field's type again. -/
+  fields : Array Expr
+  deriving Inhabited
+
 structure InductiveStats where
   lctx : LocalContext := {}
   levels : List Level
@@ -26,6 +54,8 @@ structure InductiveStats where
   indConsts : Array Expr
   params : Array Expr
   isNotZero : Bool
+  /-- For each type former, for each of its constructors, what `checkConstructors` recorded. -/
+  ctors : Array (Array CtorData) := #[]
   deriving Inhabited
 
 structure Context where
@@ -112,7 +142,6 @@ def checkInductiveTypes
         assert! stats.indConsts.size == indTypes.size
         assert! stats.params.size == nparams
         stats
-  termination_by indTypes.size - dIdx
   loopInd 0 { (default : InductiveStats) with levels := (← read).lparams.map .param }
 
 def hasIndOcc (indConsts : Array Expr) (t : Expr) : Bool :=
@@ -154,8 +183,8 @@ def declareInductiveTypes (stats : InductiveStats) (numParams : Nat)
     env.checkName info.name c.allowPrimitive
     return env.add (.inductInfo info)
 
-def isValidIndAppIdx (stats : InductiveStats) (t : Expr) (i : Nat) : Bool :=
-  t.withApp fun I args => Id.run do
+def isValidIndAppIdx (stats : InductiveStats) (i : Nat) (I : Expr) (args : Array Expr) :
+    Bool := Id.run do
   unless I == stats.indConsts[i]! && args.size == stats.params.size + stats.nindices[i]! do
     return false
   for i in [:stats.params.size] do
@@ -164,46 +193,81 @@ def isValidIndAppIdx (stats : InductiveStats) (t : Expr) (i : Nat) : Bool :=
     if hasIndOcc stats.indConsts args[i]! then return false
   true
 
-def isValidIndApp? (stats : InductiveStats) (t : Expr) : Option Nat := do
+def isValidIndApp? (stats : InductiveStats) (t : Expr) : Option Nat := t.withApp fun I args => do
   for i in [:stats.indConsts.size] do
-    if isValidIndAppIdx stats t i then
+    if isValidIndAppIdx stats i I args then
       return i
   none
 
-def isRecArg (stats : InductiveStats) (t : Expr) : M (Option Nat) := do
-  loop t (← readThe Context).fuel.inductiveFuel
-where
-  loop t
-  | 0 => throw .deepRecursion
-  | fuel+1 => do
-    let t ← whnf t
-    let .forallE name dom body bi := t | return isValidIndApp? stats t
-    withLocalDecl name bi dom.consumeTypeAnnotations fun arg => do
-    loop (body.instantiate1 arg) fuel
+/-- Deep weak-head normalization of a constructor field's type: reduce the spine, and if
+the result is a `∀`, take the domain as it stands and normalize the codomain under it.
 
-def checkPositivity (stats : InductiveStats) (t : Expr) (ctor : Name) (idx : Nat) :
-    M Unit := do loop t (← readThe Context).fuel.inductiveFuel where
-  loop t
+These are exactly the `whnf` calls that the field's positivity check and its
+recursive-argument classification each used to make for themselves. `whnf` is only
+specified to return *some* definitionally equal expression (`whnf'.WF`), so two calls on
+the same input are two unrelated results; a field must be normalized once and the result
+shared, or the recursor's type and its computation rule can be built from different
+readings of the same field. -/
+def deepWhnfField (t : Expr) : M Expr := do
+  loop #[] t (← readThe Context).fuel.inductiveFuel
+where
+  loop fvars t
   | 0 => throw .deepRecursion
   | fuel+1 => do
     let t ← whnf t
-    if !hasIndOcc stats.indConsts t then return
-    if let .forallE name dom body bi := t then
-      if hasIndOcc stats.indConsts dom then
-        throw <| .other s!"arg #{idx + 1} of '{ctor}' \
-          has a non positive occurrence of the datatypes being declared"
-      withLocalDecl name bi dom.consumeTypeAnnotations fun arg => do
-      loop (body.instantiate1 arg) fuel
-    else if let none := isValidIndApp? stats t then
+    let .forallE name dom body bi := t | return (← getLCtx).mkForall fvars t
+    withLocalDecl name bi dom.consumeTypeAnnotations fun fv =>
+    loop (fvars.push fv) (body.instantiate1 fv) fuel
+
+/-- The recursive-argument classification of a field, read off its `deepWhnfField` normal
+form: `some i` when the field's conclusion is an application of the `i`-th type former of
+the block. A pure function of the normal form, so every reader gets the same answer. -/
+def recArgIdx? (stats : InductiveStats) : Expr → Option Nat
+  | .forallE _ _ body _ => recArgIdx? stats body
+  | t => isValidIndApp? stats t
+
+/-- Strict positivity of one constructor field, read off its `deepWhnfField` normal form:
+no type former of the block occurs in a binder domain, and the conclusion either does not
+mention the block at all or is a valid application of one of its type formers. -/
+def checkPositivity (stats : InductiveStats) (ctor : Name) (idx : Nat) :
+    Expr → Except Exception Unit
+  | .forallE _ dom body _ =>
+    if hasIndOcc stats.indConsts dom then
+      throw <| .other s!"arg #{idx + 1} of '{ctor}' \
+        has a non positive occurrence of the datatypes being declared"
+    else checkPositivity stats ctor idx body
+  | t =>
+    if hasIndOcc stats.indConsts t && (isValidIndApp? stats t).isNone then
       throw <| .other s!"arg #{idx + 1} of '{ctor}' \
         has a non valid occurrence of the datatypes being declared"
+    else pure ()
 
+/-- `t` with the head type annotations consumed on every domain of its forall spine, which
+for a constructor type stripped of its parameters means on every field's type.
+
+That is the type each field binder is declared at -- in `checkConstructors` here, in
+`isLargeEliminator` and in `mkRecInfos.loopCtorArgs` -- and the type `deepWhnfField`
+reduces, so it is computed once and recorded in `CtorData.type` instead of again by every
+walk. Consuming commutes with the instantiation those walks perform on the way down:
+substituting for the loose variables of a domain cannot change the annotations at its head.
+-/
+def consumeFieldAnnotations : Expr → Expr
+  | .forallE name dom body bi =>
+    .forallE name dom.consumeTypeAnnotations (consumeFieldAnnotations body) bi
+  | t => t
+
+/-- Check the constructors, and record each one's `CtorData` in `InductiveStats.ctors`: its
+type with the block's parameters instantiated, and the `deepWhnfField` normal form of every
+field's type. This is the only place a constructor field is reduced; the positivity check
+here and the recursor construction later both read the recorded normal form. -/
 def checkConstructors (indTypes : Array InductiveType)
-    (stats : InductiveStats) (isUnsafe : Bool) : M Unit := do
+    (stats : InductiveStats) (isUnsafe : Bool) : M InductiveStats := do
   let env ← getEnv
+  let mut allCtors := #[]
   for h : idx in [:indTypes.size] do
     let indType := indTypes[idx]
     let mut foundCtors : NameSet := {}
+    let mut ctors := #[]
     for ctor in indType.ctors do
       let n := ctor.name
       if foundCtors.contains n then
@@ -212,27 +276,47 @@ def checkConstructors (indTypes : Array InductiveType)
       let t := ctor.type
       env.checkNoMVarNoFVar n t
       _ ← checkType t
-      let rec loop t i
+      -- The parameters are checked and instantiated here, once, so that the binders of
+      -- `ctype` are exactly the fields. A constructor type with fewer binders than the block
+      -- has parameters cannot have a valid return type -- the identity check in
+      -- `isValidIndAppIdx` would fail, since an uninstantiated parameter cannot appear in it --
+      -- so it is rejected with that error rather than a separate one.
+      let mut ctype := t
+      for j in [:stats.params.size] do
+        let .forallE _ dom body _ := ctype
+          | throw <| .other s!"invalid return type for '{n}'"
+        let param := stats.params[j]!
+        unless ← isDefEq (dom.instantiateRevRange 0 j stats.params) (← getType param) do
+          throw <| .other
+            s!"arg #{j + 1} of '{n}' does not match inductive datatype parameters"
+        ctype := body
+      ctype := consumeFieldAnnotations (ctype.instantiateRev stats.params)
+      -- `bvs` are the field binders introduced so far and `fields` the normalized field types
+      -- abstracted over them. `ctype` is descended into without substituting, so each domain
+      -- and the result type are instantiated from `bvs` as they are reached, rather than the
+      -- remaining type once per binder. `i` counts binders of `ctor.type`, parameters
+      -- included, because it names the argument in the errors.
+      let rec loop t i bvs fields
       | 0 => throw .deepRecursion
       | fuel+1 => do
         if let .forallE name dom body bi := t then
-          if let some param := stats.params[i]? then
-            unless ← isDefEq dom (← getType param) do
-              throw <| .other
-                s!"arg #{i + 1} of '{n}' does not match inductive datatype parameters"
-            loop (body.instantiate1 param) (i + 1) fuel
-          else
-            let s ← ensureType dom
-            unless stats.resultLevel.isAlwaysZero || stats.resultLevel.geq' s.sortLevel! do
-              throw <| .other s!"universe level of type_of(arg #{i + 1}) of '{n}' \
-                is too big for the corresponding inductive datatype"
-            if !isUnsafe then
-              checkPositivity stats dom n i
-            withLocalDecl name bi dom.consumeTypeAnnotations fun arg => do
-              loop (body.instantiate1 arg) (i + 1) fuel
-        else if !isValidIndAppIdx stats t idx then
-          throw <| .other s!"invalid return type for '{n}'"
-      loop t 0 (← readThe Context).fuel.inductiveFuel
+          let dom := dom.instantiateRev bvs
+          let s ← ensureType dom
+          unless stats.resultLevel.isAlwaysZero || stats.resultLevel.geq' s.sortLevel! do
+            throw <| .other s!"universe level of type_of(arg #{i + 1}) of '{n}' \
+              is too big for the corresponding inductive datatype"
+          let ndom ← deepWhnfField dom
+          if !isUnsafe then
+            checkPositivity stats n i ndom
+          withLocalDecl name bi dom fun arg => do
+            loop body (i + 1) (bvs.push arg) (fields.push (ndom.abstract bvs)) fuel
+        else if (t.instantiateRev bvs).withApp (isValidIndAppIdx stats idx) then pure fields
+        else throw <| .other s!"invalid return type for '{n}'"
+      ctors := ctors.push {
+        type := ctype
+        fields := ← loop ctype stats.params.size #[] #[] (← readThe Context).fuel.inductiveFuel }
+    allCtors := allCtors.push ctors
+  return { stats with ctors := allCtors }
 
 def declareConstructors (stats : InductiveStats)
     (indTypes : Array InductiveType) (isUnsafe : Bool) : M Environment :=
@@ -260,31 +344,34 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
   let #[indType] := indTypes | return false
   match indType.ctors with
   | [] => return true
-  | [ctor] =>
-    let rec loop type i toCheck
+  | [_] =>
+    -- the parameters are instantiated in `CtorData.type`, so every binder reached here is a field
+    let rec loop type fvs toCheck
     | 0 => throw .deepRecursion
     | fuel+1 => do
       if let .forallE name dom body bi := type then
-        withLocalDecl name bi dom.consumeTypeAnnotations fun arg => do
+        let dom := dom.instantiateRev fvs
+        withLocalDecl name bi dom fun arg => do
           let mut toCheck := toCheck
-          if i ≥ stats.params.size then
-            if !(← ensureType dom).sortLevel!.isAlwaysZero then
-              toCheck := toCheck.push arg
-          loop (body.instantiate1 arg) (i + 1) toCheck fuel
+          if !(← ensureType dom).sortLevel!.isAlwaysZero then
+            toCheck := toCheck.push arg
+          loop body (fvs.push arg) toCheck fuel
       else
-        return toCheck.all type.getAppArgs.contains
-    loop ctor.type 0 #[] (← readThe Context).fuel.inductiveFuel
+        return toCheck.all (type.instantiateRev fvs).getAppArgs.contains
+    loop stats.ctors[0]![0]!.type #[] #[] (← readThe Context).fuel.inductiveFuel
   | _ => return false
 
-partial -- TODO: remove
 def getElimLevel (stats : InductiveStats) (indTypes : Array InductiveType) :
     M Level := do
   unless ← isLargeEliminator stats indTypes do return .zero
   let {lparams, ..} ← read
-  let rec loop u i := Id.run do
+  -- `u` together with `u_1 … u_n`, for `n` the number of parameters the declaration has, are
+  -- `n + 1` distinct names, so the search below always finds one that is free.
+  unless lparams.contains `u do return .param `u
+  for i in [1:lparams.length + 1] do
+    let u := (`u).appendIndexAfter i
     unless lparams.contains u do return .param u
-    loop ((`u).appendIndexAfter i) (i + 1)
-  return loop `u 1
+  unreachable!
 
 def isKTarget (stats : InductiveStats) (indTypes : Array InductiveType) : M Bool := do
   let #[indType] := indTypes | return false
@@ -329,57 +416,61 @@ def loopInd1 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α
     loopInd1 (dIdx + 1) (recInfos.push { motive, minors := #[], indices, major }) k
   else
     k recInfos
-termination_by indTypes.size - dIdx
 
-variable (stats : InductiveStats) in
-def loopCtorArgs (t : Expr) (k : Expr → Array Expr → Array Expr → M α) : M α := do
-  loop t 0 #[] #[] (← readThe Context).fuel.inductiveFuel
+variable (stats : InductiveStats) (fields : Array Expr) in
+/-- Walk a constructor's telescope, collecting its fields `bu` and, among them, the
+recursive ones `u`, each paired with its `deepWhnfField` normal form. The classification
+and the normal form both come from `fields`, recorded once by `checkConstructors`, so this
+performs no reduction of its own and the minor premises and the recursor rules see the
+same reading of every field. -/
+def loopCtorArgs (t : Expr) (k : Expr → Array Expr → Array (Expr × Expr) → M α) : M α := do
+  loop t #[] #[] (← readThe Context).fuel.inductiveFuel
 where
-  loop t i bu u
+  loop t bu u
   | 0 => throw .deepRecursion
   | fuel+1 => do
     if let .forallE name dom body bi := t then
-      if let some param := stats.params[i]? then
-        loop (body.instantiate1 param) (i + 1) bu u fuel
-      else
-        withLocalDecl name bi dom.consumeTypeAnnotations fun arg => do
-        let bu := bu.push arg
-        let u := if (← isRecArg stats dom).isSome then u.push arg else u
-        loop (body.instantiate1 arg) (i + 1) bu u fuel
-    else k t bu u
+      withLocalDecl name bi (dom.instantiateRev bu) fun arg => do
+      let ndom := fields[bu.size]!.instantiateRev bu
+      let u := if (recArgIdx? stats ndom).isSome then u.push (arg, ndom) else u
+      loop body (bu.push arg) u fuel
+    else k (t.instantiateRev bu) bu u
 
-def loopUArgs (ui : Expr) (k : Expr → Array Expr → M α) : M α := do
-  loop (← whnf (← inferType ui)) #[] (← readThe Context).fuel.inductiveFuel
-where
-  loop uiTy xs
-  | 0 => throw .deepRecursion
-  | fuel+1 => do
-    if let .forallE name dom body bi := uiTy then
-      withLocalDecl name bi dom.consumeTypeAnnotations fun arg => do
-      loop (← whnf <| body.instantiate1 arg) (xs.push arg) fuel
-    else
-      k uiTy xs
+/-- Rebuild a recursive field's recorded normal form with its conclusion replaced: the
+higher-order binders of `∀ xs, I params indices` are kept exactly as recorded, and the
+conclusion becomes `mkHead indices (ui xs)`, under `mkBinder` -- `Expr.forallE` for the minor
+premise's inductive hypothesis, `Expr.lam` for the rule's recursive call.
 
-variable (stats : InductiveStats) (u : Array Expr) (recInfos : Array RecInfo) in
+The binders stay in place, so this instantiates nothing, introduces no local declaration and
+reduces nothing; the caller used to open the telescope with fresh variables only to abstract
+them again. `k` counts the binders passed so far, which is how `ui` is applied to them. -/
+def mapIHConclusion (stats : InductiveStats) (ui : Expr)
+    (mkBinder : Name → Expr → Expr → BinderInfo → Expr) (mkHead : Nat → Array Expr → Expr) :
+    Expr → Nat → Expr
+  | .forallE name dom body bi, k =>
+    mkBinder name dom (mapIHConclusion stats ui mkBinder mkHead body (k + 1)) bi
+  | t, k =>
+    let (itIdx, itIndices) := getIIndices stats t
+    (mkHead itIdx itIndices).app (mkAppN ui (Array.ofFn fun i : Fin k => Expr.bvar (k - 1 - i.1)))
+
+variable (stats : InductiveStats) (u : Array (Expr × Expr)) (recInfos : Array RecInfo) in
 def loopU (i : Nat) (v : Array Expr) (k : Array Expr → M α) : M α := do
   if _h : i < u.size then
-    let ui := u[i]
-    let viTy ← loopUArgs ui fun uiTy xs => do
-      let (itIdx, itIndices) := getIIndices stats uiTy
-      return (← getLCtx).mkForall xs <|
-        .app (mkAppN recInfos[itIdx]!.motive itIndices) (mkAppN ui xs)
+    let (ui, uiTy) := u[i]
+    let viTy := mapIHConclusion stats ui Expr.forallE (mkAppN recInfos[·]!.motive) uiTy 0
     let vName := ((← getLCtx).get! ui.fvarId!).userName.appendAfter "_ih"
-    withLocalDecl vName .default viTy.consumeTypeAnnotations fun vi => do
+    -- `viTy` is a `∀` or an application of a motive, so it carries no annotation to consume
+    withLocalDecl vName .default viTy fun vi => do
     loopU (i + 1) (v.push vi) k
   else
     k v
-termination_by u.size - i
 
 variable (stats : InductiveStats) (indTypeName : Name) (dIdx : Nat) in
-def loopCtors (recInfos : Array RecInfo)
+def loopCtors (recInfos : Array RecInfo) (cIdx : Nat)
     (ctors : List Constructor) (k : Array RecInfo → M α) : M α := match ctors with
   | ctor::ctors =>
-    loopCtorArgs stats ctor.type fun t bu u => do
+    let cd := stats.ctors[dIdx]![cIdx]!
+    loopCtorArgs stats cd.fields cd.type fun t bu u => do
     let (itIdx, itIndices) := getIIndices stats t
     let introApp := mkAppN (mkAppN (.const ctor.name stats.levels) stats.params) bu
     let motiveApp := Expr.app (mkAppN recInfos[itIdx]!.motive itIndices) introApp
@@ -389,7 +480,7 @@ def loopCtors (recInfos : Array RecInfo)
     let minorName := ctor.name.replacePrefix indTypeName .anonymous
     withLocalDecl minorName .default minorTy.consumeTypeAnnotations fun minor => do
     let recInfos := recInfos.modify dIdx fun s => { s with minors := s.minors.push minor }
-    loopCtors recInfos ctors k
+    loopCtors recInfos (cIdx + 1) ctors k
   | [] => k recInfos
 
 variable (stats : InductiveStats) (indTypes : Array InductiveType) in
@@ -397,11 +488,10 @@ def loopInd2 (dIdx : Nat) (recInfos : Array RecInfo) (k : Array RecInfo → M α
   if _h : dIdx < indTypes.size then
     let indType := indTypes[dIdx]
     let indTypeName := indType.name
-    loopCtors stats indTypeName dIdx recInfos indType.ctors fun recInfos =>
+    loopCtors stats indTypeName dIdx recInfos 0 indType.ctors fun recInfos =>
     loopInd2 (dIdx + 1) recInfos k
   else
     k recInfos
-termination_by indTypes.size - dIdx
 
 end mkRecInfos
 
@@ -421,21 +511,25 @@ def mkRecRules (indTypes : Array InductiveType) (elimLevel : Level) (stats : Ind
     StateT Nat M (List RecursorRule) := do
   let d := indTypes[dIdx]!
   let lvls := getRecLevels elimLevel stats.levels
+  -- `I.rec params motives minors`, for each type former `I` of the block: the prefix every
+  -- recursive call in every rule of the block shares, so it is built once here
+  let recApps := indTypes.map fun indType =>
+    mkAppN (mkAppN (mkAppN (.const (mkRecName indType.name) lvls) stats.params) motives) minors
   let mut rules := #[]
-  for ctor in d.ctors do
-    let rule ← fun minorIdx => mkRecInfos.loopCtorArgs stats ctor.type fun _ bu u =>
+  let ctors := d.ctors.toArray
+  for h : cIdx in [:ctors.size] do
+    let ctor := ctors[cIdx]
+    let cd := stats.ctors[dIdx]![cIdx]!
+    let rule ← fun minorIdx =>
+      mkRecInfos.loopCtorArgs stats cd.fields cd.type fun _ bu u =>
       let rec loopU i (v : Array Expr) k := do
         if _h : i < u.size then
-          let ui := u[i]
-          let val ← mkRecInfos.loopUArgs ui fun uiTy xs => do
-            let (itIdx, itIndices) := getIIndices stats uiTy
-            let val := .const (mkRecName indTypes[itIdx]!.name) lvls
-            let val := mkAppN (mkAppN (mkAppN (mkAppN val stats.params) motives) minors) itIndices
-            return (← getLCtx).mkLambda xs <| val.app (mkAppN ui xs)
+          let (ui, uiTy) := u[i]
+          let val := mkRecInfos.mapIHConclusion stats ui Expr.lam
+            (mkAppN recApps[·]!) uiTy 0
           loopU (i + 1) (v.push val) k
         else
           k v
-      termination_by u.size - i
       loopU 0 #[] fun v => do
       let lctx ← getLCtx
       let rule := {
@@ -456,7 +550,7 @@ def run (nparams : Nat) (types : List InductiveType) (numNested : Nat) : M Envir
   Environment.checkDuplicatedUnivParams lparams
   checkInductiveTypes nparams indTypes fun stats => do
   withEnv (← declareInductiveTypes stats nparams indTypes numNested isUnsafe) do
-  checkConstructors indTypes stats isUnsafe
+  let stats ← checkConstructors indTypes stats isUnsafe
   withEnv (← declareConstructors stats indTypes isUnsafe) do
   let elimLevel ← getElimLevel stats indTypes
   let k ← isKTarget stats indTypes
