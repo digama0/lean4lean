@@ -31,28 +31,33 @@ deriving instance ToExpr for Expr
 elab (name := microQq) "q(" e:term ")" : term =>
   return toExpr (← instantiateMVars (← Elab.Term.elabTerm e none))
 
-structure Reflection where
-  type : Expr
-  ofTrue : Expr
-  ofFalse : Expr
-  toDec : Expr
+/-! The relation the prelude's decision procedures carry: `Decidable` is a boolean `decide`
+together with `reflects_decide : Bool.Reflects decide p`, and a `reflectNatNat` condition's
+decision procedure is `Decidable.intro (asBool x y) (proof x y)`. `Bool.Reflects` is in the type
+of `Decidable`'s own field, so it is present wherever a decision procedure is. The checks below
+speak about it through the two constants themselves: `type` is `Bool.Reflects` and `toDec` is
+`Decidable.intro`. `check` pins down `type` the way the `Not` it mentions is pinned down, by its
+type, and also by how it unfolds at the two literals: evidence for `true` is a proof of `p` and
+evidence for `false` a proof of `¬p`, which is what lets `dite` hand it to its branches as it
+is. -/
 
-/-- The shape of the prelude's decision procedures: `Decidable` is a boolean `decide` together
-with `reflects_decide : Bool.Reflects decide p`, and `Bool.Reflects true p` is `p` and
-`Bool.Reflects false p` is `¬p` by unfolding, so the evidence at a boolean literal is already the
-proof `dite` hands its branch. -/
-def Reflection.intro : Reflection where
-  type := q(fun p b => Bool.Reflects b p)
-  ofTrue := q(fun p (H : Bool.Reflects true p) => H)
-  ofFalse := q(fun p (H : Bool.Reflects false p) => H)
-  toDec := q(fun p b (H : Bool.Reflects b p) => Decidable.intro b H)
+namespace Reflects
 
-def Reflection.check (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
-  unless ← isDefEq (← checkType r.type) q(Prop → Bool → Prop) do fail
+def type : Expr := q(Bool.Reflects)
+def toDec : Expr := q(@Decidable.intro)
+
+def check (fail : ∀ {α}, M α) : M Unit := do
+  unless ← isDefEq (← checkType type) q(Bool → Prop → Prop) do fail
+  unless ← isDefEq (← checkType q(Not)) q(Prop → Prop) do fail
+  withLocalDecl `p .default q(Prop) fun p => do
+    unless ← isDefEq (mkApp2 type q(true) p) p do fail
+    unless ← isDefEq (mkApp2 type q(false) p) (mkApp q(Not) p) do fail
+
+end Reflects
 
 inductive ConditionImpl where
   | bool
-  | reflectNatNat (asBool : Expr) (reflect : Reflection) (proof : Expr)
+  | reflectNatNat (asBool : Expr) (proof : Expr)
 
 structure Condition where
   prop : Expr
@@ -64,7 +69,6 @@ def Condition.natLE : Condition where
   dec := q(Nat.decLe)
   impl := .reflectNatNat
     (asBool := q(Nat.ble))
-    (reflect := .intro)
     (proof := q(fun n m => (Nat.decLe n m).reflects_decide))
 
 def Condition.natEq : Condition where
@@ -72,7 +76,6 @@ def Condition.natEq : Condition where
   dec := q(Nat.decEq)
   impl := .reflectNatNat
     (asBool := q(Nat.beq))
-    (reflect := .intro)
     (proof := q(fun n m => (Nat.decEq n m).reflects_decide))
 
 def Condition.bool : Condition where
@@ -80,63 +83,60 @@ def Condition.bool : Condition where
   dec := q(fun x => Bool.decEq x true)
   impl := .bool
 
-def Reflection.ite (r : Reflection) : Expr :=
-  .lam0 q(Prop) <| .lam0 q(Bool) <| .lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
-    .lam0 q(Type) <| mkApp3 q(@_root_.ite.{1}) (.bvar 0) (.bvar 3)
-      (mkApp3 r.toDec (.bvar 3) (.bvar 2) (.bvar 1))
-
-def Reflection.natDITE (r : Reflection) : Expr :=
-  .lam0 q(Prop) <| .lam0 q(Bool) <| .lam0 (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
-    mkApp2 q(@dite Nat) (.bvar 2) (mkApp3 r.toDec (.bvar 2) (.bvar 1) (.bvar 0))
-
-def Reflection.checkITE (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
-  unless ← isDefEq (← checkType r.ite) (.arrow q(Prop) <| .arrow q(Bool) <|
-    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) q(∀ α : Type, α → α → α)) do fail
+/-- `ite` and `dite` on the decision `toDec` makes, checked directly under binders for the
+proposition, the evidence and the branches: at any boolean the conditional has the type it should,
+and at the two literals it takes the matching branch (`dite` hands it the evidence, which
+`check` made a proof of `p` or `¬p`). -/
+def Reflects.checkITE (fail : ∀ {α}, M α) : M Unit := do
   withLocalDecl `p .default q(Prop) fun p => do
-  withLocalDecl `H .default (mkApp2 r.type p q(true)) fun H => do
-    unless ← isDefEq (mkApp3 r.ite p q(true) H) q(fun α : Type => fun a _ : α => a) do fail
-  withLocalDecl `H .default (mkApp2 r.type p q(false)) fun H => do
-    unless ← isDefEq (mkApp3 r.ite p q(false) H) q(fun α : Type => fun _ a : α => a) do fail
+  withLocalDecl `α .default q(Type) fun α => do
+  let ite b H := mkApp3 q(@ite.{1}) α p (mkApp3 toDec p b H)
+  withLocalDecl `b .default q(Bool) fun b =>
+    withLocalDecl `H .default (mkApp2 Reflects.type b p) fun H => do
+      unless ← isDefEq (← checkType (ite b H)) (.arrow α (.arrow α α)) do fail
+  withLocalDecl `t .default α fun t => do
+  withLocalDecl `e .default α fun e => do
+  withLocalDecl `H .default (mkApp2 Reflects.type q(true) p) fun H => do
+    unless ← isDefEq (mkApp2 (ite q(true) H) t e) t do fail
+  withLocalDecl `H .default (mkApp2 Reflects.type q(false) p) fun H => do
+    unless ← isDefEq (mkApp2 (ite q(false) H) t e) e do fail
 
-def Reflection.checkNatDITE (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
-  unless ← isDefEq (← checkType q(Not)) q(Prop → Prop) do fail
-  unless ← isDefEq (← checkType r.natDITE) (.arrow q(Prop) <| .arrow q(Bool) <|
-    .arrow (mkApp2 r.type (.bvar 1) (.bvar 0)) <|
-    .arrow (.arrow (.bvar 2) q(Nat)) <| .arrow (.arrow (mkApp q(Not) (.bvar 3)) q(Nat)) <|
-    q(Nat)) do fail
-  unless ← isDefEq (← checkType r.ofTrue) (.arrow q(Prop) <|
-    .arrow (mkApp2 r.type (.bvar 0) q(true)) (.bvar 1)) do fail
-  unless ← isDefEq (← checkType r.ofFalse) (.arrow q(Prop) <|
-    .arrow (mkApp2 r.type (.bvar 0) q(false)) (mkApp q(Not) (.bvar 1))) do fail
+@[inherit_doc Reflects.checkITE]
+def Reflects.checkNatDITE (fail : ∀ {α}, M α) : M Unit := do
   withLocalDecl `p .default q(Prop) fun p => do
+  let dite bb H := mkApp2 q(@dite Nat) p (mkApp3 toDec p bb H)
+  withLocalDecl `bb .default q(Bool) fun bb =>
+    withLocalDecl `H .default (mkApp2 Reflects.type bb p) fun H => do
+      unless ← isDefEq (← checkType (dite bb H))
+        (.arrow (.arrow p q(Nat)) (.arrow (.arrow (mkApp q(Not) p) q(Nat)) q(Nat))) do fail
   withLocalDecl `a .default (.arrow p q(Nat)) fun a => do
   withLocalDecl `b .default (.arrow (mkApp q(Not) p) q(Nat)) fun b => do
-  withLocalDecl `H .default (mkApp2 r.type p q(true)) fun H => do
-    unless ← isDefEq (mkApp5 r.natDITE p q(true) H a b) (mkApp a (mkApp2 r.ofTrue p H)) do fail
-  withLocalDecl `H .default (mkApp2 r.type p q(false)) fun H => do
-    unless ← isDefEq (mkApp5 r.natDITE p q(false) H a b) (mkApp b (mkApp2 r.ofFalse p H)) do fail
+  withLocalDecl `H .default (mkApp2 Reflects.type q(true) p) fun H => do
+    unless ← isDefEq (mkApp2 (dite q(true) H) a b) (mkApp a H) do fail
+  withLocalDecl `H .default (mkApp2 Reflects.type q(false) p) fun H => do
+    unless ← isDefEq (mkApp2 (dite q(false) H) a b) (mkApp b H) do fail
 
 def Condition.check (cond : Condition) (fail : ∀ {α}, M α)
     (ite := false) (dite := false) : M Unit := do
   _ ← checkType cond.dec
   match cond.impl with
-  | .reflectNatNat asBool reflect proof =>
-    reflect.check fail
+  | .reflectNatNat asBool proof =>
+    Reflects.check fail
     let y := .bvar 0; let x := .bvar 1
     -- `toDec` under binders that name its argument types, applied to the three pieces. Written
-    -- this way -- rather than `mkApp3 reflect.toDec …`, which it beta-reduces to -- the one
+    -- this way -- rather than `mkApp3 Reflects.toDec …`, which it beta-reduces to -- the one
     -- `checkType` below does for all three: the arguments are checked against the binders, so
-    -- `prop x y : Prop`, `asBool x y : Bool` and `proof x y : type (prop x y) (asBool x y)`,
+    -- `prop x y : Prop`, `asBool x y : Bool` and `proof x y : type (asBool x y) (prop x y)`,
     -- which is everything a consumer needs and consistent by construction. Nothing else checks
     -- any of the three, and `toDec`'s own type is checked nowhere.
     let e := .lam0 q(Nat) <| .lam0 q(Nat) <| mkApp3
-      (.lam0 q(Prop) <| .lam0 q(Bool) <| .lam0 (mkApp2 reflect.type (.bvar 1) (.bvar 0)) <|
-        mkApp3 reflect.toDec (.bvar 2) (.bvar 1) (.bvar 0))
+      (.lam0 q(Prop) <| .lam0 q(Bool) <| .lam0 (mkApp2 Reflects.type (.bvar 0) (.bvar 1)) <|
+        mkApp3 Reflects.toDec (.bvar 2) (.bvar 1) (.bvar 0))
       (mkApp2 cond.prop x y) (mkApp2 asBool x y) (mkApp2 proof x y)
     _ ← checkType e
     unless ← isDefEq e cond.dec do fail
-    if ite then reflect.checkITE fail
-    if dite then reflect.checkNatDITE fail
+    if ite then Reflects.checkITE fail
+    if dite then Reflects.checkNatDITE fail
   | .bool =>
     unless ← isDefEq (← checkType cond.prop) q(Bool → Prop) do fail
     let b := .bvar 0

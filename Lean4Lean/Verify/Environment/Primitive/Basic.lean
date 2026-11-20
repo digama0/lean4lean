@@ -489,7 +489,7 @@ theorem OnCtx.append_right {env : VEnv} {U} (henv : env.Ordered) :
 
 /-- The closing a telescope's arguments define. `lams_appN` builds this on the way to its beta
 equation; pulled out, it is what lets an equation checked *under* a telescope of binders be closed
-off at arguments for them -- which is how the reflection's checks reach their consumers. -/
+off at arguments for them -- which is how the `Reflects` checks reach their consumers. -/
 theorem VExpr.ArgsTyped.substEq {env : VEnv} {U} {Γ₀ : List VExpr} :
     ∀ {As : List VExpr} {Γ σ vs}, OnCtx (As.reverse ++ Γ) (env.IsType U) →
       VEnv.Ctx.SubstEq env U Γ₀ σ σ Γ → VExpr.ArgsTyped env U Γ₀ As σ vs →

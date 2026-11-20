@@ -45,44 +45,61 @@ the decision -- `Nat.mod` and `Nat.div` really do use it, as the `1 ≤ y` argum
 def diteApp (p inst t e : VExpr) : VExpr :=
   (((((VExpr.const ``dite [.succ .zero]).app .nat).app p).app inst).app t).app e
 
-/-- A `Reflection` together with its translation. `type'` and `toDec'` are carried rather than
+/-- The `Reflects` terms' translation. `type'` and `toDec'` are carried rather than
 existentially bound per fact because `WF_ite` and `WF_dite` are equations about both of them.
-The one field beyond the translations is `Reflection.check`. -/
-structure Reflection.WF (c : VContext) (r : Reflection) where
+The fields beyond the translation are what `Reflects.check` establishes. -/
+structure Reflects.WF (c : VContext) where
   type' : VExpr
-  htype : c.TrExprS r.type type'
-  /-- `Reflection.check`: the reflection is a relation between a proposition and a boolean. -/
-  typeT : c.HasType type' vexpr(Prop → Bool → Prop)
+  htype : c.TrExprS Reflects.type type'
+  /-- `Reflects.check`: `Reflects.type` is a relation between a boolean and a proposition. -/
+  typeT : c.HasType type' vexpr(Bool → Prop → Prop)
+  /-- `Reflects.check`: `Not`, which the `false` case is stated with, is `Prop → Prop`. -/
+  hNotTr : ∀ {Δ}, TrExprS c.venv c.lparams Δ (.const ``Not []) (.const ``Not [])
+  hNotT : ∀ {Γ}, c.venv.HasType c.lparams.length Γ (.const ``Not [])
+    (.forallE (.sort .zero) (.sort .zero))
+  /-- `Reflects.check`: evidence for `true` is a proof of the proposition and evidence for `false`
+  one of its negation. The check runs under a binder `p : Prop` at `[]`, so it holds at every
+  proposition in every context (`genTele`). -/
+  reflTrue : ∀ (E : c.Ext) {Γ p},
+    OnCtx Γ (E.venv.IsType c.lparams.length) →
+    E.venv.HasType c.lparams.length Γ p (.sort .zero) →
+    E.venv.IsDefEqU c.lparams.length Γ ((type'.app (.boolLit true)).app p) p
+  reflFalse : ∀ (E : c.Ext) {Γ p},
+    OnCtx Γ (E.venv.IsType c.lparams.length) →
+    E.venv.HasType c.lparams.length Γ p (.sort .zero) →
+    E.venv.IsDefEqU c.lparams.length Γ ((type'.app (.boolLit false)).app p)
+      ((VExpr.const ``Not []).app p)
 
 /-- What is known about `toDec`'s type: applied to a proposition, a boolean and evidence relating
 them, it is well typed.
 
-*Applied*, because that is all anything checks. `Reflection.check` does not check `toDec`'s type
--- `toDec` is only ever *used*, inside `ite`/`natDITE`, and it is those uses, whose binders are a
-`Prop`, a `Bool` and a `type p b`, that pin its argument types. A typing obtained at someone
-else's binders does not reassemble into a pi type, and the codomain is pinned by nothing at all.
+*Applied*, because that is all anything checks. `Reflects.check` does not check `toDec`'s type
+-- `toDec` is only ever *used*, inside the `ite`/`dite` the conditional checks build, and it is
+those uses, at binders for a `Prop`, a `Bool` and a `type b p`, that pin its argument types. A
+typing obtained at someone else's binders does not reassemble into a pi type, and the codomain is
+pinned by nothing at all.
 
-*Not a field of `Reflection.WF`*, because only the two optional checks establish it. It is what
+*Not a field of `Reflects.WF`*, because only the two optional checks establish it. It is what
 `ITE_T`/`DITE_T` deliver on the side, and every consumer of it -- the two bridges below -- runs
 under one of those flags anyway. -/
-def Reflection.WF.ToDecT {c : VContext} {r : Reflection} (w : Reflection.WF c r)
+def Reflects.WF.ToDecT {c : VContext} (w : Reflects.WF c)
     (toDec' : VExpr) : Prop :=
   ∀ (E : c.Ext) ⦃Γ : List VExpr⦄ {p bb H : VExpr}, OnCtx Γ (E.venv.IsType c.lparams.length) →
     E.venv.HasType c.lparams.length Γ p (.sort .zero) →
     E.venv.HasType c.lparams.length Γ bb .bool →
-    E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app bb) →
+    E.venv.HasType c.lparams.length Γ H ((w.type'.app bb).app p) →
     VExpr.WF E.venv c.lparams.length Γ (((toDec'.app p).app bb).app H)
 
 /-- The pi types of the three functions in `toDec`'s spine, each with the domain its argument was
 given. Congruence in an argument needs exactly this, and `app_inv` is the whole proof: the
-domains are not identified with `Prop`/`Bool`/`type p b` here because a consumer that has to
+domains are not identified with `Prop`/`Bool`/`type b p` here because a consumer that has to
 convert an argument does it against the type it has anyway. -/
-theorem Reflection.WF.ToDecT.spine {c : VContext} {r : Reflection} {w : Reflection.WF c r}
+theorem Reflects.WF.ToDecT.spine {c : VContext} {w : Reflects.WF c}
     {toDec' : VExpr} (h : w.ToDecT toDec') (E : c.Ext) {Γ : List VExpr} {p bb H : VExpr}
     (hΓ : OnCtx Γ (E.venv.IsType c.lparams.length))
     (hp : E.venv.HasType c.lparams.length Γ p (.sort .zero))
     (hbb : E.venv.HasType c.lparams.length Γ bb .bool)
-    (hH : E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app bb)) :
+    (hH : E.venv.HasType c.lparams.length Γ H ((w.type'.app bb).app p)) :
     ∃ A₁ B₁ A₂ B₂ A₃ B₃,
       (E.venv.HasType c.lparams.length Γ toDec' (.forallE A₁ B₁) ∧
         E.venv.HasType c.lparams.length Γ p A₁) ∧
@@ -95,39 +112,36 @@ theorem Reflection.WF.ToDecT.spine {c : VContext} {r : Reflection} {w : Reflecti
   obtain ⟨_, _, hf₁, ha₁⟩ := VExpr.WF.app_inv E.wf hΓ ⟨_, hf₂⟩
   exact ⟨_, _, _, _, _, _, ⟨hf₁, ha₁⟩, ⟨hf₂, ha₂⟩, ⟨hf₃, ha₃⟩⟩
 
-/-- `Reflection.checkITE`: at reflection evidence for a boolean literal, `ite` on the decision
-the reflection produces is the corresponding branch.
+/-- `Reflects.checkITE`: at `Bool.Reflects` evidence for a boolean literal, `ite` on the decision
+`Reflects.toDec` produces is the corresponding branch.
 
-Quantified over the context, unlike the fields above. Those are about the reflection's own closed
-pieces, which live at `[]` and weaken; this is about the *caller's* proposition, evidence and
+Quantified over the context, unlike the fields above. Those are about the `Reflects` terms' own
+closed pieces, which live at `[]` and weaken; this is about the *caller's* proposition, evidence and
 branches, which live past whatever binders the caller has opened, and a `c`-level statement could
-not be transported to them. The check itself is run under two `withLocalDecl`s at closed types,
-so it holds at every context by weakening and instantiating those two binders. -/
-def Reflection.WF.WF_ite (w : Reflection.WF c r) (toDec' : VExpr) : Prop :=
+not be transported to them. The check itself is run under `withLocalDecl`s whose types are closed
+over the ones before them, so it holds at every context by weakening and instantiating those
+binders (`genTele`). -/
+def Reflects.WF.WF_ite (w : WF c) (toDec' : VExpr) : Prop :=
   ∀ (E : c.Ext) {Γ : List VExpr} {p H α t e : VExpr} (b : Bool),
     OnCtx Γ (E.venv.IsType c.lparams.length) →
     E.venv.HasType c.lparams.length Γ p (.sort .zero) →
-    E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app (.boolLit b)) →
+    E.venv.HasType c.lparams.length Γ H ((w.type'.app (.boolLit b)).app p) →
     E.venv.HasType c.lparams.length Γ α (.sort (.succ .zero)) →
     E.venv.HasType c.lparams.length Γ t α → E.venv.HasType c.lparams.length Γ e α →
     E.venv.IsDefEqU c.lparams.length Γ
       (iteApp α p (((toDec'.app p).app (.boolLit b)).app H) t e) (if b then t else e)
 
-/-- `Reflection.checkNatDITE`: likewise for `dite`, whose branches are applied to the proof
-that `ofTrue`/`ofFalse` extract from the evidence. Those two are existential here rather than
-fields of `Reflection.WF` because only this check types them. -/
-def Reflection.WF.WF_dite (w : Reflection.WF c r) (toDec' : VExpr) : Prop :=
-  ∃ ofTrue' ofFalse',
-    c.TrExprS r.ofTrue ofTrue' ∧ c.TrExprS r.ofFalse ofFalse' ∧
-    ∀ (E : c.Ext) {Γ : List VExpr} {p H t e : VExpr} (b : Bool),
-      OnCtx Γ (E.venv.IsType c.lparams.length) →
-      E.venv.HasType c.lparams.length Γ p (.sort .zero) →
-      E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app (.boolLit b)) →
-      E.venv.HasType c.lparams.length Γ t (.forallE p .nat) →
-      E.venv.HasType c.lparams.length Γ e (.forallE (vexpr(Not).app p) .nat) →
-      E.venv.IsDefEqU c.lparams.length Γ
-        (diteApp p (((toDec'.app p).app (.boolLit b)).app H) t e)
-        (if b then t.app ((ofTrue'.app p).app H) else e.app ((ofFalse'.app p).app H))
+/-- `Reflects.checkNatDITE`: likewise for `dite`, whose branches are applied to the evidence
+itself, which is a proof of `p` or `¬p` by `reflTrue`/`reflFalse`. -/
+def Reflects.WF.WF_dite (w : WF c) (toDec' : VExpr) : Prop :=
+  ∀ (E : c.Ext) {Γ : List VExpr} {p H t e : VExpr} (b : Bool),
+    OnCtx Γ (E.venv.IsType c.lparams.length) →
+    E.venv.HasType c.lparams.length Γ p (.sort .zero) →
+    E.venv.HasType c.lparams.length Γ H ((w.type'.app (.boolLit b)).app p) →
+    E.venv.HasType c.lparams.length Γ t (.forallE p .nat) →
+    E.venv.HasType c.lparams.length Γ e (.forallE (vexpr(Not).app p) .nat) →
+    E.venv.IsDefEqU c.lparams.length Γ (diteApp p (((toDec'.app p).app (.boolLit b)).app H) t e)
+      (if b then t.app H else e.app H)
 
 /-- The types the predicate takes, outermost first. -/
 def ConditionImpl.domain : ConditionImpl → List VExpr
@@ -135,15 +149,15 @@ def ConditionImpl.domain : ConditionImpl → List VExpr
   | .reflectNatNat .. => [.nat, .nat]
 
 structure ReflectNatNat.WF
-    (c : VContext) (asBool : Expr) (reflect : Reflection) (proof : Expr) where
+    (c : VContext) (asBool : Expr) (proof : Expr) where
   (asBool' proof' : VExpr)
-  hreflect : Reflection.WF c reflect
+  hreflect : Reflects.WF c
   hAsBool : c.TrExprS asBool asBool'
   hProof : c.TrExprS proof proof'
 
 def ConditionImpl.WF (c : VContext) : ConditionImpl → Type
   | .bool => Unit
-  | .reflectNatNat asBool reflect proof => ReflectNatNat.WF c asBool reflect proof
+  | .reflectNatNat asBool proof => ReflectNatNat.WF c asBool proof
 
 /-- A `Condition` together with its translation. The one field beyond the translations is
 `Condition.check`'s unconditional part: the predicate has the arity the `impl` fixes. -/
@@ -234,9 +248,8 @@ branches are functions of the decision -- `Nat.mod` and `Nat.div` really do use 
 `1 ≤ y` argument to `go` -- so they are translated under a binder and the conclusion
 instantiates them.
 
-The proof is existential. The caller never inspects it, proof irrelevance makes any proof of
-the decided proposition do, and which one the checker produces depends on the `Reflection`'s
-`ofTrue`/`ofFalse`; naming it here would leak those into every use site. -/
+The proof is existential. The caller never inspects it, and proof irrelevance makes any proof of
+the decided proposition do; for a `reflectNatNat` it is the condition's own evidence. -/
 def Condition.WF.WF_dite {cnd : Condition} (w : Condition.WF c cnd) : Prop :=
   ∀ {m : MLCtx} [c.MLCWF m] {t e args P t' e' args'},
     args.toList.Forall₂ (c.withMLC m).TrExprS args' →
@@ -292,7 +305,7 @@ def Condition.WF.IteEval {cnd : Condition} (w : Condition.WF c cnd) (natOnly := 
       (iteApp α' (w.prop'.appN args') (w.dec'.appN args') t' e') (if b then t' else e')
 
 /-- The decision procedure is well typed at arguments of the `impl`'s domain types. Nothing else
-says so: `Condition.WF` records `dec`'s translation, and what types it is the reflection's
+says so: `Condition.WF` records `dec`'s translation, and what types it is `Reflects`'
 `toDec`, through the `e ≡ dec` check. A caller that builds a conditional out of `dec` needs
 this, and a caller that takes one apart needs it to name the pieces. -/
 def Condition.WF.DecT {cnd : Condition} (w : Condition.WF c cnd) : Prop :=
@@ -329,21 +342,16 @@ def CondOK (e : Expr) : Bool :=
 
 def ConditionImpl.OK : ConditionImpl → Bool
   | .bool => true
-  | .reflectNatNat asBool reflect proof =>
-    CondOK asBool && CondOK proof && CondOK reflect.type && CondOK reflect.toDec &&
-    CondOK reflect.ofTrue && CondOK reflect.ofFalse &&
-    CondOK reflect.ite && CondOK reflect.natDITE
+  | .reflectNatNat asBool proof =>
+    CondOK asBool && CondOK proof && CondOK Reflects.type && CondOK Reflects.toDec
 
 class Condition.OK (cond : Condition) : Prop where
   prop : CondOK cond.prop
   dec : CondOK cond.dec
   impl : cond.impl.OK
 
-theorem ConditionImpl.OK.reflect {asBool proof : Expr} {reflect : Reflection}
-    (h : (ConditionImpl.reflectNatNat asBool reflect proof).OK) :
-    CondOK asBool ∧ CondOK proof ∧ CondOK reflect.type ∧ CondOK reflect.toDec ∧
-    CondOK reflect.ofTrue ∧ CondOK reflect.ofFalse ∧ CondOK reflect.ite ∧
-    CondOK reflect.natDITE := by
+theorem ConditionImpl.OK.reflect {asBool proof : Expr} (h : (reflectNatNat asBool proof).OK) :
+    CondOK asBool ∧ CondOK proof ∧ CondOK Reflects.type ∧ CondOK Reflects.toDec := by
   simpa only [ConditionImpl.OK, Bool.and_eq_true, and_assoc] using h
 
 theorem CondOK.fvarsIn {P} {e : Expr} (h : CondOK e) : FVarsIn P e := by
@@ -370,7 +378,7 @@ Containment comes from the translation rather than from a guard on the branch --
 translates if it is in the environment -- which is why none of the branches using a `Condition`
 name its `asBool` in their guards. -/
 theorem ReflectNatNat.WF.apply_lit {c : VContext} {fc : Name} {f : Nat → Nat → Bool}
-    {reflect proof} (W : ReflectNatNat.WF c (.const fc []) reflect proof)
+    {proof} (W : ReflectNatNat.WF c (.const fc []) proof)
     (H : c.venv.ReflectsNatNatBool fc f) (a b : Nat) :
     c.IsDefEqU (W.asBool'.appN [.natLit a, .natLit b]) (.boolLit (f a b)) := by
   -- a `.const` translates only one way, and only when it is in the environment
@@ -427,7 +435,7 @@ theorem TrExprS.boolProp (henv : env.Ordered) (hprim : env.HasPrimitives)
 /-! ### Transport to a context with more binders *outside*
 
 `TrExprS.of_nil` moves a `[]`-level translation to another context, but only one with no bound
-variables: `VLCtx.FVLift` extends by free variables. The reflection's checks are run at terms
+variables: `VLCtx.FVLift` extends by free variables. The `Reflects` checks are run at terms
 whose binders are *bound*, so the same closed subterm (`toDec`, `type`) is read once at `[]` and
 once four binders deep, and nothing identifies the two readings.
 
@@ -526,7 +534,7 @@ theorem TrExprS.weakR {env : VEnv} {Us : List Name} (henv : env.Ordered) {Δ' : 
 
 /-- **A closed term is read the same way wherever it is read.** `weakR` adds context to a
 reading; this removes it, which is the direction every closed piece of a `Condition` needs.
-`Condition.check` reads them under the gadget's binders, `Reflection.checkITE` under its own, and
+`Condition.check` reads them under the gadget's binders, `Reflects.checkITE` under its own, and
 only a reading at the base context can identify the two -- so with this, no check has to exist
 merely to produce that reading.
 
@@ -707,7 +715,7 @@ theorem Condition.WF.dec_app2_inv (w : Condition.WF c cnd) [hOK : cnd.OK]
       D = (w.dec'.app a').app b' :=
   TrExprS.app2_nil_inv c.Ewf (CondOK.noProj hOK.dec) w.hdec0 H
 
-/-! Bound variables of a `vlam` telescope translate to themselves. The reflection's checks are
+/-! Bound variables of a `vlam` telescope translate to themselves. The `Reflects` checks are
 run at terms with binders four deep, so these are the leaves of every translation below. -/
 
 theorem _root_.Lean4Lean.TrExprS.bvar0 :
@@ -716,38 +724,12 @@ theorem _root_.Lean4Lean.TrExprS.bvar0 :
 theorem _root_.Lean4Lean.TrExprS.bvar1 :
     TrExprS env Us ((none, .vlam A) :: (none, .vlam B) :: Δ) (.bvar 1) (.bvar 1) := .bvar rfl
 
-theorem _root_.Lean4Lean.TrExprS.bvar2 :
-    TrExprS env Us ((none, .vlam A) :: (none, .vlam B) :: (none, .vlam C) :: Δ)
-      (.bvar 2) (.bvar 2) := .bvar rfl
-
-theorem _root_.Lean4Lean.TrExprS.bvar3 :
-    TrExprS env Us ((none, .vlam A) :: (none, .vlam B) :: (none, .vlam C) :: (none, .vlam D) :: Δ)
-      (.bvar 3) (.bvar 3) := .bvar rfl
-
-/-- The same as a `TrTy`, so that it can sit under the binders of the type `checkITE` builds. -/
-def TrTy.polyIteType : TrTy env Us Δ (.forallE n₁ q(Type)
-    (.forallE n₂ (.bvar 0) (.forallE n₃ (.bvar 1) (.bvar 2) bi₃) bi₂) bi₁) :=
-  .forallE (.of (.sort rfl) ⟨_, .sort (l := .succ .zero) trivial⟩) <|
-  .forallE (.of .bvar0 ⟨_, .bvar .zero⟩) <|
-  .forallE (.of .bvar1 ⟨_, .bvar (.succ .zero)⟩) <|
-  .of .bvar2 ⟨_, .bvar (.succ (.succ .zero))⟩
-
-/-- `∀ α : Type, α → α → α`, the type `checkITE` compares the conditional against. Written out
-rather than quoted: the binder names in a quotation are hygienic, so a second quotation of the
-same text is a *different* expression from the checker's. -/
-theorem TrExprS.polyIteType : TrExprS env Us Δ
-    (.forallE n₁ q(Type)
-      (.forallE n₂ (.bvar 0) (.forallE n₃ (.bvar 1) (.bvar 2) bi₃) bi₂) bi₁)
-    (.forallE vexpr(Type) (.forallE (.bvar 0) (.forallE (.bvar 1) (.bvar 2)))) :=
-  (TrTy.polyIteType (Us := Us) (Δ := Δ)).trS
-
-theorem TrExprS.propBoolProp (henv : env.Ordered) (hprim : env.HasPrimitives)
+theorem TrExprS.boolPropProp (henv : env.Ordered) (hprim : env.HasPrimitives)
     (hbool : env.contains ``Bool) (hΔ : OnCtx Δ.toCtx (env.IsType Us.length)) :
     TrExprS env Us Δ
-      (.forallE n₁ q(Prop) (.forallE n₂ q(Bool) q(Prop) bi₂) bi₁) vexpr(Prop → Bool → Prop) :=
-  (TrTy.forallE (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩)
-    (TrTy.forallE
-      (.of (hprim.trBool henv hbool) (hprim.boolIsType henv hbool ⟨hΔ, _, .sort trivial⟩))
+      (.forallE n₁ q(Bool) (.forallE n₂ q(Prop) q(Prop) bi₂) bi₁) vexpr(Bool → Prop → Prop) :=
+  (TrTy.forallE (.of (hprim.trBool henv hbool) (hprim.boolIsType henv hbool hΔ))
+    (TrTy.forallE (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩)
       (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩))).trS
 
 /-- `Bool → Nat → Nat → Nat`, the type the conditional is checked against. -/
@@ -905,322 +887,17 @@ theorem VEnv.IsDefEqU.natProj {env : VEnv} {U Γ} (henv : env.WF) (hΓ : OnCtx �
     simp [VExpr.inst, VExpr.instVar, VExpr.nat, VExpr.inst_lift] at hβ1 hβ2 ⊢
     exact ⟨_, ((hβ1.appDF heT).trans hβ2)⟩
 
-/-- The shape of `Reflection.ite`'s translation: four lambdas over `ite` at the reflection's own
-decision. Everything `checkITE` says is about applications of this term, so this is where the
-`VExpr` it denotes is pinned down -- including that the `type` and `toDec` occurring under its
-binders are the very ones `Reflection.WF` names, which is `of_nil_unique`'s job. -/
-theorem Reflection.ite_tr {c : VContext} {r : Reflection} (w : Reflection.WF c r)
-    (hnil : c.vlctx = []) (htypeOK : CondOK r.type) (htoDecOK : CondOK r.toDec)
-    {toDec' : VExpr} (htoDec : c.TrExprS r.toDec toDec')
-    {ite₀ : VExpr} (H : TrExprS c.venv c.lparams [] r.ite ite₀) :
-    ite₀ = VExpr.lams
-      [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0), .sort (.succ .zero)]
-      (((vexpr(@_root_.ite.{1}).app (.bvar 0)).app (.bvar 3)).app
-        (((toDec'.app (.bvar 3)).app (.bvar 2)).app (.bvar 1))) := by
-  have hty0 : c.venv.contains ``Nat → True := fun _ => trivial
-  have htypeTr : ∀ {Δ : VLCtx} {x}, TrExprS c.venv c.lparams Δ r.type x → x = w.type' :=
-    fun h => TrExprS.of_nil_unique c.Ewf.ordered
-      (CondOK.noProj htypeOK)
-      (by rw [← hnil]; exact w.htype) h
-  have htoDecTr : ∀ {Δ : VLCtx} {x}, TrExprS c.venv c.lparams Δ r.toDec x → x = toDec' :=
-    fun h => TrExprS.of_nil_unique c.Ewf.ordered
-      (CondOK.noProj htoDecOK) (by rw [← hnil]; exact htoDec) h
-  unfold Reflection.ite at H
-  simp only [Expr.lam0, mkApp3, mkApp2, mkApp] at H
-  -- peel the four binders, then the application spine of the body
-  cases H with | lam _ hd1 H
-  cases hd1 with | sort h1
-  cases H with | lam _ hd2 H
-  obtain ⟨rfl, -⟩ := hd2.const0_inv (Us' := c.lparams) (Δ' := c.vlctx)
-  cases H with | lam _ hd3 H
-  cases hd3 with | app _ _ hd3f hd3a
-  cases hd3f with | app _ _ hd3ff hd3fa
-  cases hd3fa with | bvar hb1
-  cases hd3a with | bvar hb0
-  cases H with | lam _ hd4 H
-  cases hd4 with | sort h4
-  cases H with | app _ _ hbf hba
-  cases hbf with | app _ _ hbff hbfa
-  cases hbff with | app _ _ hbfff hbffa
-  cases hbfff with | const hc hus hlen
-  cases hbffa with | bvar hbb0
-  cases hbfa with | bvar hbb3
-  cases hba with | app _ _ hta htb
-  cases hta with | app _ _ htaa htab
-  cases htaa with | app _ _ htd htdb
-  cases htdb with | bvar hd3'
-  cases htab with | bvar hd2'
-  cases htb with | bvar hd1'
-  simp only [VLCtx.find?, VLCtx.next, VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-    VExpr.liftN, Option.some.injEq, Prod.mk.injEq] at hb1 hb0 hbb0 hbb3 hd3' hd2' hd1'
-  simp [VLevel.ofLevel] at h1 h4
-  subst h1; subst h4
-  simp at hus
-  obtain ⟨u, hu, rfl⟩ := hus
-  simp [VLevel.ofLevel] at hu
-  subst hu
-  obtain ⟨rfl, -⟩ := hb1; obtain ⟨rfl, -⟩ := hb0
-  obtain ⟨rfl, -⟩ := hbb0; obtain ⟨rfl, -⟩ := hbb3
-  obtain ⟨rfl, -⟩ := hd3'; obtain ⟨rfl, -⟩ := hd2'; obtain ⟨rfl, -⟩ := hd1'
-  rw [htypeTr hd3ff, htoDecTr htd]
-  simp [VExpr.lams, VExpr.bool, VExpr.liftN, liftVar]
-
-/-- `fun α : Type => fun a _ : α => a` and `fun α : Type => fun _ a : α => a`, the two branches
-`checkITE` compares the conditional against. -/
-theorem TrExprS.polyProj {env : VEnv} {Us : List Name} {Δ : VLCtx} {n₁ n₂ n₃ bi₁ bi₂ bi₃}
-    {i : Nat} (hi : i = 0 ∨ i = 1) :
-    TrExprS env Us Δ
-      (.lam n₁ q(Type) (.lam n₂ (.bvar 0) (.lam n₃ (.bvar 1) (.bvar i) bi₃) bi₂) bi₁)
-      (.lam vexpr(Type) (.lam (.bvar 0) (.lam (.bvar 1) (.bvar i)))) ∧
-    env.HasType Us.length Δ.toCtx
-      (.lam vexpr(Type) (.lam (.bvar 0) (.lam (.bvar 1) (.bvar i))))
-      (.forallE vexpr(Type) (.forallE (.bvar 0) (.forallE (.bvar 1) (.bvar 2)))) := by
-  have hbody : TrExprS env Us
-      ((none, .vlam (.bvar 1)) :: (none, .vlam (.bvar 0)) ::
-        (none, .vlam vexpr(Type)) :: Δ) (.bvar i) (.bvar i) ∧
-      env.HasType Us.length
-        (VExpr.bvar 1 :: VExpr.bvar 0 :: VExpr.sort (.succ .zero) :: Δ.toCtx)
-        (.bvar i) (.bvar 2) := by
-    obtain rfl | rfl := hi
-    · exact ⟨.bvar0, .bvar .zero⟩
-    · exact ⟨.bvar1, .bvar (.succ .zero)⟩
-  exact ⟨.lam ⟨_, .sort trivial⟩ (.sort rfl)
-      (.lam ⟨_, .bvar .zero⟩ .bvar0 (.lam ⟨_, .bvar (.succ .zero)⟩ .bvar1 hbody.1)),
-    .lam (.sort trivial) (.lam (.bvar .zero) (.lam (.bvar (.succ .zero)) hbody.2))⟩
-
-/-- The two projections applied to a type and both branches pick one. `checkITE` compares the
-conditional against a projection, and the caller's branches are what it is then applied to. -/
-theorem VEnv.IsDefEqU.polyProj {env : VEnv} {U Γ} (henv : env.WF)
-    (hΓ : OnCtx Γ (env.IsType U)) {α t e : VExpr}
-    (hα : env.HasType U Γ α vexpr(Type))
-    (htT : env.HasType U Γ t α) (heT : env.HasType U Γ e α) {i : Nat} (hi : i = 0 ∨ i = 1) :
-    env.IsDefEqU U Γ
-      ((((VExpr.lam vexpr(Type) (.lam (.bvar 0) (.lam (.bvar 1) (.bvar i)))).app α).app t).app e)
-      (if i = 1 then t else e) := by
-  have hΓ1 : OnCtx (VExpr.sort (.succ .zero) :: Γ) (env.IsType U) := ⟨hΓ, _, .sort trivial⟩
-  have hΓ2 : OnCtx (VExpr.bvar 0 :: VExpr.sort (.succ .zero) :: Γ) (env.IsType U) :=
-    ⟨hΓ1, _, .bvar .zero⟩
-  have hΓ3 : OnCtx (VExpr.bvar 1 :: VExpr.bvar 0 :: VExpr.sort (.succ .zero) :: Γ)
-      (env.IsType U) := ⟨hΓ2, _, .bvar (.succ .zero)⟩
-  have hbodyT : VExpr.WF env U (VExpr.bvar 1 :: VExpr.bvar 0 :: VExpr.sort (.succ .zero) :: Γ)
-      (.bvar i) := by
-    obtain rfl | rfl := hi
-    · exact ⟨_, .bvar .zero⟩
-    · exact ⟨_, .bvar (.succ .zero)⟩
-  have hargs : VExpr.ArgsTyped env U Γ
-      [.sort (.succ .zero), .bvar 0, .bvar 1] .id [α, t, e] :=
-    .cons (by simpa using hα)
-      (.cons (by simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id] using htT)
-        (.cons (by simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id] using heT) .nil))
-  have heq := VExpr.lams_appN' henv hΓ (by simpa using hΓ3) (.id henv hΓ) hargs hbodyT |>.2
-  simp only [VExpr.subst_id, VExpr.lams, VExpr.appN] at heq
-  refine heq.trans henv hΓ ?_
-  obtain rfl | rfl := hi
-  · exact ⟨_, heT⟩
-  · exact ⟨_, htT⟩
-
-/-- `Prop → Bool → type p b → ∀ α : Type, α → α → α`, the type `checkITE` checks the conditional
-against. The third domain is where the reflection's own relation enters, and `of_nil_any` is what
-puts the `type'` of `Reflection.WF` there rather than some other translation of `r.type`. -/
-theorem TrExprS.reflIteType (w : Reflection.WF c r)
-    (hnil : c.vlctx = []) (hbool : c.venv.contains ``Bool) (htypeOK : CondOK r.type)
-    (hΔ : OnCtx Δ.toCtx (c.venv.IsType c.lparams.length)) :
-    TrExprS c.venv c.lparams Δ
-      (.arrow q(Prop) (.arrow q(Bool)
-        (.arrow (mkApp2 r.type (.bvar 1) (.bvar 0))
-          (.forallE n₁ q(Type)
-            (.forallE n₂ (.bvar 0) (.forallE n₃ (.bvar 1) (.bvar 2) bi₃) bi₂) bi₁))))
-      (.forallE vexpr(Prop) (.forallE .bool
-        (.forallE ((w.type'.app (.bvar 1)).app (.bvar 0))
-          (.forallE vexpr(Type) (.forallE (.bvar 0) (.forallE (.bvar 1) (.bvar 2))))))) := by
-  have htypeT : c.venv.HasType c.lparams.length [] w.type' vexpr(Prop → Bool → Prop) := by
-    have h : c.venv.HasType c.lparams.length c.vlctx.toCtx w.type' _ := w.typeT
-    rw [hnil] at h; exact h
-  have hΔ1 : OnCtx (.sort .zero :: Δ.toCtx) (c.venv.IsType c.lparams.length) :=
-    ⟨hΔ, _, .sort trivial⟩
-  have hΔ2 : OnCtx (.bool :: .sort .zero :: Δ.toCtx)
-      (c.venv.IsType c.lparams.length) :=
-    ⟨hΔ1, c.hasPrimitives.boolIsType' c.Ewf hbool hΔ1⟩
-  -- the reflection at the two binders
-  have hpT : c.venv.HasType c.lparams.length (.bool :: .sort .zero :: Δ.toCtx)
-      (.bvar 1) (.sort .zero) := .bvar (.succ .zero)
-  have hbT : c.venv.HasType c.lparams.length (.bool :: .sort .zero :: Δ.toCtx)
-      (.bvar 0) .bool := .bvar .zero
-  have htw := htypeT.weak0 (Γ := .bool :: .sort .zero :: Δ.toCtx) c.Ewf
-  have hrel : c.venv.HasType c.lparams.length (.bool :: .sort .zero :: Δ.toCtx)
-      ((w.type'.app (.bvar 1)).app (.bvar 0)) (.sort .zero) := .app (.app htw hpT) hbT
-  have htypeTr : TrExprS c.venv c.lparams
-      ((none, .vlam .bool) :: (none, .vlam (.sort .zero)) :: Δ) r.type w.type' :=
-    TrExprS.of_nil_any c.Ewf (CondOK.noProj htypeOK) (by rw [← hnil]; exact w.htype)
-  exact (TrTy.forallE (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩)
-    (TrTy.forallE (.of (c.hasPrimitives.trBool c.Ewf hbool) hΔ2.2)
-      (TrTy.forallE (.of (.app (.app htw hpT) hbT (.app htw hpT htypeTr .bvar1) .bvar0)
-          ⟨_, hrel⟩)
-        TrTy.polyIteType))).trS
-
-/-- `Prop → Prop`, the type `checkNatDITE` checks `Not` against. -/
+/-- `Prop → Prop`, the type `Reflects.check` checks `Not` against. -/
 theorem TrExprS.propProp {env : VEnv} {Us : List Name} {Δ : VLCtx} {n bi} :
     TrExprS env Us Δ (.forallE n q(Prop) q(Prop) bi) vexpr(Prop → Prop) :=
   (TrTy.forallE (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩)
     (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩)).trS
 
-/-- `∀ p : Prop, type p b → C`, the shape of the types `checkNatDITE` checks `ofTrue` and
-`ofFalse` against; `C` is the proposition itself for `ofTrue` and its negation for `ofFalse`, so
-it is taken as a parameter with its translation. -/
-theorem TrExprS.reflOfType (w : Reflection.WF c r)
-    (hnil : c.vlctx = []) (hbool : c.venv.contains ``Bool) (htypeOK : CondOK r.type)
-    {Δ : VLCtx} (b : Bool)
-    (hcod : TrExprS c.venv c.lparams
-      ((none, .vlam ((w.type'.app (.bvar 0)).app (.boolLit b))) ::
-        (none, .vlam vexpr(Prop)) :: Δ) cod cod')
-    (hcodT : c.venv.HasType c.lparams.length
-      ((w.type'.app (.bvar 0)).app (.boolLit b) :: .sort .zero :: Δ.toCtx)
-      cod' vexpr(Prop)) :
-    TrExprS c.venv c.lparams Δ
-      (.forallE n₁ q(Prop) (.forallE n₂ (mkApp2 r.type (.bvar 0) (toExpr b)) cod bi₂) bi₁)
-      (.forallE vexpr(Prop) (.forallE ((w.type'.app (.bvar 0)).app (.boolLit b)) cod')) := by
-  have htypeT : c.venv.HasType c.lparams.length [] w.type' vexpr(Prop → Bool → Prop) := by
-    have h : c.venv.HasType c.lparams.length c.vlctx.toCtx w.type' _ := w.typeT
-    rw [hnil] at h; exact h
-  have hrel : c.venv.HasType c.lparams.length (vexpr(Prop) :: Δ.toCtx)
-      ((w.type'.app (.bvar 0)).app (.boolLit b)) vexpr(Prop) :=
-    .app (.app (VEnv.HasType.weak0 c.Ewf htypeT) (.bvar .zero))
-      (VEnv.HasType.weak0 c.Ewf.ordered
-        (TrExprS.boolLit (Us := c.lparams) (Δ := []) c.hasPrimitives hbool b).2)
-  have htypeTr : TrExprS c.venv c.lparams ((none, .vlam vexpr(Prop)) :: Δ) r.type w.type' :=
-    TrExprS.of_nil_any c.Ewf (CondOK.noProj htypeOK) (by rw [← hnil]; exact w.htype)
-  exact (TrTy.forallE (.of (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩)
-    (TrTy.forallE
-      (.of (.app (.app (.weak0 c.Ewf htypeT) (.bvar .zero))
-        (.weak0 c.Ewf.ordered
-          (TrExprS.boolLit (Us := c.lparams) (Δ := []) c.hasPrimitives hbool b).2)
-        (.app (.weak0 c.Ewf htypeT) (.bvar .zero) htypeTr .bvar0)
-        (TrExprS.boolLit c.hasPrimitives hbool b).1) ⟨_, hrel⟩)
-      (.of hcod ⟨_, hcodT⟩))).trS
-
-/-- `Prop → Bool → type p b → (p → Nat) → (¬p → Nat) → Nat`, the type `checkNatDITE` checks the
-`dite` gadget against. `Not` enters as a parameter: the check before it is what establishes that
-the constant is a `Prop → Prop`, and nothing else about it is known. -/
-theorem TrExprS.reflDiteType (w : Reflection.WF c r)
-    (hnil : c.vlctx = []) (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
-    (htypeOK : CondOK r.type)
-    {Not' : VExpr} (hNotTr : ∀ {Δ}, TrExprS c.venv c.lparams Δ (.const ``Not []) Not')
-    (hNotT : ∀ {Γ : List VExpr}, c.venv.HasType c.lparams.length Γ Not' vexpr(Prop → Prop))
-    (hΔ : OnCtx Δ.toCtx (c.venv.IsType c.lparams.length)) :
-    TrExprS c.venv c.lparams Δ
-      (.forallE n₁ (.sort .zero) (.forallE n₂ (.const ``Bool [])
-        (.forallE n₃ (mkApp2 r.type (.bvar 1) (.bvar 0))
-          (.forallE n₄ (.forallE n₆ (.bvar 2) (.const ``Nat []) bi₆)
-            (.forallE n₅ (.forallE n₇ (mkApp (.const ``Not []) (.bvar 3)) (.const ``Nat []) bi₇)
-              (.const ``Nat []) bi₅) bi₄) bi₃) bi₂) bi₁)
-      (.forallE (.sort .zero) (.forallE .bool
-        (.forallE ((w.type'.app (.bvar 1)).app (.bvar 0))
-          (.forallE (.forallE (.bvar 2) .nat)
-            (.forallE (.forallE (Not'.app (.bvar 3)) .nat) .nat))))) := by
-  have htypeT : c.venv.HasType .. := w.typeT; rw [hnil] at htypeT
-  have htw {Γ} : c.venv.HasType _ Γ .. := .weak0 c.Ewf htypeT
-  have htypeTr : ∀ {Δ : VLCtx}, TrExprS c.venv c.lparams Δ r.type w.type' := fun {_} =>
-    TrExprS.of_nil_any c.Ewf.ordered
-      (CondOK.noProj htypeOK)
-      (by rw [← hnil]; exact w.htype)
-  have hnatT {Γ : List VExpr} (h : OnCtx Γ (c.venv.IsType c.lparams.length)) :
-      c.venv.IsType c.lparams.length Γ VExpr.nat := c.hasPrimitives.natIsType' c.Ewf hnat h
-  have hΔ1 : OnCtx (.sort .zero :: Δ.toCtx) (c.venv.IsType c.lparams.length) :=
-    ⟨hΔ, _, .sort trivial⟩
-  have hΔ2 : OnCtx (.bool :: _) (c.venv.IsType c.lparams.length) :=
-    ⟨hΔ1, c.hasPrimitives.boolIsType' c.Ewf hbool hΔ1⟩
-  have hrel : c.venv.HasType c.lparams.length (.bool :: .sort .zero :: Δ.toCtx)
-      ((w.type'.app (.bvar 1)).app (.bvar 0)) vexpr(Prop) :=
-    .app (.app htw (.bvar (.succ .zero))) (.bvar .zero)
-  have hΔ3 : OnCtx (_ :: .bool :: _) (c.venv.IsType c.lparams.length) := ⟨hΔ2, _, hrel⟩
-  have hpT : c.venv.HasType c.lparams.length
-      ((w.type'.app (.bvar 1)).app (.bvar 0) :: .bool :: .sort .zero :: Δ.toCtx)
-      (.bvar 2) vexpr(Prop) := .bvar (.succ (.succ .zero))
-  have hΔ4 : OnCtx (.bvar 2 :: _) (c.venv.IsType c.lparams.length) := ⟨hΔ3, _, hpT⟩
-  -- the branch types, `p → Nat` and `¬p → Nat`, as `TrTy`s so their `IsType`s are available
-  let T4 : TrTy c.venv c.lparams
-      ((none, .vlam ((w.type'.app (.bvar 1)).app (.bvar 0))) :: (none, .vlam .bool) ::
-        (none, .vlam vexpr(Prop)) :: Δ)
-      (.forallE n₆ (.bvar 2) (.const ``Nat []) bi₆) :=
-    TrTy.forallE (.of .bvar2 ⟨_, hpT⟩)
-      (.of (c.hasPrimitives.trNat c.Ewf hnat) (hnatT hΔ4))
-  have hΔ5 : OnCtx (T4.tgt :: _) (c.venv.IsType c.lparams.length) := ⟨hΔ3, T4.isType⟩
-  have hnotT : c.venv.HasType c.lparams.length
-      (T4.tgt :: (w.type'.app (.bvar 1)).app (.bvar 0) :: .bool :: .sort .zero :: Δ.toCtx)
-      (Not'.app (.bvar 3)) vexpr(Prop) := .app hNotT (.bvar (.succ (.succ (.succ .zero))))
-  have hΔ6 : OnCtx (Not'.app (.bvar 3) :: _) (c.venv.IsType c.lparams.length) :=
-    ⟨hΔ5, _, hnotT⟩
-  let T5 : TrTy c.venv c.lparams
-      ((none, .vlam T4.tgt) :: (none, .vlam ((w.type'.app (.bvar 1)).app (.bvar 0))) ::
-        (none, .vlam .bool) :: (none, .vlam vexpr(Prop)) :: Δ)
-      (.forallE n₇ (mkApp q(Not) (.bvar 3)) q(Nat) bi₇) :=
-    TrTy.forallE (.of (.app hNotT (.bvar (.succ (.succ (.succ .zero)))) hNotTr .bvar3)
-        ⟨_, hnotT⟩)
-      (.of (c.hasPrimitives.trNat c.Ewf hnat) (hnatT hΔ6))
-  have hΔ7 : OnCtx (T5.tgt :: _) (c.venv.IsType c.lparams.length) := ⟨hΔ5, T5.isType⟩
-  exact (TrTy.forallE
-    (.of (TrExprS.sort (u := .zero) (u' := .zero) rfl) ⟨_, .sort (l := .zero) trivial⟩)
-    (TrTy.forallE (.of (c.hasPrimitives.trBool c.Ewf hbool) hΔ2.2)
-      (TrTy.forallE
-        (.of (.app (.app htw (.bvar (.succ .zero))) (.bvar .zero)
-            (.app htw (.bvar (.succ .zero)) htypeTr .bvar1) .bvar0) ⟨_, hrel⟩)
-        (TrTy.forallE T4 (TrTy.forallE T5
-          (.of (c.hasPrimitives.trNat c.Ewf hnat) (hnatT hΔ7))))))).trS
-
-/-- The shape of `Reflection.natDITE`'s translation: three lambdas over `dite` at `Nat` and the
-reflection's own decision. The `checkITE` counterpart is `ite_tr`. -/
-theorem Reflection.natDITE_tr {c : VContext} {r : Reflection} (w : Reflection.WF c r)
-    (hnil : c.vlctx = []) (htypeOK : CondOK r.type) (htoDecOK : CondOK r.toDec)
-    {toDec' : VExpr} (htoDec : c.TrExprS r.toDec toDec')
-    {d₀ : VExpr} (H : TrExprS c.venv c.lparams [] r.natDITE d₀) :
-    d₀ = VExpr.lams [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0)]
-      ((vexpr(@dite.{1} Nat).app (.bvar 2)).app
-        (((toDec'.app (.bvar 2)).app (.bvar 1)).app (.bvar 0))) := by
-  have htypeTr {Δ x} (h : TrExprS c.venv c.lparams Δ r.type x) : x = w.type' :=
-    TrExprS.of_nil_unique c.Ewf (CondOK.noProj htypeOK) (by rw [← hnil]; exact w.htype) h
-  have htoDecTr {Δ x} (h : TrExprS c.venv c.lparams Δ r.toDec x) : x = toDec' :=
-    TrExprS.of_nil_unique c.Ewf (CondOK.noProj htoDecOK) (by rw [← hnil]; exact htoDec) h
-  unfold Reflection.natDITE at H
-  simp only [Expr.lam0, mkApp3, mkApp2, mkApp] at H
-  cases H with | lam _ hd1 H
-  cases hd1 with | sort h1
-  cases H with | lam _ hd2 H
-  obtain ⟨rfl, -⟩ := hd2.const0_inv (Us' := c.lparams) (Δ' := c.vlctx)
-  cases H with | lam _ hd3 H
-  cases hd3 with | app _ _ hd3f hd3a
-  cases hd3f with | app _ _ hd3ff hd3fa
-  cases hd3fa with | bvar hb1
-  cases hd3a with | bvar hb0
-  cases H with | app _ _ hbf hba
-  cases hbf with | app _ _ hbff hbfa
-  cases hbff with | app _ _ hbfff hbffa
-  cases hbfff with | const hc hus hlen
-  obtain ⟨rfl, -⟩ := hbffa.const0_inv (Us' := c.lparams) (Δ' := c.vlctx)
-  cases hbfa with | bvar hbb2
-  cases hba with | app _ _ hta htb
-  cases hta with | app _ _ htaa htab
-  cases htaa with | app _ _ htd htdb
-  cases htdb with | bvar hd2'
-  cases htab with | bvar hd1'
-  cases htb with | bvar hd0'
-  simp only [VLCtx.find?, VLCtx.next, VLocalDecl.value, VLocalDecl.type, VLocalDecl.depth,
-    VExpr.liftN, Option.some.injEq, Prod.mk.injEq] at hb1 hb0 hbb2 hd2' hd1' hd0'
-  simp [VLevel.ofLevel] at h1
-  subst h1
-  simp at hus
-  obtain ⟨u, hu, rfl⟩ := hus
-  simp [VLevel.ofLevel] at hu
-  subst hu
-  obtain ⟨rfl, -⟩ := hb1; obtain ⟨rfl, -⟩ := hb0; obtain ⟨rfl, -⟩ := hbb2
-  obtain ⟨rfl, -⟩ := hd2'; obtain ⟨rfl, -⟩ := hd1'; obtain ⟨rfl, -⟩ := hd0'
-  rw [htypeTr hd3ff, htoDecTr htd]
-  simp [VExpr.lams, VExpr.bool, VExpr.liftN, liftVar]
-
 /-- An equation the checker verified under a telescope of binders, at arbitrary arguments for
-them in an arbitrary context. Every binder the reflection's checks open has a closed type, which
+them in an arbitrary context. Every binder the `Reflects` checks open has a closed type, which
 is what lets the equation weaken past the caller's context untouched; the closing is then the
 substitution the arguments define. -/
-theorem Reflection.WF.genTele {c : VContext} (E : c.Ext)
+theorem Reflects.WF.genTele {c : VContext} (E : c.Ext)
     (hAs : OnCtx As.reverse (c.venv.IsType c.lparams.length))
     (hXY : c.venv.IsDefEqU c.lparams.length As.reverse X Y)
     (hXc : X.ClosedN As.length) (hYc : Y.ClosedN As.length)
@@ -1240,7 +917,7 @@ theorem Reflection.WF.genTele {c : VContext} (E : c.Ext)
 a caller needs of the gadget's pieces -- that `prop x y` is a proposition and `proof x y` is
 evidence about *that* proposition, at the caller's own `x` and `y`. Everything in sight is
 closed, so the type is substituted along with the term and the two stay in step. -/
-theorem Reflection.WF.genTeleT {c : VContext} (E : c.Ext)
+theorem Reflects.WF.genTeleT {c : VContext} (E : c.Ext)
     (hAs : OnCtx As.reverse (c.venv.IsType c.lparams.length))
     (hX : c.venv.HasType c.lparams.length As.reverse X A)
     (hXc : X.ClosedN As.length) (hAc : A.ClosedN As.length)
@@ -1256,765 +933,723 @@ theorem Reflection.WF.genTeleT {c : VContext} (E : c.Ext)
   exact hX'.subst E.wf.ordered
     (VExpr.ArgsTyped.substEq (OnCtx.append_right E.wf hAs hΓ) (.id E.wf hΓ) hargs)
 
-/-- An equation the checker verified under `p : Prop` and `H : type p b`, moved to arbitrary such
-arguments in an arbitrary context. Two steps: the checked equation lives at the two-binder context
-over `[]`, so it weakens past whatever the caller has built (everything in sight is closed, so the
-lift is the identity), and then the two binders are closed off by a substitution whose typing
-obligations are exactly the caller's hypotheses. -/
-theorem Reflection.WF.genPH (w : Reflection.WF c r) (E : c.Ext)
-    (hnil : c.vlctx = []) (hbool : c.venv.contains ``Bool) (b : Bool) {X Y : VExpr}
-    (hXY : c.venv.IsDefEqU c.lparams.length
-      [(w.type'.app (.bvar 0)).app (.boolLit b), vexpr(Prop)] X Y)
-    (hXc : X.ClosedN 2) (hYc : Y.ClosedN 2)
-    (hΓ : OnCtx Γ (E.venv.IsType c.lparams.length))
-    (hp : E.venv.HasType c.lparams.length Γ p vexpr(Prop))
-    (hH : E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app (.boolLit b))) :
-    E.venv.IsDefEqU c.lparams.length Γ (X.subst ((VExpr.Subst.id.cons p).cons H))
-      (Y.subst ((VExpr.Subst.id.cons p).cons H)) := by
-  have htypeT : c.venv.HasType c.lparams.length [] w.type'
-      vexpr(Prop → Bool → Prop) := by
-    have h : c.venv.HasType c.lparams.length c.vlctx.toCtx w.type' _ := w.typeT
-    rw [hnil] at h; exact h
-  have hclosed : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-  have hbc : (VExpr.boolLit b).ClosedN := by cases b <;> trivial
-  have hblit : ∀ Γ', E.venv.HasType c.lparams.length Γ' (VExpr.boolLit b) .bool := fun Γ' =>
-    VEnv.HasType.weak0 E.wf <| E.monoT
-      (TrExprS.boolLit (Us := c.lparams) (Δ := []) c.hasPrimitives hbool b).2
-  -- the binder types, in the caller's context
-  have hPT : E.venv.HasType c.lparams.length Γ vexpr(Prop) vexpr(Type) :=
-    .sort trivial
-  have hHT : E.venv.HasType c.lparams.length (vexpr(Prop) :: Γ)
-      ((w.type'.app (.bvar 0)).app (.boolLit b)) vexpr(Prop) :=
-    .app (.app (VEnv.HasType.weak0 E.wf (E.monoT htypeT)) (.bvar .zero)) (hblit _)
-  -- weaken the checked equation past the caller's context
-  have hW : Ctx.LiftN Γ.length 2 [(w.type'.app (.bvar 0)).app (.boolLit b), vexpr(Prop)]
-      ((w.type'.app (.bvar 0)).app (.boolLit b) :: vexpr(Prop) :: Γ) := by
-    have h0 : Ctx.LiftN Γ.length 0 [] Γ := by simpa using Ctx.LiftN.zero (Γ := []) Γ
-    have h2 := (h0.succ (A := vexpr(Prop))).succ (A := (w.type'.app (.bvar 0)).app (.boolLit b))
-    simpa [VExpr.liftN, liftVar, hclosed.liftN_eq (Nat.zero_le _),
-      hbc.liftN_eq (Nat.zero_le _)] using h2
-  have hXY' := (E.mono hXY).weakN E.wf hW
-  rw [hXc.liftN_eq (Nat.le_refl _), hYc.liftN_eq (Nat.le_refl _)] at hXY'
-  -- and close the two binders
-  refine hXY'.subst E.wf.ordered
-    (VEnv.Ctx.SubstEq.cons (VEnv.Ctx.SubstEq.cons (.id E.wf hΓ) hPT ?_) hHT ?_) hΓ
-  · exact hp
-  · show E.venv.HasType _ _ _ _
-    rw [VExpr.Subst.tail_cons,
-      show ((w.type'.app (VExpr.bvar 0)).app (VExpr.boolLit b)).subst
-        (VExpr.Subst.id.cons p) = (w.type'.app p).app (VExpr.boolLit b) from by
-      simp [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, hclosed.subst_eq', hbc.subst_eq']]
-    exact hH
-
-/-- What one of `checkITE`'s two equation checks says, generalized away from the binders it was
-checked under: at *any* proposition and evidence for the literal `b`, the conditional is the
-matching projection. `genPH` is what produces it. -/
-def Reflection.WF.IteEq (w : Reflection.WF c r) (ite₀ : VExpr) (b : Bool) : Prop :=
-  ∀ (E : c.Ext) {Γ : List VExpr} {p H : VExpr}, OnCtx Γ (E.venv.IsType c.lparams.length) →
-    E.venv.HasType c.lparams.length Γ p vexpr(Prop) →
-    E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app (.boolLit b)) →
-    E.venv.IsDefEqU c.lparams.length Γ (((ite₀.app p).app (.boolLit b)).app H)
-      (.lam vexpr(Type) (.lam (.bvar 0) (.lam (.bvar 1) (.bvar (if b then 1 else 0)))))
-
-theorem Reflection.check.WF {c : VContext} {s : VState} {r : Reflection} {fail : ∀ {α}, M α}
-    (hbool : c.venv.contains ``Bool) (hnil : c.vlctx = []) (htypeOK : CondOK r.type)
-    (hfail : ∀ {α c s Q}, (@fail α).WF c s Q) :
-    (r.check fail).WF c s fun _ _ => Nonempty (Reflection.WF c r) := by
-  have hfailb : ∀ {α β} {k : α → M β} {c s Q}, (fail >>= k).WF c s Q :=
-    .bind (hfail (Q := fun _ _ => False)) fun _ _ _ h => h.elim
-  have hnil' : c.vlctx.toCtx = [] := by rw [hnil]; rfl
-  unfold Reflection.check
-  -- `type : Prop → Bool → Prop`
-  refine .bind (checkType.WF (CondOK.fvarsIn htypeOK))
-    fun _ _ _ ⟨type', typeTy', _, htypeTr, htypeTyTr, htypeT⟩ => ?_
-  refine .bind (isDefEq.WF htypeTyTr
-    (TrExprS.propBoolProp c.Ewf c.hasPrimitives hbool c.Δwf.toCtx)) fun _ _ _ hpb => ?_
-  split <;> [rename_i h1; exact hfail]
-  have htypeT' : c.venv.HasType c.lparams.length c.vlctx.toCtx type'
-      vexpr(Prop → Bool → Prop) :=
-    VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx (hpb h1) htypeT
-  have htypeTΓ : ∀ {Γ : List VExpr}, c.venv.HasType c.lparams.length Γ type'
-      vexpr(Prop → Bool → Prop) := fun {_} =>
-    VEnv.HasType.weak0 c.Ewf (by rw [← hnil']; exact htypeT')
-  have htypeTrΓ : ∀ {Δ : VLCtx}, TrExprS c.venv c.lparams Δ r.type type' := fun {_} =>
-    TrExprS.of_nil_any c.Ewf.ordered
-      (CondOK.noProj htypeOK)
-      (by rw [← hnil]; exact htypeTr)
-  exact .pure ⟨{ type' := type', htype := htypeTr, typeT := htypeT' }⟩
-
 /-- `c` and `c.withMLC c.mlctx` are the same context, but not by `rfl`, and rewriting the goal
 fails whenever its postcondition mentions `c`. Converting the whole judgement sidesteps that. -/
 theorem M.WF.withMLC_self {α} {c : VContext} {s : VState} {x : M α} {Q : α → VState → Prop}
     (h : M.WF (c.withMLC c.mlctx) s x Q) : M.WF c s x Q := c.withMLC_self ▸ h
 
-/-- That the conditional the reflection builds is *well typed* at any proposition, boolean and
-evidence -- not only at a decided boolean, which is all `WF_ite` speaks about. A consumer needs
+theorem Reflects.check.WF {c : VContext} {s : VState} {fail : ∀ {α}, M α}
+    (hbool : c.venv.contains ``Bool) (hnil : c.vlctx = []) (htypeOK : CondOK Reflects.type)
+    (hfail : ∀ {α c s Q}, (@fail α).WF c s Q) :
+    (check fail).WF c s fun _ _ => Nonempty (Reflects.WF c) := by
+  have hfailb : ∀ {α β} {k : α → M β} {c s Q}, (fail >>= k).WF c s Q :=
+    .bind (hfail (Q := fun _ _ => False)) nofun
+  have hnil' : c.vlctx.toCtx = [] := by rw [hnil]; rfl
+  unfold check
+  -- `type : Bool → Prop → Prop`
+  refine .bind (checkType.WF (CondOK.fvarsIn htypeOK))
+    fun _ _ _ ⟨type', typeTy', _, htypeTr, htypeTyTr, htypeT⟩ => ?_
+  refine .bind (isDefEq.WF htypeTyTr
+    (TrExprS.boolPropProp c.Ewf c.hasPrimitives hbool c.Δwf.toCtx)) fun _ _ _ hpb => ?_
+  split <;> [rename_i h1; exact hfailb]
+  have htypeT' : c.venv.HasType c.lparams.length c.vlctx.toCtx type' vexpr(Bool → Prop → Prop) :=
+    htypeT.defeqU_r c.Ewf c.Δwf.toCtx (hpb h1)
+  have htypeTΓ {Γ} : c.venv.HasType c.lparams.length Γ type' vexpr(Bool → Prop → Prop) :=
+    (hnil'.symm ▸ htypeT').weak0 c.Ewf
+  have htypeTrΓ {Δ} : TrExprS c.venv c.lparams Δ Reflects.type type' :=
+    TrExprS.of_nil_any c.Ewf.ordered (CondOK.noProj htypeOK) (hnil.symm ▸ htypeTr)
+  have htypeC : type'.ClosedN := ((htypeTΓ (Γ := [])).closedN' c.Ewf.ordered.closed trivial).1
+  -- `Not : Prop → Prop`
+  refine .bind (checkType.WF (by simp [FVarsIn]))
+    fun _ _ _ ⟨Not', notTy', _, hNotTr, hNotTyTr, hNotT⟩ => ?_
+  refine .bind (isDefEq.WF hNotTyTr TrExprS.propProp) fun _ _ _ hnotarr => ?_
+  split <;> [rename_i h2; exact hfailb]
+  obtain ⟨rfl, -⟩ := hNotTr.const0_inv (Us' := c.lparams) (Δ' := c.vlctx)
+  have hNotTr' {Δ} : TrExprS c.venv c.lparams Δ q(Not) vexpr(Not) := hNotTr.const0_inv.2
+  have hNotT' {Γ} : c.venv.HasType c.lparams.length Γ vexpr(Not)
+      (.forallE (.sort .zero) (.sort .zero)) :=
+    VEnv.HasType.weak0 c.Ewf <| hnil'.symm ▸ hNotT.defeqU_r c.Ewf c.Δwf.toCtx (hnotarr h2)
+  -- the `p` binder, and the two equations under it
+  refine M.WF.withMLC_self ?_
+  simp only
+  refine .withLocalDecl (.sort rfl) ⟨_, .sort trivial⟩ .rfl fun idp cwfp _ _ _ => ?_
+  have hp0 : (c.withMLC _ (wf := cwfp)).TrExprS (.fvar idp) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  have hp0T : (c.withMLC _ (wf := cwfp)).HasType (.bvar 0) (.sort .zero) := .bvar .zero
+  have hX bb : (c.withMLC _).TrExprS (mkApp2 Reflects.type (toExpr bb) (.fvar idp))
+      ((type'.app (.boolLit bb)).app (.bvar 0)) :=
+    have hlit := TrExprS.boolLit c.hasPrimitives hbool bb
+    .app (.app htypeTΓ hlit.2) hp0T (.app htypeTΓ hlit.2 htypeTrΓ hlit.1) hp0
+  refine .bind (isDefEq.WF (hX true) hp0) fun _ _ _ hT => ?_
+  split <;> [rename_i h3; exact hfailb]
+  refine .bind (isDefEq.WF (hX false) (.app hNotT' hp0T hNotTr' hp0)) fun _ _ _ hF => ?_
+  split <;> [rename_i h4; exact hfail]
+  -- each equation, generalized away from the binder
+  have hgen {X Y : VExpr} (hXY : (c.withMLC _ (wf := cwfp)).IsDefEqU X Y)
+      (hXc : X.ClosedN 1) (hYc : Y.ClosedN 1) (E : c.Ext) {Γ : List VExpr} {p : VExpr}
+      (hΓ : OnCtx Γ (E.venv.IsType c.lparams.length))
+      (hp : E.venv.HasType c.lparams.length Γ p (.sort .zero)) :
+      E.venv.IsDefEqU c.lparams.length Γ (X.subst (VExpr.Subst.id.consN [p]))
+        (Y.subst (VExpr.Subst.id.consN [p])) := by
+    have h' : c.venv.IsDefEqU c.lparams.length (.sort .zero :: c.vlctx.toCtx) X Y := hXY
+    exact WF.genTele E (As := [.sort .zero]) ⟨trivial, _, .sort trivial⟩ (hnil' ▸ h' :)
+      hXc hYc hΓ (.cons (by simpa using hp) .nil)
+  have hbC bb : (VExpr.boolLit bb).ClosedN := by cases bb <;> trivial
+  exact .pure ⟨{
+    type' := type', htype := htypeTr, typeT := htypeT', hNotTr := hNotTr', hNotT := hNotT'
+    reflTrue := fun E _ _ hΓ hp => by
+      have h := hgen (hT h3) (by simp [VExpr.ClosedN, htypeC.mono (Nat.zero_le 1),
+          (hbC true).mono (Nat.zero_le 1)])
+        (by simp [VExpr.ClosedN]) E hΓ hp
+      simpa [VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id, htypeC.subst_eq',
+        (hbC true).subst_eq'] using h
+    reflFalse := fun E _ _ hΓ hp => by
+      have h := hgen (hF h4) (by simp [VExpr.ClosedN, htypeC.mono (Nat.zero_le 1),
+          (hbC false).mono (Nat.zero_le 1)])
+        (by simp [VExpr.ClosedN]) E hΓ hp
+      simpa [VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id, htypeC.subst_eq',
+        (hbC false).subst_eq'] using h }⟩
+
+/-- That the conditional on `Reflects.toDec`'s decision is *well typed* at any proposition, boolean
+and evidence -- not only at a decided boolean, which is all `WF_ite` speaks about. A consumer needs
 this to build the conditional at all: nothing else in the model types an `ite` application, since
 `ite`'s own declared type is not checked anywhere. -/
-def Reflection.WF.ITE_T {c : VContext} {r : Reflection} (w : Reflection.WF c r)
+def Reflects.WF.ITE_T {c : VContext} (w : Reflects.WF c)
     (toDec' : VExpr) : Prop :=
   ∀ (E : c.Ext) {Γ : List VExpr} {p H bb α : VExpr},
     OnCtx Γ (E.venv.IsType c.lparams.length) →
     E.venv.HasType c.lparams.length Γ p vexpr(Prop) →
     E.venv.HasType c.lparams.length Γ bb .bool →
-    E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app bb) →
+    E.venv.HasType c.lparams.length Γ H ((w.type'.app bb).app p) →
     E.venv.HasType c.lparams.length Γ α vexpr(Type) →
     E.venv.HasType c.lparams.length Γ
       (((vexpr(@_root_.ite.{1}).app α).app p).app
         (((toDec'.app p).app bb).app H))
       (.forallE α (.forallE α.lift α.lift.lift))
 
-/-- The `ite` gadget's well-typedness is what types `toDec`: the decision sits in the gadget's
+/-- The conditional's well-typedness is what types `toDec`: the decision sits in `ite`'s
 instance position, so peeling the application back off is the whole proof. The type argument is
 `Prop`; any closed type would do, and this one needs nothing from the environment. -/
-theorem Reflection.WF.ITE_T.toDecT {c : VContext} {r : Reflection} {w : Reflection.WF c r}
+theorem Reflects.WF.ITE_T.toDecT {c : VContext} {w : WF c}
     {toDec' : VExpr} (h : w.ITE_T toDec') : w.ToDecT toDec' := by
   intro E Γ p bb H hΓ hp hbb hH
   obtain ⟨_, _, -, ha⟩ := VExpr.WF.app_inv E.wf hΓ
     ⟨_, h E hΓ hp hbb hH (α := vexpr(Prop)) (.sort trivial)⟩
   exact ⟨_, ha⟩
 
-/-- Verification boundary for `Reflection.checkITE`: at evidence for either literal, the
-conditional the reflection builds *is* the corresponding projection, at every proposition and in
-every context. The checker verifies this once, under its own `p` and `H` binders; `genPH` moves
-it, and `ite_tr` is what makes the term it moves recognizable as `iteApp`. -/
-theorem Reflection.checkITE.WF {fail : ∀ {α}, M α}
-    (w : Reflection.WF c r) (hnil : c.vlctx = []) (hbool : c.venv.contains ``Bool)
-    {toDec' : VExpr} (htoDec : c.TrExprS r.toDec toDec') (htoDecC : toDec'.ClosedN)
-    (htypeOK : CondOK r.type) (htoDecOK : CondOK r.toDec) (hiteOK : CondOK r.ite)
+/-- The translation of `@ite.{1} α p (toDec p b H)`: the head and `toDec` translate the one way
+they can, so the term is `ite` at the leaves' translations. Also the head's own translation, in
+every context: the model knows nothing about `ite` -- its declared type is checked nowhere -- so
+a translation of it is only ever obtained by taking apart one the checker produced. -/
+theorem Reflects.iteTr_inv {c : VContext} (hnil : c.vlctx = []) (htoDecOK : CondOK toDec)
+    {toDec' : VExpr} (htoDec : c.TrExprS toDec toDec') {Δ : VLCtx} {α p b H : Expr}
+    {α' p' b' H' r : VExpr} (huα : noProj α) (hup : noProj p) (hub : noProj b) (huH : noProj H)
+    (hα : TrExprS c.venv c.lparams Δ α α') (hp : TrExprS c.venv c.lparams Δ p p')
+    (hb : TrExprS c.venv c.lparams Δ b b') (hH : TrExprS c.venv c.lparams Δ H H')
+    (h : TrExprS c.venv c.lparams Δ (mkApp3 q(@ite.{1}) α p (mkApp3 toDec p b H)) r) :
+    r = ((vexpr(@_root_.ite.{1}).app α').app p').app (((toDec'.app p').app b').app H') ∧
+    ∀ {Δ'}, TrExprS c.venv c.lparams Δ' q(@ite.{1}) vexpr(@_root_.ite.{1}) := by
+  have u {e e₁ e₂} (hu : noProj e) (h₁ : TrExprS c.venv c.lparams Δ e e₁)
+      (h₂ : TrExprS c.venv c.lparams Δ e e₂) : e₁ = e₂ :=
+    h₁.unique (noProj.isUnique hu) h₂
+  simp only [mkApp3, mkApp] at h
+  let .app _ _ hf ha := h
+  let .app _ _ hff hfa := hf
+  let .app _ _ hfff hffa := hff
+  let .const hc hus hlen := hfff
+  let .app _ _ hta htb := ha
+  let .app _ _ htaa htab := hta
+  let .app _ _ htd htdb := htaa
+  cases u huα hffa hα; cases u hup hfa hp; cases u hup htdb hp
+  cases u hub htab hb; cases u huH htb hH
+  cases TrExprS.of_nil_unique c.Ewf.ordered (CondOK.noProj htoDecOK)
+    (by rw [← hnil]; exact htoDec) htd
+  have hconst {Δ'} : TrExprS c.venv c.lparams Δ' _ _ := TrExprS.const hc hus hlen
+  cases hus
+  exact ⟨rfl, .const hc rfl hlen⟩
+
+/-- Verification boundary for `Reflects.checkITE`. The typing check runs under `p`, `α`, `b` and
+`H`, the two equation checks under `p`, `α`, `t`, `e` and `H`. Every binder's type is closed over
+the binders before it, so `genTeleT` and `genTele` carry each check to arbitrary arguments in an
+arbitrary context, where it is `ITE_T`, and `WF_ite` at the literal, as stated. -/
+theorem Reflects.checkITE.WF {fail : ∀ {α}, M α} (w : Reflects.WF c) (hnil : c.vlctx = [])
+    (hbool : c.venv.contains ``Bool) {toDec' : VExpr} (htoDec : c.TrExprS toDec toDec')
+    (htoDecC : toDec'.ClosedN) (htypeOK : CondOK Reflects.type) (htoDecOK : CondOK toDec)
     (hfail : ∀ {α c s Q}, (@fail α).WF c s Q) :
-    (r.checkITE fail).WF c s fun _ _ => w.WF_ite toDec' ∧ w.ITE_T toDec' := by
-  have hfailb : ∀ {α β} {k : α → M β} {c s Q}, (fail >>= k).WF c s Q :=
-    .bind (hfail (Q := fun _ _ => False)) fun _ _ _ h => h.elim
+    (checkITE fail).WF c s fun _ _ => w.WF_ite toDec' ∧ w.ITE_T toDec' := by
   have hnil' : c.vlctx.toCtx = [] := by rw [hnil]; rfl
-  have htypeT : c.venv.HasType c.lparams.length [] w.type' vexpr(Prop → Bool → Prop) := by
-    have h : c.venv.HasType c.lparams.length c.vlctx.toCtx w.type' _ := w.typeT
-    rw [hnil'] at h; exact h
-  unfold Reflection.checkITE
-  refine .bind (checkType.WF (CondOK.fvarsIn hiteOK))
-    fun _ _ _ ⟨ite₀, iteTy', _, hiteTr, hiteTyTr, hiteT⟩ => ?_
-  refine .bind (isDefEq.WF hiteTyTr (TrExprS.reflIteType w hnil hbool htypeOK c.Δwf.toCtx))
-    fun _ _ _ harr => ?_
-  split <;> [rename_i h1; exact hfailb]
-  -- the conditional's shape, and its type on the nose
-  have hshape := Reflection.ite_tr w hnil htypeOK htoDecOK htoDec (by rw [← hnil]; exact hiteTr)
-  have hiteT' := VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx (harr h1) hiteT
-  rw [hnil'] at hiteT'
-  have hiteC := (hiteT'.closedN' c.Ewf.ordered.closed trivial).1
-  -- the `p` binder
+  have htypeT : c.venv.HasType c.lparams.length [] w.type' vexpr(Bool → Prop → Prop) :=
+    hnil' ▸ w.typeT
+  have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
+  have htw {Γ} : c.venv.HasType c.lparams.length Γ w.type' vexpr(Bool → Prop → Prop) :=
+    .weak0 c.Ewf htypeT
+  have htypeTr {Δ} : TrExprS c.venv c.lparams Δ Reflects.type w.type' :=
+    TrExprS.of_nil_any c.Ewf (CondOK.noProj htypeOK) (hnil.symm ▸ w.htype)
+  have htoDecTr {Δ} : TrExprS c.venv c.lparams Δ toDec toDec' :=
+    TrExprS.of_nil_any c.Ewf (CondOK.noProj htoDecOK) (by rw [← hnil]; exact htoDec)
+  have hbC b : (VExpr.boolLit b).ClosedN := by cases b <;> trivial
+  have hlit {Δ} b := TrExprS.boolLit (Us := c.lparams) (Δ := Δ) c.hasPrimitives hbool b
+  unfold checkITE
   refine M.WF.withMLC_self ?_
-  simp only []
-  refine M.WF.withLocalDecl (m := c.mlctx) (ty := q(Prop)) (ty' := vexpr(Prop))
-    (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩ .rfl ?_
-  intro idp cwfp s2 hs2 hres2
-  -- the `H` binder's type, at either literal
-  have hpvT : (c.withMLC _ (wf := cwfp)).HasType (.bvar 0) (.sort .zero) := .bvar .zero
-  have hlit {Δ : VLCtx} (b : Bool) : TrExprS c.venv c.lparams Δ (toExpr b) (.boolLit b) ∧
-      c.venv.HasType c.lparams.length Δ.toCtx (.boolLit b) .bool :=
-    TrExprS.boolLit c.hasPrimitives hbool b
-  have htypeTrp {Δ : VLCtx} : TrExprS c.venv c.lparams Δ r.type w.type' :=
-    TrExprS.of_nil_any c.Ewf (CondOK.noProj htypeOK) (by rw [← hnil]; exact w.htype)
-  have htwp {Γ : List VExpr} : c.venv.HasType c.lparams.length Γ w.type'
-      vexpr(Prop → Bool → Prop) := .weak0 c.Ewf htypeT
-  have hHtyT (b : Bool) : (c.withMLC _ (wf := cwfp)).HasType
-      ((w.type'.app (.bvar 0)).app (.boolLit b)) vexpr(Prop) := .app (.app htwp hpvT) (hlit b).2
-  have hHtyTr (b : Bool) : (c.withMLC _ (wf := cwfp)).TrExprS
-      (mkApp2 r.type (.fvar idp) (toExpr b)) ((w.type'.app (.bvar 0)).app (.boolLit b)) :=
-    .app (.app htwp hpvT) (hlit b).2
-      (.app htwp hpvT htypeTrp (.fvar VLCtx.find?_vlam_self)) (hlit b).1
-  -- one of the two equation blocks
-  have block (b : Bool) (idH : FVarId)
-      (cwfH : c.MLCWF (.vlam idH `H (mkApp2 r.type (.fvar idp) (toExpr b))
-        ((w.type'.app (.bvar 0)).app (.boolLit b)) .default
-        (.vlam idp `p q(Prop) vexpr(Prop) .default c.mlctx))) :
-      (c.withMLC _ (wf := cwfH)).TrExprS
-        (mkApp3 r.ite (.fvar idp) (toExpr b) (.fvar idH))
-        (((ite₀.app (.bvar 1)).app (.boolLit b)).app (.bvar 0)) := by
+  -- `p : Prop` and `α : Type`
+  refine .withLocalDecl (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩ .rfl fun idp cwfp _ _ _ => ?_
+  have hp0 : (c.withMLC _ (wf := cwfp)).TrExprS (.fvar idp) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  refine M.WF.withLocalDecl (ty := q(Type)) (ty' := vexpr(Type)) (.sort rfl)
+    ⟨_, .sort trivial⟩ .rfl fun idα cwfα _ _ _ => ?_
+  have hα0 : (c.withMLC _ (wf := cwfα)).TrExprS (.fvar idα) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  have hp1 : (c.withMLC _ (wf := cwfα)).TrExprS (.fvar idp) (.bvar 1) :=
+    hp0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfα.wf.tr.wf
+  -- the typing check, under `b : Bool` and `H : type b p`
+  refine .bind (Q := fun _ _ => w.ITE_T toDec' ∧
+      ∀ {Δ : VLCtx}, TrExprS c.venv c.lparams Δ q(@ite.{1}) vexpr(@_root_.ite.{1})) ?_
+    fun _ _ _ ⟨hIT, hconst⟩ => ?_
+  · refine .withLocalDecl (c.hasPrimitives.trBool c.Ewf hbool)
+      (c.hasPrimitives.boolIsType c.Ewf hbool (c.withMLC _ (wf := cwfα)).Δwf.toCtx) .rfl ?_
+    intro idb cwfb _ _ _
+    have hb0 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idb) (.bvar 0) :=
+      .fvar VLCtx.find?_vlam_self
+    have hα1 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idα) (.bvar 1) :=
+      hα0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfb.wf.tr.wf
+    have hp2 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idp) (.bvar 2) :=
+      hp1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfb.wf.tr.wf
+    have hb0T : (c.withMLC _ (wf := cwfb)).HasType (.bvar 0) .bool := .bvar .zero
+    have hp2T : (c.withMLC _ (wf := cwfb)).HasType (.bvar 2) (.sort .zero) :=
+      .bvar (.succ (.succ .zero))
+    refine .withLocalDecl (ty' := (w.type'.app (.bvar 0)).app (.bvar 2))
+      (.app (.app htw hb0T) hp2T (.app htw hb0T htypeTr hb0) hp2)
+      ⟨_, .app (.app htw hb0T) hp2T⟩ .rfl fun idH cwfH _ _ _ => ?_
     have hΓH := (c.withMLC _ (wf := cwfH)).Δwf.toCtx
-    -- the three arguments, as translations
-    have hp0 : (c.withMLC _ (wf := cwfp)).TrExprS (.fvar idp) (.bvar 0) :=
+    have hH0 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idH) (.bvar 0) :=
       .fvar VLCtx.find?_vlam_self
-    have hp' := hp0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
-    have hH' : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idH) (.bvar 0) :=
+    have hb1 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idb) (.bvar 1) :=
+      hb0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hα2 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idα) (.bvar 2) :=
+      hα1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hp3 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idp) (.bvar 3) :=
+      hp2.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    refine .bind (checkType.WF ?_) fun _ _ _ ⟨e', ty', _, heTr, htyTr, heT⟩ => ?_
+    · simp [mkApp3, mkApp2, mkApp, FVarsIn, Level.hasMVar', toDec]
+    obtain ⟨rfl, hconst⟩ := iteTr_inv hnil htoDecOK htoDec
+      (by simp [noProj]) (by simp [noProj]) (by simp [noProj]) (by simp [noProj])
+      hα2 hp3 hb1 hH0 heTr
+    -- `α → α → α`, at the four binders
+    have hα2T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 2) (.sort (.succ .zero)) :=
+      .bvar (.succ (.succ .zero))
+    have hαw : TrExprS c.venv c.lparams ((none, .vlam (.bvar 2)) ::
+        (c.withMLC _ (wf := cwfH)).vlctx) (.fvar idα) (.bvar 3) := by
+      simpa [Expr.liftLooseBVars', VExpr.liftN, liftVar, VLocalDecl.depth] using
+        hα2.weakBV c.Ewf.ordered (.skip (.vlam (.bvar 2)) .refl)
+    have hαww : TrExprS c.venv c.lparams ((none, .vlam (.bvar 3)) :: (none, .vlam (.bvar 2)) ::
+        (c.withMLC _ (wf := cwfH)).vlctx) (.fvar idα) (.bvar 4) := by
+      simpa [Expr.liftLooseBVars', VExpr.liftN, liftVar, VLocalDecl.depth] using
+        hαw.weakBV c.Ewf.ordered (.skip (.vlam (.bvar 3)) .refl)
+    have harrTr : (c.withMLC _).TrExprS (.arrow (.fvar idα) (.arrow (.fvar idα) (.fvar idα)))
+        (.forallE (.bvar 2) (.forallE (.bvar 3) (.bvar 4))) :=
+      (TrTy.forallE (.of hα2 ⟨_, hα2T⟩)
+        (TrTy.forallE (.of hαw ⟨_, .bvar (.succ (.succ (.succ .zero)))⟩)
+          (.of hαww ⟨_, .bvar (.succ (.succ (.succ (.succ .zero))))⟩))).trS
+    refine .bind (isDefEq.WF htyTr harrTr) fun _ _ _ hdef => ?_
+    split <;> [rename_i h1; exact hfail]
+    refine .pure ⟨fun E Γ p H _ α hΓ hp hbb hH hα => ?_, hconst⟩
+    have hX' : c.venv.HasType c.lparams.length ((w.type'.app (.bvar 0)).app (.bvar 2) :: .bool ::
+        vexpr(Type) :: vexpr(Prop) :: c.vlctx.toCtx) _ _ := heT.defeqU_r c.Ewf hΓH (hdef h1)
+    rw [hnil'] at hX'
+    have hctx : OnCtx ((w.type'.app (.bvar 0)).app (.bvar 2) :: .bool ::
+        vexpr(Type) :: vexpr(Prop) :: c.vlctx.toCtx) (c.venv.IsType c.lparams.length) := hΓH
+    have h := WF.genTeleT E
+      (As := [vexpr(Prop), vexpr(Type), .bool, (w.type'.app (.bvar 0)).app (.bvar 2)])
+      (by simpa using hnil' ▸ hctx) (by simpa using hX')
+      (by simp [VExpr.ClosedN, htoDecC.mono (Nat.zero_le 4)])
+      (by simp [VExpr.ClosedN]) hΓ
+      (.cons (by simpa using hp) (.cons (by simpa using hα) (.cons (by simpa using hbb)
+        (.cons (by simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq'] using hH) .nil))))
+    simpa [VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id, VExpr.subst, VExpr.Subst.lift,
+      VExpr.lift, VExpr.liftN, liftVar, htc.subst_eq', htoDecC.subst_eq'] using h
+  -- the branches `t e : α`
+  have hα0T : (c.withMLC _ (wf := cwfα)).HasType (.bvar 0) (.sort (.succ .zero)) := .bvar .zero
+  refine .withLocalDecl hα0 ⟨_, hα0T⟩ .rfl fun idt cwft _ _ _ => ?_
+  have hα1 : (c.withMLC _ (wf := cwft)).TrExprS (.fvar idα) (.bvar 1) :=
+    hα0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwft.wf.tr.wf
+  refine .withLocalDecl hα1 ⟨_, .bvar (.succ .zero)⟩ .rfl fun ide cwfe _ _ _ => ?_
+  have ht0 : (c.withMLC _ (wf := cwft)).TrExprS (.fvar idt) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  have he0 : (c.withMLC _ (wf := cwfe)).TrExprS (.fvar ide) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  have ht1 : (c.withMLC _ (wf := cwfe)).TrExprS (.fvar idt) (.bvar 1) :=
+    ht0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfe.wf.tr.wf
+  have hα2 : (c.withMLC _ (wf := cwfe)).TrExprS (.fvar idα) (.bvar 2) :=
+    hα1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfe.wf.tr.wf
+  have hp2 : (c.withMLC _ (wf := cwft)).TrExprS (.fvar idp) (.bvar 2) :=
+    hp1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwft.wf.tr.wf
+  have hp3 : (c.withMLC _ (wf := cwfe)).TrExprS (.fvar idp) (.bvar 3) :=
+    hp2.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfe.wf.tr.wf
+  have hp3T : (c.withMLC _ (wf := cwfe)).HasType (.bvar 3) (.sort .zero) :=
+    .bvar (.succ (.succ (.succ .zero)))
+  have hHtyT b : (c.withMLC _ (wf := cwfe)).HasType
+      ((w.type'.app (.boolLit b)).app (.bvar 3)) (.sort .zero) :=
+    .app (.app htw (hlit b).2) hp3T
+  have hHtyTr b : (c.withMLC _ (wf := cwfe)).TrExprS
+      (mkApp2 Reflects.type (toExpr b) (.fvar idp)) ((w.type'.app (.boolLit b)).app (.bvar 3)) :=
+    .app (.app htw (hlit b).2) hp3T (.app htw (hlit b).2 htypeTr (hlit b).1) hp3
+  -- one equation block: its left-hand side as a translation, and the check generalized away
+  -- from the five binders it was run under
+  have block (b : Bool) (idH : FVarId)
+      (cwfH : c.MLCWF (.vlam idH `H (mkApp2 Reflects.type (toExpr b) (.fvar idp))
+        ((w.type'.app (.boolLit b)).app (.bvar 3)) .default
+        (.vlam ide `e (.fvar idα) (.bvar 1) .default
+          (.vlam idt `t (.fvar idα) (.bvar 0) .default
+            (.vlam idα `α q(Type) vexpr(Type) .default
+              (.vlam idp `p q(Prop) vexpr(Prop) .default c.mlctx)))))) :
+      (c.withMLC _ (wf := cwfH)).TrExprS
+        (mkApp2 (mkApp3 q(@ite.{1}) (.fvar idα) (.fvar idp)
+          (mkApp3 toDec (.fvar idp) (toExpr b) (.fvar idH))) (.fvar idt) (.fvar ide))
+        (iteApp (.bvar 3) (.bvar 4) (((toDec'.app (.bvar 4)).app (.boolLit b)).app (.bvar 0))
+          (.bvar 2) (.bvar 1)) ∧
+      ((c.withMLC _ (wf := cwfH)).IsDefEqU
+        (iteApp (.bvar 3) (.bvar 4) (((toDec'.app (.bvar 4)).app (.boolLit b)).app (.bvar 0))
+          (.bvar 2) (.bvar 1)) (if b then .bvar 2 else .bvar 1) →
+        ∀ (E : c.Ext) {Γ : List VExpr} {p H α t e : VExpr},
+          OnCtx Γ (E.venv.IsType c.lparams.length) →
+          E.venv.HasType c.lparams.length Γ p (.sort .zero) →
+          E.venv.HasType c.lparams.length Γ H ((w.type'.app (.boolLit b)).app p) →
+          E.venv.HasType c.lparams.length Γ α (.sort (.succ .zero)) →
+          E.venv.HasType c.lparams.length Γ t α → E.venv.HasType c.lparams.length Γ e α →
+          E.venv.IsDefEqU c.lparams.length Γ
+            (iteApp α p (((toDec'.app p).app (.boolLit b)).app H) t e) (if b then t else e)) := by
+    have hΓH := (c.withMLC _ (wf := cwfH)).Δwf.toCtx
+    have hH0 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idH) (.bvar 0) :=
       .fvar VLCtx.find?_vlam_self
-    have hiteTrH : (c.withMLC _ (wf := cwfH)).TrExprS r.ite _ :=
-      TrExprS.of_nil_any c.Ewf.ordered
-        (CondOK.noProj hiteOK)
-        (by rw [← hnil]; exact hiteTr)
-    -- the application is well typed: peel the conditional's three outer binders off its own type
-    have hiteT'' := VEnv.HasType.weak0 (Γ := (c.withMLC _ (wf := cwfH)).vlctx.toCtx)
-      c.Ewf hiteT'
-    rw [hshape] at hiteTrH hiteT'' ⊢
-    obtain ⟨hΓ1, hb1⟩ := VExpr.WF.lam_inv' c.Ewf.ordered hΓH ⟨_, hiteT''⟩
-    obtain ⟨hΓ2, hb2⟩ := VExpr.WF.lam_inv' c.Ewf hΓ1 hb1
-    obtain ⟨hΓ3, hb3⟩ := VExpr.WF.lam_inv' c.Ewf hΓ2 hb2
-    have hargs : VExpr.ArgsTyped c.venv c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-        [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0)] .id
-        [.bvar 1, .boolLit b, .bvar 0] := by
-      refine .cons (by simpa using (.bvar (.succ .zero) :
-        c.venv.HasType c.lparams.length _ (VExpr.bvar 1) vexpr(Prop)))
-        (.cons (by simpa using (hlit b).2) (.cons ?_ .nil))
-      have h : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-          (.bvar 0) (((w.type'.app (.bvar 0)).app (.boolLit b)).lift) := .bvar .zero
-      have hc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-      have hbc : (VExpr.boolLit b).ClosedN := by cases b <;> trivial
-      simpa [VExpr.lift, VExpr.liftN, liftVar, VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id,
-        hc.liftN_eq (Nat.zero_le _), hbc.liftN_eq (Nat.zero_le _),
-        hc.subst_eq', hbc.subst_eq'] using h
-    have hwf := (VExpr.lams_appN' c.Ewf hΓH (by simpa using hΓ3) (.id c.Ewf hΓH) hargs hb3).1
-    simp only [VExpr.subst_id, VExpr.appN] at hwf
-    exact TrExprS.appN c.Ewf.ordered hΓH hiteTrH
-      (.cons hp' (.cons (hlit b).1 (.cons hH' .nil))) hwf
-  -- each check, generalized away from the two binders it was run under
-  have hgen (b : Bool) (idH : FVarId)
-      (cwfH : c.MLCWF (.vlam idH `H (mkApp2 r.type (.fvar idp) (toExpr b))
-        ((w.type'.app (.bvar 0)).app (.boolLit b)) .default
-        (.vlam idp `p q(Prop) vexpr(Prop) .default c.mlctx))) :
-      (c.withMLC _ (wf := cwfH)).IsDefEqU
-        (((ite₀.app (.bvar 1)).app (.boolLit b)).app (.bvar 0))
-        (.lam (.sort (.succ .zero))
-          (.lam (.bvar 0) (.lam (.bvar 1) (.bvar (if b then 1 else 0))))) →
-      w.IteEq ite₀ b := by
-    intro heq E Γ p H hΓ hp hH
-    have hbc : (VExpr.boolLit b).ClosedN := by cases b <;> trivial
+    have he1 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar ide) (.bvar 1) :=
+      he0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have ht2 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idt) (.bvar 2) :=
+      ht1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hα3 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idα) (.bvar 3) :=
+      hα2.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hp4 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idp) (.bvar 4) :=
+      hp3.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hp4T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 4) (.sort .zero) :=
+      .bvar (.succ (.succ (.succ (.succ .zero))))
+    have hα3T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 3) (.sort (.succ .zero)) :=
+      .bvar (.succ (.succ (.succ .zero)))
+    have hH0T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 0)
+        ((w.type'.app (.boolLit b)).app (.bvar 4)) := by
+      have h : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx (.bvar 0)
+          (((w.type'.app (.boolLit b)).app (.bvar 3)).lift) := .bvar .zero
+      have e : ((w.type'.app (.boolLit b)).app (.bvar 3)).lift
+          = (w.type'.app (.boolLit b)).app (.bvar 4) := by
+        simp [VExpr.lift, VExpr.liftN, liftVar, htc.liftN_eq (Nat.zero_le _),
+          (hbC b).liftN_eq (Nat.zero_le _)]
+      exact e ▸ h
+    have ht2T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 2) (.bvar 3) :=
+      .bvar (.succ (.succ .zero))
+    have he1T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 1) (.bvar 3) := .bvar (.succ .zero)
+    -- the conditional's typing, from `ITE_T` at these binders
+    have hdecWF := hIT.toDecT c.self hΓH hp4T (hlit b).2 hH0T
+    have hdecTr : (c.withMLC _ (wf := cwfH)).TrExprS
+        (mkApp3 toDec (.fvar idp) (toExpr b) (.fvar idH))
+        (((toDec'.app (.bvar 4)).app (.boolLit b)).app (.bvar 0)) := by
+      have := htoDecTr.appN c.Ewf.ordered hΓH (.cons hp4 (.cons (hlit b).1 (.cons hH0 .nil)))
+        (by simpa [VExpr.appN] using hdecWF)
+      exact this
+    have hfull : (c.withMLC _ (wf := cwfH)).HasType
+        (iteApp (.bvar 3) (.bvar 4) (((toDec'.app (.bvar 4)).app (.boolLit b)).app (.bvar 0))
+          (.bvar 2) (.bvar 1)) (.bvar 3) := by
+      have h := ((hIT c.self hΓH hp4T (hlit b).2 hH0T hα3T).app ht2T).app he1T
+      simp only [VExpr.inst, VExpr.lift, VExpr.liftN, liftVar] at h; exact h
+    refine ⟨?_, fun heq E Γ p H α t e hΓ hp hH hα ht he => ?_⟩
+    · have := hconst.appN c.Ewf.ordered hΓH
+        (as := [.fvar idα, .fvar idp, mkApp3 toDec (.fvar idp) (toExpr b) (.fvar idH),
+          .fvar idt, .fvar ide])
+        (.cons hα3 (.cons hp4 (.cons hdecTr (.cons ht2 (.cons he1 .nil)))))
+        ⟨_, hfull⟩
+      exact this
     have heq' : c.venv.IsDefEqU c.lparams.length
-        ((w.type'.app (.bvar 0)).app (.boolLit b) :: vexpr(Prop) :: c.vlctx.toCtx) _ _ := heq
+        ((w.type'.app (.boolLit b)).app (.bvar 3) :: .bvar 1 :: .bvar 0 ::
+          vexpr(Type) :: vexpr(Prop) :: c.vlctx.toCtx) _ _ := heq
     rw [hnil'] at heq'
-    have h := w.genPH E hnil hbool b heq'
-      (by exact ⟨⟨⟨hiteC.mono (Nat.zero_le _), by simp [VExpr.ClosedN]⟩,
-        hbc.mono (Nat.zero_le _)⟩, by simp [VExpr.ClosedN]⟩)
-      (by cases b <;> simp [VExpr.ClosedN]) hΓ hp hH
-    have hprojC : (VExpr.lam (.sort (.succ .zero))
-        (.lam (.bvar 0) (.lam (.bvar 1) (.bvar (if b then 1 else 0))))).ClosedN := by
-      cases b <;> simp [VExpr.ClosedN]
-    simp only [VExpr.subst_app] at h
-    rw [hiteC.subst_eq', hbc.subst_eq', hprojC.subst_eq'] at h
-    simpa [VExpr.Subst.cons, VExpr.Subst.id] using h
-  -- the two blocks, then the reflection's `ite` equation at every argument
-  refine .bind (Q := fun _ _ => w.IteEq ite₀ true) ?_ fun _ _ _ hTrue => ?_
-  · refine M.WF.withLocalDecl (hHtyTr true) ⟨_, hHtyT true⟩ .rfl ?_
-    intro idH cwfH s3 hs3 hres3
-    refine .bind (isDefEq.WF (block true idH cwfH) (TrExprS.polyProj (Or.inr rfl)).1)
-      fun _ _ _ heq => ?_
+    have hctx : OnCtx ((w.type'.app (.boolLit b)).app (.bvar 3) :: .bvar 1 :: .bvar 0 ::
+        vexpr(Type) :: vexpr(Prop) :: c.vlctx.toCtx) (c.venv.IsType c.lparams.length) := hΓH
+    have h := WF.genTele E
+      (As := [vexpr(Prop), vexpr(Type), .bvar 0, .bvar 1,
+        (w.type'.app (.boolLit b)).app (.bvar 3)])
+      (by simpa using hnil' ▸ hctx) heq'
+      (by simp [VExpr.ClosedN, iteApp, htoDecC.mono (Nat.zero_le 5), (hbC b).mono (Nat.zero_le 5)])
+      (by cases b <;> simp [VExpr.ClosedN]) hΓ
+      (.cons (by simpa using hp) (.cons (by simpa using hα)
+        (.cons (by simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id] using ht)
+        (.cons (by simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id] using he)
+          (.cons (by simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq',
+            (hbC b).subst_eq'] using hH) .nil)))))
+    cases b <;> simpa [iteApp, VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id,
+      htoDecC.subst_eq', (hbC _).subst_eq'] using h
+  -- the two equation blocks
+  refine .bind (Q := fun _ _ => ∀ (E : c.Ext) {Γ : List VExpr} {p H α t e : VExpr},
+      OnCtx Γ (E.venv.IsType c.lparams.length) →
+      E.venv.HasType c.lparams.length Γ p (.sort .zero) →
+      E.venv.HasType c.lparams.length Γ H ((w.type'.app (.boolLit true)).app p) →
+      E.venv.HasType c.lparams.length Γ α (.sort (.succ .zero)) →
+      E.venv.HasType c.lparams.length Γ t α → E.venv.HasType c.lparams.length Γ e α →
+      E.venv.IsDefEqU c.lparams.length Γ
+        (iteApp α p (((toDec'.app p).app (.boolLit true)).app H) t e) t) ?_
+    fun _ _ _ hTrue => ?_
+  · refine .withLocalDecl (hHtyTr true) ⟨_, hHtyT true⟩ .rfl fun idH cwfH _ _ _ => ?_
+    have ht2 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idt) (.bvar 2) :=
+      ht1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    refine .bind (isDefEq.WF (block true idH cwfH).1 ht2) fun _ _ _ heq => ?_
     split <;> [rename_i h2; exact hfail]
-    exact .pure (hgen true idH cwfH (heq h2))
-  refine M.WF.withLocalDecl (hHtyTr false) ⟨_, hHtyT false⟩ .rfl ?_
-  intro idH cwfH s3 hs3 hres3
-  refine .bind (isDefEq.WF (block false idH cwfH) (TrExprS.polyProj (Or.inl rfl)).1)
-    fun _ _ _ heq => ?_
+    exact .pure ((block true idH cwfH).2 (heq h2))
+  refine .withLocalDecl (hHtyTr false) ⟨_, hHtyT false⟩ .rfl fun idH cwfH _ _ _ => ?_
+  have he1 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar ide) (.bvar 1) :=
+    he0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+  refine .bind (isDefEq.WF (block false idH cwfH).1 he1) fun _ _ _ heq => ?_
   split <;> [rename_i h2; exact hfail]
-  have hFalse : w.IteEq ite₀ false := hgen false idH cwfH (heq h2)
-  refine .pure ⟨?_, ?_⟩
-  case refine_2 =>
-    -- the conditional is well typed at *any* boolean, which is what a consumer needs to build it
-    intro E Γ p H bb α hΓ hp hbb hH hα
-    have hiteTΓ := (E.monoT hiteT').weak0 (Γ := Γ) E.wf.ordered
-    rw [hshape] at hiteTΓ
-    obtain ⟨hΓ1, hb1'⟩ := VExpr.WF.lam_inv' E.wf hΓ ⟨_, hiteTΓ⟩
-    obtain ⟨hΓ2, hb2'⟩ := VExpr.WF.lam_inv' E.wf hΓ1 hb1'
-    obtain ⟨hΓ3, hb3'⟩ := VExpr.WF.lam_inv' E.wf hΓ2 hb2'
-    obtain ⟨hΓ4, hb4'⟩ := VExpr.WF.lam_inv' E.wf hΓ3 hb3'
-    have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-    have hargs4 : VExpr.ArgsTyped E.venv c.lparams.length Γ
-        [vexpr(Prop), .bool, (w.type'.app (.bvar 1)).app (.bvar 0), vexpr(Type)] .id
-        [p, bb, H, α] := by
-      refine .cons (by simpa using hp) (.cons (by simpa using hbb) (.cons ?_
-        (.cons (by simpa using hα) .nil)))
-      simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq'] using hH
-    have h4 := VEnv.HasType.appN_forallEs hargs4
-      (by simpa using VEnv.HasType.weak0 (Γ := Γ) E.wf (E.monoT hiteT'))
-    have hbeta := (VExpr.lams_appN' E.wf hΓ (by simpa using hΓ4) (.id E.wf hΓ) hargs4 hb4').2
-    simp only [VExpr.subst_id, VExpr.lams_nil] at hbeta
-    rw [← hshape] at hbeta
-    have h5 := VEnv.HasType.defeqU_l E.wf hΓ hbeta h4
-    simp only [VExpr.subst_app, VExpr.subst_const] at h5
-    rw [htoDecC.subst_eq'] at h5
-    simpa [VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id, VExpr.subst,
-      VExpr.Subst.lift] using h5
-  intro E Γ p H α t e b hΓ hp hH hα ht he
-  have hIte : w.IteEq ite₀ b := by cases b; exacts [hFalse, hTrue]
-  have heqb := hIte E hΓ hp hH
-  -- the projection at the caller's type and branches
-  have hproj := VEnv.IsDefEqU.polyProj (i := if b then 1 else 0) E.wf hΓ hα ht he
-    (by cases b <;> simp)
-  have hprojwf : VExpr.WF E.venv c.lparams.length Γ
-      (((VExpr.lam vexpr(Type)
-        (.lam (.bvar 0) (.lam (.bvar 1) (.bvar (if b then 1 else 0))))).appN [α, t, e])) := by
-    obtain ⟨_, h⟩ := hproj; exact ⟨_, h.hasType.1⟩
-  -- transport the check's equation to the full application
-  have hspine := (heqb.symm.appN E.wf hΓ (vs := [α, t, e]) hprojwf).symm
-  refine .trans E.wf hΓ ?_ (.trans E.wf hΓ hspine ?_)
-  · -- the conditional, beta-reduced at all four of its binders
-    have hiteTΓ := VEnv.HasType.weak0 (Γ := Γ) E.wf (E.monoT hiteT')
-    rw [hshape] at hiteTΓ
-    obtain ⟨hΓ1, hb1⟩ := VExpr.WF.lam_inv' E.wf hΓ ⟨_, hiteTΓ⟩
-    obtain ⟨hΓ2, hb2⟩ := VExpr.WF.lam_inv' E.wf hΓ1 hb1
-    obtain ⟨hΓ3, hb3⟩ := VExpr.WF.lam_inv' E.wf hΓ2 hb2
-    obtain ⟨hΓ4, hb4⟩ := VExpr.WF.lam_inv' E.wf hΓ3 hb3
-    have hbc : (VExpr.boolLit b).ClosedN := by cases b <;> trivial
-    have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-    have hargs : VExpr.ArgsTyped E.venv c.lparams.length Γ
-        [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0), .sort (.succ .zero)] .id
-        [p, .boolLit b, H, α] :=
-      .cons (by simpa using hp) <|
-      .cons (by simpa using E.monoT (TrExprS.boolLit (Δ := .ofCtx Γ) c.hasPrimitives hbool b).2) <|
-      .cons (by simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq', hbc.subst_eq'] using hH) <|
-      .cons (by simpa using hα) .nil
-    have hbeta := (VExpr.lams_appN' E.wf hΓ (by simpa using hΓ4) (.id E.wf hΓ) hargs hb4).2
-    simp only [VExpr.subst_id] at hbeta
-    have hwfspine : VExpr.WF E.venv c.lparams.length Γ
-        ((((ite₀.app p).app (VExpr.boolLit b)).app H).appN [α, t, e]) := by
-      obtain ⟨_, h⟩ := hspine; exact ⟨_, h.hasType.1⟩
-    have hstep := (hshape ▸ hbeta).appN E.wf hΓ (vs := [t, e])
-      (by simpa [VExpr.appN] using hwfspine)
-    refine .trans E.wf hΓ ?_ hstep.symm
-    obtain ⟨A, hA⟩ := hstep
-    refine ⟨A, ?_⟩
-    have h2 := hA.hasType.2
-    simp [VExpr.appN, iteApp, VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id,
-      htoDecC.subst_eq'] at h2 ⊢
-    exact h2
-  · simpa [VExpr.appN] using hproj
+  refine .pure ⟨fun E _ _ _ _ _ _ b hΓ hp hH hα ht he => ?_, hIT⟩
+  cases b
+  · exact (block false idH cwfH).2 (heq h2) E hΓ hp hH hα ht he
+  · exact hTrue E hΓ hp hH hα ht he
 
-/-- What one of `checkNatDITE`'s two equation checks says, generalized away from the four binders
-it was run under: at any proposition, branches and evidence for the literal `b`, the gadget takes
-the matching branch, applied to the proof the corresponding extractor produces. -/
-def Reflection.WF.DiteEq {c : VContext} {r : Reflection} (w : Reflection.WF c r)
-    (d₀ of' : VExpr) (b : Bool) : Prop :=
-  ∀ (E : c.Ext) {Γ : List VExpr} {p H t e : VExpr}, OnCtx Γ (E.venv.IsType c.lparams.length) →
-    E.venv.HasType c.lparams.length Γ p (.sort .zero) →
-    E.venv.HasType c.lparams.length Γ t (.forallE p .nat) →
-    E.venv.HasType c.lparams.length Γ e (.forallE (vexpr(Not).app p) .nat) →
-    E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app (.boolLit b)) →
-    E.venv.IsDefEqU c.lparams.length Γ (d₀.appN [p, .boolLit b, H, t, e])
-      ((if b then t else e).app ((of'.app p).app H))
-
-/-- That the `dite` gadget is *well typed* at any proposition, boolean and evidence -- the
-`DITE` counterpart of `ITE_T`, and needed for the same reason. -/
-def Reflection.WF.DITE_T {c : VContext} {r : Reflection} (w : Reflection.WF c r)
+/-- That `dite` on `toDec`'s decision is *well typed* at any proposition, boolean and evidence --
+the `DITE` counterpart of `ITE_T`, and needed for the same reason. -/
+def Reflects.WF.DITE_T {c : VContext} (w : Reflects.WF c)
     (toDec' : VExpr) : Prop :=
   ∀ (E : c.Ext) {Γ : List VExpr} {p H bb : VExpr},
     OnCtx Γ (E.venv.IsType c.lparams.length) →
     E.venv.HasType c.lparams.length Γ p (.sort .zero) →
     E.venv.HasType c.lparams.length Γ bb .bool →
-    E.venv.HasType c.lparams.length Γ H ((w.type'.app p).app bb) →
+    E.venv.HasType c.lparams.length Γ H ((w.type'.app bb).app p) →
     E.venv.HasType c.lparams.length Γ
       ((((VExpr.const ``dite [.succ .zero]).app .nat).app p).app
         (((toDec'.app p).app bb).app H))
       (.forallE (.forallE p .nat)
         (.forallE (.forallE (vexpr(Not).app p.lift) .nat) .nat))
 
-/-- `ITE_T.toDecT` for the `dite` gadget, which holds the decision in the same position. -/
-theorem Reflection.WF.DITE_T.toDecT {c : VContext} {r : Reflection} {w : Reflection.WF c r}
+/-- `ITE_T.toDecT` for `dite`, which holds the decision in the same position. -/
+theorem Reflects.WF.DITE_T.toDecT {c : VContext} {w : WF c}
     {toDec' : VExpr} (h : w.DITE_T toDec') : w.ToDecT toDec' := by
   intro E Γ p bb H hΓ hp hbb hH
   obtain ⟨_, _, -, ha⟩ := VExpr.WF.app_inv E.wf hΓ ⟨_, h E hΓ hp hbb hH⟩
   exact ⟨_, ha⟩
 
-/-- Verification boundary for `Reflection.checkNatDITE`: at evidence for either literal, the
-`dite` the reflection builds takes the corresponding branch, applied to the proof that `ofTrue`
-or `ofFalse` extracts. Same shape as `checkITE.WF`, with four binders instead of two. -/
-theorem Reflection.checkNatDITE.WF {c : VContext} {s : VState} {r : Reflection}
-    {fail : ∀ {α}, M α} (w : Reflection.WF c r) (hnil : c.vlctx = [])
-    (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
-    {toDec' : VExpr} (htoDec : c.TrExprS r.toDec toDec') (htoDecC : toDec'.ClosedN)
-    (htypeOK : CondOK r.type) (htoDecOK : CondOK r.toDec)
-    (hditeOK : CondOK r.natDITE) (hofTrueOK : CondOK r.ofTrue) (hofFalseOK : CondOK r.ofFalse)
+/-- `iteTr_inv` for `@dite Nat p (toDec p b H)`. The head is the constant at `Nat`, so the
+constant's own translation is what it hands back, `Nat`'s being available anyway. -/
+theorem Reflects.diteTr_inv {c : VContext} (hnil : c.vlctx = []) (htoDecOK : CondOK toDec)
+    {toDec' : VExpr} (htoDec : c.TrExprS toDec toDec') {Δ : VLCtx}
+    {p b H : Expr} {p' b' H' r : VExpr} (hup : noProj p) (hub : noProj b) (huH : noProj H)
+    (hp : TrExprS c.venv c.lparams Δ p p') (hb : TrExprS c.venv c.lparams Δ b b')
+    (hH : TrExprS c.venv c.lparams Δ H H')
+    (h : TrExprS c.venv c.lparams Δ (mkApp2 q(@dite Nat) p (mkApp3 toDec p b H)) r) :
+    r = (((VExpr.const ``dite [.succ .zero]).app .nat).app p').app
+      (((toDec'.app p').app b').app H') ∧
+    ∀ {Δ'}, TrExprS c.venv c.lparams Δ' (.const ``dite [.succ .zero])
+      (.const ``dite [.succ .zero]) := by
+  have u {e e₁ e₂} (hu : noProj e) (h₁ : TrExprS c.venv c.lparams Δ e e₁)
+      (h₂ : TrExprS c.venv c.lparams Δ e e₂) : e₁ = e₂ :=
+    h₁.unique (noProj.isUnique hu) h₂
+  simp only [mkApp3, mkApp2, mkApp] at h
+  let .app _ _ hf ha := h
+  let .app _ _ hff hfa := hf
+  let .app _ _ hfff hffa := hff
+  let .const hc hus hlen := hfff
+  let .const _ hus' _ := hffa
+  let .app _ _ hta htb := ha
+  let .app _ _ htaa htab := hta
+  let .app _ _ htd htdb := htaa
+  cases u hup hfa hp; cases u hup htdb hp; cases u hub htab hb; cases u huH htb hH
+  cases TrExprS.of_nil_unique c.Ewf.ordered (CondOK.noProj htoDecOK) (by rwa [← hnil]) htd
+  cases hus; cases hus'
+  exact ⟨rfl, .const hc rfl hlen⟩
+
+/-- Verification boundary for `Reflects.checkNatDITE`, the `dite` counterpart of `checkITE.WF`:
+the typing check runs under `p`, `bb` and `H`, the equation checks under `p`, `a`, `b` and `H`,
+and `genTeleT`/`genTele` carry them to `DITE_T` and `WF_dite`. The equations' right-hand sides
+are the branches at the evidence itself, which `reflTrue`/`reflFalse` type. -/
+theorem Reflects.checkNatDITE.WF {c : VContext} {s : VState} {fail : ∀ {α}, M α} (w : Reflects.WF c)
+    (hnil : c.vlctx = []) (hbool : c.venv.contains ``Bool) (hnat : c.venv.contains ``Nat)
+    {toDec' : VExpr} (htoDec : c.TrExprS toDec toDec') (htoDecC : toDec'.ClosedN)
+    (htypeOK : CondOK Reflects.type) (htoDecOK : CondOK toDec)
     (hfail : ∀ {α c s Q}, (@fail α).WF c s Q) :
-    (r.checkNatDITE fail).WF c s fun _ _ => w.WF_dite toDec' ∧ w.DITE_T toDec' ∧
-      (∀ {Δ : VLCtx}, TrExprS c.venv c.lparams Δ (.const ``Not []) (.const ``Not [])) ∧
+    (checkNatDITE fail).WF c s fun _ _ => w.WF_dite toDec' ∧ w.DITE_T toDec' ∧
+      (∀ {Δ}, TrExprS c.venv c.lparams Δ (.const ``Not []) (.const ``Not [])) ∧
       (∀ {Γ : List VExpr}, c.venv.HasType c.lparams.length Γ (.const ``Not [])
         (.forallE (.sort .zero) (.sort .zero))) := by
-  have hfailb : ∀ {α β} {k : α → M β} {c s Q}, (fail >>= k).WF c s Q :=
-    .bind (hfail (Q := fun _ _ => False)) fun _ _ _ h => h.elim
   have hnil' : c.vlctx.toCtx = [] := by rw [hnil]; rfl
-  unfold Reflection.checkNatDITE
-  -- `Not : Prop → Prop`
-  refine .bind (checkType.WF (by simp [FVarsIn]))
-    fun _ _ _ ⟨Not', notTy', _, hNotTr, hNotTyTr, hNotT⟩ => ?_
-  refine .bind (isDefEq.WF hNotTyTr TrExprS.propProp) fun _ _ _ hnotarr => ?_
-  split <;> [rename_i h1; exact hfailb]
-  obtain ⟨rfl, -⟩ := hNotTr.const0_inv (Us' := c.lparams) (Δ' := c.vlctx)
-  have hNotTr' {Δ} : TrExprS c.venv c.lparams Δ q(Not) vexpr(Not) :=
-    (hNotTr.const0_inv (Us' := c.lparams) (Δ' := Δ)).2
-  have hNotT' {Γ} : c.venv.HasType c.lparams.length Γ vexpr(Not)
-      (.forallE (.sort .zero) (.sort .zero)) := by
-    refine VEnv.HasType.weak0 c.Ewf ?_
-    rw [← hnil']
-    exact VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx (hnotarr h1) hNotT
-  -- the `dite` gadget's type
-  refine .bind (checkType.WF (CondOK.fvarsIn hditeOK))
-    fun _ _ _ ⟨d₀, dTy', _, hdTr, hdTyTr, hdT⟩ => ?_
-  refine .bind (isDefEq.WF hdTyTr
-      (TrExprS.reflDiteType w hnil hbool hnat htypeOK hNotTr' hNotT' c.Δwf.toCtx))
-    fun _ _ _ hdarr => ?_
-  split <;> [rename_i h2; exact hfailb]
-  -- `ofTrue : ∀ p, type p true → p` and `ofFalse : ∀ p, type p false → ¬p`
-  refine .bind (checkType.WF (CondOK.fvarsIn hofTrueOK))
-    fun _ _ _ ⟨oT, oTty, _, hoTTr, hoTtyTr, hoTT⟩ => ?_
-  refine .bind (isDefEq.WF hoTtyTr
-      (TrExprS.reflOfType w hnil hbool htypeOK true .bvar1 (.bvar (.succ .zero))))
-    fun _ _ _ hoTarr => ?_
-  split <;> [rename_i h3; exact hfailb]
-  refine .bind (checkType.WF (CondOK.fvarsIn hofFalseOK))
-    fun _ _ _ ⟨oF, oFty, _, hoFTr, hoFtyTr, hoFT⟩ => ?_
-  refine .bind (isDefEq.WF hoFtyTr
-      (TrExprS.reflOfType w hnil hbool htypeOK false
-        (.app hNotT' (.bvar (.succ .zero)) hNotTr' .bvar1) (.app hNotT' (.bvar (.succ .zero)))))
-    fun _ _ _ hoFarr => ?_
-  split <;> [rename_i h4; exact hfailb]
-  have htypeT : c.venv.HasType c.lparams.length [] w.type'
-      vexpr(Prop → Bool → Prop) := by
-    have h : c.venv.HasType c.lparams.length c.vlctx.toCtx w.type' _ := w.typeT
-    rw [hnil'] at h; exact h
-  have htw {Γ} : c.venv.HasType c.lparams.length Γ w.type' vexpr(Prop → Bool → Prop) :=
+  have htypeT : c.venv.HasType c.lparams.length [] w.type' vexpr(Bool → Prop → Prop) :=
+    hnil' ▸ w.typeT
+  have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
+  have htw {Γ} : c.venv.HasType c.lparams.length Γ w.type' vexpr(Bool → Prop → Prop) :=
     .weak0 c.Ewf htypeT
+  have htypeTr {Δ} : TrExprS c.venv c.lparams Δ Reflects.type w.type' :=
+    TrExprS.of_nil_any c.Ewf (CondOK.noProj htypeOK) (hnil ▸ w.htype)
+  have htoDecTr {Δ} : TrExprS c.venv c.lparams Δ toDec toDec' :=
+    TrExprS.of_nil_any c.Ewf (CondOK.noProj htoDecOK) (by rw [← hnil]; exact htoDec)
+  have hNotTr' {Δ} : TrExprS c.venv c.lparams Δ q(Not) vexpr(Not) := w.hNotTr
+  have hNotT' {Γ} : c.venv.HasType c.lparams.length Γ vexpr(Not)
+      (.forallE (.sort .zero) (.sort .zero)) := w.hNotT
+  have hbC b : (VExpr.boolLit b).ClosedN := by cases b <;> trivial
+  have hlit {Δ} b := TrExprS.boolLit (Us := c.lparams) (Δ := Δ) c.hasPrimitives hbool b
   have hnatT {Γ} (h : OnCtx Γ (c.venv.IsType c.lparams.length)) :
-      c.venv.IsType c.lparams.length Γ VExpr.nat := c.hasPrimitives.natIsType' c.Ewf hnat h
-  -- the `p`, `a` and `b` binders
+      c.venv.IsType c.lparams.length Γ .nat := c.hasPrimitives.natIsType' c.Ewf hnat h
+  have hnatTr {Δ} : TrExprS c.venv c.lparams Δ (.const ``Nat []) .nat :=
+    c.hasPrimitives.trNat c.Ewf hnat
+  unfold checkNatDITE
   refine M.WF.withMLC_self ?_
-  simp only
-  refine M.WF.withLocalDecl (m := c.mlctx) (ty := Expr.sort Level.zero)
-    (ty' := VExpr.sort .zero) (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩ .rfl ?_
-  intro idp cwfp s2 hs2 hres2
-  have hp0 : (c.withMLC _ (wf := cwfp)).TrExprS (.fvar idp) (.bvar 0) :=
-    .fvar VLCtx.find?_vlam_self
+  -- `p : Prop`
+  refine .withLocalDecl (.sort rfl) ⟨_, .sort (l := .zero) trivial⟩ .rfl fun idp cwfp _ _ _ => ?_
+  have hp0 : (c.withMLC _ (wf := cwfp)).TrExprS (.fvar idp) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  -- the typing check, under `bb : Bool` and `H : type bb p`
+  refine .bind (Q := fun _ _ => w.DITE_T toDec' ∧
+      ∀ {Δ : VLCtx}, TrExprS c.venv c.lparams Δ (.const ``dite [.succ .zero])
+        (.const ``dite [.succ .zero])) ?_
+    fun _ _ _ ⟨hDT, hconst⟩ => ?_
+  · refine .withLocalDecl (c.hasPrimitives.trBool c.Ewf hbool)
+      (c.hasPrimitives.boolIsType c.Ewf hbool (c.withMLC _ (wf := cwfp)).Δwf.toCtx) .rfl ?_
+    intro idb cwfb _ _ _
+    have hb0 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idb) (.bvar 0) :=
+      .fvar VLCtx.find?_vlam_self
+    have hp1 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idp) (.bvar 1) :=
+      hp0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfb.wf.tr.wf
+    have hb0T : (c.withMLC _ (wf := cwfb)).HasType (.bvar 0) .bool := .bvar .zero
+    have hp1T : (c.withMLC _ (wf := cwfb)).HasType (.bvar 1) (.sort .zero) := .bvar (.succ .zero)
+    refine .withLocalDecl (ty' := (w.type'.app (.bvar 0)).app (.bvar 1))
+      (.app (.app htw hb0T) hp1T (.app htw hb0T htypeTr hb0) hp1)
+      ⟨_, .app (.app htw hb0T) hp1T⟩ .rfl fun idH cwfH _ _ _ => ?_
+    have hΓH := (c.withMLC _ (wf := cwfH)).Δwf.toCtx
+    have hH0 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idH) (.bvar 0) :=
+      .fvar VLCtx.find?_vlam_self
+    have hb1 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idb) (.bvar 1) :=
+      hb0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hp2 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idp) (.bvar 2) :=
+      hp1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    refine .bind (checkType.WF ?_) fun _ _ _ ⟨e', ty', _, heTr, htyTr, heT⟩ => ?_
+    · simp [mkApp3, mkApp2, mkAppB, mkApp, FVarsIn, Level.hasMVar', toDec]
+    obtain ⟨rfl, hconst⟩ := diteTr_inv hnil htoDecOK htoDec
+      (by simp [noProj]) (by simp [noProj]) (by simp [noProj]) hp2 hb1 hH0 heTr
+    -- `(p → Nat) → (¬p → Nat) → Nat`, at the three binders
+    have hp2T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 2) (.sort .zero) :=
+      .bvar (.succ (.succ .zero))
+    have hpw : TrExprS c.venv c.lparams ((none, .vlam (.forallE (.bvar 2) .nat)) ::
+        (c.withMLC _ (wf := cwfH)).vlctx) (.fvar idp) (.bvar 3) := by
+      simpa [Expr.liftLooseBVars', VExpr.liftN, liftVar, VLocalDecl.depth] using
+        hp2.weakBV c.Ewf.ordered (.skip (.vlam (.forallE (.bvar 2) .nat)) .refl)
+    -- the contexts under the arrow's binders, as `VLCtx`s so that `TrExprS` unifies with them
+    let Δ0 := (c.withMLC _ (wf := cwfH)).vlctx
+    let Δp : VLCtx := (none, .vlam (.bvar 2)) :: Δ0
+    let Δa : VLCtx := (none, .vlam (.forallE (.bvar 2) .nat)) :: Δ0
+    let Δn : VLCtx := (none, .vlam (vexpr(Not).app (.bvar 3))) :: Δa
+    let Δb : VLCtx := (none, .vlam (.forallE (vexpr(Not).app (.bvar 3)) .nat)) :: Δa
+    have hnatp : c.venv.IsType c.lparams.length Δp.toCtx .nat := hnatT ⟨hΓH, _, hp2T⟩
+    have hdomA : c.venv.HasType c.lparams.length Δ0.toCtx (.forallE (.bvar 2) .nat) (.sort _) :=
+      .forallEDF hp2T hnatp.choose_spec
+    have hΓa : OnCtx Δa.toCtx (c.venv.IsType c.lparams.length) := ⟨hΓH, _, hdomA⟩
+    have hp3T : c.venv.HasType c.lparams.length Δa.toCtx (.bvar 3) (.sort .zero) :=
+      .bvar (.succ (.succ (.succ .zero)))
+    have hnp3T : c.venv.HasType c.lparams.length Δa.toCtx (vexpr(Not).app (.bvar 3))
+        (.sort .zero) := .app hNotT' hp3T
+    have hnatn : c.venv.IsType c.lparams.length Δn.toCtx .nat := hnatT ⟨hΓa, _, hnp3T⟩
+    have hdomB : c.venv.HasType c.lparams.length Δa.toCtx
+        (.forallE (vexpr(Not).app (.bvar 3)) .nat) (.sort _) := .forallEDF hnp3T hnatn.choose_spec
+    have hnatb : c.venv.IsType c.lparams.length Δb.toCtx .nat := hnatT ⟨hΓa, _, hdomB⟩
+    have harrTr : (c.withMLC _).TrExprS
+        (.arrow (.arrow (.fvar idp) (.const ``Nat [])) (.arrow
+          (.arrow (mkApp (.const ``Not []) (.fvar idp)) (.const ``Nat [])) (.const ``Nat [])))
+        (.forallE (.forallE (.bvar 2) .nat)
+          (.forallE (.forallE (vexpr(Not).app (.bvar 3)) .nat) .nat)) :=
+      (TrTy.forallE (.of (TrTy.forallE (.of hp2 ⟨_, hp2T⟩) (.of hnatTr hnatp)).trS ⟨_, hdomA⟩)
+        (TrTy.forallE
+          (.of (TrTy.forallE (.of (.app hNotT' hp3T hNotTr' hpw) ⟨_, hnp3T⟩)
+              (.of hnatTr hnatn)).trS ⟨_, hdomB⟩)
+          (.of hnatTr hnatb))).trS
+    refine .bind (isDefEq.WF htyTr harrTr) fun _ _ _ hdef => ?_
+    split <;> [rename_i h1; exact hfail]
+    refine .pure ⟨fun E Γ p H bb hΓ hp hbb hH => ?_, hconst⟩
+    have hX' : c.venv.HasType c.lparams.length ((w.type'.app (.bvar 0)).app (.bvar 1) :: .bool ::
+        vexpr(Prop) :: c.vlctx.toCtx) _ _ := heT.defeqU_r c.Ewf hΓH (hdef h1)
+    rw [hnil'] at hX'
+    have hctx : OnCtx ((w.type'.app (.bvar 0)).app (.bvar 1) :: .bool ::
+        vexpr(Prop) :: c.vlctx.toCtx) (c.venv.IsType c.lparams.length) := hΓH
+    have h := WF.genTeleT E (As := [vexpr(Prop), .bool, (w.type'.app (.bvar 0)).app (.bvar 1)])
+      (by simpa using hnil' ▸ hctx) (by simpa using hX')
+      (by simp [VExpr.ClosedN, VExpr.nat, htoDecC.mono (Nat.zero_le 3)])
+      (by simp [VExpr.ClosedN, VExpr.nat]) hΓ
+      (.cons (by simpa using hp) (.cons (by simpa using hbb)
+        (.cons (by simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq'] using hH) .nil)))
+    simpa [VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id, VExpr.subst, VExpr.Subst.lift,
+      VExpr.lift, VExpr.liftN, liftVar, VExpr.nat, htc.subst_eq', htoDecC.subst_eq'] using h
+  -- the branches `a : p → Nat` and `b : ¬p → Nat`
   have hp0T : (c.withMLC _ (wf := cwfp)).HasType (.bvar 0) (.sort .zero) := .bvar .zero
-  have hΓp := (c.withMLC _ (wf := cwfp)).Δwf.toCtx
   let Ta : TrTy c.venv c.lparams (c.withMLC _ (wf := cwfp)).vlctx
       (.arrow (.fvar idp) (.const ``Nat [])) :=
-    TrTy.forallE (.of hp0 ⟨_, hp0T⟩)
-      (.of (c.hasPrimitives.trNat c.Ewf hnat) (hnatT ⟨hΓp, _, hp0T⟩))
-  refine M.WF.withLocalDecl (ty' := .forallE (.bvar 0) .nat) Ta.trS Ta.isType .rfl ?_
-  intro ida cwfa s3 hs3 hres3
-  have ha0 : (c.withMLC _ (wf := cwfa)).TrExprS (.fvar ida) (.bvar 0) :=
-    .fvar VLCtx.find?_vlam_self
-  have hp1 := hp0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfa.wf.tr.wf
+    .forallE (.of hp0 ⟨_, hp0T⟩)
+      (.of hnatTr (hnatT ⟨(c.withMLC _ (wf := cwfp)).Δwf.toCtx, _, hp0T⟩))
+  refine .withLocalDecl Ta.trS Ta.isType .rfl fun ida cwfa _ _ _ => ?_
+  have hp1 : (c.withMLC _ (wf := cwfa)).TrExprS (.fvar idp) (.bvar 1) :=
+    hp0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfa.wf.tr.wf
   have hp1T : (c.withMLC _ (wf := cwfa)).HasType (.bvar 1) (.sort .zero) := .bvar (.succ .zero)
-  have hΓa := (c.withMLC _ (wf := cwfa)).Δwf.toCtx
-  have hnotp : (c.withMLC _ (wf := cwfa)).HasType (vexpr(Not).app (.bvar 1))
-      (.sort .zero) := .app hNotT' hp1T
+  have hnotp : (c.withMLC _).HasType (vexpr(Not).app (.bvar 1)) (.sort .zero) := .app hNotT' hp1T
   let Tb : TrTy c.venv c.lparams (c.withMLC _ (wf := cwfa)).vlctx
       (.arrow (mkApp (.const ``Not []) (.fvar idp)) (.const ``Nat [])) :=
-    TrTy.forallE (.of (.app hNotT' hp1T hNotTr' hp1) ⟨_, hnotp⟩)
-      (.of (c.hasPrimitives.trNat c.Ewf hnat) (hnatT ⟨hΓa, _, hnotp⟩))
-  refine M.WF.withLocalDecl (ty' := .forallE (vexpr(Not).app (.bvar 1)) .nat)
-    Tb.trS Tb.isType .rfl ?_
-  intro idb cwfb s4 hs4 hres4
-  have hΓb := (c.withMLC _ (wf := cwfb)).Δwf.toCtx
-  have hb0 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idb) (.bvar 0) :=
-    .fvar VLCtx.find?_vlam_self
-  have ha1 := ha0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfb.wf.tr.wf
-  have hp2 := hp1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfb.wf.tr.wf
+    .forallE (.of (.app hNotT' hp1T hNotTr' hp1) ⟨_, hnotp⟩)
+      (.of hnatTr (hnatT ⟨(c.withMLC _ (wf := cwfa)).Δwf.toCtx, _, hnotp⟩))
+  refine .withLocalDecl Tb.trS Tb.isType .rfl fun idb cwfb _ _ _ => ?_
+  have ha0 : (c.withMLC _ (wf := cwfa)).TrExprS (.fvar ida) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  have hb0 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idb) (.bvar 0) := .fvar VLCtx.find?_vlam_self
+  have ha1 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar ida) (.bvar 1) :=
+    ha0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfb.wf.tr.wf
+  have hp2 : (c.withMLC _ (wf := cwfb)).TrExprS (.fvar idp) (.bvar 2) :=
+    hp1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfb.wf.tr.wf
   have hp2T : (c.withMLC _ (wf := cwfb)).HasType (.bvar 2) (.sort .zero) :=
     .bvar (.succ (.succ .zero))
-  -- the gadget's type and shape, and the two extractors' types
-  have hdT' : c.venv.HasType c.lparams.length [] d₀
-      (.forallE (.sort .zero) (.forallE .bool
-        (.forallE ((w.type'.app (.bvar 1)).app (.bvar 0))
-          (.forallE (.forallE (.bvar 2) .nat)
-            (.forallE (.forallE (vexpr(Not).app (.bvar 3)) .nat) .nat))))) := by
-    rw [← hnil']; exact VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx (hdarr h2) hdT
-  have hshape := Reflection.natDITE_tr w hnil htypeOK htoDecOK htoDec
-    (by rw [← hnil]; exact hdTr)
-  have hdC : d₀.ClosedN := (hdT'.closedN' c.Ewf.ordered.closed trivial).1
-  have hoT' : c.venv.HasType c.lparams.length [] oT
-      (.forallE (.sort .zero)
-        (.forallE ((w.type'.app (.bvar 0)).app (.boolLit true)) (.bvar 1))) := by
-    rw [← hnil']; exact VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx (hoTarr h3) hoTT
-  have hoF' : c.venv.HasType c.lparams.length [] oF
-      (.forallE (.sort .zero)
-        (.forallE ((w.type'.app (.bvar 0)).app (.boolLit false))
-          (vexpr(Not).app (.bvar 1)))) := by
-    rw [← hnil']; exact VEnv.HasType.defeqU_r c.Ewf c.Δwf.toCtx (hoFarr h4) hoFT
-  -- the `H` binder's type, at either literal
-  have hlit {Δ} bb : TrExprS c.venv c.lparams Δ (toExpr bb) (.boolLit bb) ∧
-      c.venv.HasType c.lparams.length Δ.toCtx (.boolLit bb) .bool :=
-    TrExprS.boolLit c.hasPrimitives hbool bb
-  have hblitΓ {Γ} bb : c.venv.HasType c.lparams.length Γ (VExpr.boolLit bb) .bool :=
-    .weak0 c.Ewf (TrExprS.boolLit (Us := c.lparams) (Δ := []) c.hasPrimitives hbool bb).2
-  have htypeTrb {Δ} : TrExprS c.venv c.lparams Δ r.type w.type' :=
-    TrExprS.of_nil_any c.Ewf (CondOK.noProj htypeOK) (by rw [← hnil]; exact w.htype)
   have hHtyT bb : (c.withMLC _ (wf := cwfb)).HasType
-      ((w.type'.app (.bvar 2)).app (.boolLit bb)) (.sort .zero) :=
-    .app (.app htw hp2T) (hlit bb).2
+      ((w.type'.app (.boolLit bb)).app (.bvar 2)) (.sort .zero) :=
+    .app (.app htw (hlit bb).2) hp2T
   have hHtyTr bb : (c.withMLC _ (wf := cwfb)).TrExprS
-      (mkApp2 r.type (.fvar idp) (toExpr bb))
-      ((w.type'.app (.bvar 2)).app (.boolLit bb)) :=
-    .app (.app htw hp2T) (hlit bb).2 (.app htw hp2T htypeTrb hp2) (hlit bb).1
-  -- the checked equation's left-hand side, as a translation, and its type
+      (mkApp2 Reflects.type (toExpr bb) (.fvar idp)) ((w.type'.app (.boolLit bb)).app (.bvar 2)) :=
+    .app (.app htw (hlit bb).2) hp2T (.app htw (hlit bb).2 htypeTr (hlit bb).1) hp2
+  -- one equation block: both sides as translations, and the check generalized away from the
+  -- four binders it was run under
   have block (bb : Bool) (idH : FVarId)
-      (cwfH : c.MLCWF (.vlam idH `H (mkApp2 r.type (.fvar idp) (toExpr bb))
-        ((w.type'.app (.bvar 2)).app (.boolLit bb)) .default
+      (cwfH : c.MLCWF (.vlam idH `H (mkApp2 Reflects.type (toExpr bb) (.fvar idp))
+        ((w.type'.app (.boolLit bb)).app (.bvar 2)) .default
         (.vlam idb `b (.arrow (mkApp (.const ``Not []) (.fvar idp)) (.const ``Nat []))
           (.forallE (vexpr(Not).app (.bvar 1)) .nat) .default
-          (.vlam ida `a (.arrow (.fvar idp) (.const ``Nat []))
-            (.forallE (.bvar 0) .nat) .default
-            (.vlam idp `p (Expr.sort Level.zero) (VExpr.sort .zero) .default c.mlctx))))) :
+          (.vlam ida `a (.arrow (.fvar idp) (.const ``Nat [])) (.forallE (.bvar 0) .nat) .default
+            (.vlam idp `p q(Prop) vexpr(Prop) .default c.mlctx))))) :
       (c.withMLC _ (wf := cwfH)).TrExprS
-        (mkApp5 r.natDITE (.fvar idp) (toExpr bb) (.fvar idH) (.fvar ida) (.fvar idb))
-        (d₀.appN [.bvar 3, .boolLit bb, .bvar 0, .bvar 2, .bvar 1]) := by
+        (mkApp2 (mkApp2 q(@dite Nat) (.fvar idp)
+          (mkApp3 toDec (.fvar idp) (toExpr bb) (.fvar idH))) (.fvar ida) (.fvar idb))
+        (diteApp (.bvar 3) (((toDec'.app (.bvar 3)).app (.boolLit bb)).app (.bvar 0))
+          (.bvar 2) (.bvar 1)) ∧
+      (c.withMLC _ (wf := cwfH)).TrExprS (mkApp (if bb then .fvar ida else .fvar idb) (.fvar idH))
+        ((if bb then VExpr.bvar 2 else .bvar 1).app (.bvar 0)) ∧
+      ((c.withMLC _ (wf := cwfH)).IsDefEqU
+        (diteApp (.bvar 3) (((toDec'.app (.bvar 3)).app (.boolLit bb)).app (.bvar 0))
+          (.bvar 2) (.bvar 1)) ((if bb then VExpr.bvar 2 else .bvar 1).app (.bvar 0)) →
+        ∀ (E : c.Ext) {Γ : List VExpr} {p H t e : VExpr},
+          OnCtx Γ (E.venv.IsType c.lparams.length) →
+          E.venv.HasType c.lparams.length Γ p (.sort .zero) →
+          E.venv.HasType c.lparams.length Γ H ((w.type'.app (.boolLit bb)).app p) →
+          E.venv.HasType c.lparams.length Γ t (.forallE p .nat) →
+          E.venv.HasType c.lparams.length Γ e (.forallE (vexpr(Not).app p) .nat) →
+          E.venv.IsDefEqU c.lparams.length Γ
+            (diteApp p (((toDec'.app p).app (.boolLit bb)).app H) t e)
+            (if bb then t.app H else e.app H)) := by
     have hΓH := (c.withMLC _ (wf := cwfH)).Δwf.toCtx
-    have hp3 := hp2.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
-    have ha2 := ha1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
-    have hb1 := hb0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
     have hH0 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idH) (.bvar 0) :=
       .fvar VLCtx.find?_vlam_self
-    have hdTrH : (c.withMLC _ (wf := cwfH)).TrExprS r.natDITE d₀ :=
-      TrExprS.of_nil_any c.Ewf.ordered
-        (CondOK.noProj hditeOK)
-        (by rw [← hnil]; exact hdTr)
-    have hdTH := VEnv.HasType.weak0 (Γ := (c.withMLC _ (wf := cwfH)).vlctx.toCtx)
-      c.Ewf hdT'
-    have hargs : VExpr.ArgsTyped c.venv c.lparams.length
-        (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-        [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0),
-          .forallE (.bvar 2) .nat, .forallE (vexpr(Not).app (.bvar 3)) .nat] .id
-        [.bvar 3, .boolLit bb, .bvar 0, .bvar 2, .bvar 1] := by
-      have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-      refine .cons (by simpa using (.bvar (.succ (.succ (.succ .zero))) :
-          c.venv.HasType c.lparams.length _ (VExpr.bvar 3) (VExpr.sort .zero)))
-        (.cons (by simpa using (hlit bb).2) (.cons ?_ (.cons ?_ (.cons ?_ .nil))))
-      · have h : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-            (.bvar 0) (((w.type'.app (.bvar 2)).app (.boolLit bb)).lift) := .bvar .zero
-        have hbc : (VExpr.boolLit bb).ClosedN := by cases bb <;> trivial
-        simpa [VExpr.lift, VExpr.liftN, liftVar, VExpr.Subst.cons, VExpr.Subst.id,
-          htc.liftN_eq (Nat.zero_le _), hbc.liftN_eq (Nat.zero_le _),
-          htc.subst_eq', hbc.subst_eq'] using h
-      · have h : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-            (.bvar 2) (VExpr.forallE (.bvar 3) .nat) := .bvar (.succ (.succ .zero))
-        simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift] using h
-      · have h : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-            (.bvar 1) (VExpr.forallE (vexpr(Not).app (.bvar 3)) .nat) :=
-          .bvar (.succ .zero)
-        simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift] using h
-    have hd5 := VEnv.HasType.appN_forallEs hargs (by simpa using hdTH)
-    exact TrExprS.appN c.Ewf.ordered hΓH hdTrH
-      (.cons hp3 (.cons (hlit bb).1 (.cons hH0 (.cons ha2 (.cons hb1 .nil))))) ⟨_, hd5⟩
-  -- the context the two checks are run in, as a telescope over `[]`
-  have hAsCtx bb : OnCtx [(w.type'.app (.bvar 2)).app (.boolLit bb),
-      .forallE (vexpr(Not).app (.bvar 1)) .nat, .forallE (.bvar 0) .nat, .sort .zero]
-      (c.venv.IsType c.lparams.length) := by
-    have h1 : OnCtx [VExpr.sort .zero] (c.venv.IsType c.lparams.length) :=
-      ⟨trivial, _, .sort trivial⟩
-    have h2 : OnCtx [VExpr.forallE (.bvar 0) .nat, .sort .zero] _ :=
-      ⟨h1, _, .forallEDF (.bvar .zero) (hnatT (Γ := [VExpr.bvar 0, VExpr.sort .zero])
-        ⟨h1, _, .bvar .zero⟩).choose_spec⟩
-    have hnp : c.venv.HasType c.lparams.length
-        [VExpr.forallE (.bvar 0) .nat, VExpr.sort .zero]
-        (vexpr(Not).app (.bvar 1)) (.sort .zero) :=
-      VEnv.HasType.app hNotT' (.bvar (.succ .zero))
-    have h2' : OnCtx (vexpr(Not).app (.bvar 1) ::
-        [VExpr.forallE (.bvar 0) .nat, VExpr.sort .zero]) (c.venv.IsType c.lparams.length) :=
-      ⟨h2, _, hnp⟩
-    have h3 : OnCtx (VExpr.forallE (vexpr(Not).app (.bvar 1)) .nat ::
-        [VExpr.forallE (.bvar 0) .nat, VExpr.sort .zero]) (c.venv.IsType c.lparams.length) :=
-      ⟨h2, _, .forallEDF hnp (hnatT h2').choose_spec⟩
-    exact ⟨h3, _, .app (.app htw (.bvar (.succ (.succ .zero)))) (hblitΓ bb)⟩
-  -- the right-hand side of each check: the branch applied to the extracted proof
-  have rhs (bb : Bool) (of' : VExpr) (ofSrc : Expr) (cod : VExpr) (idH : FVarId)
-      (cwfH : c.MLCWF (.vlam idH `H (mkApp2 r.type (.fvar idp) (toExpr bb))
-        ((w.type'.app (.bvar 2)).app (.boolLit bb)) .default
-        (.vlam idb `b (.arrow (mkApp (.const ``Not []) (.fvar idp)) (.const ``Nat []))
-          (.forallE (vexpr(Not).app (.bvar 1)) .nat) .default
-          (.vlam ida `a (.arrow (.fvar idp) (.const ``Nat []))
-            (.forallE (.bvar 0) .nat) .default
-            (.vlam idp `p (Expr.sort Level.zero) (VExpr.sort .zero) .default c.mlctx)))))
-      (hofTr : TrExprS c.venv c.lparams c.vlctx ofSrc of') (hofOK : noProj ofSrc)
-      (hofT : c.venv.HasType c.lparams.length [] of'
-        (.forallE (.sort .zero) (.forallE ((w.type'.app (.bvar 0)).app (.boolLit bb)) cod))) :
-      (c.withMLC _ (wf := cwfH)).TrExprS (mkApp2 ofSrc (.fvar idp) (.fvar idH))
-        ((of'.app (.bvar 3)).app (.bvar 0)) ∧
-      c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-        ((of'.app (.bvar 3)).app (.bvar 0))
-        (cod.subst ((VExpr.Subst.id.cons (.bvar 3)).cons (.bvar 0))) := by
-    have hΓH := (c.withMLC _ (wf := cwfH)).Δwf.toCtx
-    have hp3 := hp2.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
-    have hH0 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idH) (.bvar 0) :=
-      .fvar VLCtx.find?_vlam_self
-    have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-    have hbc : (VExpr.boolLit bb).ClosedN := by cases bb <;> trivial
-    have hargs2 : VExpr.ArgsTyped c.venv c.lparams.length
-        (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-        [.sort .zero, (w.type'.app (.bvar 0)).app (.boolLit bb)] .id [.bvar 3, .bvar 0] := by
-      refine .cons (by simpa using (.bvar (.succ (.succ (.succ .zero))) :
-          c.venv.HasType c.lparams.length _ (VExpr.bvar 3) (VExpr.sort .zero))) (.cons ?_ .nil)
-      have h : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-          (.bvar 0) (((w.type'.app (.bvar 2)).app (.boolLit bb)).lift) := .bvar .zero
-      simpa [VExpr.lift, VExpr.liftN, liftVar, VExpr.Subst.cons, VExpr.Subst.id,
-        htc.liftN_eq (Nat.zero_le _), hbc.liftN_eq (Nat.zero_le _),
-        htc.subst_eq', hbc.subst_eq'] using h
-    have hofTH := hofT.weak0 (Γ := (c.withMLC _ (wf := cwfH)).vlctx.toCtx) c.Ewf
-    have hap := VEnv.HasType.appN_forallEs hargs2 (by simpa using hofTH)
-    refine ⟨?_, hap⟩
-    exact TrExprS.appN c.Ewf.ordered hΓH
-      (TrExprS.of_nil_any c.Ewf.ordered hofOK (by rw [← hnil]; exact hofTr))
-      (.cons hp3 (.cons hH0 .nil)) ⟨_, hap⟩
-  -- each check, generalized away from the four binders it was run under
-  have hgen (bb : Bool) (of' : VExpr) (idH : FVarId)
-      (cwfH : c.MLCWF (.vlam idH `H (mkApp2 r.type (.fvar idp) (toExpr bb))
-        ((w.type'.app (.bvar 2)).app (.boolLit bb)) .default
-        (.vlam idb `b (.arrow (mkApp (.const ``Not []) (.fvar idp)) (.const ``Nat []))
-          (.forallE (vexpr(Not).app (.bvar 1)) .nat) .default
-          (.vlam ida `a (.arrow (.fvar idp) (.const ``Nat []))
-            (.forallE (.bvar 0) .nat) .default
-            (.vlam idp `p (Expr.sort Level.zero) (VExpr.sort .zero) .default c.mlctx)))))
-      (hofC : of'.ClosedN)
-      (heq : (c.withMLC _ (wf := cwfH)).IsDefEqU
-        (d₀.appN [.bvar 3, .boolLit bb, .bvar 0, .bvar 2, .bvar 1])
-        ((if bb then VExpr.bvar 2 else .bvar 1).app ((of'.app (.bvar 3)).app (.bvar 0)))) :
-      w.DiteEq d₀ of' bb := fun E Γ p H t e hΓ hp ht he hH => by
-    have hbc : (VExpr.boolLit bb).ClosedN := by cases bb <;> trivial
+    have hb1 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idb) (.bvar 1) :=
+      hb0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have ha2 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar ida) (.bvar 2) :=
+      ha1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hp3 : (c.withMLC _ (wf := cwfH)).TrExprS (.fvar idp) (.bvar 3) :=
+      hp2.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
+    have hp3T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 3) (.sort .zero) :=
+      .bvar (.succ (.succ (.succ .zero)))
+    have ha2T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 2) (.forallE (.bvar 3) .nat) :=
+      .bvar (.succ (.succ .zero))
+    have hb1T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 1)
+        (.forallE (vexpr(Not).app (.bvar 3)) .nat) := .bvar (.succ .zero)
+    have hH0T' : (c.withMLC _ (wf := cwfH)).HasType (.bvar 0)
+        ((w.type'.app (.boolLit bb)).app (.bvar 3)) := by
+      have h : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx (.bvar 0)
+          (((w.type'.app (.boolLit bb)).app (.bvar 2)).lift) := .bvar .zero
+      have e : ((w.type'.app (.boolLit bb)).app (.bvar 2)).lift
+          = (w.type'.app (.boolLit bb)).app (.bvar 3) := by
+        simp [VExpr.lift, VExpr.liftN, liftVar, htc.liftN_eq (Nat.zero_le _),
+          (hbC bb).liftN_eq (Nat.zero_le _)]
+      exact e ▸ h
+    -- the evidence is a proof of `p` or of `¬p`
+    have hH0T : (c.withMLC _ (wf := cwfH)).HasType (.bvar 0)
+        (if bb then .bvar 3 else vexpr(Not).app (.bvar 3)) := by
+      cases bb
+      · exact hH0T'.defeqU_r c.Ewf hΓH (w.reflFalse c.self hΓH hp3T)
+      · exact hH0T'.defeqU_r c.Ewf hΓH (w.reflTrue c.self hΓH hp3T)
+    -- the conditional's typing, from `DITE_T` at these binders
+    have hdecWF := hDT.toDecT c.self hΓH hp3T (hlit bb).2 hH0T'
+    have hdecTr : (c.withMLC _).TrExprS (mkApp3 toDec (.fvar idp) (toExpr bb) (.fvar idH))
+        (((toDec'.app (.bvar 3)).app (.boolLit bb)).app (.bvar 0)) :=
+      htoDecTr.appN c.Ewf.ordered hΓH (.cons hp3 (.cons (hlit bb).1 (.cons hH0 .nil)))
+        (by simpa [VExpr.appN] using hdecWF)
+    have hfull : (c.withMLC _ (wf := cwfH)).HasType
+        (diteApp (.bvar 3) (((toDec'.app (.bvar 3)).app (.boolLit bb)).app (.bvar 0))
+          (.bvar 2) (.bvar 1)) .nat := by
+      have h := ((hDT c.self hΓH hp3T (hlit bb).2 hH0T').app ha2T).app hb1T
+      simp only [VExpr.inst, VExpr.nat] at h; exact h
+    refine ⟨?_, ?_, fun heq E Γ p H t e hΓ hp hH ht he => ?_⟩
+    · exact hconst.appN c.Ewf.ordered hΓH
+        (as := [.const ``Nat [], .fvar idp,
+          mkApp3 toDec (.fvar idp) (toExpr bb) (.fvar idH), .fvar ida, .fvar idb])
+        (.cons hnatTr (.cons hp3 (.cons hdecTr (.cons ha2 (.cons hb1 .nil))))) ⟨_, hfull⟩
+    · cases bb
+      · exact .app hb1T hH0T hb1 hH0
+      · exact .app ha2T hH0T ha2 hH0
     have heq' : c.venv.IsDefEqU c.lparams.length
-        ((w.type'.app (.bvar 2)).app (.boolLit bb) ::
-          VExpr.forallE (vexpr(Not).app (.bvar 1)) .nat ::
-          VExpr.forallE (.bvar 0) .nat :: VExpr.sort .zero :: c.vlctx.toCtx) _ _ := heq
+        ((w.type'.app (.boolLit bb)).app (.bvar 2) :: .forallE (vexpr(Not).app (.bvar 1)) .nat ::
+          .forallE (.bvar 0) .nat :: vexpr(Prop) :: c.vlctx.toCtx) _ _ := heq
     rw [hnil'] at heq'
-    have hargs : VExpr.ArgsTyped E.venv c.lparams.length Γ
-        [.sort .zero, .forallE (.bvar 0) .nat,
-          .forallE (vexpr(Not).app (.bvar 1)) .nat,
-          (w.type'.app (.bvar 2)).app (.boolLit bb)] .id [p, t, e, H] := by
-      have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-      refine .cons (by simpa using hp) (.cons ?_ (.cons ?_ (.cons ?_ .nil)))
-      · simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift] using ht
-      · simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift] using he
-      · simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq', hbc.subst_eq'] using hH
-    have h := Reflection.WF.genTele (c := c) E
-      (As := [.sort .zero, .forallE (.bvar 0) .nat,
-        .forallE (vexpr(Not).app (.bvar 1)) .nat,
-        (w.type'.app (.bvar 2)).app (.boolLit bb)])
-      (by simpa using hAsCtx bb) heq'
-      (by simp [VExpr.appN, VExpr.ClosedN, hdC.mono (Nat.zero_le 4), hbc.mono (Nat.zero_le 4)])
-      (by cases bb <;> simp [VExpr.ClosedN, hofC.mono (Nat.zero_le 4)])
-      hΓ hargs
-    simp only [VExpr.appN, VExpr.subst_app] at h
-    rw [hdC.subst_eq', hbc.subst_eq', hofC.subst_eq'] at h
-    cases bb <;>
-      simpa [VExpr.appN, VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id] using h
-  have hoTC : oT.ClosedN := (hoT'.closedN' c.Ewf.ordered.closed trivial).1
-  have hoFC : oF.ClosedN := (hoF'.closedN' c.Ewf.ordered.closed trivial).1
+    have hctx : OnCtx ((w.type'.app (.boolLit bb)).app (.bvar 2) ::
+        .forallE (vexpr(Not).app (.bvar 1)) .nat :: .forallE (.bvar 0) .nat :: vexpr(Prop) ::
+        c.vlctx.toCtx) (c.venv.IsType c.lparams.length) := hΓH
+    have h := WF.genTele E
+      (As := [vexpr(Prop), .forallE (.bvar 0) .nat, .forallE (vexpr(Not).app (.bvar 1)) .nat,
+        (w.type'.app (.boolLit bb)).app (.bvar 2)])
+      (by simpa using hnil' ▸ hctx) heq'
+      (by simp [VExpr.ClosedN, diteApp, VExpr.nat, htoDecC.mono (Nat.zero_le 4),
+        (hbC bb).mono (Nat.zero_le 4)])
+      (by cases bb <;> simp [VExpr.ClosedN]) hΓ
+      (.cons (by simpa using hp)
+        (.cons (by simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift,
+          VExpr.nat] using ht)
+        (.cons (by simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift,
+          VExpr.nat] using he)
+          (.cons (by simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq',
+            (hbC bb).subst_eq'] using hH) .nil))))
+    cases bb <;> simpa [diteApp, VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id, VExpr.nat,
+      htoDecC.subst_eq', (hbC _).subst_eq'] using h
   -- the two equation blocks
-  refine .bind (Q := fun _ _ => w.DiteEq d₀ oT true) ?_ fun _ _ _ hTrue => ?_
-  · refine M.WF.withLocalDecl (hHtyTr true) ⟨_, hHtyT true⟩ .rfl ?_
-    intro idH cwfH s5 hs5 hres5
-    obtain ⟨hrhsTr, hrhsT⟩ := rhs true oT r.ofTrue (.bvar 1) idH cwfH hoTTr
-      (CondOK.noProj hofTrueOK) hoT'
-    have hrhsT' : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-        ((oT.app (.bvar 3)).app (.bvar 0)) (.bvar 3) := by
-      simpa [VExpr.Subst.cons, VExpr.Subst.id, VLCtx.toCtx] using hrhsT
-    have ha2 := ha1.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
-    refine .bind (isDefEq.WF (block true idH cwfH)
-        (.app (.bvar (.succ (.succ .zero))) hrhsT' ha2 hrhsTr)) fun _ _ _ heq => ?_
-    split <;> [rename_i h5; exact hfail]
-    exact .pure (hgen true oT idH cwfH hoTC (heq h5))
-  refine M.WF.withLocalDecl (hHtyTr false) ⟨_, hHtyT false⟩ .rfl ?_
-  intro idH cwfH s5 hs5 hres5
-  obtain ⟨hrhsTr, hrhsT⟩ := rhs false oF r.ofFalse (vexpr(Not).app (.bvar 1))
-    idH cwfH hoFTr
-    (CondOK.noProj hofFalseOK) hoF'
-  have hrhsT' : c.venv.HasType c.lparams.length (c.withMLC _ (wf := cwfH)).vlctx.toCtx
-      ((oF.app (.bvar 3)).app (.bvar 0)) (vexpr(Not).app (.bvar 3)) := by
-    simpa [VExpr.Subst.cons, VExpr.Subst.id, VLCtx.toCtx] using hrhsT
-  have hb1 := hb0.weakFV c.Ewf (.skip_fvar _ _ .refl) cwfH.wf.tr.wf
-  refine .bind (isDefEq.WF (block false idH cwfH)
-      (.app (.bvar (.succ .zero)) hrhsT' hb1 hrhsTr)) fun _ _ _ heq => ?_
-  split <;> [rename_i h5; exact hfail]
-  have hFalse : w.DiteEq d₀ oF false := hgen false oF idH cwfH hoFC (heq h5)
-  refine .pure ⟨⟨oT, oF, hoTTr, hoFTr, ?_⟩, fun E Γ p H bb hΓ hp hbb hH => ?_, hNotTr', hNotT'⟩
-  case refine_2 =>
-    -- the gadget is well typed at *any* boolean, which a consumer needs to build it
-    have hdTΓ := (E.monoT hdT').weak0 (Γ := Γ) E.wf.ordered
-    rw [hshape] at hdTΓ
-    obtain ⟨hΓ1, hb1⟩ := VExpr.WF.lam_inv' E.wf hΓ ⟨_, hdTΓ⟩
-    obtain ⟨hΓ2, hb2⟩ := VExpr.WF.lam_inv' E.wf hΓ1 hb1
-    obtain ⟨hΓ3, hb3⟩ := VExpr.WF.lam_inv' E.wf hΓ2 hb2
-    have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-    have hargs3 : VExpr.ArgsTyped E.venv c.lparams.length Γ
-        [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0)] .id [p, bb, H] := by
-      refine .cons (by simpa using hp) (.cons (by simpa using hbb) (.cons ?_ .nil))
-      simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq'] using hH
-    have h3 := VEnv.HasType.appN_forallEs hargs3
-      (by simpa using VEnv.HasType.weak0 (Γ := Γ) E.wf (E.monoT hdT'))
-    have hbeta := (VExpr.lams_appN' E.wf hΓ (by simpa using hΓ3) (.id E.wf hΓ) hargs3 hb3).2
-    simp only [VExpr.subst_id, VExpr.lams_nil] at hbeta
-    rw [← hshape] at hbeta
-    have h5 := VEnv.HasType.defeqU_l E.wf hΓ hbeta h3
-    simp only [VExpr.subst_app, VExpr.subst_const] at h5
-    rw [htoDecC.subst_eq'] at h5
-    simpa [VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id, VExpr.subst,
-      VExpr.Subst.lift, VExpr.lift, VExpr.nat, VExpr.liftN, liftVar] using h5
-  intro E Γ p H t e bb hΓ hp hH ht he
-  -- the gadget applied to all five arguments, and its beta-reduct
-  have htc : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
-  have hbc : (VExpr.boolLit bb).ClosedN := by cases bb <;> trivial
-  have hargs5 : VExpr.ArgsTyped E.venv c.lparams.length Γ
-      [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0),
-        .forallE (.bvar 2) .nat, .forallE (vexpr(Not).app (.bvar 3)) .nat] .id
-      [p, .boolLit bb, H, t, e] := by
-    refine .cons (by simpa using hp) (.cons (by simpa using E.monoT (hblitΓ bb)) (.cons ?_ (.cons ?_
-      (.cons ?_ .nil))))
-    · simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq', hbc.subst_eq'] using hH
-    · simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift] using ht
-    · simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, VExpr.Subst.lift] using he
-  have hd5 := VEnv.HasType.appN_forallEs hargs5
-    (by simpa using VEnv.HasType.weak0 (Γ := Γ) E.wf (E.monoT hdT'))
-  -- the beta at the gadget's three binders, then the two branches
-  have hargs3 : VExpr.ArgsTyped E.venv c.lparams.length Γ
-      [.sort .zero, .bool, (w.type'.app (.bvar 1)).app (.bvar 0)] .id [p, .boolLit bb, H] := by
-    refine .cons (by simpa using hp) (.cons (by simpa using E.monoT (hblitΓ bb)) (.cons ?_ .nil))
-    simpa [VExpr.Subst.cons, VExpr.Subst.id, htc.subst_eq', hbc.subst_eq'] using hH
-  have hdTΓ := VEnv.HasType.weak0 (Γ := Γ) E.wf (E.monoT hdT')
-  rw [hshape] at hdTΓ
-  obtain ⟨hΓ1, hb1'⟩ := VExpr.WF.lam_inv' E.wf hΓ ⟨_, hdTΓ⟩
-  obtain ⟨hΓ2, hb2'⟩ := VExpr.WF.lam_inv' E.wf hΓ1 hb1'
-  obtain ⟨hΓ3, hb3'⟩ := VExpr.WF.lam_inv' E.wf hΓ2 hb2'
-  have hbeta := (VExpr.lams_appN' E.wf hΓ (by simpa using hΓ3) (.id E.wf hΓ) hargs3 hb3').2
-  simp only [VExpr.subst_id] at hbeta
-  have hwf5 : VExpr.WF E.venv c.lparams.length Γ
-      (d₀.appN [p, .boolLit bb, H, t, e]) := ⟨_, hd5⟩
-  have hstep := VEnv.IsDefEqU.appN E.wf hΓ (vs := [t, e]) (hshape ▸ hbeta)
-    (by simpa [VExpr.appN] using hwf5)
-  have hde : w.DiteEq d₀ (if bb then oT else oF) bb := by cases bb; exacts [hFalse, hTrue]
-  have hdeb : E.venv.IsDefEqU c.lparams.length Γ (d₀.appN [p, .boolLit bb, H, t, e])
-      (if bb then t.app ((oT.app p).app H) else e.app ((oF.app p).app H)) := by
-    have h := hde E hΓ hp ht he hH
-    cases bb <;> simpa using h
-  refine VEnv.IsDefEqU.trans E.wf hΓ ?_
-    (VEnv.IsDefEqU.trans E.wf hΓ hstep.symm hdeb)
-  -- the two sides of the beta agree on the nose once the closed pieces are left alone
-  obtain ⟨A, hA⟩ := hstep
-  refine ⟨A, ?_⟩
-  have h2 := hA.hasType.2
-  simp [VExpr.appN, diteApp, VExpr.Subst.consN, VExpr.Subst.cons, VExpr.Subst.id,
-    htoDecC.subst_eq'] at h2 ⊢
-  exact h2
+  refine .bind (Q := fun _ _ => ∀ (E : c.Ext) {Γ : List VExpr} {p H t e : VExpr},
+      OnCtx Γ (E.venv.IsType c.lparams.length) →
+      E.venv.HasType c.lparams.length Γ p (.sort .zero) →
+      E.venv.HasType c.lparams.length Γ H ((w.type'.app (.boolLit true)).app p) →
+      E.venv.HasType c.lparams.length Γ t (.forallE p .nat) →
+      E.venv.HasType c.lparams.length Γ e (.forallE (vexpr(Not).app p) .nat) →
+      E.venv.IsDefEqU c.lparams.length Γ
+        (diteApp p (((toDec'.app p).app (.boolLit true)).app H) t e) (t.app H)) ?_
+    fun _ _ _ hTrue => ?_
+  · refine .withLocalDecl (hHtyTr true) ⟨_, hHtyT true⟩ .rfl fun idH cwfH _ _ _ => ?_
+    obtain ⟨hl, hr, hg⟩ := block true idH cwfH
+    refine .bind (isDefEq.WF hl hr) fun _ _ _ heq => ?_
+    split <;> [rename_i h2; exact hfail]
+    exact .pure (hg (heq h2))
+  refine .withLocalDecl (hHtyTr false) ⟨_, hHtyT false⟩ .rfl fun idH cwfH _ _ _ => ?_
+  obtain ⟨hl, hr, hg⟩ := block false idH cwfH
+  refine .bind (isDefEq.WF hl hr) fun _ _ _ heq => ?_
+  split <;> [rename_i h2; exact hfail]
+  refine .pure ⟨fun E _ _ _ _ _ bb hΓ hp hH ht he => ?_, hDT, hNotTr', hNotT'⟩
+  cases bb
+  · exact hg (heq h2) E hΓ hp hH ht he
+  · exact hTrue E hΓ hp hH ht he
 
-/-- `Condition.WF.WF_dite` for a `reflectNatNat`, from the reflection's own `WF_dite`. Same
-bridge as `reflect_ite`, with the branches under binders: the consumer's are lambdas, the
-reflection's are the functions they denote, and the proof each branch is applied to is the one
-`ofTrue`/`ofFalse` extracts. -/
+/-- `Condition.WF.WF_dite` for a `reflectNatNat`, from `Reflects.WF.WF_dite`. Same
+bridge as `reflect_ite`, with the branches under binders: the consumer's are lambdas, and
+`WF_dite`'s are the functions they denote. -/
 theorem Condition.WF.reflect_dite {prop dec asBool proof : Expr}
-    {prop' dec' asBool' proof' toDec' : VExpr} (w : Reflection.WF c reflect)
-    (w' : Condition.WF c ⟨prop, dec, .reflectNatNat asBool reflect proof⟩)
+    {prop' dec' asBool' proof' toDec' : VExpr} (w : Reflects.WF c)
+    (w' : WF c ⟨prop, dec, .reflectNatNat asBool proof⟩)
     (hw'dec : w'.dec' = dec') (hnil : c.vlctx = []) (hnat : c.venv.contains ``Nat)
-    (hWD : w.WF_dite toDec') (hDT : w.DITE_T toDec')
+    (hDT : w.DITE_T toDec')
     (hNotTr : ∀ {Δ}, TrExprS c.venv c.lparams Δ q(Not) vexpr(Not))
     (hNotT : ∀ {Γ}, c.venv.HasType c.lparams.length Γ vexpr(Not) vexpr(Prop → Prop))
     (hpropTrΓ : ∀ {Δ}, TrExprS c.venv c.lparams Δ prop prop')
     (hdecTrΓ : ∀ {Δ}, TrExprS c.venv c.lparams Δ dec dec')
     (htypeTΓ : ∀ (E : c.Ext) {Γ},
-      E.venv.HasType c.lparams.length Γ w.type' vexpr(Prop → Bool → Prop))
+      E.venv.HasType c.lparams.length Γ w.type' vexpr(Bool → Prop → Prop))
     (H : ∀ (E : c.Ext) ⦃Γ⦄, OnCtx Γ (E.venv.IsType c.lparams.length) → ∀ {x y},
       E.venv.HasType c.lparams.length Γ x .nat → E.venv.HasType c.lparams.length Γ y .nat →
       E.venv.HasType c.lparams.length Γ ((prop'.app x).app y) vexpr(Prop) ∧
       E.venv.HasType c.lparams.length Γ ((asBool'.app x).app y) .bool ∧
       E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-        ((w.type'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)) ∧
+        ((w.type'.app ((asBool'.app x).app y)).app ((prop'.app x).app y)) ∧
       E.venv.IsDefEqU c.lparams.length Γ ((dec'.app x).app y)
         (((toDec'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)).app
           ((proof'.app x).app y))) :
     w'.WF_dite := by
-  obtain ⟨oT, oF, hoTTr, hoFTr, hWDeq⟩ := hWD
   intro m cwfm t e args P t' e' args' hargs hargsT hP hPT ht htT he heT
   have hΓm := (c.withMLC m).Δwf.toCtx
   obtain ⟨x, y, rfl, hxT, hyT⟩ : ∃ x y, args' = [x, y] ∧
@@ -2040,11 +1675,10 @@ theorem Condition.WF.reflect_dite {prop dec asBool proof : Expr}
   -- the evidence and the decision, at the consumer's own condition
   have hToDecT : w.ToDecT toDec' := hDT.toDecT
   have hHT' : c.venv.HasType c.lparams.length (c.withMLC m).vlctx.toCtx
-      ((proof'.app x).app y) ((w.type'.app P).app ((asBool'.app x).app y)) := by
+      ((proof'.app x).app y) ((w.type'.app ((asBool'.app x).app y)).app P) := by
     refine VEnv.HasType.defeqU_r c.Ewf hΓm ?_ hHT
-    exact VEnv.IsDefEqU.appN c.Ewf hΓm (vs := [(asBool'.app x).app y])
-      (VEnv.IsDefEqU.app_arg c.Ewf hΓm (htypeTΓ c.self) hpT hPeq.symm)
-      ⟨_, VEnv.HasType.app (VEnv.HasType.app (htypeTΓ c.self) hpT) hblT⟩
+    exact VEnv.IsDefEqU.app_arg c.Ewf hΓm (VEnv.HasType.app (htypeTΓ c.self) hblT) hpT
+      hPeq.symm
   obtain ⟨_, _, _, _, _, _, ⟨htd1, hp1⟩, ⟨htd2, hb2⟩, -⟩ := hToDecT.spine c.self hΓm hpT hblT hHT
   have hdecEq' : c.venv.IsDefEqU c.lparams.length (c.withMLC m).vlctx.toCtx
       ((dec'.app x).app y)
@@ -2100,14 +1734,14 @@ theorem Condition.WF.reflect_dite {prop dec asBool proof : Expr}
 /-- The gadget `Condition.check` builds, once everything in it is translated. -/
 def Condition.check.gadgetV (type' toDec' prop' asBool' proof' : VExpr) : VExpr :=
   VExpr.lams [.nat, .nat]
-    ((VExpr.lams [.sort .zero, .bool, (type'.app (.bvar 1)).app (.bvar 0)]
+    ((VExpr.lams [.sort .zero, .bool, (type'.app (.bvar 0)).app (.bvar 1)]
         (((toDec'.app (.bvar 2)).app (.bvar 1)).app (.bvar 0))).appN
       [(prop'.app (.bvar 1)).app (.bvar 0), (asBool'.app (.bvar 1)).app (.bvar 0),
         (proof'.app (.bvar 1)).app (.bvar 0)])
 
 /-- The typing half of `gadget_pieces`, with the gadget's shape spelled out. Two things come out
 of `checkType e`, and both are read off the redex: the three arguments are checked against
-binders that name `Prop`, `Bool` and `type p b`, which types them; and the redex beta-reduces,
+binders that name `Prop`, `Bool` and `type b p`, which types them; and the redex beta-reduces,
 which is what makes the gadget the decision procedure the `e ≡ dec` check compares against.
 
 The typings are proved under the gadget's own two `Nat` binders and moved to the consumer's
@@ -2125,7 +1759,7 @@ theorem Condition.check.gadget_types {c : VContext}
       E.venv.HasType c.lparams.length Γ ((prop'.app x).app y) (.sort .zero) ∧
       E.venv.HasType c.lparams.length Γ ((asBool'.app x).app y) .bool ∧
       E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-        ((type'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)) ∧
+        ((type'.app ((asBool'.app x).app y)).app ((prop'.app x).app y)) ∧
       E.venv.IsDefEqU c.lparams.length Γ
         (((Condition.check.gadgetV type' toDec' prop' asBool' proof').app x).app y)
         (((toDec'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)).app
@@ -2169,7 +1803,7 @@ theorem Condition.check.gadget_types {c : VContext}
   have hpfT := VEnv.HasType.defeqU_r c.Ewf hΓ2 ⟨_, hdom3⟩ ha₃
   -- the inner beta step, where the redex lives
   have hargs3 : VExpr.ArgsTyped c.venv c.lparams.length (VExpr.nat :: VExpr.nat :: [])
-      [.sort .zero, .bool, (type'.app (.bvar 1)).app (.bvar 0)] .id
+      [.sort .zero, .bool, (type'.app (.bvar 0)).app (.bvar 1)] .id
       [(prop'.app (.bvar 1)).app (.bvar 0), (asBool'.app (.bvar 1)).app (.bvar 0),
         (proof'.app (.bvar 1)).app (.bvar 0)] := by
     refine .cons (by simpa using hpT) (.cons (by simpa using hbT) (.cons ?_ .nil))
@@ -2193,7 +1827,7 @@ theorem Condition.check.gadget_types {c : VContext}
       (hXc : X.ClosedN 2) (hAc : A.ClosedN 2) :
       E.venv.HasType c.lparams.length Γ (X.subst ((VExpr.Subst.id.cons x).cons y))
         (A.subst ((VExpr.Subst.id.cons x).cons y)) :=
-    Reflection.WF.genTeleT E (As := [.nat, .nat]) (by simpa using hAs) hX hXc hAc hΓ hargs2
+    Reflects.WF.genTeleT E (As := [.nat, .nat]) (by simpa using hAs) hX hXc hAc hΓ hargs2
   refine ⟨?_, ?_, ?_, ?_⟩
   · simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, hpropC.subst_eq'] using
       gen hpT (hcl2 hpc) trivial
@@ -2201,7 +1835,7 @@ theorem Condition.check.gadget_types {c : VContext}
       gen hbT (hcl2 hac) trivial
   · simpa [VExpr.subst, VExpr.Subst.cons, VExpr.Subst.id, hpfC.subst_eq', hpropC.subst_eq',
       habC.subst_eq', htypeC.subst_eq'] using
-      gen hpfT (hcl2 hfc) ⟨⟨htc 2, hcl2 hpc⟩, hcl2 hac⟩
+      gen hpfT (hcl2 hfc) ⟨⟨htc 2, hcl2 hac⟩, hcl2 hpc⟩
   -- the outer beta step, then the inner one moved here by `genTele`
   have heTΓ : E.venv.HasType c.lparams.length Γ _ eTy' := (E.monoT hT).weak0 (Γ := Γ) E.wf.ordered
   obtain ⟨hΓg1, hbg1⟩ := VExpr.WF.lam_inv' E.wf hΓ ⟨_, heTΓ⟩
@@ -2209,7 +1843,7 @@ theorem Condition.check.gadget_types {c : VContext}
   have hbetaOut := (VExpr.lams_appN' (As := [VExpr.nat, VExpr.nat]) E.wf hΓ
     (by simpa using hΓg2) (.id E.wf hΓ) hargs2 hbg2).2
   simp only [VExpr.subst_id] at hbetaOut
-  have hbetaIn' := Reflection.WF.genTele (c := c) E (As := [.nat, .nat]) (by simpa using hAs)
+  have hbetaIn' := Reflects.WF.genTele (c := c) E (As := [.nat, .nat]) (by simpa using hAs)
     hbetaIn
     (by simp [VExpr.appN, VExpr.lams, VExpr.ClosedN, VExpr.bool, htc, htdc, hpc, hac, hfc])
     (by simp [VExpr.ClosedN, htdc, hpc, hac, hfc]) hΓ hargs2
@@ -2221,7 +1855,7 @@ theorem Condition.check.gadget_types {c : VContext}
 
 /-- The whole content of `checkType e`, for the gadget
 
-    e = fun x y : Nat => (fun (p : Prop) (b : Bool) (H : type p b) => toDec p b H)
+    e = fun x y : Nat => (fun (p : Prop) (b : Bool) (H : type b p) => toDec p b H)
           (prop x y) (asBool x y) (proof x y)
 
 *Its translation* determines the three pieces': they are read under the gadget's two `Nat`
@@ -2230,30 +1864,30 @@ development lives. So `Condition.check` needs no check of its own for `prop`, `a
 `proof` -- reading them is what the gadget already does.
 
 *Its typing* determines their types. That is what the beta-redex is for: the arguments are
-checked against binders that name `Prop`, `Bool` and `type p b`, so a gadget that type checks at
+checked against binders that name `Prop`, `Bool` and `type b p`, so a gadget that type checks at
 all has pieces of those types, and has them consistent with each other -- which a separate check
 of `proof` could assert but not tie to `prop` and `asBool`. Written as the application
 `toDec (prop x y) (asBool x y) (proof x y)` it would instead be `toDec`'s *own* type that pinned
-them, and nothing checks that: `toDec` is only ever used, inside `ite`/`natDITE`.
+them, and nothing checks that: `toDec` is only ever used, inside `ite`/`dite`.
 
 Everything is exported at an arbitrary context and arbitrary arguments, since that is where a
 consumer needs it: `genTeleT` moves the typings, and the two beta steps -- one per redex -- are
 what turns the gadget applied to two naturals into `toDec` at the three pieces. -/
-theorem Condition.check.gadget_pieces {c : VContext} {prop asBool proof : Expr} {r : Reflection}
-    {e' eTy' : VExpr} (w : Reflection.WF c r) (hnil : c.vlctx = []) (hnat : c.venv.contains ``Nat)
+theorem Condition.check.gadget_pieces {c : VContext} {prop asBool proof : Expr}
+    {e' eTy' : VExpr} (w : Reflects.WF c) (hnil : c.vlctx = []) (hnat : c.venv.contains ``Nat)
     (hpropOK : CondOK prop) (hasBoolOK : CondOK asBool) (hproofOK : CondOK proof)
-    (htypeOK : CondOK r.type) (htoDecOK : CondOK r.toDec)
+    (htypeOK : CondOK Reflects.type) (htoDecOK : CondOK Reflects.toDec)
     (H : TrExprS c.venv c.lparams [] (.lam0 (.const ``Nat []) (.lam0 (.const ``Nat [])
       (mkApp3
         (.lam0 (.sort .zero) (.lam0 (.const ``Bool [])
-          (.lam0 (mkApp2 r.type (.bvar 1) (.bvar 0))
-            (mkApp3 r.toDec (.bvar 2) (.bvar 1) (.bvar 0)))))
+          (.lam0 (mkApp2 Reflects.type (.bvar 0) (.bvar 1))
+            (mkApp3 Reflects.toDec (.bvar 2) (.bvar 1) (.bvar 0)))))
         (mkApp2 prop (.bvar 1) (.bvar 0)) (mkApp2 asBool (.bvar 1) (.bvar 0))
         (mkApp2 proof (.bvar 1) (.bvar 0))))) e')
     (hT : c.venv.HasType c.lparams.length [] e' eTy') :
     ∃ prop' asBool' proof' toDec',
       TrExprS c.venv c.lparams [] prop prop' ∧ TrExprS c.venv c.lparams [] asBool asBool' ∧
-      TrExprS c.venv c.lparams [] proof proof' ∧ TrExprS c.venv c.lparams [] r.toDec toDec' ∧
+      TrExprS c.venv c.lparams [] proof proof' ∧ TrExprS c.venv c.lparams [] Reflects.toDec toDec' ∧
       prop'.ClosedN ∧ asBool'.ClosedN ∧ proof'.ClosedN ∧ toDec'.ClosedN ∧
       ∀ (E : c.Ext) ⦃Γ : List VExpr⦄, OnCtx Γ (E.venv.IsType c.lparams.length) →
         ∀ {x y : VExpr}, E.venv.HasType c.lparams.length Γ x .nat →
@@ -2261,7 +1895,7 @@ theorem Condition.check.gadget_pieces {c : VContext} {prop asBool proof : Expr} 
         E.venv.HasType c.lparams.length Γ ((prop'.app x).app y) (.sort .zero) ∧
         E.venv.HasType c.lparams.length Γ ((asBool'.app x).app y) .bool ∧
         E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-          ((w.type'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)) ∧
+          ((w.type'.app ((asBool'.app x).app y)).app ((prop'.app x).app y)) ∧
         E.venv.IsDefEqU c.lparams.length Γ ((e'.app x).app y)
           (((toDec'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)).app
             ((proof'.app x).app y)) := by
@@ -2280,7 +1914,7 @@ theorem Condition.check.gadget_pieces {c : VContext} {prop asBool proof : Expr} 
       (CondOK.closed hx) (CondOK.fvarsIn hx) trivial
       (by intro v x A hv; simp [VLCtx.find?] at hv) (by simpa using hΔ) (by simpa using hwf)
   have htypeT : c.venv.HasType c.lparams.length [] w.type'
-      vexpr(Prop → Bool → Prop) := by
+      vexpr(Bool → Prop → Prop) := by
     have h : c.venv.HasType c.lparams.length c.vlctx.toCtx w.type' _ := w.typeT
     rw [show c.vlctx.toCtx = [] from by rw [hnil]; rfl] at h; exact h
   have htypeC : w.type'.ClosedN := (htypeT.closedN' c.Ewf.ordered.closed trivial).1
@@ -2530,16 +2164,16 @@ theorem Condition.WF.natEq_decideTr {c : VContext} {w : Condition.WF c Condition
 `prop` and `dec` collapses to the branch the decision selects. This is the content of `WF_dite`
 without the `Expr`-level packaging, and it is what `Condition.WF.DiteEval` is proved from. -/
 theorem Condition.WF.reflect_diteEval {c : VContext} (E : c.Ext)
-    {prop' dec' asBool' proof' toDec' : VExpr} {reflect : Reflection} (w : Reflection.WF c reflect)
+    {prop' dec' asBool' proof' toDec' : VExpr} (w : Reflects.WF c)
     (hWD : w.WF_dite toDec') (hDT : w.DITE_T toDec')
-    (htypeTΓ : ∀ {Γ}, E.venv.HasType c.lparams.length Γ w.type' vexpr(Prop → Bool → Prop))
+    (htypeTΓ : ∀ {Γ}, E.venv.HasType c.lparams.length Γ w.type' vexpr(Bool → Prop → Prop))
     (H : ∀ ⦃Γ⦄, OnCtx Γ (E.venv.IsType c.lparams.length) →
       ∀ {x y : VExpr}, E.venv.HasType c.lparams.length Γ x .nat →
       E.venv.HasType c.lparams.length Γ y .nat →
       E.venv.HasType c.lparams.length Γ ((prop'.app x).app y) (.sort .zero) ∧
       E.venv.HasType c.lparams.length Γ ((asBool'.app x).app y) .bool ∧
       E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-        ((w.type'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)) ∧
+        ((w.type'.app ((asBool'.app x).app y)).app ((prop'.app x).app y)) ∧
       E.venv.IsDefEqU c.lparams.length Γ ((dec'.app x).app y)
         (((toDec'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)).app
           ((proof'.app x).app y)))
@@ -2553,14 +2187,14 @@ theorem Condition.WF.reflect_diteEval {c : VContext} (E : c.Ext)
     ∃ pf, E.venv.IsDefEqU c.lparams.length Γ
       (diteApp ((prop'.app x).app y) ((dec'.app x).app y) t' e')
       (if b then t'.app pf else e'.app pf) := by
-  obtain ⟨oT, oF, hoTTr, hoFTr, hWDeq⟩ := hWD
   have hToDecT : w.ToDecT toDec' := hDT.toDecT
   have ⟨hpT, hblT, hHT, hdecEq⟩ := H hΓ hxT hyT
   -- the evidence, retyped at the literal the decision evaluates to
   have hHT' : E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-      ((w.type'.app ((prop'.app x).app y)).app (.boolLit b)) :=
+      ((w.type'.app (.boolLit b)).app ((prop'.app x).app y)) :=
     VEnv.HasType.defeqU_r E.wf hΓ
-      (VEnv.IsDefEqU.app_arg E.wf hΓ (.app htypeTΓ hpT) hblT hbb) hHT
+      (.appN E.wf hΓ (vs := [(prop'.app x).app y]) (.app_arg E.wf hΓ htypeTΓ hblT hbb)
+        ⟨_, (htypeTΓ.app hblT).app hpT⟩) hHT
   -- the decision procedure is `toDec` at that literal
   obtain ⟨_, _, _, _, _, _, -, ⟨htd2, hb2⟩, -⟩ := hToDecT.spine E hΓ hpT hblT hHT
   have hdecEq' : E.venv.IsDefEqU c.lparams.length Γ ((dec'.app x).app y)
@@ -2573,7 +2207,7 @@ theorem Condition.WF.reflect_diteEval {c : VContext} (E : c.Ext)
   obtain ⟨A₀, B₀, hf₀, ha₀⟩ := hd3.app_inv E.wf hΓ
   have ha₀' := ha₀.defeqU_l E.wf hΓ hdecEq'.symm
   -- the branches' types come from the conditional's own well-formedness, matched against the
-  -- `dite` gadget's: its fourth and fifth domains are `p → Nat` and `¬p → Nat`
+  -- type `DITE_T` gives `dite`: its fourth and fifth domains are `p → Nat` and `¬p → Nat`
   have hd3' := hd3.defeqU_l E.wf hΓ (.app_arg E.wf hΓ hf₀ ha₀ hdecEq'.symm)
   obtain ⟨_, _, hwf1, heT0⟩ := VExpr.WF.app_inv E.wf hΓ hwf
   obtain ⟨_, _, hwf2, htT0⟩ := VExpr.WF.app_inv E.wf hΓ ⟨_, hwf1⟩
@@ -2582,7 +2216,7 @@ theorem Condition.WF.reflect_diteEval {c : VContext} (E : c.Ext)
   obtain ⟨⟨_, hdom5⟩, -⟩ :=
     (hwf1.uniqU E.wf hΓ (VEnv.HasType.app hd3' htT)).forallE_inv E.wf hΓ
   have heT := heT0.defeqU_r E.wf hΓ ⟨_, hdom5⟩
-  have hval := hWDeq E b hΓ hpT hHT' htT (by simpa [VExpr.inst, VExpr.inst_lift] using heT)
+  have hval := hWD E b hΓ hpT hHT' htT (by simpa [VExpr.inst, VExpr.inst_lift] using heT)
   have hd3' := hd3.defeqU_l E.wf hΓ (.app_arg E.wf hΓ hf₀ ha₀ hdecEq'.symm)
   have hcong : E.venv.IsDefEqU c.lparams.length Γ
       (diteApp ((prop'.app x).app y) ((dec'.app x).app y) t' e')
@@ -2592,23 +2226,21 @@ theorem Condition.WF.reflect_diteEval {c : VContext} (E : c.Ext)
     refine .appN E.wf hΓ (vs := [t', e']) (.app_arg E.wf hΓ hf₀ ha₀' hdecEq') ?_
     refine ⟨_, (hd3'.app htT).app ?_⟩
     simpa [VExpr.inst, VExpr.inst_lift] using heT
-  refine ⟨if b then (oT.app ((prop'.app x).app y)).app ((proof'.app x).app y)
-    else (oF.app ((prop'.app x).app y)).app ((proof'.app x).app y),
-    VEnv.IsDefEqU.trans E.wf hΓ hcong ?_⟩
+  refine ⟨(proof'.app x).app y, hcong.trans E.wf hΓ ?_⟩
   cases hfab : b <;> simpa [hfab] using hval
 
 /-- The `ite` equation as a fact about `VExpr`s, the counterpart of `reflect_diteEval`. -/
 theorem Condition.WF.reflect_iteEval {c : VContext} (E : c.Ext)
-    {prop' dec' asBool' proof' toDec' : VExpr} {reflect : Reflection} (w : Reflection.WF c reflect)
+    {prop' dec' asBool' proof' toDec' : VExpr} (w : Reflects.WF c)
     (hWI : w.WF_ite toDec') (hIT : w.ITE_T toDec')
-    (htypeTΓ : ∀ {Γ}, E.venv.HasType c.lparams.length Γ w.type' vexpr(Prop → Bool → Prop))
+    (htypeTΓ : ∀ {Γ}, E.venv.HasType c.lparams.length Γ w.type' vexpr(Bool → Prop → Prop))
     (H : ∀ ⦃Γ⦄, OnCtx Γ (E.venv.IsType c.lparams.length) →
       ∀ {x y : VExpr}, E.venv.HasType c.lparams.length Γ x .nat →
       E.venv.HasType c.lparams.length Γ y .nat →
       E.venv.HasType c.lparams.length Γ ((prop'.app x).app y) vexpr(Prop) ∧
       E.venv.HasType c.lparams.length Γ ((asBool'.app x).app y) .bool ∧
       E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-        ((w.type'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)) ∧
+        ((w.type'.app ((asBool'.app x).app y)).app ((prop'.app x).app y)) ∧
       E.venv.IsDefEqU c.lparams.length Γ ((dec'.app x).app y)
         (((toDec'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)).app
           ((proof'.app x).app y)))
@@ -2625,7 +2257,7 @@ theorem Condition.WF.reflect_iteEval {c : VContext} (E : c.Ext)
   have hToDecT : w.ToDecT toDec' := hIT.toDecT
   have ⟨hpT, hblT, hHT, hdecEq⟩ := H hΓ hxT hyT
   -- the type argument really is a `Type`. Nothing pins the sort `Nat` lives in, but `ite`'s own
-  -- first domain is pinned -- by the gadget, which `checkITE` compares against `∀ α : Type` --
+  -- first domain is pinned -- by `checkITE`, which runs it at a binder `α : Type` --
   -- and the conditional being well formed types its type argument there
   have hαT : E.venv.HasType c.lparams.length Γ α' vexpr(Type) :=
     have hprop0 : E.venv.HasType c.lparams.length Γ vexpr(Prop) vexpr(Type) := .sort trivial
@@ -2642,8 +2274,10 @@ theorem Condition.WF.reflect_iteEval {c : VContext} (E : c.Ext)
     .defeqU_r E.wf hΓ (hs0.uniqU E.wf hΓ hprop0) (.defeqU_r E.wf hΓ ⟨_, hdom⟩ hα0)
   -- the evidence, retyped at the literal the decision evaluates to
   have hHT' : E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-      ((w.type'.app ((prop'.app x).app y)).app (.boolLit b)) :=
-    .defeqU_r E.wf hΓ (.app_arg E.wf hΓ (.app htypeTΓ hpT) hblT hbb) hHT
+      ((w.type'.app (.boolLit b)).app ((prop'.app x).app y)) :=
+    .defeqU_r E.wf hΓ (.appN E.wf hΓ (vs := [(prop'.app x).app y])
+      (.app_arg E.wf hΓ htypeTΓ hblT hbb)
+      ⟨_, (htypeTΓ.app hblT).app hpT⟩) hHT
   -- the decision procedure is `toDec` at that literal
   obtain ⟨_, _, _, _, _, _, -, ⟨htd2, hb2⟩, -⟩ := hToDecT.spine E hΓ hpT hblT hHT
   have hdecEq' : E.venv.IsDefEqU c.lparams.length Γ ((dec'.app x).app y)
@@ -2657,7 +2291,7 @@ theorem Condition.WF.reflect_iteEval {c : VContext} (E : c.Ext)
   have ha₀' := ha₀.defeqU_l E.wf hΓ hdecEq'.symm
   have hi3' := hi3.defeqU_l E.wf hΓ (hdecEq'.symm.app_arg E.wf hΓ hf₀ ha₀)
   -- the branches' types come from the conditional's own well-formedness, matched against the
-  -- `ite` gadget's: both its fourth and fifth domains are the type argument
+  -- type `ITE_T` gives `ite`: both its fourth and fifth domains are the type argument
   obtain ⟨_, _, hwf1, heT0⟩ := VExpr.WF.app_inv E.wf hΓ hwf
   obtain ⟨_, _, hwf2, htT0⟩ := VExpr.WF.app_inv E.wf hΓ ⟨_, hwf1⟩
   obtain ⟨⟨_, hdom4⟩, -⟩ := (hwf2.uniqU E.wf hΓ hi3').forallE_inv E.wf hΓ
@@ -2675,14 +2309,15 @@ theorem Condition.WF.reflect_iteEval {c : VContext} (E : c.Ext)
     exact ⟨_, VEnv.HasType.app (VEnv.HasType.app hi3' htT) heT⟩
   exact .trans E.wf hΓ hcong hval
 
-/-- `Condition.WF.WF_ite` for a `reflectNatNat`, from the reflection's own `WF_ite`. The
-consumer's conditional decides by `dec` applied to the arguments, the reflection's by `toDec` at
+/-- `Condition.WF.WF_ite` for a `reflectNatNat`, from `Reflects.WF.WF_ite`. The
+consumer's conditional decides by `dec` applied to the arguments, `WF_ite`'s by
+`Reflects.toDec` at
 the proposition, the boolean and the evidence; `e ≡ dec` is what joins them, and the rest is
 reading the three pieces' arities off the checks. -/
 theorem Condition.WF.reflect_ite {c : VContext} {prop dec asBool proof : Expr}
-    {reflect : Reflection} {prop' dec' asBool' proof' toDec' : VExpr}
-    (w : Reflection.WF c reflect)
-    (w' : Condition.WF c ⟨prop, dec, .reflectNatNat asBool reflect proof⟩)
+    {prop' dec' asBool' proof' toDec' : VExpr}
+    (w : Reflects.WF c)
+    (w' : WF c ⟨prop, dec, .reflectNatNat asBool proof⟩)
     (hw'prop : w'.prop' = prop') (hw'dec : w'.dec' = dec')
     (hIT : w.ITE_T toDec')
     (hpropTrΓ : ∀ {Δ : VLCtx}, TrExprS c.venv c.lparams Δ prop prop')
@@ -2693,7 +2328,7 @@ theorem Condition.WF.reflect_ite {c : VContext} {prop dec asBool proof : Expr}
       E.venv.HasType c.lparams.length Γ ((prop'.app x).app y) (.sort .zero) ∧
       E.venv.HasType c.lparams.length Γ ((asBool'.app x).app y) .bool ∧
       E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-        ((w.type'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)) ∧
+        ((w.type'.app ((asBool'.app x).app y)).app ((prop'.app x).app y)) ∧
       E.venv.IsDefEqU c.lparams.length Γ ((dec'.app x).app y)
         (((toDec'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)).app
           ((proof'.app x).app y))) :
@@ -2709,7 +2344,7 @@ theorem Condition.WF.reflect_ite {c : VContext} {prop dec asBool proof : Expr}
   obtain ⟨_, htdT⟩ := hToDecT c.self hΓm hpT hblT hHT
   have hdecT : VExpr.WF c.venv c.lparams.length (c.withMLC m).vlctx.toCtx
       ((dec'.app x).app y) := ⟨_, VEnv.HasType.defeqU_l c.Ewf hΓm hdecEq.symm htdT⟩
-  -- the conditional at the reflection's decision, then at the condition's own
+  -- the conditional at `Reflects.toDec`'s decision, then at the condition's own
   have hiteT := hIT c.self hΓm hpT hblT hHT hαT'
   obtain ⟨A₀, B₀, hf₀, ha₀⟩ := hiteT.app_inv c.Ewf.ordered hΓm
   have hiteT' : c.venv.HasType c.lparams.length (c.withMLC m).vlctx.toCtx
@@ -2970,10 +2605,10 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
       rename_i hite0
       split <;> [exact .throw; skip]
       exact .pure ⟨w, fun h => absurd h hite0, fun h => absurd h ‹_›⟩
-  | reflectNatNat asBool reflect proof =>
-    obtain ⟨hasBoolOK, hproofOK, htypeOK, htoDecOK, hofTrueOK, hofFalseOK, hiteOK, hditeOK⟩ :=
+  | reflectNatNat asBool proof =>
+    obtain ⟨hasBoolOK, hproofOK, htypeOK, htoDecOK⟩ :=
       ConditionImpl.OK.reflect hok.impl
-    refine .bind (Reflection.check.WF hbool hnil htypeOK hfail) fun _ _ _ hw => ?_
+    refine .bind (Reflects.check.WF hbool hnil htypeOK hfail) fun _ _ _ hw => ?_
     obtain ⟨w⟩ := hw
     -- the gadget `e`, and `e ≡ dec`. Between them these are the whole check: the gadget's
     -- translation reads the four pieces -- `toDec` included, which is why no check of its own
@@ -2992,12 +2627,12 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
         hpropC, habC, hpfC, htoDecC, hgadget⟩ :=
       Condition.check.gadget_pieces w hnil hnat hok.prop hasBoolOK hproofOK htypeOK htoDecOK
         (by rw [← hnil]; exact heTr) (by rw [← hnil']; exact heT)
-    have htoDecTr' : c.TrExprS reflect.toDec toDec' := by
-      show TrExprS c.venv c.lparams c.vlctx reflect.toDec toDec'; rw [hnil]; exact htoDecTr
+    have htoDecTr' : c.TrExprS Reflects.toDec toDec' := by
+      show TrExprS c.venv c.lparams c.vlctx Reflects.toDec toDec'; rw [hnil]; exact htoDecTr
     let +generalize P _ := _
     suffices ∀ {s}, (ite → w.WF_ite toDec' ∧ w.ITE_T toDec') → M.WF c s (F1 ()) P by
       unfold F2; split <;> [skip; exact this (Not.elim ‹_›)]
-      exact (Reflection.checkITE.WF w hnil hbool htoDecTr' htoDecC htypeOK htoDecOK hiteOK
+      exact (Reflects.checkITE.WF w hnil hbool htoDecTr' htoDecC htypeOK htoDecOK
         hfail).bind fun _ _ _ h => this fun _ => h
     intro s hI; unfold F1
     suffices ∀ {s}, (dite → w.WF_dite toDec' ∧ w.DITE_T toDec' ∧
@@ -3005,10 +2640,10 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
         (∀ {Γ : List VExpr}, c.venv.HasType c.lparams.length Γ (.const ``Not [])
           (.forallE (.sort .zero) (.sort .zero)))) → P () s by
       split <;> [skip; exact .pure <| this (s := s) (Not.elim ‹_›)]
-      exact (Reflection.checkNatDITE.WF w hnil hbool hnat htoDecTr' htoDecC htypeOK htoDecOK
-        hditeOK hofTrueOK hofFalseOK hfail).mono fun _ s _ h => this (s := s) fun _ => h
+      exact (Reflects.checkNatDITE.WF w hnil hbool hnat htoDecTr' htoDecC htypeOK htoDecOK
+        hfail).mono fun _ s _ h => this (s := s) fun _ => h
     have htypeTΓ (E : c.Ext) {Γ : List VExpr} : E.venv.HasType c.lparams.length Γ w.type'
-        vexpr(Prop → Bool → Prop) :=
+        vexpr(Bool → Prop → Prop) :=
       VEnv.HasType.weak0 E.wf (E.monoT (by rw [← hnil']; exact w.typeT))
     have hpropTrΓ {Δ : VLCtx} : TrExprS c.venv c.lparams Δ prop prop' :=
       TrExprS.of_nil_any c.Ewf (CondOK.noProj hok.prop) hpropTr
@@ -3027,7 +2662,7 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
         E.venv.HasType c.lparams.length Γ ((prop'.app x).app y) (.sort .zero) ∧
         E.venv.HasType c.lparams.length Γ ((asBool'.app x).app y) .bool ∧
         E.venv.HasType c.lparams.length Γ ((proof'.app x).app y)
-          ((w.type'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)) ∧
+          ((w.type'.app ((asBool'.app x).app y)).app ((prop'.app x).app y)) ∧
         E.venv.IsDefEqU c.lparams.length Γ ((dec'.app x).app y)
           (((toDec'.app ((prop'.app x).app y)).app ((asBool'.app x).app y)).app
             ((proof'.app x).app y)) := by
@@ -3036,11 +2671,11 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
       have ⟨h1, h2, h3, _, h4⟩ := hgadget E hΓ hx hy
       refine ⟨h1, h2, h3, .trans E.wf hΓ ?_ ⟨_, h4⟩⟩
       simpa [VExpr.appN] using hed'.appN E.wf hΓ (vs := [x, y])  ⟨_, h4.hasType.1⟩ |>.symm
-    let himpl' : ReflectNatNat.WF c asBool reflect proof := {
+    let himpl' : ReflectNatNat.WF c asBool proof := {
       asBool' := asBool', proof' := proof', hreflect := w
       hAsBool := by rw [VContext.TrExprS, hnil]; exact habTr
       hProof := by rw [VContext.TrExprS, hnil]; exact hpfTr }
-    let w' : Condition.WF c ⟨prop, dec, .reflectNatNat asBool reflect proof⟩ := {
+    let w' : Condition.WF c ⟨prop, dec, .reflectNatNat asBool proof⟩ := {
       prop' := prop', dec' := dec', himpl := himpl', hdec := hdecTr
       hprop := by show TrExprS c.venv c.lparams c.vlctx prop prop'; rw [hnil]; exact hpropTr
       vnil := hnil
@@ -3082,7 +2717,7 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
       refine Condition.WF.reflect_iteEval E w (hI hite).1 (hI hite).2 (htypeTΓ E)
         (H E) b hΓ hxT hyT ?_ ?_ <;> simpa [VExpr.appN]
     · refine ⟨Condition.WF.reflect_dite w w' rfl hnil hnat
-        (hD hdite).1 (hD hdite).2.1 (hD hdite).2.2.1 (hD hdite).2.2.2
+        (hD hdite).2.1 (hD hdite).2.2.1 (hD hdite).2.2.2
         hpropTrΓ hdecTrΓ htypeTΓ H, ?_, fun E Γ args' hΓ hargsT => ?_⟩
       -- the same equation as a fact about `VExpr`s, which is what a closed-off conditional needs
       · intro E Γ args' t' e' be b hΓ hargsT happly hbe hwf
@@ -3094,5 +2729,5 @@ theorem Condition.check.WF {c : VContext} {s : VState} {cond : Condition}
       · -- and `dec` at those arguments is well typed, since `e ≡ dec` makes it `toDec`'s
         cases hargsT with | cons hxT h2; cases h2 with | cons hyT h4; cases h4
         have ⟨hpT, hblT, hHT, hdecEq⟩ := H E hΓ hxT hyT
-        obtain ⟨_, h⟩ := Reflection.WF.DITE_T.toDecT (hD hdite).2.1 E hΓ hpT hblT hHT
+        obtain ⟨_, h⟩ := (hD hdite).2.1.toDecT E hΓ hpT hblT hHT
         exact ⟨_, VEnv.HasType.defeqU_l E.wf hΓ hdecEq.symm h⟩
