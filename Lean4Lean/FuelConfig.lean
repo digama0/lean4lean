@@ -22,8 +22,6 @@ structure FuelConfig where
   whnfEager   : Nat := 1000000
   /-- `lazyDeltaReduction.loop`. -/
   lazyDelta   : Nat := 1000
-  /-- `etaExpand.loop.loop2`. -/
-  etaExpand   : Nat := 1000
   /-- Starting fuel for `Methods.withFuel` (bounds mutual whnf/isDefEq depth). -/
   recDepth    : Nat := 50000
   /-- Shared fuel for the structural loops in `Inductive/Add.lean`. -/

@@ -968,28 +968,6 @@ def ensureForall (t : Expr) (s := t) : M Expr := (ensureForallCore t s).run
 /-- Ensures that `e` is a type/proposition. If it is not, throws an error. -/
 def ensureType (e : Expr) (inferOnly := true) : M Expr := do ensureSort (← inferType e inferOnly) e
 
-def etaExpand (e : Expr) : M Expr :=
-  let rec loop fvars
-  | .lam name dom body bi => do
-    let d := dom.instantiateRev fvars
-    withLocalDecl name bi d fun fv => do
-      let fvars := fvars.push fv
-      loop fvars body
-  | it => do
-    let itType ← whnf <| ← inferType <| it.instantiateRev fvars
-    if !itType.isForall then return e
-    let rec loop2 fvars args
-    | 0, _ => throw .deepRecursion
-    | fuel + 1, .forallE name dom body bi => do
-      let d := dom.instantiateRev fvars
-      withLocalDecl name bi d fun arg => do
-        let fvars := fvars.push arg
-        let args := args.push arg
-        loop2 fvars args fuel <| ← whnf <| body.instantiate1 arg
-    | _, it => return (← getLCtx).mkLambda fvars (mkAppN it args)
-    loop2 fvars #[] (← readThe Context).fuel.etaExpand itType
-  loop #[] e
-
 -- for testing:
 
 -- example : "hi" = sorry := by
