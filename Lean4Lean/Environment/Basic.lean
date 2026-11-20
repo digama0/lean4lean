@@ -70,6 +70,8 @@ def empty (mainModule : Name) (stage₁ := false) (trustLevel : UInt32 := 0) : E
     (const2ModIdx := {})
     (extensions := #[])
     (irBaseExts := #[])
+    (extGens := #[])
+    (trackedGen := 0)
     (header := EnvironmentHeader.mk
       (mainModule := mainModule)
       (trustLevel := trustLevel)
@@ -77,6 +79,7 @@ def empty (mainModule : Name) (stage₁ := false) (trustLevel : UInt32 := 0) : E
       (imports := #[])
       (regions := #[])
       (modules := #[])
+      (moduleNames := #[])
       (moduleName2Idx := {})
       (importAllModules := #[])
       (moduleData := #[]))
@@ -126,6 +129,8 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
     (const2ModIdx := const2ModIdx)
     (extensions := #[])
     (irBaseExts := #[])
+    (extGens := #[])
+    (trackedGen := 0)
     (header := EnvironmentHeader.mk
       (mainModule := mainModule)
       (trustLevel := trustLevel)
@@ -133,6 +138,7 @@ def finalizeImport (s : ImportState) (imports : Array Import) (mainModule : Name
       (imports := imports)
       (regions := modules.flatMap (parts · |>.map (·.2)))
       (modules := modules.map toEffectiveImport)
+      (moduleNames := modules.map (·.module))
       (moduleName2Idx := moduleName2Idx)
       (importAllModules := #[])
       (moduleData := moduleData))
