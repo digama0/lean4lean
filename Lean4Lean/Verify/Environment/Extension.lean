@@ -139,7 +139,7 @@ theorem insertDefs_wf : ∀ {cis : List DefinitionVal} {C : ConstMap}, C.WF →
   | d :: ds, C, hC, hfr, hnd => by
     rw [List.map_cons, List.nodup_cons] at hnd
     refine insertDefs_wf (cis := ds) (hC.insert _ _ (hfr _ (.head _))) (fun e he => ?_) hnd.2
-    rw [hC.find?_insert, if_neg]; · exact hfr e (.tail _ he)
+    rw [hC.find?_insert, ite_eq_right]; · exact hfr e (.tail _ he)
     simp only [beq_iff_eq]; intro hh
     exact hnd.1 (List.mem_map.2 ⟨e, he, hh.symm⟩)
 
@@ -183,7 +183,7 @@ theorem TrEnv'.ignoreDefs : ∀ {vs : List DefinitionVal} {C : ConstMap},
     have H' := TrEnv'.ignore (ci := .defnInfo d) (hfr _ (.head _)) (hvis _ (.head _)) H
     show TrEnv' safety (insertDefs (SMap.insert C d.name (.defnInfo d)) ds) Q _
     refine TrEnv'.ignoreDefs (fun e he => hvis e (.tail _ he)) (fun e he => ?_) hnd.2 H'
-    rw [H.map_wf.find?_insert, if_neg]; · exact hfr e (.tail _ he)
+    rw [H.map_wf.find?_insert, ite_eq_right]; · exact hfr e (.tail _ he)
     simp only [beq_iff_eq]; intro hh
     exact hnd.1 (List.mem_map.2 ⟨e, he, hh.symm⟩)
 
@@ -193,7 +193,7 @@ theorem Environment.find?_add_of_ne {env : Environment} (mapWF : env.constants.W
   have hnone : env.constants.find? ci.name = none := by rwa [← mapWF.find?'_eq_find?]
   have mapWF' := mapWF.insert ci.name ci hnone
   change SMap.find?' (env.constants.insert ci.name ci) n = none
-  rw [mapWF'.find?'_eq_find?, mapWF.find?_insert, if_neg (by simpa using hne)]
+  rw [mapWF'.find?'_eq_find?, mapWF.find?_insert, ite_eq_right (by simpa using hne)]
   rwa [Kernel.Environment.find?, mapWF.find?'_eq_find?] at h
 
 /-- Data produced by `addMutual`'s header loop for one block member. -/
@@ -284,9 +284,9 @@ theorem addMutualBlock.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   obtain ⟨ves', hves'⟩ := VEnvs.axiom_of_choice hves'
   have hbaseSf (sf) (hv : sf ≤ bs) : ∃ b, (ves.venv sf).addConsts cis = some b ∧
       ves'.venv sf = b.addDefEqs cis := by
-    have h := hves' sf; rw [if_pos hv] at h; exact h
+    have h := hves' sf; rw [ite_eq_left hv] at h; exact h
   have hsame (sf) (hv : ¬ sf ≤ bs) : ves'.venv sf = ves.venv sf := by
-    have h := hves' sf; rwa [if_neg hv] at h
+    have h := hves' sf; rwa [ite_eq_right hv] at h
   refine ⟨ves', ?_, fun sf => by
     by_cases hv : sf ≤ bs
     · obtain ⟨b, hb, heq⟩ := hbaseSf sf hv
@@ -364,9 +364,9 @@ theorem addConstCore.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   obtain ⟨ves', hves'⟩ := VEnvs.axiom_of_choice hves'
   have hadd (safety) (hvisible : safety ≤ ci.safety) :
       (ves.venv safety).addConst ci.name ci'.toVConstant = some (ves'.venv safety) := by
-    have h := hves' safety; unfold VEnv.AddConst at h; rw [if_pos hvisible] at h; exact h.2.2
+    have h := hves' safety; unfold VEnv.AddConst at h; rw [ite_eq_left hvisible] at h; exact h.2.2
   have hsame (safety) (hvisible : ¬ safety ≤ ci.safety) : ves'.venv safety = ves.venv safety := by
-    have h := hves' safety; unfold VEnv.AddConst at h; rwa [if_neg hvisible] at h
+    have h := hves' safety; unfold VEnv.AddConst at h; rwa [ite_eq_right hvisible] at h
   refine ⟨ves', ?_, hves'⟩
   exact {
     tr {safety} := by
@@ -437,11 +437,11 @@ theorem addDef.WF {env : Environment} {ves : VEnvs} (wf : ves.WF env)
   have hbase (safety) (hvisible : safety ≤ (ConstantInfo.defnInfo v).safety) :
       ∃ base, (ves.venv safety).addConst v.name ci'.toVConstant = some base ∧
         ves'.venv safety = base.addDefEq ci'.toDefEq := by
-    have h := hves' safety; unfold VEnv.AddDef at h; rw [if_pos hvisible] at h
+    have h := hves' safety; unfold VEnv.AddDef at h; rw [ite_eq_left hvisible] at h
     obtain ⟨base, _, _, hadd, heq⟩ := h; exact ⟨base, hadd, heq⟩
   have hsame (safety) (hvisible : ¬ safety ≤ (ConstantInfo.defnInfo v).safety) :
       ves'.venv safety = ves.venv safety := by
-    have h := hves' safety; unfold VEnv.AddDef at h; rwa [if_neg hvisible] at h
+    have h := hves' safety; unfold VEnv.AddDef at h; rwa [ite_eq_right hvisible] at h
   refine ⟨ves', ?_, hves'⟩
   refine {
     tr {safety} := by

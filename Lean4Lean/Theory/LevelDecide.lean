@@ -197,7 +197,7 @@ theorem leB_iff : leB a b ↔ a ≤ b := by
     simp only [Atom.Valid] at hx'; simp only [Atom.eval, hls hx'.1, hx'.2]; simp; omega
   | (some i, _), (some j, _), hx', hy', hxy =>
     simp only [Atom.Valid, Atom.le, decide_eq_true_eq] at hx' hy' hxy
-    simp only [Atom.eval, hls hx'.1, hls hy'.1, hx'.2, hy'.2, if_true, Option.some.injEq]
+    simp only [Atom.eval, hls hx'.1, hls hy'.1, hx'.2, hy'.2, ite_true, Option.some.injEq]
     by_cases e : i = j <;> simp_all <;> omega
 
 instance : DecidableRel (α := VLevel) (· ≤ ·) := fun _ _ => decidable_of_iff _ leB_iff

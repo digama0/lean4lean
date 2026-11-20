@@ -60,7 +60,7 @@ def toCtorWhenStruct (inductName : Name) (e : Expr) : m Expr := do
     return e
   let eType ← whnf (← inferType e)
   if !eType.getAppFn.isConstOf inductName then return e
-  let .sort u ← whnf (← inferType eType) | unreachable!
+  let .sort u ← whnf (← inferType eType) | return e
   unless u.isNeverZero do return e
   return expandEtaStruct env eType e
 

@@ -244,7 +244,7 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
   split <;> rename_i hle2
   · -- `bb ≤ x`: the recursive call is at `x - bb`, which the `Nat.sub` reflection turns into a
     -- literal
-    simp only [Nat.ble_eq_true_of_le hle2, if_true] at hstep2 hwfr2
+    simp only [Nat.ble_eq_true_of_le hle2, ite_true] at hstep2 hwfr2
     have hbeta := (VExpr.WF.betaU c.Ewf trivial hwfr2).2
     simp only [VExpr.inst, hHinst, VExpr.inst_lift, hgoC.instN_eq (Nat.zero_le _),
       VExpr.closedN_natLit.instN_eq (Nat.zero_le _)] at hbeta
@@ -262,7 +262,7 @@ theorem checkNatFuelRec.WF {c : VContext} {ite : Bool}
     simp only [VExpr.appN] at hcong
     exact ⟨_, (hstep2.trans c.Ewf trivial hbeta).trans c.Ewf trivial (hHcong hga2.2.2.2.2.2 hcong)⟩
   · -- `x < bb`: the recursion stops at the caller's own value
-    rw [if_neg (mt Nat.le_of_ble_eq_true hle2)] at hstep2 hwfr2
+    rw [ite_eq_right (mt Nat.le_of_ble_eq_true hle2)] at hstep2 hwfr2
     refine hstep2.trans c.Ewf trivial ?_
     have hbeta := (VExpr.WF.betaU c.Ewf trivial hwfr2).2
     rw [VExpr.inst_eq, VExpr.subst_subst, VExpr.Subst.lift_comp_one] at hbeta
@@ -321,7 +321,7 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
       mkAppB, mkAppN, succ, one, zero, FVarsIn, Level.hasMVar']
     refine ⟨?_, ?_⟩ <;> simp_all
   · intro _ _ _ _ hX hfv _ _ heq; cases TrExprS.fvar_uniq hX hfv; rw [heq]; exact ⟨_, hlitT _ []⟩
-  · rw [id, Nat.mod_eq x bb, if_pos ⟨hbb, hle⟩]
+  · rw [id, Nat.mod_eq_ite x bb, ite_eq_left ⟨hbb, hle⟩]
   intro m2 cwf2 idx idy hx2 hy le' go' w hite hdite hleC hgoC hleTΓ hgoTrΓ hgoTΓ hγ2 hxs hys
     e1' e1Ty' he1Tr he1T heq1 hfuel
   haveI : ctx.MLCWF m2 := cwf2
@@ -403,12 +403,12 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   cases hb1 : Nat.ble b (k+1) with
   | false =>
     -- `succ k < b`, so the answer is `succ k` itself
-    simp only [hb1, Bool.false_eq_true, if_false] at hstep1
+    simp only [hb1, Bool.false_eq_true, ite_false] at hstep1
     rcases Nat.lt_or_ge (k+1) b with h | h
     · rwa [show Nat.mod (k+1) b = k+1 from Nat.mod_eq_of_lt h]
     · rw [Nat.ble_eq_true_of_le h] at hb1; cases hb1
   | true
-  simp only [hb1, if_true] at hstep1 hwfr1
+  simp only [hb1, ite_true] at hstep1 hwfr1
   refine hstep1.trans ctx.Ewf trivial ?_
   -- the inner conditional, at `1` and `b`
   obtain ⟨pf1, hev2⟩ := hdite.2.1 ctx.self (Γ := []) (args' := [.natLit 1, .natLit b])
@@ -421,16 +421,16 @@ theorem checkNatMod.WF {ves : VEnvs} (wf : ves.WF env)
   | false =>
     -- `b = 0`, and `succ k % 0 = succ k`
     let 0 := b
-    simp only [Bool.false_eq_true, if_false] at hwfr2 ⊢
+    simp only [Bool.false_eq_true, ite_false] at hwfr2 ⊢
     have hbeta := (hwfr2.betaU ctx.Ewf trivial).2
     simp only [VExpr.inst, VExpr.closedN_natLit.instN_eq (Nat.zero_le _)] at hbeta
     rw [show Nat.mod (k+1) 0 = k+1 from Nat.mod_zero _]
     exact hbeta
   | true =>
-    simp only [hb2, if_true] at hwfr2 ⊢
+    simp only [hb2, ite_true] at hwfr2 ⊢
     have hbeta := (hwfr2.betaU ctx.Ewf trivial).2
     simp only [VExpr.inst, VExpr.instVar, hgoC.instN_eq (Nat.zero_le _), VExpr.liftN_zero,
-      VExpr.closedN_natLit.instN_eq (Nat.zero_le _), Nat.lt_irrefl, if_false, if_true] at hbeta
+      VExpr.closedN_natLit.instN_eq (Nat.zero_le _), Nat.lt_irrefl, ite_false, ite_true] at hbeta
     have hwfgo : ctx.WF₀ _ :=
       ⟨_, VEnv.HasType.defeqU_l ctx.Ewf trivial hbeta hwfr2.choose_spec⟩
     refine hbeta.trans ctx.Ewf trivial ?_
@@ -471,7 +471,7 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
     cases TrExprS.unique (by simp [TrExprS.IsUnique, zero]) hX (zerob (c := ctx) hnat).trS
     simp only [zerob, TrTerm.natZero, TrTerm.of, VExpr.subst, VExpr.natZero]
     exact ⟨_, hlitT 0 []⟩
-  · rw [Nat.div_eq x bb, if_pos ⟨hbb, hle⟩]
+  · rw [Nat.div_eq_ite x bb, ite_eq_left ⟨hbb, hle⟩]
   intro m2 cwf2 idx idy hx2 hy le' go' w _ hdite hleC hgoC hleTΓ hgoTrΓ hgoTΓ hγ2 hxs hys
     e1' e1Ty' he1Tr he1T heq1 hfuel
   haveI : ctx.MLCWF m2 := cwf2
@@ -537,11 +537,11 @@ theorem checkNatDiv.WF {ves : VEnvs} (wf : ves.WF env)
     have := (hwfr.betaU ctx.Ewf trivial).2
     simpa [VExpr.natLit, VExpr.natZero, Nat.div_zero, Nat.div]
   | true =>
-    simp only [hb, if_true] at hstep1 hwfr
+    simp only [hb, ite_true] at hstep1 hwfr
     have ⟨hpf1T, hbeta⟩ := hwfr.betaU ctx.Ewf trivial
     simp only [VExpr.inst, VExpr.instVar, hgoC.instN_eq (Nat.zero_le _),
       VExpr.closedN_natLit.instN_eq (Nat.zero_le _)] at hbeta
     refine hbeta.trans ctx.Ewf trivial ?_
-    simp only [Nat.lt_irrefl, if_false, if_true, VExpr.liftN_zero] at hbeta ⊢
+    simp only [Nat.lt_irrefl, ite_false, ite_true, VExpr.liftN_zero] at hbeta ⊢
     exact hfuel (a+1) b a pf1 _ (Nat.le_of_ble_eq_true hb) (Nat.lt_succ_self _)
       ⟨_, VEnv.HasType.defeqU_l ctx.Ewf trivial hbeta hwfr.choose_spec⟩

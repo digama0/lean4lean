@@ -258,7 +258,7 @@ private theorem mkData_flags (H : br ≤ 2 ^ 20 - 1) :
     (mkData h br d fv ev lv lp).hasExprMVar = ev ∧
     (mkData h br d fv ev lv lp).hasLevelMVar = lv ∧
     (mkData h br d fv ev lv lp).hasLevelParam = lp := by
-  rw [mkData_eq, mkData', if_pos H]
+  rw [mkData_eq, mkData', ite_eq_left H]
   simp [Data.hasFVar, Data.hasExprMVar, Data.hasLevelMVar, Data.hasLevelParam,
     (· == ·), ← UInt64.toBitVec_inj]
   have hh : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 :=
@@ -310,7 +310,7 @@ private theorem mkData_flags_of_false (br d h) :
     (mkData h br d false false false false).hasLevelParam = false := by
   by_cases H : br ≤ 2 ^ 20 - 1
   · exact mkData_flags H
-  · rw [mkData_eq, mkData', if_neg H]
+  · rw [mkData_eq, mkData', ite_eq_right H]
     exact ⟨rfl, rfl, rfl, rfl⟩
 
 private theorem mkData_hasFVar_of_false (br d h) :
@@ -339,7 +339,7 @@ private theorem mkAppData_flag (i : Nat) (hi : i < 4) :
       (Nat.pow 2 20 - 1).toUInt32 := by
     dsimp +instances [instMaxUInt32, maxOfLe]
     split <;> exact Data.looseBVarRange_le
-  rw [mkAppData_eq, mkAppData', if_pos hm]
+  rw [mkAppData_eq, mkAppData', ite_eq_left hm]
   generalize (mixHash fData aData).toUInt32 = hash
   have : i = 0 ∨ i = 1 ∨ i = 2 ∨ i = 3 := by omega
   rcases this with rfl | rfl | rfl | rfl
@@ -585,7 +585,7 @@ attribute [local reducible] Data
 
 theorem mkData_looseBVarRange (H : br ≤ 2^20 - 1) :
     (mkData h br d fv ev lv lp).looseBVarRange.toNat = br := by
-  rw [mkData_eq, mkData', if_pos H]; dsimp only [Data.looseBVarRange, -Nat.reducePow]
+  rw [mkData_eq, mkData', ite_eq_left H]; dsimp only [Data.looseBVarRange, -Nat.reducePow]
   have : br.toUInt64.toUInt32.toNat = br := by simp; omega
   refine .trans ?_ this; congr 2
   refine UInt64.eq_of_toBitVec_eq ?_
@@ -617,7 +617,7 @@ theorem mkAppData_looseBVarRange :
     (mkAppData fData aData).looseBVarRange = max fData.looseBVarRange aData.looseBVarRange := by
   have hm : max fData.looseBVarRange aData.looseBVarRange ≤ (Nat.pow 2 20 - 1).toUInt32 := by
     dsimp +instances [instMaxUInt32, maxOfLe]; split <;> exact Data.looseBVarRange_le
-  rw [mkAppData_eq, mkAppData', if_pos hm]
+  rw [mkAppData_eq, mkAppData', ite_eq_left hm]
   simp [Data.looseBVarRange] at hm
   dsimp only [Data.looseBVarRange, -Nat.reducePow]
   generalize (max .. : UInt32) = m at *
@@ -804,15 +804,15 @@ theorem liftLooseBVars_liftLooseBVars {e : Expr} {n1 n2 k1 k2 : Nat}
   induction e generalizing k1 k2 with simp [liftLooseBVars', ← Nat.add_assoc, *]
   | bvar i =>
     split <;> rename_i h
-    · rw [if_pos (Nat.lt_of_lt_of_le h h1)]
-    · rw [if_neg (by omega), Nat.add_assoc]
+    · rw [ite_eq_left (Nat.lt_of_lt_of_le h h1)]
+    · rw [ite_eq_right (by omega), Nat.add_assoc]
 
 theorem liftLooseBVars_add {e : Expr} {n1 n2 k : Nat} :
     liftLooseBVars' (liftLooseBVars' e k n1) k n2 = liftLooseBVars' e k (n1+n2) := by
   induction e generalizing k with simp [liftLooseBVars', *]
   | bvar i =>
     split; · rfl
-    rw [if_neg (by omega), Nat.add_assoc]
+    rw [ite_eq_right (by omega), Nat.add_assoc]
 
 theorem liftLooseBVars_comm (e : Expr) (n1 n2 k1 k2 : Nat) (h : k2 ≤ k1) :
     liftLooseBVars' (liftLooseBVars' e k1 n1) k2 n2 =
@@ -821,11 +821,11 @@ theorem liftLooseBVars_comm (e : Expr) (n1 n2 k1 k2 : Nat) (h : k2 ≤ k1) :
     simp [liftLooseBVars', Nat.add_assoc, Nat.succ_le_succ, *]
   | bvar i =>
     split <;> rename_i h'
-    · rw [if_pos (c := _ < n2 + k1)]; split
+    · rw [ite_eq_left (c := _ < n2 + k1)]; split
       · exact Nat.lt_add_left _ h'
       · omega
     · have := mt (Nat.lt_of_lt_of_le · h) h'
-      rw [if_neg (by omega), if_neg this, if_neg (by omega), Nat.add_right_comm]
+      rw [ite_eq_right (by omega), ite_eq_right this, ite_eq_right (by omega), Nat.add_right_comm]
 
 theorem liftLooseBVars_looseBVarRange :
     (liftLooseBVars' e k n).looseBVarRange' ≤ e.looseBVarRange' + n := by
@@ -866,7 +866,7 @@ theorem instantiate1'_liftLooseBVars :
   induction e generalizing s <;>
     simp [*, instantiate1', liftLooseBVars', Nat.add_right_comm _ _ 1]
   rename_i i; split; · simp; omega
-  · rw [if_neg (by omega), if_neg (by omega)]; rfl
+  · rw [ite_eq_right (by omega), ite_eq_right (by omega)]; rfl
 
 theorem instantiate1'_liftLooseBVars_0 (e1 e2 : Expr) :
     instantiate1' (liftLooseBVars' e1 k 1) e2 k = e1 := by
@@ -888,7 +888,7 @@ theorem instantiate1'_instantiate1' (e1 e2 e3 j) :
       simp [instantiate1', h1, h1', Nat.lt_of_succ_lt_succ h]
   split <;> rename_i h'
   · subst i
-    rw [if_neg (by omega), if_neg (by omega)]
+    rw [ite_eq_right (by omega), ite_eq_right (by omega)]
     simp [instantiate1']
     suffices liftLooseBVars' _ _ (j+1) = _ by
       rw [this]; exact instantiate1'_liftLooseBVars_0 ..
@@ -897,9 +897,9 @@ theorem instantiate1'_instantiate1' (e1 e2 e3 j) :
     let i+1 := i
     have hk := Nat.lt_of_add_lt_add_right hk
     simp [instantiate1']
-    rw [if_neg (by omega), if_neg (by omega), if_neg (by omega), if_neg (by omega)]
+    rw [ite_eq_right (by omega), ite_eq_right (by omega), ite_eq_right (by omega), ite_eq_right (by omega)]
     simp [instantiate1']
-    rw [if_neg (Nat.lt_asymm hk), if_neg (Nat.ne_of_gt hk)]
+    rw [ite_eq_right (Nat.lt_asymm hk), ite_eq_right (Nat.ne_of_gt hk)]
 
 @[simp] def instantiateRevList (e : Expr) : List Expr → (k :_:= 0) → Expr
   | [], _ => e
@@ -1004,7 +1004,7 @@ theorem abstract1_comm {e : Expr} {k} (h : a ≠ b) :
     abstract1 a (abstract1 b e k) k =
     abstract1 b (abstract1 a e k) (k+1) := by
   induction e generalizing k with simp_all [abstract1]
-  | bvar => split <;> [rw [if_pos]; simp [*]] <;> omega
+  | bvar => split <;> [rw [ite_eq_left]; simp [*]] <;> omega
   | fvar => split <;> split <;> simp_all [abstract1]
 
 theorem abstract1_abstractList {e : Expr} {as : List FVarId} {k} (H : a ∉ as) :
@@ -1072,7 +1072,7 @@ theorem abstractList_eq_self {e : Expr} {as : List FVarId} {k}
 theorem lowerLooseBVars_eq_instantiate (h : e.hasLooseBVar' k = false) :
     e.lowerLooseBVars' (k + 1) 1 = instantiate1' e v k := by
   induction e generalizing k with simp_all [hasLooseBVar', lowerLooseBVars', instantiate1']
-  | bvar j => split <;> [rw [if_pos (by omega)]; rw [if_neg (by omega)]]
+  | bvar j => split <;> [rw [ite_eq_left (by omega)]; rw [ite_eq_right (by omega)]]
 
 theorem hasLooseBVar_of_ge_looseBVarRange {e : Expr} (h : e.looseBVarRange' ≤ k) :
     e.hasLooseBVar' k = false := by
@@ -1085,12 +1085,12 @@ theorem abstract1_lower {e : Expr} (h : e.hasLooseBVar' k₁ = false) (hk : k₁
   induction e generalizing k₁ k₂ with simp_all [abstract1, lowerLooseBVars', hasLooseBVar']
   | bvar i =>
     split <;> [skip; split]
-    · rw [if_pos (c := i < k₂ + 1) (by omega), if_pos (by omega)]; simp [*]
-    · rw [if_pos (c := i < _) (by omega)]; simp [*]
-    · rw [if_neg (c := i < _) (by omega), if_neg (by omega)]; omega
+    · rw [ite_eq_left (c := i < k₂ + 1) (by omega), ite_eq_left (by omega)]; simp [*]
+    · rw [ite_eq_left (c := i < _) (by omega)]; simp [*]
+    · rw [ite_eq_right (c := i < _) (by omega), ite_eq_right (by omega)]; omega
   | fvar b =>
     split <;> simp [lowerLooseBVars', -right_eq_ite_iff]
-    rw [if_neg (by omega)]
+    rw [ite_eq_right (by omega)]
 
 variable (red : Bool) (s : Name → Level) in
 def instantiateLevelParamsCore' : Expr → Expr

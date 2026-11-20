@@ -302,7 +302,7 @@ theorem TrLCtx'.find?_of_mem (henv : env.WF) (H : TrLCtx' env Us ds Δ)
             h3.weakFV henv (.skip_fvar _ _ .refl) this
         · simpa [LocalDecl.type, VLocalDecl.type, VLocalDecl.depth] using
             h2.weakFV henv (.skip_fvar _ _ .refl) this
-    · simp at nd; rw [if_neg (by simpa using Ne.symm (nd.1 _ hm))]; simp
+    · simp at nd; rw [ite_eq_right (by simpa using Ne.symm (nd.1 _ hm))]; simp
       have ⟨_, _, h1, h2, h3, h4, h5⟩ := h1.find?_of_mem henv nd.2 hm
       refine ⟨_, _, ⟨_, _, h1, rfl, rfl⟩, fun _ h => h2 _ h.1, fun _ h => h3 _ h.1, ?_, ?_⟩
       · simpa using h4.weakFV henv (.skip_fvar _ _ .refl) this

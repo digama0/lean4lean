@@ -243,7 +243,7 @@ theorem toNode.WF :
     refine ⟨fun h => ?_, fun ⟨_, h⟩ => ?_⟩
     · obtain h | rfl := Nat.lt_succ_iff_lt_or_eq.1 h
       · have ⟨e', h⟩ := wf.wf.1 h
-        exists e'; rwa [if_neg]; intro eq
+        exists e'; rwa [ite_eq_right]; intro eq
         rename_i hn _ _; exact hn _ (Std.HashMap.getElem?_congr eq ▸ h)
       · exact ⟨e, by simp⟩
     · split at h
@@ -256,7 +256,7 @@ theorem toNode.WF :
     · cases h2; cases Nat.ne_of_gt (wf.wf.2 ⟨_, h1⟩) (h3.symm.eq_of_ge_size (Nat.le_refl _))
     · exact wf.defeq h1 h2 h3
   · simp [Std.HashMap.getElem?_insert]
-    intro _ _ h; rwa [if_neg]; rename_i h' _ _
+    intro _ _ h; rwa [ite_eq_right]; rename_i h' _ _
     exact fun eq => h' _ (Std.HashMap.getElem?_congr eq ▸ h)
 
 theorem isEquiv.WF :

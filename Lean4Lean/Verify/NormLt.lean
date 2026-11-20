@@ -278,14 +278,14 @@ private theorem normLtAux_eq : ∀ (l₁ : Level) (k₁ : Nat) (l₂ : Level) (k
     exact hns
   | case3 a b k₁ c d k₂ hbeq | case6 a b k₁ c d k₂ hbeq =>
     -- the two levels are syntactically equal: the offsets decide
-    rw [normLtAux, if_pos hbeq, Bool.eq_iff_iff]
+    rw [normLtAux, ite_eq_left hbeq, Bool.eq_iff_iff]
     cases eq_of_beq hbeq
     show _ ↔ ((baseCmp _ _).then (compare (0 + k₁) (0 + k₂)) == _)
     rw [baseCmp_refl]
     simp only [decide_eq_true_eq, Ordering.then, Nat.zero_add, beq_iff_eq, Nat.compare_eq_lt]
   | case4 a b k₁ c d k₂ hbeq hne ih | case7 a b k₁ c d k₂ hbeq hne ih =>
     -- the heads differ, so the head comparison decides
-    rw [normLtAux, if_neg (by simpa using hbeq), if_pos hne, ih]
+    rw [normLtAux, ite_eq_right (by simpa using hbeq), ite_eq_left hne, ih]
     have hne' : a ≠ c := by simpa using hne
     have hac : normCmp a c ≠ .eq := fun h => hne' (eq_of_normCmp_eq h)
     simp only [base_max, base_imax, off_max, off_imax, Nat.add_zero, Nat.zero_add]
@@ -294,7 +294,7 @@ private theorem normLtAux_eq : ∀ (l₁ : Level) (k₁ : Nat) (l₂ : Level) (k
     cases h : normCmp a c <;> simp_all [Ordering.then]
   | case5 a b k₁ c d k₂ hbeq hne ih | case8 a b k₁ c d k₂ hbeq hne ih =>
     -- the heads agree, so the tail comparison decides
-    rw [normLtAux, if_neg (by simpa using hbeq), if_neg hne, ih]
+    rw [normLtAux, ite_eq_right (by simpa using hbeq), ite_eq_right hne, ih]
     have hac : a = c := by simpa using hne
     subst hac
     have hne' : b ≠ d := by rintro rfl; exact absurd (by simp) hbeq
@@ -305,19 +305,19 @@ private theorem normLtAux_eq : ∀ (l₁ : Level) (k₁ : Nat) (l₂ : Level) (k
     rw [normCmp_refl]
     cases h : normCmp b d <;> simp_all [Ordering.then]
   | case9 n₁ k₁ n₂ k₂ hbeq =>
-    rw [normLtAux, if_pos hbeq, Bool.eq_iff_iff]
+    rw [normLtAux, ite_eq_left hbeq, Bool.eq_iff_iff]
     cases eq_of_beq hbeq
     show _ ↔ ((baseCmp (Level.param n₁) (Level.param n₁)).then (compare (0 + k₁) (0 + k₂)) == _)
     rw [baseCmp_refl]
     simp only [decide_eq_true_eq, Ordering.then, Nat.zero_add, beq_iff_eq, Nat.compare_eq_lt]
   | case11 n₁ k₁ n₂ k₂ hbeq =>
-    rw [normLtAux, if_pos hbeq, Bool.eq_iff_iff]
+    rw [normLtAux, ite_eq_left hbeq, Bool.eq_iff_iff]
     cases eq_of_beq hbeq
     show _ ↔ ((baseCmp (Level.mvar n₁) (Level.mvar n₁)).then (compare (0 + k₁) (0 + k₂)) == _)
     rw [baseCmp_refl]
     simp only [decide_eq_true_eq, Ordering.then, Nat.zero_add, beq_iff_eq, Nat.compare_eq_lt]
   | case10 n₁ k₁ n₂ k₂ hbeq =>
-    rw [normLtAux, if_neg hbeq]
+    rw [normLtAux, ite_eq_right hbeq]
     show _ = ((baseCmp (Level.param n₁) (Level.param n₂)).then
       (compare (0 + k₁) (0 + k₂)) == _)
     rw [baseCmp]
@@ -325,7 +325,7 @@ private theorem normLtAux_eq : ∀ (l₁ : Level) (k₁ : Nat) (l₂ : Level) (k
       hbeq (LawfulBEqCmp.compare_eq_iff_beq.1 h)
     cases h : Name.cmp n₁ n₂ <;> simp_all [Name.lt, Ordering.then]
   | case12 n₁ k₁ n₂ k₂ hbeq =>
-    rw [normLtAux, if_neg hbeq]
+    rw [normLtAux, ite_eq_right hbeq]
     show _ = ((baseCmp (Level.mvar n₁) (Level.mvar n₂)).then
       (compare (0 + k₁) (0 + k₂)) == _)
     rw [baseCmp]

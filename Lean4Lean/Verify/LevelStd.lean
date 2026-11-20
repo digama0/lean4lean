@@ -285,7 +285,7 @@ theorem eval_mkMaxAux {lvls : Array Level}
   | zero =>
     have hie : i = lvls.size := by omega
     obtain ⟨hp, hpk⟩ := hp (by omega)
-    rw [Total.mkMaxAux.eq_def, dif_neg (by omega), eval_accMax]
+    rw [Total.mkMaxAux.eq_def, dite_eq_right (by omega), eval_accMax]
     have hlast : i - 1 < lvls.size := by omega
     have hdrop : lvls.toList.drop (i-1) = [lvls[i-1]] := by
       rw [List.drop_eq_getElem_cons (by simp only [Array.length_toList]; omega)]
@@ -487,7 +487,7 @@ theorem eval_normalize_total {l : Level} : eval ρ μ (Total.normalize l) = eval
         (by simp only [mkLevelMax, Total.size]; omega) rfl]
       have := isNeverZero_sound (ρ := ρ) (μ := μ) hnz
       simp only [mkLevelMax, eval, Nat.imax]
-      rw [if_neg (by omega)]
+      rw [ite_eq_right (by omega)]
     · rw [eval_addOffset, eval_mkIMaxAux, IH _ (by omega) rfl, IH _ (by omega) rfl]; rfl
   · grind [base_of_not_cheap]
 

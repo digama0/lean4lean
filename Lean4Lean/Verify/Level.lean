@@ -39,7 +39,7 @@ set_option allowUnsafeReducibility true
 attribute [local reducible] Data
 
 theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := by
-  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
+  rw [mkData_eq, mkData', ite_eq_right (Nat.not_lt.2 (Nat.le_sub_one_of_lt H)), Data.depth]
   have : d.toUInt64.toUInt32.toNat = d := by simp; omega
   refine .trans ?_ this; congr 2
   rw [← UInt64.toBitVec_inj]
@@ -56,7 +56,7 @@ theorem mkData_depth (H : d < 2 ^ 24) : (mkData h d hmv hp).depth.toNat = d := b
   bv_decide
 
 theorem mkData_hasParam (H : d < 2 ^ 24) : (mkData h d hmv hp).hasParam = hp := by
-  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
+  rw [mkData_eq, mkData', ite_eq_right (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
   simp [Data.hasParam, (· == ·), ← UInt64.toBitVec_inj]
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
   have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
@@ -71,7 +71,7 @@ theorem mkData_hasParam (H : d < 2 ^ 24) : (mkData h d hmv hp).hasParam = hp := 
   cases hp <;> decide
 
 theorem mkData_hasMVar (H : d < 2 ^ 24) : (mkData h d hmv hp).hasMVar = hmv := by
-  rw [mkData_eq, mkData', if_neg (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
+  rw [mkData_eq, mkData', ite_eq_right (Nat.not_lt.2 (Nat.le_sub_one_of_lt H))]
   simp [Data.hasMVar, (· == ·), ← UInt64.toBitVec_inj]
   have : h.toUInt32.toUInt64.toBitVec ≤ 0xffffffff#64 := Nat.le_of_lt_succ h.toUInt32.1.1.2
   have hb : ∀ (b : Bool), b.toUInt64.toBitVec ≤ 1#64 := by decide
@@ -235,7 +235,7 @@ def evalParam (x : Name) : Nat :=
   let i := ls.idxOf x; if i < ls.length then ρ[i]?.getD 0 else 0
 
 theorem evalParam_eq (hv : ls.idxOf x < ls.length) :
-    evalParam ls ρ x = ρ[List.idxOf x ls]?.getD 0 := if_pos hv
+    evalParam ls ρ x = ρ[List.idxOf x ls]?.getD 0 := ite_eq_left hv
 
 variable (ls : List Name) (ρ : List Nat) in
 def VarNode.eval (l : VarNode) : Nat := evalParam ls ρ l.var + l.offset
@@ -520,7 +520,7 @@ theorem NormLevel.addConst_eval (H : path = [] ∨ acc.contains path) (wf : acc.
         obtain ⟨hc, hv⟩ := this _ rfl nz
         exact ⟨Nat.le_trans (Nat.le_max_right ..) hc, hv⟩
       · exact this _ h nz
-    · have := H path; rw [if_pos rfl] at this; split at this <;>
+    · have := H path; rw [ite_eq_left rfl] at this; split at this <;>
         refine Nat.le_trans ?_ ((this _ rfl nz).1)
       · exact Nat.le_refl _
       · exact Nat.le_max_left ..
@@ -1145,13 +1145,13 @@ theorem NormLevel.subsumption_covers {s : NormLevel} :
       cases h₀.symm.trans h₁
       by_cases hmin : y ∈ (acc.minimize q n₁).var
       · refine ⟨q, _, y, ?_, hmin, e, hqp⟩
-        rw [subsumption_step_get?, if_pos rfl, if_neg]
+        rw [subsumption_step_get?, ite_eq_left rfl, ite_eq_right]
         simp only [Node.isEmpty, Bool.and_eq_true, List.isEmpty_iff, not_and]
         rintro - he; simp [he] at hmin
       · obtain ⟨p₂, n₂, z, h₂, hz, e₂, hne, hp₂⟩ := minimize_var_dominated (hy₀ _ hy) hmin
-        exact ⟨p₂, n₂, z, by rw [subsumption_step_get?, if_neg (Ne.symm hne)]; exact h₂,
+        exact ⟨p₂, n₂, z, by rw [subsumption_step_get?, ite_eq_right (Ne.symm hne)]; exact h₂,
           hz, e₂.trans e, fun w hw => hqp _ (hp₂ _ hw)⟩
-    · exact ⟨q, m, y, by rw [subsumption_step_get?, if_neg (Ne.symm hqp₁)]; exact hq,
+    · exact ⟨q, m, y, by rw [subsumption_step_get?, ite_eq_right (Ne.symm hqp₁)]; exact hq,
         hy, e, hqp⟩
 
 theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
@@ -1186,12 +1186,12 @@ theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
     · simp [Node.isEmpty, List.isEmpty_iff] at he; simp [Node.eval, he.1, he.2]
     · have hget : (if (acc.minimize p₁ n₁).isEmpty then acc.erase p₁
           else acc.insert p₁ (acc.minimize p₁ n₁)).get? p₁ = some (acc.minimize p₁ n₁) := by
-        rw [hins p₁, if_pos rfl, if_neg he]
+        rw [hins p₁, ite_eq_left rfl, ite_eq_right he]
       have := H _ _ hget
       rw [evalPath_le] at this; exact this nz
   refine ih _ nd.2 (fun p n h => ?_) (fun p n h v hv => ?_) ((ext_le fun m => ?_).trans eq)
   · have hne : p₁ ≠ p := fun e => nd.1 (by rw [e]; exact List.mem_map_of_mem h)
-    exact (hins p).trans (if_neg hne) ▸ hl _ _ (.tail _ h)
+    exact (hins p).trans (ite_eq_right hne) ▸ hl _ _ (.tail _ h)
   · rw [hins p] at h; split at h
     · split at h <;> [cases h; skip]
       cases h; rename_i hp _; subst hp
@@ -1202,8 +1202,8 @@ theorem NormLevel.subsumption_eval {s : NormLevel} (wf : s.WF) :
       · subst hp; cases h₁.symm.trans h
         refine evalPath_le.2 fun nz => ?_
         refine (minimize_eval_iff wfa h₁ (fun q nq hne hq => ?_) nz).1 (hmin_le _ H nz)
-        exact H _ _ ((hins q).trans (if_neg hne.symm) ▸ hq)
-      · exact H p n ((hins p).trans (if_neg (Ne.symm hp)) ▸ h)
+        exact H _ _ ((hins q).trans (ite_eq_right hne.symm) ▸ hq)
+      · exact H p n ((hins p).trans (ite_eq_right (Ne.symm hp)) ▸ h)
     · rw [hins p] at h; split at h <;> [skip; exact H _ _ h]
       split at h <;> [cases h; skip]
       cases h; rename_i hp _; subst hp
@@ -1392,7 +1392,7 @@ theorem Tree.reifyChild_ge {const : Nat} : ∀ child : List (Name × Tree),
     -- either this child is the witness, in which case it is emitted as `n + const`, or the
     -- witness is further down and the fold maxes its value in
     obtain h | h := h
-    · rw [h]; dsimp only; rw [if_pos (Nat.le_refl const)]
+    · rw [h]; dsimp only; rw [ite_eq_left (Nat.le_refl const)]
       simp only [evalOpt_some, eval_mkMax, eval_addOffset, Level.eval]
       omega
     · have ih := reifyChild_ge (ls := ls) (ρ := ρ) (μ := μ) child h
@@ -2631,7 +2631,7 @@ theorem evalParam_map {f : Name → Nat} (hx : x ∈ ls) : evalParam ls (ls.map 
 
 theorem evalParam_not_mem (hx : x ∉ ls) : evalParam ls ρ x = 0 := by
   simp only [evalParam]
-  rw [if_neg fun h => hx (List.idxOf_lt_length_iff.1 h)]
+  rw [ite_eq_right fun h => hx (List.idxOf_lt_length_iff.1 h)]
 
 theorem evalParam_map_pos {f : Name → Nat} (h : 0 < evalParam ls (ls.map f) z) :
     z ∈ ls ∧ 0 < f z := by
@@ -2741,7 +2741,7 @@ theorem NormLevel.separation {l₁ l₂ : NormLevel}
       · have hoff := (bound_spec hq).2 _ hv
         have hev : evalParam ls (ls.map fun z =>
             if z = x then l₂.bound + k + 2 else if z ∈ p then 1 else 0) v.var ≤ 1 :=
-          evalParam_map_le (by rw [if_neg hvx]; split <;> omega)
+          evalParam_map_le (by rw [ite_eq_right hvx]; split <;> omega)
         simp only [VarNode.eval] at hvlt
         exact absurd hvlt (by omega)
 
@@ -2990,7 +2990,7 @@ theorem VarNode.find?_addVar {vs : List VarNode} {x y : Name} {k : Nat} (hvs : V
     · rw [List.find?_cons_of_neg (by simp [h]), List.find?_cons_of_neg (by simp [← e, h])]
   · have hne := name_lt_ne (Std.OrientedCmp.lt_of_gt hc)
     by_cases hy : w.var = y
-    · rw [if_neg (hy ▸ hne.symm), List.find?_cons_of_pos (by simp [hy]),
+    · rw [ite_eq_right (hy ▸ hne.symm), List.find?_cons_of_pos (by simp [hy]),
         List.find?_cons_of_pos (by simp [hy])]
     · rw [List.find?_cons_of_neg (by simp [hy]), ih hvs.of_cons,
         List.find?_cons_of_neg (by simp [hne]), List.find?_cons_of_neg (by simp [hy])]
@@ -2999,9 +2999,9 @@ theorem NormLevel.addConst_flat {s : NormLevel} {c k : Nat} {vs : List VarNode}
     (h : s.Flat c vs) : (addConst k [] s).Flat (Nat.max c k) vs := by
   by_cases hk : k = 0
   · subst hk
-    rw [show Nat.max c 0 = c from Nat.max_zero c, NormLevel.addConst, if_pos (by simp)]
+    rw [show Nat.max c 0 = c from Nat.max_zero c, NormLevel.addConst, ite_eq_left (by simp)]
     exact h
-  · rw [NormLevel.addConst, if_neg (by simp [hk])]
+  · rw [NormLevel.addConst, ite_eq_right (by simp [hk])]
     intro p
     rw [Std.TreeMap.get?_eq_getElem?, Std.TreeMap.getElem?_alter]
     have hmax : ¬Nat.max c k = 0 := by simp only [Nat.max_eq_zero_iff]; simp [hk]
@@ -3011,8 +3011,8 @@ theorem NormLevel.addConst_flat {s : NormLevel} {c k : Nat} {vs : List VarNode}
       simp only [flatGet]
       by_cases hc0 : c = 0
       · subst hc0
-        rw [if_pos rfl, if_neg hmax, show Nat.max 0 k = k from Nat.zero_max k]
-      · rw [if_neg hc0, if_neg hmax, show Nat.max c k = Nat.max k c from Nat.max_comm c k]
+        rw [ite_eq_left rfl, ite_eq_right hmax, show Nat.max 0 k = k from Nat.zero_max k]
+      · rw [ite_eq_right hc0, ite_eq_right hmax, show Nat.max c k = Nat.max k c from Nat.max_comm c k]
     · rw [← Std.TreeMap.get?_eq_getElem?, h p]
       match p with
       | [] => cases he Std.ReflOrd.compare_self
@@ -3028,7 +3028,7 @@ theorem NormLevel.addNode_flat {s : NormLevel} {c k : Nat} {vs : List VarNode} {
     subst hp
     rw [← Std.TreeMap.get?_eq_getElem?, h [x]]
     simp only [flatGet]
-    rw [VarNode.find?_addVar hvs, if_pos rfl]
+    rw [VarNode.find?_addVar hvs, ite_eq_left rfl]
     match hfd : vs.find? (·.var == x) with
     | none => rw [hfd]; rfl
     | some v =>
@@ -3043,7 +3043,7 @@ theorem NormLevel.addNode_flat {s : NormLevel} {c k : Nat} {vs : List VarNode} {
     | [y] =>
       have hxy : x ≠ y := by rintro rfl; exact he Std.ReflOrd.compare_self
       simp only [flatGet]
-      rw [VarNode.find?_addVar hvs, if_neg hxy]
+      rw [VarNode.find?_addVar hvs, ite_eq_right hxy]
     | _ :: _ :: _ => rfl
 
 /-- The entries of a flat map: the root carries the constant (and is absent when it is zero),
@@ -3124,7 +3124,7 @@ theorem NormLevel.subsumption_flat {s : NormLevel} {c : Nat} {vs : List VarNode}
     · simp [Node.isEmpty, hc0]
     · simp [Node.isEmpty]
   rw [NormLevel.subsumption_step_get?, hmin acc hacc p₁ n₁ h₁, hne]
-  simp only [Bool.false_eq_true, if_false]
+  simp only [Bool.false_eq_true, ite_false]
   split <;> rename_i hp
   · subst hp; exact h₁.symm
   · exact hacc p
@@ -3221,16 +3221,16 @@ theorem normalizeAux_congr {A B : NormLevel} (h : ∀ p, A.get? p = B.get? p) (u
     show (if k = 0 then acc else NormLevel.addVar v k path acc).get? p =
       (if k = 0 then B else NormLevel.addVar v k path B).get? p
     by_cases hk : k = 0
-    · simp only [if_pos hk]; exact h p
-    · simp only [if_neg hk]; exact NormLevel.addVar_congr h v k path p
+    · simp only [ite_eq_left hk]; exact h p
+    · simp only [ite_eq_right hk]; exact NormLevel.addVar_congr h v k path p
   | case10 path k acc a => simp only [normalizeAux]; exact h
   | case11 path k acc a b => simp only [normalizeAux]; exact h
   | case12 path k acc v path' he =>
     simp only [normalizeAux, he]
     exact NormLevel.addNode_congr (NormLevel.addConst_congr h k path) v k path'
-  | case13 path acc v he => simp only [normalizeAux, he, if_pos]; exact h
+  | case13 path acc v he => simp only [normalizeAux, he, ite_eq_left]; exact h
   | case14 path k acc v he hk =>
-    simp only [normalizeAux, he, if_neg hk]
+    simp only [normalizeAux, he, ite_eq_right hk]
     exact NormLevel.addVar_congr h v k path
 
 theorem NormLevel.subsumption_congr {A B : NormLevel} (h : ∀ p, A.get? p = B.get? p) :
@@ -3334,14 +3334,14 @@ private theorem NormLevel.Flat.toList {s : NormLevel} {c : Nat} {vs : List VarNo
     · intro x hx y hy
       by_cases hc0 : c = 0
       · simp [hc0] at hx
-      · rw [if_neg hc0, List.mem_singleton] at hx
+      · rw [ite_eq_right hc0, List.mem_singleton] at hx
         subst hx
         obtain ⟨w, -, rfl⟩ := List.mem_map.1 hy
         exact compare_nil_cons
   · rw [Std.TreeMap.mem_toList_iff_getElem?_eq_some, ← Std.TreeMap.get?_eq_getElem?, h p]
     constructor <;> intro hp
     · obtain ⟨rfl, rfl, hc0⟩ | ⟨v, hv, rfl, rfl⟩ := flatGet_eq_some hp
-      · exact List.mem_append_left _ (by rw [if_neg hc0]; exact List.mem_singleton.2 rfl)
+      · exact List.mem_append_left _ (by rw [ite_eq_right hc0]; exact List.mem_singleton.2 rfl)
       · exact List.mem_append_right _ (List.mem_map.2 ⟨v, hv, rfl⟩)
     · obtain hp | hp := List.mem_append.1 hp
       · split at hp <;> [cases hp; rename_i hc]
@@ -3374,8 +3374,8 @@ theorem NormLevel.Flat.toTree {s : NormLevel} {c : Nat} {vs : List VarNode}
   have key := flat_toTree_fold s c [] vs [] hvs
     (fun v => NormLevel.Flat.lexChain_singleton hvs h) (by simp)
   by_cases hc0 : c = 0
-  · subst hc0; rw [if_pos rfl]; exact key
-  · rw [if_neg hc0]; exact key
+  · subst hc0; rw [ite_eq_left rfl]; exact key
+  · rw [ite_eq_right hc0]; exact key
 
 /-- The sublevels of a single node keyed at `p`. -/
 def Node.HasSub (p : List Name) (n : Node) : Sub → Prop
@@ -3460,7 +3460,7 @@ theorem NormLevel.minimize_exact_aux {acc : NormLevel} {p₁ : List Name} {n₁ 
         obtain ⟨hsub, hlek⟩ := hle
         have hgate : subset compare p₂ p₁ := subset_of_sorted hs₂ hs₁ hsub
         have hsu : Node.subsume p₁ n p₂ n₂ = n.subsumeBy (p₁.length == p₂.length) n₂ := by
-          rw [Node.subsume, if_pos hgate]
+          rw [Node.subsume, ite_eq_left hgate]
         by_cases hlen : p₁.length = p₂.length
         · have hqq : p₂ = p₁ := subset_eq hgate hlen.symm
           have hn₂ : n₂ = n₁ := by
@@ -3487,7 +3487,7 @@ theorem NormLevel.minimize_exact_aux {acc : NormLevel} {p₁ : List Name} {n₁ 
         obtain ⟨hsub, hlek⟩ := hle
         have hgate : subset compare p₂ p₁ := subset_of_sorted hs₂ hs₁ hsub
         have hsu : Node.subsume p₁ n p₂ n₂ = n.subsumeBy (p₁.length == p₂.length) n₂ := by
-          rw [Node.subsume, if_pos hgate]
+          rw [Node.subsume, ite_eq_left hgate]
         rw [hsu] at hck
         have hkc : n.const = k := by
           obtain hc | hc := Node.subsumeBy_const_cases (same := p₁.length == p₂.length) n n₂
@@ -3504,7 +3504,7 @@ theorem NormLevel.minimize_exact_aux {acc : NormLevel} {p₁ : List Name} {n₁ 
         obtain ⟨hsub, rfl, hlek⟩ := hle
         have hgate : subset compare p₂ p₁ := subset_of_sorted hs₂ hs₁ hsub
         have hsu : Node.subsume p₁ n p₂ n₂ = n.subsumeBy (p₁.length == p₂.length) n₂ := by
-          rw [Node.subsume, if_pos hgate]
+          rw [Node.subsume, ite_eq_left hgate]
         by_cases hlen : p₁.length = p₂.length
         · have hqq : p₂ = p₁ := subset_eq hgate hlen.symm
           have hn₂ : n₂ = n₁ := by
@@ -3578,7 +3578,7 @@ theorem NormLevel.subsumption_reduced {s : NormLevel}
     refine ih _ nd.2 (fun pn' h => ?_) (fun p n h => ?_) (fun p n h => ?_)
       (fun p n hp hnp t t' hnt ht' hle => ?_)
     · have hne : p₂ ≠ pn'.1 := fun e => nd.1 (e ▸ List.mem_map_of_mem (f := Prod.fst) h)
-      rw [hstep, if_neg hne]
+      rw [hstep, ite_eq_right hne]
       exact hl _ (.tail _ h)
     · rw [hstep] at h; split at h <;> rename_i hpe
       · split at h <;> [cases h; skip]

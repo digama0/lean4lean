@@ -985,7 +985,7 @@ theorem WShape.mk_ctor {n} (l : List (Shape n)) (wf : Shape.WF (n := n+1) (.ctor
   · simp [ListNonZero]; let ⟨_, h1, h2⟩ := wf.2 h; exact ⟨_, ⟨_, h1, rfl⟩, h2⟩
   · simp [WShape.ctor]; congr 1; rw [List.map_pmap, List.pmap_eq_map, List.map_id']
 
-theorem WShape.ctor_eq_ctor' : ctor c l h = ctor' c l := by rw [ctor', dif_pos]
+theorem WShape.ctor_eq_ctor' : ctor c l h = ctor' c l := by rw [ctor', dite_eq_left]
 
 def WShapeFun.bot {n : Nat} : WShapeFun n := ⟨.bot, .bot⟩
 
@@ -1220,7 +1220,7 @@ theorem WShape.lift_eq_lam' {s : WShape (n+1)} (le : n ≤ m)
   have eq := congrArg (·.1) eq; simp [lift_val (Nat.succ_le_succ le)] at eq
   unfold lam' at eq; split at eq <;> rename_i h <;>
     obtain ⟨⟨⟩, wf⟩ := s <;> simp [lam, Shape.lift] at eq <;> cases eq
-  · refine .inr ⟨⟨_, wf.1⟩, ?_⟩; rw [lam', dif_pos (by exact (ShapeFun.NonZero.lift_iff le).1 h)]
+  · refine .inr ⟨⟨_, wf.1⟩, ?_⟩; rw [lam', dite_eq_left (by exact (ShapeFun.NonZero.lift_iff le).1 h)]
     exact ⟨rfl, WShapeFun.ext (WShapeFun.lift_val le ▸ rfl)⟩
   · refine .inl ⟨rfl, WShapeFun.LE.def'.2 fun x y h => ?_⟩; rename_i hn
     refine ⟨_, _, WShapeFun.mem_bot.2 ⟨rfl, rfl⟩, Shape.bot_le, Decidable.by_contra (hn ⟨_, h, ·⟩)⟩
@@ -1234,8 +1234,8 @@ theorem WShape.lift_ctor {c : Name} {l : List (WShape n)} {hc} (le : n ≤ m) :
 @[simp] theorem WShape.lift_ctor' {c : Name} {l : List (WShape n)} (le : n ≤ m) :
     (WShape.ctor' c l).lift (m+1) = .ctor' c (l.map (.lift m)) := by
   ext1; simp [ctor']; split <;> rename_i hc <;>
-    [rw [dif_pos ((WShape.ListNonZero.lift_iff le).2 ∘ hc)];
-     rw [dif_neg (mt ((WShape.ListNonZero.lift_iff le).1 ∘ ·) hc)]] <;>
+    [rw [dite_eq_left ((WShape.ListNonZero.lift_iff le).2 ∘ hc)];
+     rw [dite_eq_right (mt ((WShape.ListNonZero.lift_iff le).1 ∘ ·) hc)]] <;>
     simp [lift_val (Nat.succ_le_succ le), ctor, Shape.lift]
   congr 2; ext1 x; simp [lift_val le]
 
@@ -1632,7 +1632,7 @@ theorem WShape.join_val {a b : WShape n} (h : a.Compat b) : (a.join b).1 = a.1.j
   simp [WShape.join, h]
 theorem WShape.Join.le (H : WShape.Join x y z) : x ≤ z ∧ y ≤ z := (H _).1 .rfl
 theorem WShape.Join.mk (h : x.Compat y) : WShape.Join x y (x.join y) := by
-  simp only [join, dif_pos h]; exact (WShape.join_prop.2 h).2
+  simp only [join, dite_eq_left h]; exact (WShape.join_prop.2 h).2
 
 theorem WShape.Join.compat (H : WShape.Join x y z) : x.Compat y :=
   WShape.Compat.iff.2 ⟨z, (H _).1 .rfl⟩
@@ -1646,8 +1646,8 @@ theorem WShape.Join.iff {x y z : WShape n} :
 theorem WShape.lift_join {x y : WShape n} (le : n ≤ m) :
     (x.join y).lift m = (x.lift m).join (y.lift m) := by
   simp [join]; split <;> rename_i h
-  · rw [dif_pos ((WShape.Compat.lift le).2 h)]; ext1; simp [lift_val le, Shape.lift_join le]
-  · rw [dif_neg (mt (WShape.Compat.lift le).1 h), lift_bot]
+  · rw [dite_eq_left ((WShape.Compat.lift le).2 h)]; ext1; simp [lift_val le, Shape.lift_join le]
+  · rw [dite_eq_right (mt (WShape.Compat.lift le).1 h), lift_bot]
 
 theorem WShapeFun.join_mem {f : WShapeFun n}
     (hx : (x, y) ∈ f) (hy : (x', y') ∈ f) (hc : x.Compat x') :
@@ -1761,7 +1761,7 @@ def WShapeFun.join (x y : WShapeFun n) : WShapeFun n :=
   else .bot
 
 theorem WShapeFun.join_val {x y : WShapeFun n} (H : Compat x y) :
-    (x.join y).1 = x.1.join Shape.join y.1 := by simp [join, dif_pos H]
+    (x.join y).1 = x.1.join Shape.join y.1 := by simp [join, dite_eq_left H]
 
 @[simp] theorem WShape.forallE_join_forallE {a a' : WShape n} {f f' : WShapeFun n}
     (hc1 : a.Compat a') (hc2 : WShapeFun.Compat f f') :
@@ -2117,7 +2117,7 @@ theorem WShape.Join.lam' {a b c : WShapeFun n} :
     unfold WShape.lam'; split <;> rename_i h
     · simp [← NonZero.not_iff, h, WShape.LE.def, lam, Shape.lam_le]
       obtain ⟨_, wf⟩ := z; rintro _ h1 ⟨⟩; refine hz ⟨⟨_, wf.1⟩, ?_⟩
-      rw [WShape.lam', dif_pos (by exact wf.2)]; rfl
+      rw [WShape.lam', dite_eq_left (by exact wf.2)]; rfl
     · simp [NonZero.not_iff.1 h]
   simp only [this, H _]
 
@@ -2153,19 +2153,19 @@ theorem WShape.ctor'_join {l l' : List (WShape n)} {c : Name}
         exact ⟨w, .inr hwL, hwnz⟩
   ext1; rw [join_val (Compat.ctor'_ctor' h)]
   unfold WShape.ctor'; split <;> rename_i h1 <;> split <;> rename_i h2
-  · rw [dif_pos (key.mpr (.inl h1))]; simp [ctor, Shape.join]
+  · rw [dite_eq_left (key.mpr (.inl h1))]; simp [ctor, Shape.join]
     congr 1; clear h1 h2 key
     induction h with
     | nil => rfl
     | @cons x y L L' hh _ ih => simp [WShape.join_val hh, ih]
-  · rw [dif_pos (key.mpr (.inl h1))]; simp [ctor, bot, Shape.join_bot]
+  · rw [dite_eq_left (key.mpr (.inl h1))]; simp [ctor, bot, Shape.join_bot]
     have h2' : ∀ x ∈ l', x.1 ≤ Shape.bot := by simpa [ListNonZero] using fun hNZ => h2 fun _ => hNZ
     congr 1; clear h1 h2 key
     induction h with | nil => rfl | @cons x y L L' hh _ ih
     have hy_bot : y.1 = .bot := Shape.le_bot.1 (h2' y (.head _))
     simp [WShape.join_val hh, hy_bot, Shape.join_bot]
     exact ih (fun z hz => h2' z (.tail _ hz))
-  · rw [dif_pos (key.mpr (.inr h2))]; simp [ctor, bot, Shape.bot_join]
+  · rw [dite_eq_left (key.mpr (.inr h2))]; simp [ctor, bot, Shape.bot_join]
     have h1' : ∀ x ∈ l, x.1 ≤ Shape.bot := by
       have ⟨_, hNZ⟩ := Decidable.not_imp_iff_and_not.1 h1
       simp [ListNonZero] at hNZ; exact hNZ
@@ -2174,7 +2174,7 @@ theorem WShape.ctor'_join {l l' : List (WShape n)} {c : Name}
     have hx_bot : x.1 = .bot := Shape.le_bot.1 (h1' x (.head _))
     simp [WShape.join_val hh, hx_bot, Shape.bot_join]
     exact ih fun z hz => h1' z (.tail _ hz)
-  · rw [dif_neg fun hh => (key.mp hh).elim h1 h2]; rfl
+  · rw [dite_eq_right fun hh => (key.mp hh).elim h1 h2]; rfl
 
 theorem WShape.ctor_le :
     WShape.ctor c l h ≤ s ↔ ∃ l' h', s = WShape.ctor c l' h' ∧ l.Forall₂ (· ≤ ·) l' := by
@@ -2194,7 +2194,7 @@ theorem WShape.ctor'_le_ctor' (h : List.Forall₂ (· ≤ ·) l l') :
     WShape.ctor' c l ≤ WShape.ctor' c l' := by
   unfold ctor'
   split <;> rename_i h1 <;> [skip; exact WShape.bot_le]
-  rw [dif_pos (WShape.ListNonZero.mono h ∘ h1)]
+  rw [dite_eq_left (WShape.ListNonZero.mono h ∘ h1)]
   exact Shape.LE.def.2 ⟨rfl, by simpa⟩
 
 theorem TShape.ctor_not_le_forallE :
@@ -2876,7 +2876,7 @@ theorem WShape.HasType.unfold {m a : WShape n} (H : HasType m a) : HasTypeU m a 
   | forallE h => exact .forallE (a := ⟨_, mwf.1⟩) (b := ⟨_, mwf.2⟩) h
   | lam h =>
     have := HasTypeU.lam (f := ⟨_, mwf.1⟩) (a := ⟨_, awf.1⟩) (b := ⟨_, awf.2⟩) h
-    rwa [lam', dif_pos (by exact mwf.2)] at this
+    rwa [lam', dite_eq_left (by exact mwf.2)] at this
   | ctor => exact (WShape.mk_ctor _ mwf).2 ▸ .ctor
   | indTy => exact .indTy
 
@@ -3027,7 +3027,7 @@ theorem WShape.HasType.join {m₁ m₂ a : WShape n} (hJ : m₁.Compat m₂)
   | ctor =>
     (cases h2.unfold with | bot => exact h1 | ctor | _) <;>
       simp only [Shape.Compat, Bool.and_eq_true, decide_eq_true_eq] at hJ
-    simp only [Shape.join, if_pos hJ.1]; exact Shape.HasType.unfold_iff.2 .ctor
+    simp only [Shape.join, ite_eq_left hJ.1]; exact Shape.HasType.unfold_iff.2 .ctor
   | indTy =>
     (cases h2.unfold with | bot => exact h1 | indTy => rfl | _) <;>
       simp only [Shape.Compat, Bool.false_eq_true] at hJ
@@ -4092,7 +4092,7 @@ theorem LE_Interp.subst : LE_Interp ρ m (M.subst σ) ↔
     intro ρ m N H M σ eq
     have bvar {ρ : Valuation} {m N} {σ : Subst} {j} (hσj : σ j = N) (hN : LE_Interp ρ m N) :
         ∃ ρ', LE_Interp ρ' m (.bvar j) ∧ ∀ i, LE_Interp ρ (ρ' i) (σ i) := by
-      refine ⟨fun k => if k = j then m else ⟨0, .bot⟩, .bvar (if_pos rfl ▸ .rfl), fun k => ?_⟩
+      refine ⟨fun k => if k = j then m else ⟨0, .bot⟩, .bvar (ite_eq_left rfl ▸ .rfl), fun k => ?_⟩
       dsimp; split <;> rename_i ek
       · subst ek; exact hσj ▸ hN
       · exact .bot
@@ -4465,14 +4465,14 @@ theorem LE_Interp.sound_lam
     have hc : f₁.Compat sf := by
       rw [WShapeFun.compat_single]; intro ⟨xj, yj⟩ hmem hc
       have ⟨z, hz1, hz2⟩ := WShape.Compat.iff.1 hc
-      have sf_app : sf.app z = e'.2.lift k := by rw [WShapeFun.single_app, if_pos hz2]
+      have sf_app : sf.app z = e'.2.lift k := by rw [WShapeFun.single_app, ite_eq_left hz2]
       refine .mono ?_ (sf_app ▸ .rfl) <| WShape.Compat.T_iff.2 <|
         (hi1_any z).compat (sf_app ▸ he'_at_x'.mono_l (Valuation.LE.push.2 ⟨.rfl, hz2.T⟩))
       exact (WShapeFun.app_of_mem hmem).2.trans (WShapeFun.app_mono_r hz1)
     have hcb : b₁.Compat sb := by
       rw [WShapeFun.compat_single]; intro ⟨xj, yj⟩ hmem hc
       have ⟨z, hz1, hz2⟩ := WShape.Compat.iff.1 hc
-      have sb_app : sb.app z = b'.2.lift k := by rw [WShapeFun.single_app, if_pos hz2]
+      have sb_app : sb.app z = b'.2.lift k := by rw [WShapeFun.single_app, ite_eq_left hz2]
       refine .mono ?_ (sb_app ▸ .rfl) <| WShape.Compat.T_iff.2 <|
         (hi2_any z).compat (sb_app ▸ hb'_at_x'.mono_l (Valuation.LE.push.2 ⟨.rfl, hz2.T⟩))
       exact (WShapeFun.app_of_mem hmem).2.trans (WShapeFun.app_mono_r hz1)
@@ -4584,7 +4584,7 @@ theorem LE_Interp.sound_forallE
     have hc : f₁.Compat sf := by
       rw [WShapeFun.compat_single]; intro ⟨xj, yj⟩ hmem hc
       have ⟨z, hz1, hz2⟩ := WShape.Compat.iff.1 hc
-      have sf_app : sf.app z = f'x.2.lift k := by rw [WShapeFun.single_app, if_pos hz2]
+      have sf_app : sf.app z = f'x.2.lift k := by rw [WShapeFun.single_app, ite_eq_left hz2]
       refine .mono ?_ (sf_app ▸ .rfl) <| WShape.Compat.T_iff.2 <|
         (hi1_any z).compat (sf_app ▸ he'_at_x'.mono_l (Valuation.LE.push.2 ⟨.rfl, hz2.T⟩))
       exact (WShapeFun.app_of_mem hmem).2.trans (WShapeFun.app_mono_r hz1)
@@ -4737,7 +4737,7 @@ theorem SoundEq.forallE_inv (H : SoundEq Γ (.forallE A B) (.forallE A' B'))
           Valuation.LE.push.2 ⟨.rfl, (TShape.lift_eqv hk.1.1).1⟩
       · intro x'; simp [WShapeFun.single_app]
         split <;> [rename_i h; exact ⟨_, WShape.bot_le, .bot' b4'.isType, WShape.bot_le⟩]
-        refine ⟨_, h, b4', if_pos ?_ ▸ .rfl⟩; exact .rfl
+        refine ⟨_, h, b4', ite_eq_left ?_ ▸ .rfl⟩; exact .rfl
       · intro x' h1; simp [WShapeFun.single_app]; split <;> [rename_i h2; exact .bot]
         refine h.mono (TShape.lift_eqv hk.1.2).1 |>.mono_l <| Valuation.LE.push.2 ⟨.rfl, ?_⟩
         exact (TShape.LE.lift_l hk.1.1).2 h2
@@ -4780,7 +4780,7 @@ theorem LE_Interp.apps_realize_inv (W : Valuation.Fits Γ₀ Γ ρ)
   have h_lt : rest.length < Ts.length := by omega
   have h_app := ih (k := k + 1) (m := WShape.T (n := _+1) (.forallE .bot (.single .bot m.2)))
     h_k_rest h_fun_ty ?_ |>.forallE_inv.2 (X := a) .bot
-  · rw [WShapeFun.single_app, if_pos .rfl] at h_app
+  · rw [WShapeFun.single_app, ite_eq_left .rfl] at h_app
     exact (h_T_eq W).1 h_app
   · rw [List.drop_eq_getElem_cons h_lt, List.foldr_cons]
     refine .forallE' .bot .bot ?_ ?_
@@ -5153,7 +5153,7 @@ theorem LE_Interp.strongSound (H : Γ ⊢ M ≡ N : A) : StrongSoundEq Γ M N A 
       have := (WShape.HasDom.single (y := m.2.lift k)).2 <| .inl <|
         (TShape.HasType.def hk.2.1 hk.2.2).1 a4
       refine .mono ?_ <| .app' (.lam' (a3.lift hk.2.2) this fun _ hx => ?_) (a2.lift hk.2.1)
-      · rw [WShape.lam'_app, WShapeFun.single_app, if_pos .rfl]; exact (TShape.lift_eqv hk.1).2
+      · rw [WShape.lam'_app, WShapeFun.single_app, ite_eq_left .rfl]; exact (TShape.lift_eqv hk.1).2
       · simp [WShapeFun.single_app]; split <;> [rename_i h; exact .bot]
         refine (h1.lift hk.1).mono_l <| Valuation.LE.push.2 ⟨.rfl, a1.trans ?_⟩
         exact (TShape.LE.lift_l hk.2.1).2 h
@@ -5353,7 +5353,7 @@ def LR0 : LogRel Γ 0 where
       (try exact id) <;> [exact fun _ => trivial; cases le]
   join_ty {A B m₁ m₂} hC hm₁ hm₂ := by
     obtain ⟨⟨⟩, _⟩ := m₁ <;> obtain ⟨⟨⟩, _⟩ := m₂ <;>
-      simp [LR0.TyDefEq, WShape.join, Shape.join, dif_pos hC]
+      simp [LR0.TyDefEq, WShape.join, Shape.join, dite_eq_left hC]
     simp [WShape.Compat, Shape.Compat] at hC; subst hC; simp
     intro u h1 h2 _ h3 h4; exact ⟨u, h1, h2⟩
   whr {M M' N N' A m a} hM hN := by
@@ -5832,7 +5832,7 @@ def LRS (IH : LogRel Γ n) : LogRel Γ (n+1) where
             have le_g := WShape.lam'_le_lam'.1 le
             let ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP⟩ := h
             exact ⟨A₁, A₂, u, v, rA, hA1, hA2, hA₂, hE, hP.mono_l le_g hm_lam hm'_lam⟩
-          · simp only [WShape.lam', dif_neg hg''nz] at hg''
+          · simp only [WShape.lam', dite_eq_right hg''nz] at hg''
             cases WShape.le_bot.1 (hg'' ▸ le)
         · cases hgf'
       | _ => cases hm

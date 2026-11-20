@@ -237,7 +237,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
       simp only [VExpr.lift_subst, VExpr.Subst.cons_tail, hys, VExpr.natZero, VExpr.subst]
       cases g false true <;> simp <;> first | exact hlitR 0 | exact hlitR y
     | false =>
-      simp only [hb0, Bool.false_eq_true, if_false] at hwfif ⊢
+      simp only [hb0, Bool.false_eq_true, ite_false] at hwfif ⊢
       refine hbeta hwfif |>.trans E.wf trivial ?_
       have hx0 : x ≠ 0 := by rintro rfl; simp at hb0
       -- the second condition, `m = 0`, at the same closing
@@ -275,7 +275,7 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
         simp only [VExpr.lift_subst, VExpr.Subst.cons_tail, hxs, VExpr.natZero, VExpr.subst]
         cases g true false <;> simp <;> [exact hlitR 0; exact hlitR x]
       | false =>
-        simp only [hb2, Bool.false_eq_true, if_false] at hwfif2 ⊢
+        simp only [hb2, Bool.false_eq_true, ite_false] at hwfif2 ⊢
         have hy0 : y ≠ 0 := by rintro rfl; simp at hb2
         -- the last conditional: the operator at the two low bits
         obtain ⟨α4', P4, D4, t4', e4', hα4, hP4, hD4, ht4, he4, rfl⟩ := Condition.ite_tr_inv' he2

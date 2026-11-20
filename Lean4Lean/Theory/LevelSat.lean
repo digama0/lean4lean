@@ -188,7 +188,7 @@ theorem eval_foldl_imax_le_of_zero {gs : List VLevel} {c : Nat}
   induction gs generalizing b with | nil => simp at h0 | cons g gs ih
   rw [List.foldl_cons]
   by_cases hz : g.eval ls = 0
-  · have h1 : (VLevel.imax b g).eval ls = 0 := by rw [VLevel.eval, Lean.Nat.imax, if_pos hz]
+  · have h1 : (VLevel.imax b g).eval ls = 0 := by rw [VLevel.eval, Lean.Nat.imax, ite_eq_left hz]
     have h2 := eval_foldl_imax_le (ls := ls) (fun g hg' => hg g (.tail _ hg')) (.imax b g)
     omega
   · obtain ⟨g', h1, h2⟩ := h0
@@ -214,7 +214,7 @@ theorem eval_var_eq {i : Nat} : (var i).eval ls =
     else max 2 (max (ls[yes i]?.getD 0) (ls[no i]?.getD 0)) := by
   simp only [var, VLevel.eval, List.getD_eq_getElem?_getD, Lean.Nat.imax, Nat.max_eq_max, eval_two]
   by_cases h2 : ls[no i]?.getD 0 = 0 <;> by_cases h1 : ls[yes i]?.getD 0 = 0 <;>
-    simp only [h1, h2, if_true, if_false] <;> omega
+    simp only [h1, h2, ite_true, ite_false] <;> omega
 
 theorem yes_le_eval_var {i : Nat} : ls[yes i]?.getD 0 ≤ (var i).eval ls := by
   rw [eval_var_eq]; split <;> [omega; split <;> omega]
@@ -224,7 +224,7 @@ theorem no_le_eval_var {i : Nat} : ls[no i]?.getD 0 ≤ (var i).eval ls := by
 
 theorem two_le_eval_var {i : Nat}
     (h1 : ls[yes i]?.getD 0 ≠ 0) (h2 : ls[no i]?.getD 0 ≠ 0) : 2 ≤ (var i).eval ls := by
-  rw [eval_var_eq, if_neg h2, if_neg h1]; omega
+  rw [eval_var_eq, ite_eq_right h2, ite_eq_right h1]; omega
 
 theorem eval_var_le_one {i : Nat}
     (hex : ls[yes i]?.getD 0 = 0 ∨ ls[no i]?.getD 0 = 0)
@@ -312,15 +312,15 @@ theorem getD_railList_le {a : Nat → Bool} {n j : Nat} : (railList n a)[j]?.get
 
 theorem getD_railList_yes {a : Nat → Bool} {n i : Nat} (hi : i < n) :
     (railList n a)[yes i]?.getD 0 = if a i = true then 1 else 0 := by
-  rw [getD_railList, if_pos (by unfold yes; omega), railVal_yes]
+  rw [getD_railList, ite_eq_left (by unfold yes; omega), railVal_yes]
 
 theorem getD_railList_no {a : Nat → Bool} {n i : Nat} (hi : i < n) :
     (railList n a)[no i]?.getD 0 = if a i = false then 1 else 0 := by
-  rw [getD_railList, if_pos (by unfold no; omega), railVal_no]
+  rw [getD_railList, ite_eq_left (by unfold no; omega), railVal_no]
 
 theorem getD_railList_rail {a : Nat → Bool} {l : Lit n} :
     (railList n a)[rail l]?.getD 0 = if a l.1.val = l.2 then 1 else 0 := by
-  rw [getD_railList, if_pos rail_lt, railVal_rail]
+  rw [getD_railList, ite_eq_left rail_lt, railVal_rail]
 
 /-! ## The reduction -/
 
@@ -350,7 +350,7 @@ theorem equiv_iff_unsat {φ : CNF n} : big φ ≈ small n ↔ ¬Sat φ := by
       (le_eval_foldl_imax (List.forall_mem_map.2 fun C hC => ?_) two)
     obtain ⟨⟨i, l⟩, hl, hal⟩ := ha C hC; dsimp at hal; subst l
     refine eval_clauseLvl_ne_zero.2 ⟨_, hl, ?_⟩
-    rw [getD_railList_rail, if_pos ofFin_val]; nofun
+    rw [getD_railList_rail, ite_eq_left ofFin_val]; nofun
   · -- conversely, any point at which the two levels differ *is* a satisfying assignment
     refine VLevel.equiv_def.2 fun ls => Decidable.by_contra fun hlt => H ?_
     -- a clause level is a max of rails, and `small` dominates every parameter

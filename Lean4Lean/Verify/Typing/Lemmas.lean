@@ -1629,16 +1629,16 @@ theorem TrExprS.abstract (W : VLCtx.Abstract Δ₀ v₀ d₀ dk k Δ₁ Δ) (H :
   induction H generalizing dk k Δ with
   | bvar h1 =>
     exact .bvar <| (W.find? (by nofun)).trans <| by
-      simp; split <;> [skip; rw [if_neg (by omega), if_neg (by omega)]] <;> exact h1
+      simp; split <;> [skip; rw [ite_eq_right (by omega), ite_eq_right (by omega)]] <;> exact h1
   | @fvar _ _ _ fv h1 =>
     if h : fv = v₀ then
       rw [h, W.find?_self] at h1; cases h1
-      rw [Expr.abstract1, if_pos (by simp [h])]
+      rw [Expr.abstract1, ite_eq_left (by simp [h])]
       exact .bvar <| (W.find? (by nofun)).trans (by simpa using W.find?_self)
     else
       have := W.find? (v := .inr fv) (by rintro ⟨⟩; trivial)
       simp at this
-      rw [Expr.abstract1, if_neg]
+      rw [Expr.abstract1, ite_eq_right]
       · exact .fvar (this.trans h1)
       · simp; rintro rfl; trivial
   | sort h1 => exact .sort h1
@@ -2080,7 +2080,7 @@ theorem BetaReduce.cheapBetaReduce (hc : e.Closed) : BetaReduce e e.cheapBetaRed
     refine .mkAppList <| .inst_reduce hl₁ [] h1 (Expr.instantiateList_eq_self h3)
   split <;> [rename_i n; exact .refl]
   have hc := h1.closed hc.getAppFn
-  simp [Closed] at hc; rw [if_pos hc]
+  simp [Closed] at hc; rw [ite_eq_left hc]
   rw [Expr.mkAppRange_eq (l₂ := l₂) (l₃ := []) (by simp [eq]) rfl (by simp [← eq])]
   conv => lhs; rw [← e.mkAppList_getAppArgsList]
   simp [eqr]

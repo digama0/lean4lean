@@ -97,7 +97,7 @@ theorem ProbeBundle.applied (P : ProbeBundle c)
   -- binder is what the instantiation consumes
   have hres := VEnv.HasType.app hFTw hargT
   simp only [VExpr.inst, ← VExpr.lift_liftN', VExpr.inst_liftN, liftVar_zero] at hres
-  simp only [VExpr.instVar, Nat.lt_irrefl, if_false, if_true, VExpr.liftN_zero] at hres
+  simp only [VExpr.instVar, Nat.lt_irrefl, ite_false, ite_true, VExpr.liftN_zero] at hres
   exact ⟨.app hdomTw hargT (P.hdom.weakFV c.Ewf W hΔ) harg,
     ⟨_, .app hdomTw hargT⟩,
     .app hFTw hargT (P.hF.weakFV c.Ewf W hΔ) harg, _, hres⟩
