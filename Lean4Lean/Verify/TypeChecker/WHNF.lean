@@ -145,9 +145,7 @@ theorem whnf'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   have {e e' s n} (he : c.TrExprS e e') : (loop e n).WF c s fun e₁ _ =>
       c.FVarsBelow e e₁ ∧ c.TrExpr e₁ e' := by
     induction n generalizing s e e' with | zero => exact .throw | succ n ih => ?_
-    refine .getEnv <| (whnfCore'.WF he).bind fun e₁ s _ ⟨h1, _, he₁, eq⟩ => ?_
-    refine (M.WF.liftExcept reduceNative.WF).lift.bind fun _ _ _ h3 => ?_
-    split <;> [cases h3 _ rfl; skip]
+    refine (whnfCore'.WF he).bind fun e₁ s _ ⟨h1, _, he₁, eq⟩ => ?_
     refine (reduceNat.WF he₁).bind fun _ _ _ h3 => ?_; split
     · exact .pure ⟨.trans h1 (h3 _ rfl).1, (h3 _ rfl).2.defeq c.Ewf c.Δwf eq⟩
     refine (unfoldDefinition.WF he₁).bind fun _ _ _ H => ?_

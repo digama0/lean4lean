@@ -457,11 +457,7 @@ theorem lazyDeltaReduction.loop.WF {c : VContext} {s : VState}
       refine .pure <| .bool (he₁.trExpr c.Ewf c.Δwf) ⟨_, a1, a2⟩ fun hb => ?_
       exact (h hb).trans c.Ewf c.Δwf a2
     exact hF1
-  intro s; unfold F1; refine .getEnv ?_
-  refine (M.WF.liftExcept reduceNative.WF).lift.bind fun _ _ _ h => ?_
-  split <;> [cases h _ rfl; skip]
-  refine (M.WF.liftExcept reduceNative.WF).lift.bind fun _ _ _ h => ?_
-  split <;> [cases h _ rfl; skip]
+  intro s; unfold F1
   refine (lazyDeltaReductionStep.WF he₁ he₂).bind fun r _ _ h => ?_
   cases r with
   | «continue» =>

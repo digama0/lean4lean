@@ -2,7 +2,6 @@
 
 This is a list of places where lean4lean deliberately has different behavior from the kernel. Unless specified here, any divergence between lean4lean and [lean4](https://github.com/leanprover/lean4/tree/master/src/kernel) is a bug.
 
-* [`Lean4Lean.TypeChecker.Inner.reduceNative`](Lean4Lean/TypeChecker.lean): Lean4lean does not support reduction of `reduceBool`. This would involve implementing verified compilation, which while possible would be an additional chunk of work comparable to this entire repo.
 * [`Lean4Lean.Primitive.checkDef`](Lean4Lean/Primitive.lean), `checkInductive`: Lean does not check that primitives are declared with the correct types and definitional behavior, except in the case of `Eq` which is used in the declaration of `Quot`. This is required for soundness, but Lean is able to get away with it because Lean ships its prelude and using an alternative prelude is not supported.
 * [`Lean4Lean.TypeChecker.Inner.inferType'`](Lean4Lean/TypeChecker.lean), literal case: The original code was not checking that the literal type actually exists. Again, this is okay provided that the prelude is trusted.
 * [`Lean4Lean.TypeChecker.Inner.tryStringLitExpansionCore`](Lean4Lean/TypeChecker.lean): there is a counterproductive `whnf` call in this function which is removed in Lean4lean.
