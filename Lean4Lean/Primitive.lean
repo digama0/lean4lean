@@ -37,24 +37,15 @@ structure Reflection where
   ofFalse : Expr
   toDec : Expr
 
-def Reflection.defn₁ : Reflection where
-  type := q(fun p b => ∀ {q : Prop}, ((b = true → p) → (¬b = true → ¬p) → q) → q)
-  ofTrue := q(fun p (H : ∀ {q : Prop}, ((true = true → p) → (¬true = true → ¬p) → q) → q) =>
-    H fun h _ => h rfl)
-  ofFalse := q(fun p (H : ∀ {q : Prop}, ((false = true → p) → (¬false = true → ¬p) → q) → q) =>
-    H fun _ h => h Bool.noConfusion)
-  toDec := q(fun p b (H : ∀ {q : Prop}, ((b = true → p) → (¬b = true → ¬p) → q) → q) =>
-    if h : b = true then isTrue (H fun h' _ => h' h) else isFalse (H fun _ h' => h' h))
-
-def Reflection.defn₂ : Reflection where
-  type := q(fun p b => ∀ {q : Prop}, ((b = true → p) → (b = false → ¬p) → q) → q)
-  ofTrue := q(fun p (H : ∀ {q : Prop}, ((true = true → p) → (true = false → ¬p) → q) → q) =>
-    H fun h _ => h rfl)
-  ofFalse := q(fun p (H : ∀ {q : Prop}, ((false = true → p) → (false = false → ¬p) → q) → q) =>
-    H fun _ h => h rfl)
-  toDec := q(fun p b (H : ∀ {q : Prop}, ((b = true → p) → (b = false → ¬p) → q) → q) =>
-    b.casesOn (motive := fun b' => b = b' → Decidable p)
-      (fun h => isFalse (H fun _ h' => h' h)) (fun h => isTrue (H fun h' _ => h' h)) rfl)
+/-- The shape of the prelude's decision procedures: `Decidable` is a boolean `decide` together
+with `reflects_decide : Bool.Reflects decide p`, and `Bool.Reflects true p` is `p` and
+`Bool.Reflects false p` is `¬p` by unfolding, so the evidence at a boolean literal is already the
+proof `dite` hands its branch. -/
+def Reflection.intro : Reflection where
+  type := q(fun p b => Bool.Reflects b p)
+  ofTrue := q(fun p (H : Bool.Reflects true p) => H)
+  ofFalse := q(fun p (H : Bool.Reflects false p) => H)
+  toDec := q(fun p b (H : Bool.Reflects b p) => Decidable.intro b H)
 
 def Reflection.check (r : Reflection) (fail : ∀ {α}, M α) : M Unit := do
   unless ← isDefEq (← checkType r.type) q(Prop → Bool → Prop) do fail
@@ -73,18 +64,16 @@ def Condition.natLE : Condition where
   dec := q(Nat.decLe)
   impl := .reflectNatNat
     (asBool := q(Nat.ble))
-    (reflect := .defn₁)
-    (proof := q(fun n m {q : Prop} (H : _ → _ → q) =>
-      H (@Nat.le_of_ble_eq_true n m) (@Nat.not_le_of_not_ble_eq_true n m)))
+    (reflect := .intro)
+    (proof := q(fun n m => (Nat.decLe n m).reflects_decide))
 
 def Condition.natEq : Condition where
   prop := q(@Eq Nat)
   dec := q(Nat.decEq)
   impl := .reflectNatNat
     (asBool := q(Nat.beq))
-    (reflect := .defn₂)
-    (proof := q(fun n m {q : Prop} (H : _ → _ → q) =>
-      H (@Nat.eq_of_beq_eq_true n m) (@Nat.ne_of_beq_eq_false n m)))
+    (reflect := .intro)
+    (proof := q(fun n m => (Nat.decEq n m).reflects_decide))
 
 def Condition.bool : Condition where
   prop := q(fun x : Bool => x = true)
@@ -168,7 +157,9 @@ protected def Condition.dite (cond : Condition) (args: Array Expr) (t e : Expr) 
     (.lam0 (mkApp q(Not) (mkAppN cond.prop args)) e)
 
 protected def Condition.decide (cond : Condition) (args : Array Expr) : Expr :=
-  cond.ite q(Bool) args q(true) q(false)
+  match cond.impl with
+  | .reflectNatNat asBool .. => mkAppN asBool args
+  | .bool => cond.ite q(Bool) args q(true) q(false)
 
 def unfoldWellFounded (e : Expr) (fvs : Array Expr) (eq_def : Expr) (fail : ∀ {α}, M α) :
     M Expr := do

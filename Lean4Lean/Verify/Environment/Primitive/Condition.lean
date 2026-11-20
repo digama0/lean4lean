@@ -199,7 +199,8 @@ so there is no reason for the two to have separate equations.
 
 Positive rather than an elimination: the caller is *building* the equation body out of these,
 and gets to assemble its translation from the pieces instead of taking one apart afterwards.
-`Condition.decide` is `ite` at `Bool`, so it needs no clause of its own.
+`Condition.decide` needs no clause of its own: for a `reflectNatNat` it is the condition's
+`asBool`, a reflected primitive, and `natEq_decideTr` reads it off directly.
 
 Quantified over an arbitrary well-formed `MLCtx`, not stated at `c`. Being positive is exactly
 what forces this: the callers apply it to *their* pieces, and those live past whatever binders
@@ -278,8 +279,7 @@ closing has instantiated it, so neither is still an `Expr` by the time it is eva
 `natOnly` restricts it to `α' = Nat`, for the same reason it restricts `WF_ite`: the `.bool`
 condition reads its whole conditional off the `checkType natITE` check, which the checker ran at
 `Nat`, so that is the only type it can speak about. A `reflectNatNat` instantiates `checkITE`'s
-`∀ α : Type, α → α → α` and is unrestricted -- which is what `Condition.decide`, an `ite` at
-`Bool`, needs. -/
+`∀ α : Type, α → α → α` and is unrestricted. -/
 def Condition.WF.IteEval {cnd : Condition} (w : Condition.WF c cnd) (natOnly := false) : Prop :=
   ∀ (E : c.Ext) ⦃Γ : List VExpr⦄ {args' : List VExpr} {α' t' e' be : VExpr} (b : Bool),
     (natOnly → α' = .nat) →
@@ -2455,21 +2455,6 @@ theorem Condition.fvarsIn_dite {P : FVarId → Prop} {cnd : Condition} [hOK : cn
     rw [Expr.mkAppN_eq]; exact FVarsIn.appN (CondOK.fvarsIn hOK.dec) hargs
   exact ⟨⟨⟨⟨by simp [FVarsIn, Level.hasMVar'], hp⟩, hd⟩, hp, ht⟩, ⟨by simp [FVarsIn], hp⟩, he⟩
 
-/-- `Condition.decide` is `ite` at `Bool` with the two boolean literals as branches, so taking
-one apart is `ite_tr_inv'` plus the branches, which translate the one way they can. The type
-argument is left as it comes: nothing in the model pins `Bool`'s translation, and a
-`reflectNatNat` condition's `IteEval` is generic in it. -/
-theorem Condition.decide_tr_inv' {env : VEnv} {Us : List Name} {Δ : VLCtx} {cnd : Condition}
-    {args : Array Expr} {r : VExpr} (hprim : env.HasPrimitives) (hbool : env.contains ``Bool)
-    (H : TrExprS env Us Δ (cnd.decide args) r) :
-    ∃ α' P D, TrExprS env Us Δ (mkAppN cnd.prop args) P ∧
-      TrExprS env Us Δ (mkAppN cnd.dec args) D ∧
-      r = iteApp α' P D (.boolLit true) (.boolLit false) := by
-  obtain ⟨_, _, _, _, _, -, hP, hD, ht, he, rfl⟩ := Condition.ite_tr_inv' H
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) ht (TrExprS.boolLit hprim hbool true).1
-  cases TrExprS.unique (by simp [TrExprS.IsUnique]) he (TrExprS.boolLit hprim hbool false).1
-  exact ⟨_, _, _, hP, hD, rfl⟩
-
 /-- What a closed-off use of `natEq` has to say about its two arguments: they are `Nat`s, and the
 decision at them is the literals' `Nat.beq`. The arguments are only *worth* literals -- a
 recognizer reaches them through a closing, which computes rather than substitutes a literal in --
@@ -2516,34 +2501,30 @@ theorem Condition.WF.natEq_diteEval {c : VContext} {w : Condition.WF c Condition
   simpa [VExpr.appN] using h
 
 /-- `natEq.decide` at two arguments that are worth literals, closed off: the whole gadget is
-worth their `Nat.beq`. The arguments' values are asked for at any translation of them, so that
-this composes with `natBinLitTr` -- `Nat.bitwise` decides on `n % 2 = 1`, whose left side is
-itself a reflected primitive at a probe variable. -/
+worth their `Nat.beq`. `Condition.decide` of a `reflectNatNat` condition is its `asBool` at the
+arguments, so this is `natEq_args` at the arguments' translations. The arguments' values are
+asked for at any translation of them, so that this composes with `natBinLitTr` --
+`Nat.bitwise` decides on `n % 2 = 1`, whose left side is itself a reflected primitive at a probe
+variable. -/
 theorem Condition.WF.natEq_decideTr {c : VContext} {w : Condition.WF c Condition.natEq}
-    (hite : w.IteEval) (hprim : c.venv.HasPrimitives) (hnat : c.venv.contains ``Nat)
-    (hbool : c.venv.contains ``Bool) (E : c.Ext) {Δ : VLCtx} {σ : VExpr.Subst}
-    {A B : Expr} {r : VExpr} (x y : Nat) (hnpA : noProj A) (hnpB : noProj B)
+    (hprim : c.venv.HasPrimitives) (hnat : c.venv.contains ``Nat)
+    (E : c.Ext) {Δ : VLCtx} {σ : VExpr.Subst} {A B : Expr} {r : VExpr} (x y : Nat)
     (hA : ∀ {A' : VExpr}, TrExprS c.venv c.lparams Δ A A' → E.WF₀ (A'.subst σ) →
       E.IsDefEqU₀ (A'.subst σ) (.natLit x))
     (hB : ∀ {B' : VExpr}, TrExprS c.venv c.lparams Δ B B' → E.WF₀ (B'.subst σ) →
       E.IsDefEqU₀ (B'.subst σ) (.natLit y))
     (hr : TrExprS c.venv c.lparams Δ (Condition.natEq.decide #[A, B]) r)
     (hwf : E.WF₀ (r.subst σ)) : E.IsDefEqU₀ (r.subst σ) (.boolLit (Nat.beq x y)) := by
-  obtain ⟨_, _, _, hP, hD, rfl⟩ := Condition.decide_tr_inv' hprim hbool hr
-  obtain ⟨_, _, hA2, hB2, rfl⟩ := w.prop_app2_inv hP
-  obtain ⟨_, _, hA3, hB3, rfl⟩ := w.dec_app2_inv hD
-  cases TrExprS.unique (noProj.isUnique hnpA) hA3 hA2
-  cases TrExprS.unique (noProj.isUnique hnpB) hB3 hB2
-  simp only [iteApp, VExpr.subst, w.propC.subst_eq', w.decC.subst_eq', VExpr.subst_boolLit] at hwf ⊢
+  have h0 : TrExprS c.venv c.lparams [] (.const ``Nat.beq []) w.himpl.asBool' := by
+    rw [← w.vnil]; exact w.himpl.hAsBool
+  obtain ⟨_, _, hA2, hB2, rfl⟩ := TrExprS.app2_nil_inv c.Ewf (by simp [noProj]) h0 hr
+  have hC : w.himpl.asBool'.ClosedN := h0.closedN_nil c.Ewf.ordered
+  simp only [VExpr.subst, hC.subst_eq'] at hwf ⊢
   have pk {f a : VExpr} (h : E.WF₀ (f.app a)) : E.WF₀ f ∧ E.WF₀ a :=
     h.app_inv₂ E.wf trivial
-  have hwfP := (pk (pk (pk (pk hwf).1).1).1).2
-  refine .trans E.wf trivial (w.natEq_iteEval hite hprim hnat E
-    (hA hA2 (pk (pk hwfP).1).2) (hB hB2 (pk hwfP).2) hwf) ?_
-  rw [show (if Nat.beq x y then VExpr.boolLit true else .boolLit false)
-    = .boolLit (Nat.beq x y) from by cases Nat.beq x y <;> simp]
-  exact ⟨_, E.monoT (TrExprS.boolLit (Us := c.lparams) (Δ := ([] : VLCtx))
-    hprim hbool (Nat.beq x y)).2⟩
+  obtain ⟨_, hbe⟩ := w.natEq_args hprim hnat E
+    (hA hA2 (pk (pk hwf).1).2) (hB hB2 (pk hwf).2)
+  simpa [VExpr.appN] using hbe
 
 /-- The `dite` equation as a fact about `VExpr`s: a conditional built from the condition's own
 `prop` and `dec` collapses to the branch the decision selects. This is the content of `WF_dite`

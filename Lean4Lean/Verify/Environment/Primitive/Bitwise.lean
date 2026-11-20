@@ -213,12 +213,10 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
           (Condition.natEq.decide #[mod v two, one]) r)
         (hwfr : E.WF₀ (r.subst ((γ.cons ih).cons pf))) :
         E.IsDefEqU₀ (r.subst ((γ.cons ih).cons pf)) (.boolLit (Nat.beq (a % 2) 1)) := by
-      refine wc.natEq_decideTr (hcite rfl).2 wf.hasPrimitives hnat hbool E.cast (a % 2) 1
-        ?_ ?_ (fun hB _ => hone hB) hr hwfr (hA := fun hA hW =>
+      refine wc.natEq_decideTr wf.hasPrimitives hnat E.cast (a % 2) 1
+        (fun hB _ => hone hB) hr hwfr (hA := fun hA hW =>
           E.natBinLitTr a 2 wf.hasPrimitives.natMod (fun hA2 _ => ?_) (fun hB _ => htwo hB) hA hW)
-      · simp [two, one, zero, succ, noProj, mkApp, hv]
-      · simp [one, zero, succ, noProj]
-      · exact TrExprS.unique (noProj.isUnique hv) hA2 hvt ▸ hva
+      exact TrExprS.unique (noProj.isUnique hv) hA2 hvt ▸ hva
     cases hb0 : Nat.beq x 0 with
     | true =>
       let 0 := x
@@ -305,8 +303,8 @@ theorem checkNatBitwise.WF {ves : VEnvs} (wf : ves.WF env)
         have hval1 := hdecide x (by simp [noProj]) (hunder hnΔ.trS) hxs' hb1 hwfb1
         have hval2 := hdecide y (by simp [noProj]) (hunder hmΔ.trS) hys' hb2' hwfb2
         have hunoProj {w} (hw : noProj w) : noProj (Condition.natEq.decide #[mod w two, one]) := by
-          simp [Condition.decide, Condition.ite, Condition.natEq, mkApp5, mkApp4, mkApp2, mkApp,
-            mkAppN, mkAppB, noProj, mod, two, one, zero, succ, hw]
+          simp [Condition.decide, Condition.natEq, mkApp2, mkApp, mkAppN, mkAppB, noProj, mod, two,
+            one, zero, succ, hw]
         refine hboolStep (Nat.beq (x % 2) 1) (Nat.beq (y % 2) 1)
           (hunoProj (by simp [noProj])) (hunoProj (by simp [noProj]))
           hα4 hP4 hD4 hb1 hb2' hval1 hval2 hwfif2 |>.trans E.wf trivial ?_

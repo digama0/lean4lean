@@ -863,7 +863,7 @@ inductive MLCtx.PartialForall : MLCtx → Nat → List FVarId → Expr → Prop 
 theorem MLCtx.PartialForall.full : MLCtx.PartialForall c n (c.fvarRevList n hn) e := by
   induction n generalizing c e with
   | zero => exact .nil
-  | succ n ih => match c with | .vlam .. | .vlet .. => constructor; apply ih
+  | succ n ih => match c with | .vlam .. | .vlet .. => constructor!; apply ih
 
 theorem MLCtx.PartialForall.sublist (H : MLCtx.PartialForall c n l e) : l <+ c.vlctx.fvars := by
   induction H with
