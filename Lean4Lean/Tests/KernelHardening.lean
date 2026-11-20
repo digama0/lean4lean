@@ -2,7 +2,7 @@ import Lean4Lean.Environment
 
 /-!
 Executable regressions for the kernel hardening merged between Lean v4.32.2 and
-v4.33.0-rc2.  The declarations are assembled manually so they exercise
+v4.34.0.  The declarations are assembled manually so they exercise
 `Lean4Lean.addDecl` and `Lean4Lean.TypeChecker` directly.
 -/
 
@@ -200,5 +200,33 @@ run_meta do
       (x := TypeChecker.checkType (deepNat 100)) with
   | .error e => throwError "deep term with sufficient recursion fuel failed: {← (e.toMessageData {}).toString}"
   | .ok ty => unless ty.isConstOf ``Nat do throwError "deep term inferred an unexpected type"
+
+  -- lean4#14849: `Nat` numerals are bounded by `natMaxSize`, and an exponent or shift amount
+  -- that the runtime cannot take is an error rather than a process abort.
+  let lit := mkRawNatLit
+  let pow a b := mkApp2 (.const ``Nat.pow []) (lit a) (lit b)
+  let shl a b := mkApp2 (.const ``Nat.shiftLeft []) (lit a) (lit b)
+  let mul a b := mkApp2 (.const ``Nat.mul []) (lit a) (lit b)
+  let small : FuelConfig := { natMaxSize := 64 }
+  let r ← runM <| TypeChecker.M.run env (x := TypeChecker.whnf (pow 2 64))
+  unless r == lit (2 ^ 64) do throwError "small `Nat.pow` did not reduce"
+  let r ← runM <| TypeChecker.M.run env (x := TypeChecker.whnf (shl 3 70))
+  unless r == lit (3 <<< 70) do throwError "small `Nat.shiftLeft` did not reduce"
+  let r ← runM <| TypeChecker.M.run env (x := TypeChecker.whnf (shl 0 (2 ^ 40)))
+  unless r == lit 0 do throwError "`0 <<< _` did not reduce to `0`"
+  expectError "`Nat.pow` with a 2^40 exponent" "32-bit unsigned integer" <|
+    TypeChecker.M.run env (x := TypeChecker.whnf (pow 2 (2 ^ 40)))
+  expectError "`Nat.shiftLeft` by 2^40" "32-bit unsigned integer" <|
+    TypeChecker.M.run env (x := TypeChecker.whnf (shl 1 (2 ^ 40)))
+  expectError "`Nat.pow` past the size limit" "maximum numeral size" <|
+    TypeChecker.M.run env (fuel := small) (x := TypeChecker.whnf (pow 2 1000))
+  expectError "`Nat.shiftLeft` past the size limit" "size exceeds the maximum" <|
+    TypeChecker.M.run env (fuel := small) (x := TypeChecker.whnf (shl 1 1000))
+  expectError "`Nat.mul` past the size limit" "size exceeds the maximum" <|
+    TypeChecker.M.run env (fuel := small) (x := TypeChecker.whnf (mul (2 ^ 300) (2 ^ 300)))
+  expectError "literal past the size limit" "size exceeds the maximum" <|
+    TypeChecker.M.run env (fuel := small) (x := TypeChecker.inferType (lit (2 ^ 1000)))
+  expectError "unchecked literal past the size limit" "size exceeds the maximum" <|
+    TypeChecker.M.run env (fuel := small) (x := TypeChecker.checkType (lit (2 ^ 1000)))
 
 end Lean4Lean.Tests.KernelHardening

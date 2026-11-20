@@ -18,30 +18,44 @@ theorem rawNatLitExt?.WF {c : VContext} (H : rawNatLitExt? e = some n) (he : c.T
   have hn := this.lit_has_type
   exact ⟨hn, this.unique (by trivial) (TrExprS.natLit c.hasPrimitives hn n).1⟩
 
-def reduceBinNatOpG (guard : Nat → Nat → Prop) [DecidableRel guard]
-    (f : Nat → Nat → Nat) (a b : Expr) : RecM (Option Expr) := do
-  let some v1 := rawNatLitExt? (← whnf a) | return none
-  let some v2 := rawNatLitExt? (← whnf b) | return none
-  if guard v1 v2 then return none
-  return some <| .lit <| .natVal <| f v1 v2
+theorem checkNatSize.WF {c : VContext} {s : VState} :
+    (checkNatSize n).WF c s fun _ _ => True := by
+  unfold checkNatSize; refine .read ?_; split <;> [exact .throw; exact .pure trivial]
 
-theorem reduceBinNatOpG.WF {guard} [DecidableRel guard] {c : VContext}
+theorem checkNatResult.WF {c : VContext} {s : VState} :
+    (checkNatResult r).WF c s fun _ _ => True := checkNatSize.WF
+
+theorem checkNatPow.WF {c : VContext} {s : VState} :
+    (checkNatPow base exp).WF c s fun _ _ => True := by
+  unfold checkNatPow
+  refine (M.WF.liftExcept (Q := fun _ => True) fun _ _ => ⟨⟩).bind fun _ _ _ _ => .read ?_
+  split <;> [exact .throw; exact .pure trivial]
+
+theorem checkNatShiftLeft.WF {c : VContext} {s : VState} :
+    (checkNatShiftLeft v shift).WF c s fun _ _ => True := by
+  unfold checkNatShiftLeft
+  split <;> [exact .pure trivial; skip]
+  exact (M.WF.liftExcept (Q := fun _ => True) fun _ _ => ⟨⟩).bind fun _ _ _ _ => checkNatSize.WF
+
+theorem reduceBinNatOp.WF {c : VContext}
     (he : c.TrExprS (.app (.app (.const fc ls) a) b) e')
     (hprim : Environment.primitives.contains fc)
-    (heval : c.venv.ReflectsNatNatNat fc f) :
-    RecM.WF c s (reduceBinNatOpG guard f a b) fun oe _ => ∀ e₁, oe = some e₁ →
+    (heval : c.venv.ReflectsNatNatNat fc f)
+    (hpre : ∀ v₁ v₂ s, (pre v₁ v₂).WF c s fun _ _ => True)
+    (hpost : ∀ r s, (post r).WF c s fun _ _ => True) :
+    RecM.WF c s (reduceBinNatOp f a b pre post) fun oe _ => ∀ e₁, oe = some e₁ →
       c.FVarsBelow (.app (.app (.const fc ls) a) b) e₁ ∧ c.TrExpr e₁ e' := by
   let .app hb1 hb2 hf hb := he
   let .app ha1 ha2 hf ha := hf
   let .const h1 h2 h3 := hf
-  unfold reduceBinNatOpG
+  unfold reduceBinNatOp
   refine (whnf.WF ha).bind fun a₁ _ _ ⟨a1, _, a2, a3⟩ => ?_
   split <;> [rename_i v1 h; exact .pure nofun]
   obtain ⟨hn, rfl⟩ := rawNatLitExt?.WF h a2
   refine (whnf.WF hb).bind fun b₁ _ _ ⟨b1, _, b2, b3⟩ => ?_
   split <;> [rename_i v2 h; exact .pure nofun]
   cases (rawNatLitExt?.WF h b2).2
-  split <;> [exact .pure nofun; rename_i h]
+  refine (hpre v1 v2 _).lift.bind fun _ _ _ _ => (hpost _ _).lift.bind fun _ _ _ _ => ?_
   refine .pure ?_; rintro _ ⟨⟩; refine ⟨fun _ _ _ => trivial, ?_⟩
   have ⟨ci, c1, _⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
   have ⟨_, c3⟩ := c.safePrimitives c1 hprim
@@ -97,32 +111,38 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
   cases h1 : nargs == 1 <;> simp only [Bool.false_eq_true, ↓reduceIte]
   · cases nargs == 2 <;> [exact hP ▸ .pure nofun; simp only [↓reduceIte]]
     split <;> [rename_i f ls a b; exact hP ▸ .pure nofun]
-    have hfun guard {g fc G} [DecidableRel guard] (hprim : fc ∈ prims)
-        (heval : c.venv.ReflectsNatNatNat fc g) (hG : RecM.WF c s G P) :
-        RecM.WF c s (do if f == fc then {return ← reduceBinNatOpG guard g a b}; G) P := by
+    have hfun {g fc G pre post} (hprim : fc ∈ prims)
+        (heval : c.venv.ReflectsNatNatNat fc g)
+        (hpre : ∀ v₁ v₂ s, (pre v₁ v₂).WF c s fun _ _ => True)
+        (hpost : ∀ r s, (post r).WF c s fun _ _ => True) (hG : RecM.WF c s G P) :
+        RecM.WF c s (do if f == fc then {return ← reduceBinNatOp g a b pre post}; G) P := by
       split <;> [rename_i h; exact hG]
       simp at h ⊢; subst h
-      exact hP ▸ reduceBinNatOpG.WF he (hprims.2 hprim) heval
+      exact hP ▸ reduceBinNatOp.WF he (hprims.2 hprim) heval hpre hpost
+    have nop₂ v₁ v₂ s : ((fun _ _ => pure () : Nat → Nat → M Unit) v₁ v₂).WF c s
+      fun _ _ => True := .pure trivial
+    have nop₁ r s : ((fun _ => pure () : Nat → M Unit) r).WF c s fun _ _ => True := .pure trivial
     have hpred {g fc G} (hprim : fc ∈ prims)
         (heval : c.venv.ReflectsNatNatBool fc g) (hG : RecM.WF c s G P) :
         RecM.WF c s (do if f == fc then {return ← reduceBinNatPred g a b}; G) P := by
       split <;> [rename_i h; exact hG]
       simp at h ⊢; subst h
       exact hP ▸ reduceBinNatPred.WF he (hprims.2 hprim) heval
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natAdd
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natSub
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natMul
-    apply hfun _ (by simp [prims]) c.hasPrimitives.natPow
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natGcd
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natMod
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natDiv
+    apply hfun (by simp [prims]) c.hasPrimitives.natAdd nop₂ fun _ _ => checkNatResult.WF
+    apply hfun (by simp [prims]) c.hasPrimitives.natSub nop₂ nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natMul nop₂ fun _ _ => checkNatResult.WF
+    apply hfun (by simp [prims]) c.hasPrimitives.natPow (fun _ _ _ => checkNatPow.WF) nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natGcd nop₂ nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natMod nop₂ nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natDiv nop₂ nop₁
     apply hpred (by simp [prims]) c.hasPrimitives.natBEq
     apply hpred (by simp [prims]) c.hasPrimitives.natBLE
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natLAnd
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natLOr
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natXor
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natShiftLeft
-    apply hfun (fun _ _ => False) (by simp [prims]) c.hasPrimitives.natShiftRight
+    apply hfun (by simp [prims]) c.hasPrimitives.natLAnd nop₂ nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natLOr nop₂ nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natXor nop₂ nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natShiftLeft 
+      (fun _ _ _ => checkNatShiftLeft.WF) nop₁
+    apply hfun (by simp [prims]) c.hasPrimitives.natShiftRight nop₂ nop₁
     exact hP ▸ .pure nofun
   · split <;> [rename_i h2; exact hP ▸ .pure nofun]
     simp [nargs, Expr.getAppNumArgs_eq] at h1; subst fn
@@ -132,7 +152,8 @@ theorem reduceNat.WF {c : VContext} (he : c.TrExprS e e') :
     refine (whnf.WF ha).bind fun a₁ _ _ ⟨a1, _, a2, a3⟩ => ?_
     split <;> [rename_i n h; exact hP ▸ .pure nofun]
     obtain ⟨hn, rfl⟩ := rawNatLitExt?.WF h a2
-    refine hP ▸ .pure ?_; rintro _ ⟨⟩; refine ⟨fun _ _ _ => trivial, ?_⟩
+    refine hP ▸ checkNatResult.WF.lift.map fun _ _ _ _ => ?_
+    rintro _ ⟨⟩; refine ⟨fun _ _ _ => trivial, ?_⟩
     have ⟨ci, c1, _⟩ := c.trenv.find?_iff.2 ⟨_, h1⟩
     have ⟨c2, c3⟩ := c.safePrimitives c1 <| hprims.2 (by simp [prims])
     have ⟨d1, d2, d3⟩ := c.trenv.find?_uniq c1 h1; cases h2

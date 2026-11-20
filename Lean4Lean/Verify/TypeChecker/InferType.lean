@@ -437,21 +437,25 @@ theorem inferType'.WF
     · exact { wf with inferTypeC_wf := hic wf.inferTypeC_wf }
     · exact { wf with inferTypeI_wf := hic wf.inferTypeI_wf }
   split
-  · extract_lets G1; split <;> [split; skip]
+  · rename_i l _ _; extract_lets G1 G2
+    have hG2 {s} (H : c.venv.ContainsLits l) : (G2 ()).WF c s P := by
+      simp only [G2]; split
+      · exact checkNatSize.WF.lift.bind fun _ _ _ _ => hF (infer_literal H)
+      · simp [G1]; exact hF (infer_literal H)
+    split <;> [split; skip]
     · refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h => ?_
       have ⟨_, h, _⟩ := c.trenv.find? h <|
         (c.safePrimitives h (literal_is_primitive (.inl rfl))).1 ▸ DefinitionSafety.le_safe
-      exact hF (infer_literal ⟨_, h⟩)
+      exact hG2 ⟨_, h⟩
     · refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h1 => ?_
       refine .getEnv <| (M.WF.liftExcept envGet.WF).lift.bind fun _ _ _ h2 => ?_
       have ⟨_, h1, _⟩ := c.trenv.find? h1 <|
         (c.safePrimitives h1 (literal_is_primitive (.inr (.inl rfl)))).1 ▸ DefinitionSafety.le_safe
       have ⟨_, h2, _⟩ := c.trenv.find? h2 <|
         (c.safePrimitives h2 (literal_is_primitive (.inr (.inr rfl)))).1 ▸ DefinitionSafety.le_safe
-      exact hF (infer_literal ⟨⟨_, h1⟩, ⟨_, h2⟩⟩)
+      exact hG2 ⟨⟨_, h1⟩, ⟨_, h2⟩⟩
     · rename_i h; have ⟨_, h⟩ := hinf (by simpa using h)
-      have := h.lit_has_type
-      simp [G1]; exact hF (infer_literal this)
+      exact hG2 h.lit_has_type
   · refine (inferType'.WF (by exact h1) ?_).bind fun _ _ _ ⟨_, _, hb, h1, h⟩ => ?_
     · exact fun h => let ⟨_, .mdata h⟩ := hinf h; ⟨_, h⟩
     exact hF ⟨hb, .mdata h1, h⟩

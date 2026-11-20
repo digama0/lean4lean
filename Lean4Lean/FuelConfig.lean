@@ -28,4 +28,8 @@ structure FuelConfig where
   recDepth    : Nat := 50000
   /-- Shared fuel for the structural loops in `Inductive/Add.lean`. -/
   inductiveFuel : Nat := 1000
+  /-- Upper bound, in bytes, on the `Nat` numerals the type checker accepts as literals or
+  computes in `reduceNat`; the native kernel's `LEAN_NAT_MAX_SIZE` (lean4#14849), with the
+  same 128 MB default. Unlike the other fields this bounds memory rather than steps. -/
+  natMaxSize  : Nat := 128 * 1024 * 1024
   deriving Repr, Inhabited, Lean.FromJson, Lean.ToJson

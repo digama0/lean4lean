@@ -229,6 +229,44 @@ def getSortLevel (e : Expr) : RecM Level := do
 zero. -/
 def isProp (e : Expr) : RecM Bool := return (← getSortLevel e).isAlwaysZero
 
+/-- An upper bound on the number of bytes the runtime uses to store `n`: one machine word for a
+scalar, and one word per 64 bits for a GMP numeral, as `lean_nat_size_in_bytes` reports. -/
+def natSizeInBytes (n : Nat) : Nat := 8 * (n.log2 / 64 + 1)
+
+/-- Throws if a `Nat` numeral of (at most) `bytes` bytes exceeds `FuelConfig.natMaxSize`. -/
+def checkNatSize (bytes : Nat) : M Unit := do
+  if bytes > (← read).fuel.natMaxSize then
+    throw <| .other "the kernel refused a `Nat` numeral because its size exceeds the maximum; \
+      increase `natMaxSize` to allow it"
+
+/-- The runtime's `Nat.pow` and `Nat.shiftLeft` require their second argument to fit in a 32-bit
+unsigned integer, and abort the process otherwise; this throws instead. -/
+def checkCountArg (count : Nat) (op : String) : Except Exception Unit := do
+  if count > UInt32.size - 1 then
+    throw <| .other s!"the kernel refused to evaluate `{op}` because its second argument does \
+      not fit in a 32-bit unsigned integer"
+
+/-- `post` for `Nat.succ`, `Nat.add` and `Nat.mul`: these can accumulate large numerals in a
+recursor loop, but their operands are already bounded, so the result is cheap to compute and is
+rejected afterwards if it is too big. (`Nat.sub` needs no check: its result is at most its first
+operand.) -/
+def checkNatResult (r : Nat) : M Unit := checkNatSize (natSizeInBytes r)
+
+/-- `pre` for `Nat.pow`: `base ^ exp` has at most `natSizeInBytes base * exp` bytes (and is `0` or
+`1` for `base ≤ 1`), so it is rejected before it is computed. -/
+def checkNatPow (base exp : Nat) : M Unit := do
+  checkCountArg exp "Nat.pow"
+  if base > 1 && natSizeInBytes base * exp > (← read).fuel.natMaxSize then
+    throw <| .other "the kernel refused to evaluate `Nat.pow` because the result would exceed \
+      the maximum numeral size; increase `natMaxSize` to allow it"
+
+/-- `pre` for `Nat.shiftLeft`: `v <<< shift = v * 2 ^ shift` has about
+`natSizeInBytes v + shift / 8` bytes, and `0 <<< _ = 0`. -/
+def checkNatShiftLeft (v shift : Nat) : M Unit := do
+  unless v == 0 do
+    checkCountArg shift "Nat.shiftLeft"
+    checkNatSize (natSizeInBytes v + shift / 8 + 1)
+
 /-- Infers the type of structure projection `e`. -/
 def inferProj (typeName : Name) (idx : Nat) (struct structType : Expr) : RecM Expr := do
   let e := Expr.proj typeName idx struct
@@ -274,6 +312,8 @@ def inferType' (e : Expr) (inferOnly : Bool) : RecM Expr := do
         match l with
         | .natVal _ => _ ← (← getEnv).get ``Nat
         | .strVal _ => _ ← (← getEnv).get ``Char.ofNat; _ ← (← getEnv).get ``String.ofList
+      -- Numerals entering the kernel obey the same bound as the ones `reduceNat` computes.
+      if let .natVal n := l then checkNatSize (natSizeInBytes n)
       pure (mkConst l.typeName)
     | .mdata _ e => inferType' e inferOnly
     | .proj s idx e => inferProj s idx e (← inferType' e inferOnly)
@@ -461,20 +501,18 @@ def reduceNative (_env : Environment) (e : Expr) : Except Exception (Option Expr
 def rawNatLitExt? (e : Expr) : Option Nat := if e == .natZero then some 0 else e.rawNatLit?
 
 /-- Reduces the application `f a b` to a Nat literal if `a` and `b` can be reduced to Nat literals.
+`pre` runs on the two operands before `f` is evaluated, and `post` on the result.
 
 Note: `f` should have an (efficient) external implementation. -/
-def reduceBinNatOp (f : Nat → Nat → Nat) (a b : Expr) : RecM (Option Expr) := do
+def reduceBinNatOp (f : Nat → Nat → Nat) (a b : Expr)
+    (pre : Nat → Nat → M Unit := fun _ _ => pure ())
+    (post : Nat → M Unit := fun _ => pure ()) : RecM (Option Expr) := do
   let some v1 := rawNatLitExt? (← whnf a) | return none
   let some v2 := rawNatLitExt? (← whnf b) | return none
-  return some <| .lit <| .natVal <| f v1 v2
-
-def reducePowMaxExp : Nat := 1 <<< 24
-
-def reducePow (a b : Expr) : RecM (Option Expr) := do
-  let some v1 := rawNatLitExt? (← whnf a) | return none
-  let some v2 := rawNatLitExt? (← whnf b) | return none
-  if v2 > reducePowMaxExp then return none
-  return some <| .lit <| .natVal <| Nat.pow v1 v2
+  pre v1 v2
+  let r := f v1 v2
+  post r
+  return some <| .lit <| .natVal r
 
 /-- Reduces the application `f a b` to a boolean expression if `a` and `b` can be reduced to Nat
 literals.
@@ -496,13 +534,14 @@ def reduceNat (e : Expr) : RecM (Option Expr) := do
     let f := e.appFn!
     if f == .const ``Nat.succ [] then
       let some v := rawNatLitExt? (← whnf e.appArg!) | return none
+      checkNatResult (v + 1)
       return some <| .lit <| .natVal <| v + 1
   else if nargs == 2 then
     let .app (.app (.const f _) a) b := e | return none
-    if f == ``Nat.add then return ← reduceBinNatOp Nat.add a b
+    if f == ``Nat.add then return ← reduceBinNatOp Nat.add a b (post := checkNatResult)
     if f == ``Nat.sub then return ← reduceBinNatOp Nat.sub a b
-    if f == ``Nat.mul then return ← reduceBinNatOp Nat.mul a b
-    if f == ``Nat.pow then return ← reducePow a b
+    if f == ``Nat.mul then return ← reduceBinNatOp Nat.mul a b (post := checkNatResult)
+    if f == ``Nat.pow then return ← reduceBinNatOp Nat.pow a b (pre := checkNatPow)
     if f == ``Nat.gcd then return ← reduceBinNatOp Nat.gcd a b
     if f == ``Nat.mod then return ← reduceBinNatOp Nat.mod a b
     if f == ``Nat.div then return ← reduceBinNatOp Nat.div a b
@@ -511,7 +550,8 @@ def reduceNat (e : Expr) : RecM (Option Expr) := do
     if f == ``Nat.land then return ← reduceBinNatOp Nat.land a b
     if f == ``Nat.lor then return ← reduceBinNatOp Nat.lor a b
     if f == ``Nat.xor then return ← reduceBinNatOp Nat.xor a b
-    if f == ``Nat.shiftLeft then return ← reduceBinNatOp Nat.shiftLeft a b
+    if f == ``Nat.shiftLeft then
+      return ← reduceBinNatOp Nat.shiftLeft a b (pre := checkNatShiftLeft)
     if f == ``Nat.shiftRight then return ← reduceBinNatOp Nat.shiftRight a b
   return none
 

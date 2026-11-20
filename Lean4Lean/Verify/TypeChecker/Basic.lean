@@ -331,6 +331,9 @@ theorem M.WF.liftExcept {c : VContext} {s : VState} {x : Except Exception α} {Q
   cases x <;> cases eq
   exact ⟨s, rfl, .rfl, wf, h _ rfl⟩
 
+theorem M.WF.read {c : VContext} {s : VState} {f : Context → M α} {Q}
+    (H : M.WF c s (f c.toContext) Q) : (read >>= f).WF c s Q := H
+
 theorem M.WF.lift {c : VContext} {s : VState} {x : M α} {Q} (h : x.WF c s Q) :
     RecM.WF c s x Q := fun _ _ => h
 
