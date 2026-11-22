@@ -670,6 +670,55 @@ theorem IsDefEq.instN (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ) (H : env.IsDefE
       hA3.instL.instN_eq (Nat.zero_le _)]
     exact .extra h1 h2 h3
 
+/-- A one-variable extension of a context is an instantiation read backwards, once an
+inhabitant of the inserted type is available. -/
+theorem _root_.Lean4Lean.Ctx.LiftN.instN (a : VExpr) : ∀ {k Γ Γ'}, Ctx.LiftN 1 k Γ Γ' → Γ'[k]? = some A →
+    Ctx.InstN (Γ.drop k) a A k Γ' Γ
+  | _, _, _, .zero As h, hA => by
+    match As, h, hA with
+    | [_], _, hA => cases hA; exact .zero
+  | _, _, _, .succ (k := k) (A := B) W, hA => by
+    have := (Ctx.LiftN.instN a W (by simpa using hA)).succ (A := B.liftN 1 k)
+    rw [VExpr.inst_liftN] at this
+    exact this
+
+variable! (henv : Ordered env) in
+/-- Inverse weakening is sound when the removed binder is inhabited: substitute the
+inhabitant. This is the provable special case of `IsDefEqU.weakN_iff`, whose general
+form is false (see the countermodel in the discussion of that lemma). -/
+theorem IsDefEq.weakN_inv_of_hasType (W : Ctx.LiftN 1 k Γ Γ') (hA : Γ'[k]? = some A)
+    (ha : env.HasType U (Γ.drop k) a A)
+    (H : env.IsDefEq U Γ' (e1.liftN 1 k) (e2.liftN 1 k) (B.liftN 1 k)) :
+    env.IsDefEq U Γ e1 e2 B := by
+  simpa [VExpr.inst_liftN] using H.instN henv ha (Ctx.LiftN.instN a W hA)
+
+variable! (henv : Ordered env) in
+theorem IsDefEq.weak_inv_of_hasType (ha : env.HasType U Γ a A)
+    (H : env.IsDefEq U (A :: Γ) e1.lift e2.lift B.lift) : env.IsDefEq U Γ e1 e2 B :=
+  IsDefEq.weakN_inv_of_hasType henv .one rfl ha H
+
+variable! (henv : Ordered env) in
+theorem IsDefEqU.weakN_inv_of_hasType (W : Ctx.LiftN 1 k Γ Γ') (hA : Γ'[k]? = some A)
+    (ha : env.HasType U (Γ.drop k) a A)
+    (H : env.IsDefEqU U Γ' (e1.liftN 1 k) (e2.liftN 1 k)) : env.IsDefEqU U Γ e1 e2 :=
+  let ⟨_, H⟩ := H; ⟨_, by simpa [VExpr.inst_liftN] using H.instN henv ha (Ctx.LiftN.instN a W hA)⟩
+
+variable! (henv : Ordered env) in
+theorem IsDefEqU.weak_inv_of_hasType (ha : env.HasType U Γ a A)
+    (H : env.IsDefEqU U (A :: Γ) e1.lift e2.lift) : env.IsDefEqU U Γ e1 e2 :=
+  IsDefEqU.weakN_inv_of_hasType henv .one rfl ha H
+
+variable! (henv : Ordered env) in
+theorem HasType.weakN_inv_of_hasType (W : Ctx.LiftN 1 k Γ Γ') (hA : Γ'[k]? = some A)
+    (ha : env.HasType U (Γ.drop k) a A)
+    (H : env.HasType U Γ' (e.liftN 1 k) (B.liftN 1 k)) : env.HasType U Γ e B :=
+  IsDefEq.weakN_inv_of_hasType henv W hA ha H
+
+variable! (henv : Ordered env) in
+theorem HasType.weak_inv_of_hasType (ha : env.HasType U Γ a A)
+    (H : env.HasType U (A :: Γ) e.lift B.lift) : env.HasType U Γ e B :=
+  HasType.weakN_inv_of_hasType henv .one rfl ha H
+
 theorem HasType.instN {env : VEnv} (henv : env.Ordered) (W : Ctx.InstN Γ₀ e₀ A₀ k Γ₁ Γ)
     (H : env.HasType U Γ₁ e A) (h₀ : env.HasType U Γ₀ e₀ A₀) :
     env.HasType U Γ (e.inst e₀ k) (A.inst e₀ k) := IsDefEq.instN henv h₀ W H

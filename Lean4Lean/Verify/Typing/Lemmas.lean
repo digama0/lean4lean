@@ -272,12 +272,6 @@ theorem VLocalDecl.weak'_iff : VLocalDecl.WF env U Γ' (d.lift' n) ↔ VLocalDec
   | .vlam .. => IsType.weak'_iff henv hΓ' W
   | .vlet .. => HasType.weak'_iff henv hΓ' W
 
-variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) (W : Ctx.LiftN n k Γ Γ') in
-theorem VLocalDecl.weakN_iff : VLocalDecl.WF env U Γ' (d.liftN n k) ↔ VLocalDecl.WF env U Γ d :=
-  match d with
-  | .vlam .. => IsType.weakN_iff henv hΓ' W
-  | .vlet .. => HasType.weakN_iff henv hΓ' W
-
 namespace VLCtx
 
 variable! (henv : Ordered env) in
@@ -434,10 +428,6 @@ theorem FVLift.from_nil : ∀ {Δ : VLCtx}, Δ.NoBV → FVLift [] Δ 0 Δ.toCtx.
   | (some _, .vlam _) :: _, H => .skip_fvar _ _ (.from_nil H)
   | (some _, .vlet _ _) :: _, H => .skip_fvar _ _ (.from_nil H)
 
-variable! (henv : VEnv.WF env) in
-theorem FVLift.wf (W : FVLift Δ Δ' dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U :=
-  W.toFVLift'.wf henv hΔ'
-
 theorem FVLift.fvars_suffix (W : FVLift Δ Δ' dk n k) : Δ.fvars <:+ Δ'.fvars := by
   induction W with
   | refl => exact List.suffix_refl _
@@ -469,15 +459,6 @@ theorem BVLift.toCtx (W : BVLift Δ Δ' dn dk n k) : Ctx.LiftN n k Δ.toCtx Δ'.
     match d with
     | .vlet .. => exact ih
     | .vlam A => exact .succ ih
-
-variable! (henv : VEnv.WF env) in
-theorem BVLift.wf (W : BVLift Δ Δ' dn dk n k) (hΔ' : Δ'.WF env U) : Δ.WF env U := by
-  induction W with
-  | refl => exact hΔ'
-  | skip _ _ ih => exact ih hΔ'.1
-  | cons _ W ih =>
-    let ⟨hΔ', _, h2⟩ := hΔ'
-    exact ⟨ih hΔ', nofun, (VLocalDecl.weakN_iff henv hΔ'.toCtx W.toCtx).1 h2⟩
 
 theorem BVLift.fvars_eq (W : BVLift Δ Δ' dn dk n k) : Δ.fvars = Δ'.fvars := by
   induction W with
@@ -713,11 +694,6 @@ theorem TrExpr.weakBV (W : VLCtx.BVLift Δ Δ' dn dk n k)
     (H : TrExpr env Us Δ e e') : TrExpr env Us Δ' (e.liftLooseBVars' dk dn) (e'.liftN n k) :=
   let ⟨_, H1, H2⟩ := H
   ⟨_, H1.weakBV henv W, H2.weakN henv W.toCtx⟩
-
-variable! (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U)) in
-theorem HasType.skips (W : Ctx.LiftN n k Γ Γ')
-    (h1 : env.HasType U Γ' e A) (h2 : e.Skips n k) : ∃ B, env.HasType U Γ' e B ∧ B.Skips n k :=
-  IsDefEq.skips henv hΓ' W h1 h2 h2
 
 theorem TrProj.weak'_inv (henv : VEnv.WF env) (hΓ' : OnCtx Γ' (env.IsType U))
     (W : Ctx.Lift' l Γ Γ') : TrProj Γ' s i (e.lift' l) e' → ∃ e', TrProj Γ s i e e' := sorry
