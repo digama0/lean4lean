@@ -261,6 +261,8 @@ def isLargeEliminator (stats : InductiveStats) (indTypes : Array InductiveType) 
   match indType.ctors with
   | [] => return true
   | [ctor] =>
+    -- Recursive inductive predicates (e.g. `Acc`) only eliminate into `Prop`.
+    if isRec indTypes stats.indConsts then return false
     let rec loop type i toCheck
     | 0 => throw .deepRecursion
     | fuel+1 => do
