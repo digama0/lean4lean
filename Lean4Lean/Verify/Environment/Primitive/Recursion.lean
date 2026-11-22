@@ -992,10 +992,14 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
     have hfvs : fvs = ⟨List.map Expr.fvar (m'.fvarRevList n hn).reverse⟩ := by
       have := congrArg List.reverse harr; simp at this
       exact Array.toList_inj.1 (by simpa using this)
+    have hFclosed : Closed F := m'.noBV ▸ hFF.closed
+    have hndFvs : ((m'.fvarRevList n hn).reverse).Nodup :=
+      List.nodup_reverse.2 (‹c.MLCWF m'›.wf.fvarRevList_nodup n hn)
     have hFlb : (F.abstractList (m'.fvarRevList n hn).reverse).looseBVarRange' = 0 := by
-      simp only [Fa, hfvs, Expr.abstract_eq] at hF; simpa [Expr.hasLooseBVars] using hF
+      simp only [Fa, hfvs, Expr.abstract_eq_of_closed _ _ hndFvs hFclosed.looseBVarRange_zero] at hF
+      simpa [Expr.hasLooseBVars] using hF
     have hFaF : Fa = F := by
-      simp only [Fa, hfvs, Expr.abstract_eq]
+      simp only [Fa, hfvs, Expr.abstract_eq_of_closed _ _ hndFvs hFclosed.looseBVarRange_zero]
       exact Expr.abstractList_eq_self (Nat.le_of_eq hFlb)
     obtain ⟨Fv, hFaS⟩ : ∃ Fv, (c.withMLC m').TrExprS Fa Fv := ⟨_, hFaF ▸ hFF⟩
     -- and the same guard read on the variables rather than the term: `F` mentions none of the
@@ -1029,7 +1033,8 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
           c.venv.HasType c.lparams.length (c.withMLC m₀).vlctx.toCtx pack' packTy ∧
           c.venv.HasType c.lparams.length (As.reverse ++ (c.withMLC m₀).vlctx.toCtx) a₀' tyv ∧
           (c.withMLC m').TrExprS a₀ a₀' := by
-      rw [show (c.withMLC m').lctx' = m'.lctx from rfl, hwf'.mkLambda_eq n hn harr]
+      rw [show (c.withMLC m').lctx' = m'.lctx from rfl,
+        hwf'.mkLambda_eq n hn harr (m'.noBV ▸ ha₀.closed)]
       refine ⟨_, _, _, hdrop ▸ (hwf'.mkLambda_trS c.Ewf ha₀ hty n hn).1, hmk _,
         hdrop ▸ (hwf'.mkLambda_trS c.Ewf ha₀ hty n hn).2, ?_⟩
       refine ⟨?_, ha₀⟩
@@ -1150,8 +1155,9 @@ theorem unfoldNatWellFounded.WF' {c : VContext} {m₀ : MLCtx} [c.MLCWF m₀] {s
       have hsorted := VEnv.IsDefEqU.defeqDF c.Ewf hΓc (hT.hasType.1.uniqU c.Ewf hΓc hcodv₀T) hT
       have hlamS : (c.withMLC m₀).TrExprS (.lam `a Adom (dAE.abstract #[.fvar idd]) .default)
           (.lam Aty dAv₀) := by
-        simp only [show (#[Expr.fvar idd] : Array Expr) = ⟨[idd].map .fvar⟩ from rfl,
-          Expr.abstract_eq, Expr.abstractList]
+        have hdAcl : Closed dAE := by simpa [VLCtx.bvars, MLCtx.noBV] using hdAS.closed
+        rw [show (#[Expr.fvar idd] : Array Expr) = ⟨[idd].map .fvar⟩ from rfl,
+          Expr.abstractN_eq, Expr.abstractN_singleton hdAcl.looseBVarRange_le]
         exact .lam hAty hAtyS hdAS₀
       exact .pure ⟨.lam Aty dAv₀, hlamS, ⟨_, .lam hAty.choose_spec hdAT⟩, restv₀, _, hsorted⟩
     -- `F`'s own typing comes down the same way: `inferType`'s judgement is transported onto the

@@ -107,7 +107,9 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
       ∃ e' ty', c.TrTyping e₀ ty e' ty' := by
   unfold inferLambda.loop
   generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
-  simp [harr, -bind_pure_comp]; split
+  have hfvs : ∀ a ∈ fvs, a.looseBVarRange' = 0 := by
+    rw [← eqfvs]; intro a ha; obtain ⟨_, _, rfl⟩ := List.mem_map.1 ha; rfl
+  simp [harr, -bind_pure_comp, Expr.instantiateN_eq_instantiateList hfvs]; split
   · rename_i name dom body bi
     generalize eqF : withLocalDecl (m := RecM) _ _ _ _ = F
     generalize eqP : (fun ty x => ∃ _, _) = P
@@ -161,7 +163,7 @@ theorem inferLambda.loop.WF {c : VContext} {e₀ : Expr}
     let ⟨h1', h2''⟩ := mwf.1.mkLambda_trS c.Ewf h1 h3 n hn
     have h3' := (mwf.1.mkForall_trS c.Ewf h2' (h3.isType c.Ewf mwf.1.tr.wf.toCtx) n hn).1
     simp [hdrop] at h1' h2'' h3'
-    refine mwf.1.mkForall_eq _ _ (eqfvs ▸ harr) ▸
+    refine mwf.1.mkForall_eq _ _ (eqfvs ▸ harr) (m.noBV ▸ h2'.closed) ▸
       ⟨_, _, fun P hP he => ?_, he₀ ▸ h1', h3', h2''⟩
     have ⟨c1, c2, c3⟩ := hbelow _ hP he
     have := c3 _ <| FVarsBelow.cheapBetaReduce (m.noBV ▸ h2.closed) _ c1 <| hb _ c1 c2
@@ -190,7 +192,9 @@ theorem inferForall.loop.WF {c : VContext} {e₀ : Expr}
       ∃ e' u, c.TrTyping e₀ ty e' (.sort u) := by
   unfold inferForall.loop
   generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
-  simp [harr, -bind_pure_comp]; split
+  have hfvs : ∀ a ∈ fvs, a.looseBVarRange' = 0 := by
+    rw [← eqfvs]; intro a ha; obtain ⟨_, _, rfl⟩ := List.mem_map.1 ha; rfl
+  simp [harr, -bind_pure_comp, Expr.instantiateN_eq_instantiateList hfvs]; split
   · rename_i name dom body bi
     rw [Expr.instantiateList_forallE] at hei; subst ei
     refine (inferType.WF' ?_ ?_).bind fun uv _ le ⟨dom', uv', _, h1, h2, h3⟩ => ?_
@@ -239,11 +243,12 @@ theorem inferApp.loop.WF {c : VContext} {s : VState}
     (hbelow : FVarsBelow c.vlctx e fType)
     (hfty : c.TrExpr (fType.instantiateList lm) fty') (hety : c.HasType e' fty')
     (hargs : args = ll ++ lm.reverse ++ lr)
+    (hlm : ∀ a ∈ lm, a.looseBVarRange' = 0)
     (hj : j = ll.length) (hi : i = ll.length + lm.length) :
     RecM.WF c s (inferApp.loop e₀ ⟨args⟩ fType j i) fun ty _ =>
       ∃ e₁' ty', c.TrTyping (e.mkAppRevList lm |>.mkAppList lr) ty e₁' ty' := by
   subst i j; rw [inferApp.loop.eq_def]
-  simp [hargs, Expr.instantiateList_reverse]
+  simp [hargs]
   have henv := c.Ewf; have hΔ := c.Δwf
   cases lr with simp
   | cons a lr =>
@@ -253,24 +258,27 @@ theorem inferApp.loop.WF {c : VContext} {s : VState}
     · rw [Expr.instantiateList_forallE] at hfty
       let ⟨_, .forallE _ _ hty hbody, h3⟩ := hfty
       have ⟨⟨_, uA⟩, _, uB⟩ := h3.trans henv hΔ uf.symm |>.forallE_inv henv hΔ
-      refine inferApp.loop.WF (lm := a::lm) stk ?_ ?_ (.app hf' ha') (by simp) rfl rfl
-      · exact fun _ hP he => (hbelow _ hP he).2
       have ha0 := c.mlctx.noBV ▸ ha.closed
+      refine inferApp.loop.WF (lm := a::lm) stk ?_ ?_ (.app hf' ha') (by simp)
+        (List.forall_mem_cons.2 ⟨ha0.looseBVarRange_zero, hlm⟩) rfl rfl
+      · exact fun _ hP he => (hbelow _ hP he).2
       simp [← Expr.instantiateList_instantiate1_comm ha0.looseBVarRange_zero]
       exact .inst henv hΔ (ha'.defeqU_r henv hΔ ⟨_, uA.symm⟩) ⟨_, hbody, _, uB⟩ (ha.trExpr henv hΔ)
-    · simp [Nat.add_sub_cancel_left, Expr.instantiateRevList_reverse]
+    · simp [Nat.add_sub_cancel_left, Expr.instantiateN_eq_instantiateList hlm]
       refine (ensureForallCore.WF' hfty).bind fun _ _ _ ⟨hb, ⟨_, h2, h3⟩, eq⟩ => ?_
       obtain ⟨name, ty, body, bi, rfl⟩ := eq; simp [Expr.bindingBody!]
       let .forallE _ _ hty hbody := h2
       have ⟨⟨_, uA⟩, _, uB⟩ := h3.trans henv hΔ uf.symm |>.forallE_inv henv hΔ
       refine inferApp.loop.WF (ll := ll ++ lm.reverse) (lm := [a]) stk ?_ ?_
-        (.app hf' ha') (by simp) (by simp) (by simp)
+        (.app hf' ha') (by simp)
+        (by simpa using (c.mlctx.noBV ▸ ha.closed : Closed a).looseBVarRange_zero) (by simp) (by simp)
       · intro _ hP he
         have ⟨he, hlm⟩ := FVarsIn.appRevList.1 he
         exact (hb _ hP <| (hbelow _ hP he).instantiateList hlm).2
       exact .inst henv hΔ (ha'.defeqU_r henv hΔ ⟨_, uA.symm⟩) ⟨_, hbody, _, uB⟩ (ha.trExpr henv hΔ)
   | nil =>
-    rw [← List.length_reverse, List.take_length, Expr.instantiateRevList_reverse]
+    rw [← List.length_reverse, List.take_length, List.reverse_reverse,
+      Expr.instantiateN_eq_instantiateList hlm]
     have ⟨_, hfty, h2⟩ := hfty
     refine .pure ⟨_, _, fun _ hP he => ?_, stk.tr, hfty, hety.defeqU_r henv hΔ h2.symm⟩
     have ⟨he, hlm⟩ := FVarsIn.appRevList.1 he
@@ -283,7 +291,7 @@ theorem inferApp.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
   refine (inferType.WF he'.tr).bind fun ty _ _ ⟨ty', hb, _, hty', ety⟩ => ?_
   have henv := c.Ewf; have hΔ := c.Δwf
   refine (inferApp.loop.WF (ll := []) (lm := []) he' hb
-      (hty'.trExpr henv hΔ) ety rfl rfl rfl).le
+      (hty'.trExpr henv hΔ) ety rfl (by simp) rfl rfl).le
     fun _ _ _ ⟨_, _, hb, h1, h2, h3⟩ => ?_
   have := (e.mkAppList_getAppArgsList ▸ h1).uniq henv (.refl henv hΔ) he
   exact ⟨_, e.mkAppList_getAppArgsList ▸ hb, he, h2, h3.defeqU_l henv hΔ this⟩
@@ -302,8 +310,10 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
     (inferLet.loop inferOnly arr e).WF (c.withMLC m) s fun ty _ =>
       ∃ e' ty', c.TrTyping e₀ ty e' ty' := by
   generalize eqfvs : (m.fvarRevList n hn).map Expr.fvar = fvs at *
+  have hfvs : ∀ a ∈ fvs, a.looseBVarRange' = 0 := by
+    rw [← eqfvs]; intro a ha; obtain ⟨_, _, rfl⟩ := List.mem_map.1 ha; rfl
   unfold inferLet.loop
-  simp [harr, -bind_pure_comp]; split
+  simp [harr, -bind_pure_comp, Expr.instantiateN_eq_instantiateList hfvs]; split
   · rename_i name dom val body nd
     generalize eqF : withLetDecl (m := RecM) _ _ _ _ = F
     generalize eqP : (fun ty x => ∃ _, _) = P
@@ -369,7 +379,7 @@ theorem inferLet.loop.WF {c : VContext} {e₀ : Expr}
     let ⟨h1', h2'⟩ := mwf.1.mkLet_trS c.Ewf h1 h3 n hn nds hnds
     have h3' := (mwf.1.mkForall_trS c.Ewf hty (h3.isType c.Ewf mwf.1.tr.wf.toCtx) n hn).1
     simp [hdrop] at h1' h2' h3'
-    erw [mwf.1.mkForall_eq _ _ (eqfvs ▸ harr)]
+    erw [mwf.1.mkForall_eq _ _ (eqfvs ▸ harr) (m.noBV ▸ hty.closed)]
     refine ⟨_, _, fun P hP he => ?_, he₀ ▸ h1', h3', h2'⟩
     have ⟨c1, c2, c3⟩ := hbelow _ hP he
     have := c3 _ <| FVarsBelow.cheapBetaReduce (m.noBV ▸ h2.closed) _ c1 <| hb _ c1 c2

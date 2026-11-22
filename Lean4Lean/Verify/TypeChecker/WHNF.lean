@@ -87,6 +87,11 @@ theorem whnfCore'.WF {c : VContext} {s : VState} (he : c.TrExprS e e') :
       have := h2.rebuild_mkAppRevList c.Ewf c.Δwf stk.tr <|
         e.mkAppRevList_getAppArgsRevList ▸ he
       have ⟨_, a1, a2⟩ := this.beta c.Ewf c.Δwf br
+      have hl₂ : ∀ a ∈ l₂, a.looseBVarRange' = 0 := by
+        have := h5 ▸ (c.mlctx.noBV ▸ he.closed).getAppArgsRevList
+        simp [or_imp, forall_and] at this
+        exact fun a ha => (this.2 a ha).looseBVarRange_zero
+      rw [Expr.instantiateN_eq_instantiateList hl₂]
       refine (whnfCore.WF a1).bind fun _ _ _ ⟨b1, b2⟩ => ?_
       have hb := e.mkAppRevList_getAppArgsRevList ▸ h1.mkAppRevList
       exact hsave (hb.trans (.betaReduce br) |>.trans b1) <|

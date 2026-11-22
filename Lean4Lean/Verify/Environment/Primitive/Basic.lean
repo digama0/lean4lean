@@ -909,12 +909,18 @@ theorem lambdaTelescope.loop.WF {c : VContext} {α} {k : Array Expr → Expr →
     {As} (hinv : lambdaTelescope.Inv c m₀ m arr n hn As e₀' e')
     (hs : s₀ ≤ s) (he : (c.withMLC m).TrExprS (Expr.instantiateList e arr.toList.reverse) e') :
     (lambdaTelescope.loop k arr e).WF (c.withMLC m) s Q := by
+  have harrc : ∀ a ∈ arr, a.looseBVarRange' = 0 := by
+    intro a ha
+    have : a ∈ arr.toList.reverse := by simpa using ha
+    rw [harr] at this
+    obtain ⟨_, _, rfl⟩ := List.mem_map.1 this
+    rfl
   unfold lambdaTelescope.loop; split
   · rename_i body _
     revert hinv
     let .lam (ty' := domv) (body' := body') domty hdom hbody := Expr.instantiateList_lam ▸ he
     intro hinv
-    rw [Expr.instantiateRev_eq_instantiateList]
+    rw [Expr.instantiateRev_eq_instantiateList harrc]
     refine M.WF.withLocalDecl hdom domty hs fun fv cwf' s' hs' _ => ?_
     have hinst : Expr.instantiateList body ((arr.push (Expr.fvar fv)).toList.reverse)
         = (Expr.instantiateList body arr.toList.reverse 1).instantiate1' (.fvar fv) := by
@@ -945,7 +951,7 @@ theorem lambdaTelescope.loop.WF {c : VContext} {α} {k : Array Expr → Expr →
         h.weakFV c.Ewf.ordered (.skip_fvar _ _ .refl) cwf'.wf.tr.wf)
     · exact hinv.lams
     · rw [hinst]; exact hbody.inst_fvar c.Ewf.ordered cwf'.wf.tr.wf
-  · simp only [Expr.instantiateRev_eq_instantiateList]
+  · simp only [Expr.instantiateRev_eq_instantiateList harrc]
     rename_i hne
     exact H _ _ hn hs hdrop harr he₀ hinv
       (by rw [harity, Expr.lambdaArity_eq_zero hne]; rfl) he

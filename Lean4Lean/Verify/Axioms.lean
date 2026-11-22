@@ -424,9 +424,33 @@ def instantiate1' (e : Expr) (subst : Expr) (d := 0) : Expr :=
   | e, [], _ => e
   | e, a :: as, k => instantiateList (instantiate1' e a k) as k
 
+/-- Simultaneous instantiation of the loose bound variables `k, …, k + subst.length - 1`, the
+model of Lean's `Expr.instantiate` (C++ `instantiate`): under `d` binders, `bvar (d + i)` becomes
+`subst[i]` lifted over those `d` binders, variables above the range are lowered by
+`subst.length`, and the inserted terms are not traversed again. It agrees with the sequential
+`instantiateList` when no entry has loose bound variables (`instantiateN_eq_instantiateList`). -/
+def instantiateN (subst : List Expr) : Expr → (k :_:= 0) → Expr
+  | .bvar i, d =>
+    if i < d then .bvar i
+    else match subst[i - d]? with
+      | some a => a.liftLooseBVars' 0 d
+      | none => .bvar (i - subst.length)
+  | .mdata m e, d => .mdata m (instantiateN subst e d)
+  | .proj s i e, d => .proj s i (instantiateN subst e d)
+  | .app f a, d => .app (instantiateN subst f d) (instantiateN subst a d)
+  | .lam n t b bi, d => .lam n (instantiateN subst t d) (instantiateN subst b (d+1)) bi
+  | .forallE n t b bi, d => .forallE n (instantiateN subst t d) (instantiateN subst b (d+1)) bi
+  | .letE n t v b bi, d =>
+    .letE n (instantiateN subst t d) (instantiateN subst v d) (instantiateN subst b (d+1)) bi
+  | e@(.const ..), _
+  | e@(.sort _), _
+  | e@(.fvar _), _
+  | e@(.mvar _), _
+  | e@(.lit _), _ => e
+
 /-- This could be an `@[implemented_by]` -/
-@[simp] axiom instantiate_eq (e : Expr) (subst) :
-    e.instantiate subst = e.instantiateList subst.toList
+@[simp] axiom instantiateN_eq (e : Expr) (subst : Array Expr) :
+    e.instantiate subst = e.instantiateN subst.toList
 
 /-- This could be an `@[implemented_by]` -/
 @[simp] axiom instantiateRev_eq (e : Expr) (subst) :
@@ -458,10 +482,6 @@ def abstract1 (v : FVarId) : Expr → (k :_:= 0) → Expr
 @[simp] def abstractList : Expr → List FVarId → (k :_:= 0) → Expr
   | e, [], _ => e
   | e, a :: as, k => abstractList (abstract1 a e k) as k
-
-/-- This could be an `@[implemented_by]` -/
-@[simp] axiom abstract_eq (e : Expr) (xs : List FVarId) :
-    e.abstract ⟨xs.map .fvar⟩ = e.abstractList xs
 
 /-- This could be an `@[implemented_by]` -/
 @[simp] axiom abstractRange_eq (e : Expr) (n : Nat) (xs : Array Expr) :
@@ -506,5 +526,44 @@ def eqv' : (e1 e2 : Expr) → (strict : Bool := false) → Bool
 
 /-- This could be an `@[implemented_by]` -/
 @[simp] axiom equal_eq (e1 e2 : Expr) : e1.equal e2 = e1.eqv' e2 (strict := true)
+
+instance : LawfulBEq FVarId where
+  eq_of_beq := @fun ⟨a⟩ ⟨b⟩ h => by cases LawfulBEq.eq_of_beq (α := Name) h; rfl
+  rfl := BEq.rfl (α := Name)
+
+/-- Distance from the end of `xs` of the last occurrence of `v` (`0` for the last element). -/
+def lastRevIdx? (v : FVarId) : List FVarId → Option Nat
+  | [] => none
+  | a :: as =>
+    match lastRevIdx? v as with
+    | some r => some r
+    | none => if a == v then some as.length else none
+
+/-- Simultaneous abstraction of a list of free variables, the model of Lean's `Expr.abstract`
+(C++ `abstract`): under `d` binders, `xs[i]` becomes `bvar (d + xs.length - 1 - i)`; when a
+variable occurs more than once the last occurrence wins; and loose bound variables are left
+unchanged. It agrees with the sequential `abstractList` on duplicate-free lists and expressions
+with no loose bound variables at or above the cutoff (`abstractN_eq_abstractList`). -/
+def abstractN (xs : List FVarId) : Expr → (k :_:= 0) → Expr
+  | e@(.bvar _), _ => e
+  | e@(.fvar v), d =>
+    match lastRevIdx? v xs with
+    | some r => .bvar (d + r)
+    | none => e
+  | .mdata m e, d => .mdata m (abstractN xs e d)
+  | .proj s i e, d => .proj s i (abstractN xs e d)
+  | .app f a, d => .app (abstractN xs f d) (abstractN xs a d)
+  | .lam n t b bi, d => .lam n (abstractN xs t d) (abstractN xs b (d+1)) bi
+  | .forallE n t b bi, d => .forallE n (abstractN xs t d) (abstractN xs b (d+1)) bi
+  | .letE n t val b bi, d =>
+    .letE n (abstractN xs t d) (abstractN xs val d) (abstractN xs b (d+1)) bi
+  | e@(.const ..), _
+  | e@(.sort _), _
+  | e@(.mvar _), _
+  | e@(.lit _), _ => e
+
+/-- This could be an `@[implemented_by]` -/
+@[simp] axiom abstractN_eq (e : Expr) (xs : List FVarId) :
+    e.abstract ⟨xs.map .fvar⟩ = e.abstractN xs
 
 end Expr
