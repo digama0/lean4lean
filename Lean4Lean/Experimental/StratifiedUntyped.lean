@@ -68,8 +68,8 @@ theorem IsDefEq.inductionU1
   | bvar h => exact ⟨.bvar h, .bvar h, .refl⟩
   | symm _ ih => exact ⟨ih.2.1, ih.1, .symm ih.2.2⟩
   | trans _ _ ih1 ih2 => exact ⟨ih1.1, ih2.2.1, .trans ih1.2.2 ih2.2.2⟩
-  | @constDF _ _ ls₁ ls₂ _ _ h1 h2 h3 h4 h5 =>
-    exact ⟨.const h1 h2 h4, .defeq sorry <| .const h1 h3 (h5.length_eq.symm.trans h4), .constDF h5⟩
+  | @constDF _ _ ls₁ ls₂ _ _ h1 h2 h3 h4 h5 hwf hstrong0 hstrong ih0 ih =>
+    exact ⟨.const h1 h2 h4, .defeq (hdf ih.2.1 ih.1 (.symm ih.2.2)) <| .const h1 h3 (h5.length_eq.symm.trans h4), .constDF h5⟩
   | @sortDF l l' _ h1 h2 h3 =>
     refine ⟨.sort h1, ?_, .sortDF h3⟩
     exact .defeq (hdf (.sort (l := l'.succ) h2) (.sort (l := l.succ) h1)
