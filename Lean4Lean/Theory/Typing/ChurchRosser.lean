@@ -141,6 +141,61 @@ theorem NormalEq.defeq (H : Γ ⊢ e1 ≡ₚ e2) : Γ ⊢ e1 ≡ e2 := by
   | proofIrrel h1 h2 h3 => exact ⟨_, .proofIrrel h1 h2 h3⟩
 
 variable! (hΓ : OnCtx Γ (env.IsType univs)) in
+theorem NormalEq.of_eqUpToLevels (typed : Γ ⊢ expression : type)
+    (equal : EqUpToLevels univs expression changed) : Γ ⊢ expression ≡ₚ changed := by
+  induction equal generalizing Γ type with
+  | bvar => exact .refl typed
+  | sort leftWF rightWF levelsEqual => exact .sortDF leftWF rightWF levelsEqual
+  | const leftWF rightWF levelsEqual =>
+    obtain ⟨_, registered, _, arity⟩ := typed.const_inv henv hΓ
+    exact .constDF registered leftWF rightWF arity levelsEqual
+  | app functionEqual argumentEqual functionIH argumentIH =>
+    obtain ⟨_, _, functionTyped, argumentTyped⟩ := typed.app_inv henv hΓ
+    have functionNormal := functionIH hΓ functionTyped
+    have argumentNormal := argumentIH hΓ argumentTyped
+    exact .appDF functionTyped
+      (.defeqU_l henv hΓ (functionNormal.defeq hΓ) functionTyped) argumentTyped
+      (.defeqU_l henv hΓ (argumentNormal.defeq hΓ) argumentTyped)
+      functionNormal argumentNormal
+  | lam domainEqual bodyEqual domainIH bodyIH =>
+    obtain ⟨⟨_, domainTyped⟩, _, bodyTyped⟩ := typed.lam_inv henv hΓ
+    have domainNormal := domainIH hΓ domainTyped
+    exact .lamDF domainTyped ((domainNormal.defeq hΓ).of_l henv hΓ domainTyped)
+      (bodyIH (by exact ⟨hΓ, _, domainTyped⟩) bodyTyped)
+  | forallE domainEqual bodyEqual domainIH bodyIH =>
+    obtain ⟨⟨_, domainTyped⟩, _, bodyTyped⟩ := typed.forallE_inv henv
+    exact .forallEDF domainTyped (domainIH hΓ domainTyped) bodyTyped
+      (bodyIH (by exact ⟨hΓ, _, domainTyped⟩) bodyTyped)
+
+omit [Params] in
+theorem _root_.Lean4Lean.Pattern.RHS.eqUpToLevels_const
+    (result : (Pattern.const name).RHS)
+    (leftWF : ∀ level ∈ leftLevels, level.WF universes)
+    (rightWF : ∀ level ∈ rightLevels, level.WF universes)
+    (levelsEqual : List.Forall₂ (· ≈ ·) leftLevels rightLevels) :
+    EqUpToLevels universes (result.apply leftLevels leftValues) (result.apply rightLevels rightValues) := by
+  induction result with
+  | fixed expression => exact .instL_of_levels expression leftWF rightWF levelsEqual
+  | app _ _ functionIH argumentIH => exact .app functionIH argumentIH
+  | var path => cases path
+
+variable! (hΓ : OnCtx Γ (env.IsType univs)) in
+theorem _root_.Lean4Lean.Pattern.Check.OK.const_levels
+    (check : (Pattern.const name).Check)
+    (leftWF : ∀ level ∈ leftLevels, level.WF univs)
+    (rightWF : ∀ level ∈ rightLevels, level.WF univs)
+    (levelsEqual : List.Forall₂ (· ≈ ·) leftLevels rightLevels)
+    (checked : check.OK (IsDefEqU env univs Γ) leftLevels leftValues) :
+    check.OK (IsDefEqU env univs Γ) rightLevels rightValues := by
+  refine checked.map fun leftResult rightResult ⟨_, equal⟩ => ?_
+  have leftEqual := leftResult.eqUpToLevels_const
+    (leftValues := leftValues) (rightValues := rightValues) leftWF rightWF levelsEqual
+  have rightEqual := rightResult.eqUpToLevels_const
+    (leftValues := leftValues) (rightValues := rightValues) leftWF rightWF levelsEqual
+  exact ⟨_, ((equal.eqUpToLevels henv.ordered hΓ rightEqual).symm.eqUpToLevels
+    henv.ordered hΓ leftEqual).symm⟩
+
+variable! (hΓ : OnCtx Γ (env.IsType univs)) in
 theorem NormalEq.symm (H : Γ ⊢ e1 ≡ₚ e2) : Γ ⊢ e2 ≡ₚ e1 := by
   induction H with
   | refl h => exact .refl h
@@ -1175,6 +1230,33 @@ theorem ParRedExt.parRed_beta :
   | _ => cases l.isApp eq
 
 variable! (hΓ : OnCtx Γ (IsType env univs)) in
+theorem NormalEq.parRed_constDF
+    (registered : env.constants name = some constant)
+    (leftWF : ∀ level ∈ leftLevels, level.WF univs)
+    (rightWF : ∀ level ∈ rightLevels, level.WF univs)
+    (arity : leftLevels.length = constant.uvars)
+    (levelsEqual : List.Forall₂ (· ≈ ·) leftLevels rightLevels)
+    (reduction : Γ ⊢ .const name rightLevels ≫ reduced) :
+    ∃ leftReduced, Γ ⊢ .const name leftLevels ≫* leftReduced ∧ Γ ⊢ leftReduced ≡ₚ reduced := by
+  cases reduction with
+  | const =>
+    exact ⟨_, .tail .rfl .const, .constDF registered leftWF rightWF arity levelsEqual⟩
+  | extra rule matched checked arguments =>
+    cases matched with
+    | const =>
+      let leftValues : (Pattern.const name).Path → VExpr := nofun
+      have leftMatched : (Pattern.const name).Matches (.const name leftLevels) leftLevels leftValues :=
+        (show leftValues = _ by ext path; cases path) ▸ .const
+      have leftChecked := checked.const_levels hΓ _ (rightValues := leftValues) rightWF leftWF
+        (levelsEqual.flip.imp fun _ _ equal => equal.symm)
+      have leftReduction := ParRed.extra (Γ := Γ) (m1 := leftLevels)
+        (m2' := leftValues) rule leftMatched leftChecked
+        (fun path => nomatch path)
+      have leftTyped := leftReduction.hasType hΓ (.const registered leftWF arity)
+      refine ⟨_, .tail .rfl leftReduction, .of_eqUpToLevels hΓ leftTyped ?_⟩
+      exact Pattern.RHS.eqUpToLevels_const _ leftWF rightWF levelsEqual
+
+variable! (hΓ : OnCtx Γ (IsType env univs)) in
 theorem NormalEq.parRed (H1 : Γ ⊢ e₁ ≡ₚ e₂) (H2 : Γ ⊢ e₂ ≫ e₂') :
     ∃ e₁', Γ ⊢ e₁ ≫* e₁' ∧ Γ ⊢ e₁' ≡ₚ e₂' := by
   induction H1 generalizing e₂' with
@@ -1183,11 +1265,7 @@ theorem NormalEq.parRed (H1 : Γ ⊢ e₁ ≡ₚ e₂) (H2 : Γ ⊢ e₂ ≫ e�
     cases H2 with
     | sort => exact ⟨_, .tail .rfl .sort, .sortDF l1 l2 l3⟩
     | extra r1 r2 => cases r2
-  | constDF l1 l2 l3 l4 l5 =>
-    cases H2 with
-    | const => exact ⟨_, .tail .rfl .const, .constDF l1 l2 l3 l4 l5⟩
-    | extra r1 r2 r3 r4 =>
-      sorry
+  | constDF l1 l2 l3 l4 l5 => exact parRed_constDF hΓ l1 l2 l3 l4 l5 H2
   | @appDF Γ f A B f₂ a b l1 l2 l3 l4 l5 l6 ih1 ih2 =>
     cases H2 with
     | app r1 r2 =>

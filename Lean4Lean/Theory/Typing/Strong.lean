@@ -234,6 +234,24 @@ inductive EqUpToLevels (U : Nat) : VExpr → VExpr → Prop
   | lam : EqUpToLevels U A A' → EqUpToLevels U e e' → EqUpToLevels U (.lam A e) (.lam A' e')
   | forallE : EqUpToLevels U A A' → EqUpToLevels U B B' → EqUpToLevels U (.forallE A B) (.forallE A' B')
 
+theorem EqUpToLevels.instL_of_levels (expression : VExpr)
+    (leftWF : ∀ level ∈ leftLevels, level.WF universes)
+    (rightWF : ∀ level ∈ rightLevels, level.WF universes)
+    (levelsEqual : List.Forall₂ (· ≈ ·) leftLevels rightLevels) :
+    EqUpToLevels universes (expression.instL leftLevels) (expression.instL rightLevels) := by
+  induction expression with
+  | bvar => exact .bvar
+  | sort => exact .sort (.inst leftWF) (.inst rightWF) (VLevel.inst_congr rfl levelsEqual)
+  | const =>
+    exact .const
+      (List.forall_mem_map.2 fun _ _ => .inst leftWF)
+      (List.forall_mem_map.2 fun _ _ => .inst rightWF)
+      (List.forall₂_map_left_iff.2 <| List.forall₂_map_right_iff.2 <|
+        .rfl fun _ _ => VLevel.inst_congr rfl levelsEqual)
+  | app _ _ functionIH argumentIH => exact .app functionIH argumentIH
+  | lam _ _ domainIH bodyIH => exact .lam domainIH bodyIH
+  | forallE _ _ domainIH bodyIH => exact .forallE domainIH bodyIH
+
 variable! {env : VEnv} {ls ls' : List VLevel}
     (hls : ∀ l ∈ ls, l.WF U) (hls' : ∀ l ∈ ls', l.WF U) (heq : List.Forall₂ (· ≈ ·) ls ls') in
 theorem EqUpToLevels.instL (H : env.IsDefEqStrong U' Γ e1 e2 A) :
