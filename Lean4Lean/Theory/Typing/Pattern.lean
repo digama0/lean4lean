@@ -88,6 +88,8 @@ theorem Pattern.Matches.uniq {p : Pattern} {e : VExpr} {m1 m2 m1' m2'}
   | var _ ih => rename_i h; simp [ih h]
   | app _ _ ih1 ih2 => rename_i h2 h1; simp [ih1 h1, ih2 h2]; rfl
 
+theorem Pattern.Matches.not_lam : ¬Pattern.Matches pattern (.lam domain body) levels values := nofun
+
 def Pattern.OnArgs (P : VExpr → Prop) : Pattern → Prop
   | .const .. => True
   | .var f => f.OnArgs P
@@ -222,6 +224,23 @@ theorem Pattern.Check.OK.map
       df (a.apply m1 m2) (b.apply m1 m2) → df' (a.apply m1' m2') (b.apply m1' m2'))
     (H : ck.OK df m1 m2) : ck.OK df' m1' m2' := by
   induction ck <;> simp [OK, *] at H ⊢; cases H; constructor <;> solve_by_elim
+
+inductive Pattern.Equation
+    (registered : (pattern : Pattern) → pattern.RHS × pattern.Check → Prop)
+    (equal : List VExpr → VExpr → VExpr → Prop) : List VExpr → VExpr → VExpr → Prop where
+  | rule : registered pattern result → pattern.Matches expression levels values →
+    result.2.OK (equal locals) levels values →
+    Equation registered equal locals expression (result.1.apply levels values)
+  | lam : Equation registered equal (domain :: locals) leftBody rightBody →
+    Equation registered equal locals (.lam domain leftBody) (.lam domain rightBody)
+
+theorem Pattern.Equation.of_root
+    (root : ∃ pattern result levels values, registered pattern result ∧
+      pattern.Matches left levels values ∧ result.2.OK (equal locals) levels values ∧
+      right = result.1.apply levels values) :
+    Equation registered equal locals left right := by
+  obtain ⟨_, _, _, _, registered, matched, checked, rfl⟩ := root
+  exact .rule registered matched checked
 
 inductive SimplePattern where
   | iota (recursor : Name) (major : Nat) (constr : Name) (args : Nat)
