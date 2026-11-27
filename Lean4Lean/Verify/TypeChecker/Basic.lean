@@ -42,65 +42,6 @@ open Lean hiding Environment Exception
 open Kernel
 open scoped _root_.List
 
-namespace EquivManager
-
-variable {env : VEnv} {Us : List Name} {Δ : VLCtx}
-variable (env Us Δ) in
-inductive IsDefEqE : Expr → Expr → Prop
-  | rfl : IsDefEqE e e
-  | trans : IsDefEqE e₁ e₂ → IsDefEqE e₂ e₃ → IsDefEqE e₁ e₃
-  | defeq : TrExprS env Us Δ e₁ e' → TrExpr env Us Δ e₂ e' → IsDefEqE e₁ e₂
-  | app : IsDefEqE f₁ f₂ → IsDefEqE a₁ a₂ → IsDefEqE (.app f₁ a₁) (.app f₂ a₂)
-  | lam : IsDefEqE d₁ d₂ → IsDefEqE b₁ b₂ → IsDefEqE (.lam _ d₁ b₁ _) (.lam _ d₂ b₂ _)
-  | forallE : IsDefEqE d₁ d₂ → IsDefEqE b₁ b₂ → IsDefEqE (.forallE _ d₁ b₁ _) (.forallE _ d₂ b₂ _)
-  | letE : IsDefEqE t₁ t₂ → IsDefEqE v₁ v₂ → IsDefEqE b₁ b₂ →
-    IsDefEqE (.letE _ t₁ v₁ b₁ _) (.letE _ t₂ v₂ b₂ _)
-  | mdata : IsDefEqE e₁ e₂ → IsDefEqE (.mdata _ e₁) (.mdata _ e₂)
-  | proj : IsDefEqE e₁ e₂ → IsDefEqE (.proj _ i e₁) (.proj _ i e₂)
-
-theorem IsDefEqE.symm (H1 : IsDefEqE env Us Δ e₁ e₂) : IsDefEqE env Us Δ e₂ e₁ := by
-  induction H1 with
-  | rfl => exact .rfl
-  | trans _ _ ih1 ih2 => exact .trans ih2 ih1
-  | defeq h1 h2 => let ⟨_, h2, h3⟩ := h2; exact .defeq h2 ⟨_, h1, h3.symm⟩
-  | app _ _ ih1 ih2 => exact .app ih1 ih2
-  | lam _ _ ih1 ih2 => exact .lam ih1 ih2
-  | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
-  | letE _ _ _ ih1 ih2 ih3 => exact .letE ih1 ih2 ih3
-  | mdata _ ih => exact .mdata ih
-  | proj _ ih => exact .proj ih
-
-variable! (henv : env.WF) (W : VLCtx.FVLift' Δ Δ' 0 n 0) (hΔ : VLCtx.WF env Us.length Δ') in
-theorem IsDefEqE.weak' (H1 : IsDefEqE env Us Δ e₁ e₂) : IsDefEqE env Us Δ' e₁ e₂ := by
-  induction H1 with
-  | rfl => exact .rfl
-  | trans _ _ ih1 ih2 => exact .trans ih1 ih2
-  | defeq h1 h2 => exact .defeq (h1.weakFV' henv W hΔ) (h2.weakFV' henv W hΔ)
-  | app _ _ ih1 ih2 => exact .app ih1 ih2
-  | lam _ _ ih1 ih2 => exact .lam ih1 ih2
-  | forallE _ _ ih1 ih2 => exact .forallE ih1 ih2
-  | letE _ _ _ ih1 ih2 ih3 => exact .letE ih1 ih2 ih3
-  | mdata _ ih => exact .mdata ih
-  | proj _ ih => exact .proj ih
-
-variable (env Us Δ) in
-structure WF (m : EquivManager) where
-  wf {i} : i < m.uf.size ↔ ∃ e : Expr, m.toNodeMap[e]? = some i
-  defeq {e₁ e₂ : Expr} {i₁ i₂} :
-    m.toNodeMap[e₁]? = some i₁ → m.toNodeMap[e₂]? = some i₂ → m.uf.Equiv i₁ i₂ →
-    IsDefEqE env Us Δ e₁ e₂
-
-theorem WF.empty : WF env Us Δ {} where
-  wf := by simp
-  defeq := by simp
-
-variable! (henv : env.WF) (W : VLCtx.FVLift' Δ Δ' 0 n 0) (hΔ : VLCtx.WF env Us.length Δ') in
-theorem WF.weak' (wf : WF env Us Δ m) : WF env Us Δ' m where
-  wf := wf.wf
-  defeq h1 h2 h3 := wf.defeq h1 h2 h3 |>.weak' henv W hΔ
-
-end EquivManager
-
 namespace TypeChecker
 
 inductive MLCtx where
@@ -242,11 +183,30 @@ def UnfoldCache.WF (c : VContext) (m : ExprMap Expr) : Prop :=
   ∀ ⦃e e' : Expr⦄, m[e]? = some e' → ∃ n ls ci, e = .const n ls ∧
       c.env.find? n = some ci ∧ e' = Inner.instantiateDeltaValue ci ls
 
+/-- The invariant of `State.success`: the two sides of every recorded pair translate to
+definitionally equal terms. Like the other caches it can hold pairs whose free variables have gone
+out of scope, so it is stated in a context `Δ` that still has them (see `VState.WF.ectx`).
+Membership is up to `==`, which is how `succeededBefore` asks. -/
+def SuccessCache.WF (env : VEnv) (Us : List Name) (Δ : VLCtx) (m : Std.HashSet (Expr × Expr)) :
+    Prop :=
+  ∀ ⦃e₁ e₂ : Expr⦄, (e₁, e₂) ∈ m → ∃ e₁' e₂', TrExprS env Us Δ e₁ e₁' ∧ TrExprS env Us Δ e₂ e₂' ∧
+    env.IsDefEqU Us.length Δ.toCtx e₁' e₂'
+
+theorem SuccessCache.WF.empty {env : VEnv} {Us : List Name} {Δ : VLCtx} :
+    SuccessCache.WF env Us Δ {} := fun _ _ h => by simp at h
+
+variable! {env : VEnv} {Us : List Name} {Δ Δ' : VLCtx}
+  (henv : env.WF) (W : VLCtx.FVLift' Δ Δ' 0 n 0) (hΔ : VLCtx.WF env Us.length Δ') in
+theorem SuccessCache.WF.weak' {m} (wf : SuccessCache.WF env Us Δ m) :
+    SuccessCache.WF env Us Δ' m := fun _ _ h =>
+  let ⟨_, _, h1, h2, h3⟩ := wf h
+  ⟨_, _, h1.weakFV' henv W hΔ, h2.weakFV' henv W hΔ, h3.weak' henv W.toCtx⟩
+
 class VState.WF (c : VContext) (s : VState) where
   trctx : c.TrLCtx
   ngen_wf : ∀ fv ∈ c.vlctx.fvars, s.ngen.Reserves fv
   ectx : ∃ Δ' n, Δ'.WF c.venv c.lparams.length ∧ c.vlctx.FVLift' Δ' 0 n 0 ∧
-    s.eqvManager.WF c.venv c.lparams Δ' ∧ ∀ fv ∈ Δ'.fvars, s.ngen.Reserves fv
+    SuccessCache.WF c.venv c.lparams Δ' s.success ∧ ∀ fv ∈ Δ'.fvars, s.ngen.Reserves fv
   inferTypeI_wf : s.inferTypeI.WF c s
   inferTypeC_wf : s.inferTypeC.WF c s
   whnfCore_wf : WHNFCache.WF c s s.whnfCoreCache
@@ -941,6 +901,49 @@ theorem isDefEqCore.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
     RecM.WF c s (isDefEqCore e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' :=
   fun _ wf => wf.isDefEqCore he₁ he₂
+
+/-- A hit in `State.success` is a definitional equality of the translations. -/
+theorem succeededBefore.WF {c : VContext} {s : VState} (wf : s.WF c)
+    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂')
+    (h : succeededBefore s.success e₁ e₂) : c.IsDefEqU e₁' e₂' := by
+  let ⟨_, _, a1, a2, swf, _⟩ := wf.ectx
+  apply (VEnv.IsDefEqU.weak'_iff c.Ewf a1 a2.toCtx).1
+  have he₁ := he₁.weakFV' c.Ewf a2 a1; have he₂ := he₂.weakFV' c.Ewf a2 a1
+  have key {a b a' b'}
+      (ha : TrExprS c.venv c.lparams _ a a') (hb : TrExprS c.venv c.lparams _ b b')
+      (h : s.success.contains (a, b)) : c.venv.IsDefEqU c.lparams.length _ a' b' :=
+    let ⟨_, _, h1, h2, h3⟩ := swf (Std.HashSet.mem_iff_contains.2 h)
+    (ha.uniq c.Ewf (.refl c.Ewf a1) h1).trans c.Ewf a1 <|
+      h3.trans c.Ewf a1 (h2.uniq c.Ewf (.refl c.Ewf a1) hb)
+  unfold succeededBefore at h; split at h <;> [skip; split at h]
+  · exact key he₁ he₂ h
+  · exact (key he₂ he₁ h).symm
+  · obtain h | h := Bool.or_eq_true .. ▸ h
+    · exact key he₁ he₂ h
+    · exact (key he₂ he₁ h).symm
+
+/-- Recording a pair whose translations are definitionally equal preserves the invariants. -/
+theorem cacheSuccess.WF {c : VContext} {s : VState}
+    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') (eq : c.IsDefEqU e₁' e₂') :
+    (cacheSuccess e₁ e₂).WF c s fun _ _ => True := by
+  rintro wf _ _ ⟨⟩
+  let ⟨_, _, a1, a2, swf, a4⟩ := wf.ectx
+  refine ⟨{ s with toState := _ }, rfl, .rfl, { wf with ectx := ⟨_, _, a1, a2, ?_, a4⟩ }, trivial⟩
+  have he₁ := he₁.weakFV' c.Ewf a2 a1; have he₂ := he₂.weakFV' c.Ewf a2 a1
+  have eq := (VEnv.IsDefEqU.weak'_iff c.Ewf a1 a2.toCtx).2 eq
+  intro k₁ k₂ h
+  obtain h | h := Std.HashSet.mem_insert.1 h <;> [skip; exact swf h]
+  split at h <;> rw [Prod.beq_mk, Bool.and_eq_true] at h
+  · exact ⟨_, _, he₁.eqv h.1, he₂.eqv h.2, eq⟩
+  · exact ⟨_, _, he₂.eqv h.1, he₁.eqv h.2, eq.symm⟩
+
+theorem isDefEq.WF {c : VContext} {s : VState}
+    (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
+    RecM.WF c s (isDefEq e₁ e₂) fun b _ => b → c.IsDefEqU e₁' e₂' := by
+  refine (isDefEqCore.WF he₁ he₂).bind fun b _ _ hb => ?_
+  simp; split
+  · exact (cacheSuccess.WF he₁ he₂ (hb ‹_›)).lift.map fun _ _ _ _ => hb
+  · exact .pure hb
 
 theorem inferType.WF' {c : VContext} {s : VState} (h1 : e.FVarsIn (· ∈ c.vlctx.fvars))
     (hinf : inferOnly = true → ∃ e', c.TrExprS e e') :

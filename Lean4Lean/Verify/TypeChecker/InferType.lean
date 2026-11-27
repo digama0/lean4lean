@@ -1,5 +1,4 @@
 import Lean4Lean.Verify.TypeChecker.Reduce
-import Lean4Lean.Verify.EquivManager
 
 open Lean4Lean
 

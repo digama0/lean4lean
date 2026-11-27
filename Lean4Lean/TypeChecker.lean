@@ -4,7 +4,7 @@ import Lean4Lean.Quot
 import Lean4Lean.Inductive.Reduce
 import Lean4Lean.Instantiate
 import Lean4Lean.ForEachExprV
-import Lean4Lean.EquivManager
+import Lean4Lean.PtrEq
 import Lean4Lean.FuelConfig
 
 namespace Lean4Lean
@@ -19,7 +19,12 @@ structure TypeChecker.State where
   inferTypeC : InferCache := {}
   whnfCoreCache : ExprMap Expr := {}
   whnfCache : ExprMap Expr := {}
-  eqvManager : EquivManager := {}
+  /-- The pairs for which `isDefEq` has returned `true`, each stored once in the orientation
+  chosen by `cacheSuccess`. This is a plain set of pairs and not a union-find: `isDefEq` is sound
+  but incomplete, hence not transitive, so answering from the transitive closure of the successful
+  pairs would make its result depend on which queries came before
+  ([leanprover/lean4#14806](https://github.com/leanprover/lean4/pull/14806)). -/
+  success : Std.HashSet (Expr × Expr) := {}
   failure : Std.HashSet (Expr × Expr) := {}
   unfold : ExprMap Expr := {}
 
@@ -179,11 +184,24 @@ internal uses of `inferType` at its default `inferOnly := true`: on a well-typed
 path returns the same type the checking path would have. -/
 def isDefEqCore (t s : Expr) : RecM Bool := fun m => m.isDefEqCore t s
 
+/-- Whether `isDefEq` has already returned `true` for `t` and `s`, in either order. -/
+def succeededBefore (success : Std.HashSet (Expr × Expr)) (t s : Expr) : Bool :=
+  if t.hash < s.hash then
+    success.contains (t, s)
+  else if t.hash > s.hash then
+    success.contains (s, t)
+  else
+    success.contains (t, s) || success.contains (s, t)
+
+def cacheSuccess (t s : Expr) : M Unit := do
+  let k := if t.hash ≤ s.hash then (t, s) else (s, t)
+  modify fun st => { st with success := st.success.insert k }
+
 @[inherit_doc isDefEqCore]
 def isDefEq (t s : Expr) : RecM Bool := do
   let r ← isDefEqCore t s
   if r then
-    modify fun st => { st with eqvManager := st.eqvManager.addEquiv t s }
+    cacheSuccess t s
   pure r
 
 /-- Infers the type of application `e`, assuming that `e` is already well-typed. -/
@@ -618,12 +636,9 @@ equality, and otherwise decides two sorts by level equivalence and two literals 
 returning `.false` where these disagree. Two lambdas or two for-alls are handed to
 `isDefEqLambda`/`isDefEqForall`, which may return either. All remaining cases — including two
 constants, two free variables, two applications and two projections — are deferred. -/
-def quickIsDefEq (t s : Expr) (useHash := false) : RecM LBool := do
+def quickIsDefEq (t s : Expr) : RecM LBool := do
   -- optimization for terms that are already α-equivalent or were previously checked
-  if ← modifyGet fun (.mk a1 a2 a3 a4 a5 a6 a7 (eqvManager := m)) =>
-    let (b, m) := m.isEquiv useHash t s
-    (b, .mk a1 a2 a3 a4 a5 a6 a7 (eqvManager := m))
-  then return .true
+  if t == s || succeededBefore (← get).success t s then return .true
   match t, s with
   | .lam .., .lam .. => toLBoolM <| isDefEqLambda t s
   | .forallE .., .forallE .. => toLBoolM <| isDefEqForall t s
@@ -864,7 +879,7 @@ def isDefEqUnitLike (t s : Expr) : RecM Bool := do
 
 @[inherit_doc isDefEqCore]
 def isDefEqCore' (t s : Expr) : RecM Bool := do
-  let r ← quickIsDefEq t s (useHash := true)
+  let r ← quickIsDefEq t s
   if r != .undef then return r == .true
 
   if (!t.hasFVar || (← readThe Context).eagerReduce) && s.isConstOf ``true then
