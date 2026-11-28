@@ -930,7 +930,7 @@ theorem cacheSuccess.WF {c : VContext} {s : VState}
   let ⟨_, _, a1, a2, swf, a4⟩ := wf.ectx
   refine ⟨{ s with toState := _ }, rfl, .rfl, { wf with ectx := ⟨_, _, a1, a2, ?_, a4⟩ }, trivial⟩
   have he₁ := he₁.weakFV' c.Ewf a2 a1; have he₂ := he₂.weakFV' c.Ewf a2 a1
-  have eq := (VEnv.IsDefEqU.weak'_iff c.Ewf a1 a2.toCtx).2 eq
+  have eq := eq.weak' c.Ewf a2.toCtx
   intro k₁ k₂ h
   obtain h | h := Std.HashSet.mem_insert.1 h <;> [skip; exact swf h]
   split at h <;> rw [Prod.beq_mk, Bool.and_eq_true] at h
