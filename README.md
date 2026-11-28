@@ -87,7 +87,6 @@ If you run this as is (with no additional arguments), it will check every olean 
       * `Lemmas.lean`: properties of `TrEnv`
     * `TypeChecker`
       * `Basic.lean`: typechecker invariants
-      * `EquivManager.lean`: invariants for the union-find defeq cache
       * `InferType.lean`: correctness of `inferType`
       * `WHNF.lean`: correctness of `whnf`
       * `IsDefEq.lean`: correctness of `isDefEq`

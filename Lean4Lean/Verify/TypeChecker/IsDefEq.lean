@@ -1,5 +1,4 @@
 import Lean4Lean.Verify.TypeChecker.Reduce
-import Lean4Lean.Verify.EquivManager
 
 open Lean4Lean
 
@@ -148,22 +147,13 @@ theorem isDefEqForall.WF {c : VContext} {s : VState}
 
 theorem quickIsDefEq.WF {c : VContext} {s : VState}
     (he₁ : c.TrExprS e₁ e₁') (he₂ : c.TrExprS e₂ e₂') :
-    RecM.WF c s (quickIsDefEq e₁ e₂ useHash) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
+    RecM.WF c s (quickIsDefEq e₁ e₂) fun b _ => b = .true → c.IsDefEqU e₁' e₂' := by
   unfold quickIsDefEq
-  refine .bind (Q := fun b _ => b = true → c.IsDefEqU e₁' e₂') ?_ fun _ _ _ h => ?_
-  · intro _ mwf wf _ s₁ eq
-    simp [modifyGet, MonadStateOf.modifyGet, monadLift, MonadLift.monadLift, StateT.modifyGet,
-      pure, Except.pure] at eq
-    split at eq; rename_i b _ b' m hm
-    change let s' := _; (_, s') = _ at eq; extract_lets s' at eq
-    injection eq; subst b' s₁
-    let ⟨_, _, a1, a2, ewf, a4⟩ := wf.ectx
-    have ⟨ewf, _, h1⟩ := EquivManager.isEquiv.WF ewf hm
-    refine let vs' := { s with toState := s' }; ⟨vs', rfl, .rfl, { wf with ectx := ?_ }, ?_⟩
-    · exact ⟨_, _, a1, a2, ewf, a4⟩
-    · intro h; apply (VEnv.IsDefEqU.weak'_iff c.Ewf a1 a2.toCtx).1
-      exact (h1 h).uniq c.Ewf (a2.bvars_eq.trans c.mlctx.noBV)
-        a1 (he₁.weakFV' c.Ewf a2 a1) (he₂.weakFV' c.Ewf a2 a1)
+  refine .stateWF fun wf => .get ?_
+  have h (h : (e₁ == e₂ || succeededBefore s.success e₁ e₂) = true) : c.IsDefEqU e₁' e₂' := by
+    obtain h | h := Bool.or_eq_true .. ▸ h
+    · exact (he₁.eqv h).uniq c.Ewf (.refl c.Ewf c.Δwf) he₂
+    · exact succeededBefore.WF wf he₁ he₂ h
   split <;> [exact .pure fun _ => h ‹_›; split]
   · exact .toLBoolM <| c.withMLC_self ▸
       isDefEqLambda.WF (subst := #[]) (fvs := []) rfl (c.withMLC_self ▸ he₁) (c.withMLC_self ▸ he₂)
